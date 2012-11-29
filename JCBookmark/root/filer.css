@@ -1,0 +1,265 @@
+@charset "utf-8";
+* {
+	margin:0;
+	padding:0;
+	white-space:nowrap;
+	overflow:hidden;
+}
+body {
+	background:#fff;
+}
+/* ツールバー */
+#toolbar {
+	display:none;
+	width:1024px;
+	background:#eee;
+	border-bottom:1px solid #777;
+	padding:1px;
+}
+/* ツールバーボタン */
+.barbtn {
+	float:left;
+	width:32px;
+	height:32px;
+	border:1px solid transparent;
+}
+.barbtn:hover {
+	border:1px solid #999;
+	background:#fff;
+}
+#toolbar input {
+	float:left;
+	width:144px;
+	height:16px;
+	border:1px solid #bbb;
+	margin:7px 10px 0 3px;
+	padding:1px;
+	line-height:1.5;
+	font-size:13px;
+	font-family:"MS PGothic",sans-serif;
+}
+#modified {
+	float:left;
+	display:none;
+	margin:7px 0 0 7px;
+	color:#d55;
+	line-height:1.5;
+	font-size:14px;
+	font-weight:bold;
+	font-family:"MS PGothic",sans-serif;
+}
+#modified img {
+	float:none;
+	width:19px;
+	height:19px;
+	border:0;
+	vertical-align:top;
+}
+/* フォルダ欄、アイテム欄 */
+#folderbox, #border, #itembox {
+	display:none;
+	float:left;
+}
+#folderbox, #itembox {
+	overflow:auto;
+}
+/* ボーダー */
+#border {
+	width:5px;
+	height:620px;
+	border-left:1px solid #777;
+	border-right:1px solid #777;
+	background:#eee;
+	cursor:col-resize;
+}
+#items {
+	border-bottom:1px solid #eee;
+}
+/* アイテムヘッダ */
+#itemhead {
+	height:19px;
+	background:#eee;
+	border-bottom:1px solid #bbb;
+}
+/* フォルダ・アイテムエントリ */
+.folder, .item {
+	height:20px;
+}
+.folder:hover, .item:hover {
+	background:#ebf9ff;
+}
+/* アイテム色つき行 */
+.bgcolor {
+	background:#f0f2ff;
+}
+/* 選択行 */
+.select, .select:hover {
+	color:#fff;
+	background:#337;
+	font-weight:bold;
+}
+/* TODO:この#itemsを削除すると効かなくなる(選択行のフォント色)なんで？ */
+#items .select .url,
+#items .select .iconurl,
+#items .select .summary,
+#items .select .date {
+	color:#fff;
+	font-weight:normal;
+}
+/* 選択非アクティブ */
+.inactive, .inactive:hover {
+	color:#000;
+	background:#ccc;
+}
+/* フォルダ名、アイテム名、アイテム項目 */
+#folders span, #itembox span {
+	display:block;
+	float:left;
+	height:19px;
+	cursor:default;
+	line-height:1.5;
+	font-size:13px;
+	font-family:"MS PGothic",sans-serif;
+}
+#itemhead .title {
+	padding:0 0 0 7px;
+	color:#888;
+}
+#itemhead .url, #itemhead .iconurl, #itemhead .date {
+	color:#888;
+	padding-left:5px;
+}
+#items .url, #items .iconurl, #items .summary, #items .date {
+	padding-left:5px;
+	border-left:1px solid #ddd;
+	color:#888;
+}
+#itembox .itemborder {
+	width:3px;
+	border-left:1px solid #ccc;
+	border-right:1px solid #ccc;
+	background:#eee;
+	cursor:col-resize;
+}
+/* アイコン */
+.icon {
+	float:left;
+	margin:2px 5px 0 6px;
+	width:16px;
+	height:16px;
+}
+/* 余白 */
+.spacer {
+	height:20px;
+}
+.clear {
+	clear:both;
+}
+/* ドラッグ中にカーソルと一緒に動く半透明ボックス */
+#dragbox {
+	display:none;
+	position:absolute;
+	width:128px;
+	height:20px;
+	line-height:1.5;
+	font-size:13px;
+	font-family:"MS PGothic",sans-serif;
+	border:1px dotted #000;
+	background:#ddf;
+	filter:alpha(opacity=40);
+	-moz-opacity:0.4;
+	opacity:0.4;
+}
+#dragbox img {
+	vertical-align:top;
+}
+/* 編集用テキストボックス */
+#editbox {
+	display:none;
+	position:absolute;
+	left:0; top:-50px;
+	border:1px solid #ea0;
+	height:19px;
+	line-height:1.5;
+	font-size:13px;
+	font-family:"MS PGothic",sans-serif;
+}
+/* マウス矩形選択ボックス */
+#selectbox {
+	display:none;
+	position:absolute;
+	left:0; top:-5px;
+	width:1px; height:1px;
+	border:1px dashed #999;
+	background:transparent;
+}
+/* コンテキストメニュー */
+#contextmenu {
+	display:none;
+	position:absolute;
+	left:0; top:0;
+	width:200px;
+	border:1px solid;
+	border-color:#999;
+	background:#e7e7e7;
+	box-shadow:3px 3px 4px #555;
+}
+#contextmenu div {
+	border-top:1px solid #fff;
+	border-left:1px solid #fff;
+	border-right:1px solid #999;
+	border-bottom:1px solid #999;
+	padding:1px;
+}
+#contextmenu a {
+	display:block;
+	color:#aaa;
+	padding:3px 0 3px 15px;
+	cursor:default;
+	font-size:13px;
+	font-family:"MS PGothic",sans-serif;
+}
+#contextmenu .enable {
+	color:#000;
+}
+#contextmenu .enable:hover {
+	color:#fff;
+	background:#337;
+}
+#contextmenu hr {
+	border-top:1px solid #999;
+	border-bottom:1px solid #fff;
+	margin:3px 0 3px 0;
+}
+/* ダイアログ */
+#dialog {
+	display:none;
+	line-height:1.5;
+	padding:20px;
+}
+/* jQuery UI Dialog */
+.ui-dialog {
+	font-size:14px;
+}
+.ui-button-text {
+	font-weight:bold;
+	color:#666;
+}
+/* ドラッグ中アイテム */
+.draggie {
+	filter:alpha(opacity=25);
+	-moz-opacity:0.25;
+	opacity:0.25;
+}
+/* ドロップ先アイテム */
+.dropTop, .dropTop:hover {
+	border-top:4px solid #e78;/*#55c;*/
+}
+.dropBottom, .dropBottom:hover {
+	border-bottom:4px solid #e78;/*#55c;*/
+}
+.dropIN, .dropIN:hover {
+	color:#000;
+	border:2px solid #e89;/*#66d;*/
+	background:#fee;/*#ddf;*/
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang=ja>
+<head>
+<meta charset=utf-8>
+<title>ブックマークの整理</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/themes/base/jquery-ui.css">
+<link rel="stylesheet" href="filer.css">
+</head>
+<body>
+<div id=toolbar>
+  <img class=barbtn id=exit src="exit.png" title="終了 (Esc)" tabindex=0>
+  <img class=barbtn id=save src="save.png" title="変更を保存" tabindex=0>
+  <img class=barbtn id=newfolder src="newfolder.png" title="新規フォルダ" tabindex=0>
+  <input id=newname placeholder="新規フォルダ名" title="新規フォルダ名">
+  <img class=barbtn id=newitem src="newitem.png" title="新規ブックマークアイテム" tabindex=0>
+  <input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">
+  <img class=barbtn id=selectall src="check.png" title="すべて選択" tabindex=0>
+  <img class=barbtn id=delete src="delete.png" title="削除 (Delete)" tabindex=0>
+  <div id=modified>※変更を保存するには <img src="save.png"> をクリックしてください。</div>
+  <br class=clear>
+</div>
+<div id=folderbox><div id=folders></div><div class=spacer></div></div>
+<div id=border></div>
+<div id=itembox>
+  <div id=itemhead><span class=title>タイトル</span><span class=itemborder></span><span class=url>URL</span><span class=itemborder></span><span class=iconurl>アイコン</span><span class=itemborder></span><span class=date>作成日時</span><br class=clear></div>
+  <div id=items></div>
+  <div class=spacer></div>
+</div>
+<input id=editbox>
+<div id=dragbox></div>
+<div id=selectbox></div>
+<div id=contextmenu><div>
+  <a id=itemopen>URL(フォルダ)を開く</a>
+  <hr>
+  <a id=itemdelete>削除</a>
+</div></div>
+<div id=dialog></div>
+<script src="filer.js"></script>
+</body>
+</html>

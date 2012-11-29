@@ -1,0 +1,212 @@
+@charset "utf-8";
+* {
+	margin:0;
+	padding:0;
+}
+#modified {
+	display:none;
+	font-family:"MS PGothic",sans-serif;
+	font-weight:bold;
+	font-size:14px;
+	margin:3px 0 0 0;
+	padding:1px 0;
+	cursor:pointer;
+	text-align:center;
+}
+#wall {
+	margin:auto;
+}
+/* カラム(列) */
+/* floatをやめてinline-blockにすると、Chromeでhoverの追従性が悪化する。IEはそれほど変わらないようだが。*/
+.column {
+	float:left;
+	padding-bottom:30px;
+}
+/* パネル */
+.panel {
+	font-family:"MS PGothic",sans-serif;
+	font-size:13px;
+	cursor:move;
+	border-radius:3px;
+}
+/* パネルタイトル(フォルダ名) */
+.title {
+	font-weight:bold;
+	white-space:nowrap;
+	overflow:hidden;
+	padding:1px 1px 1px 2px;
+	border-radius:2px;
+}
+.icon {
+	border:0;
+	width:16px;
+	height:16px;
+	margin:0 6px 0 1px;
+	display:inline-block;
+	vertical-align:-4px;
+}
+/* パネル開閉ボタン */
+/* TODO:フォルダ名が長いと押せない */
+.plusminus {
+	display:none;
+	float:right;
+	border:0;
+	width:13px;
+	height:13px;
+	margin:0 2px 0 0;
+	cursor:default;
+	border:1px solid transparent;
+	border-radius:2px;
+}
+/* パネルマウスオーバーの時だけ開閉ボタン表示 */
+.panel:hover .plusminus {
+	display:block;
+}
+/* 新規ブックマークURL投入INPUTボックス */
+#newurl {
+	line-height:1.5;
+	width:98%;
+	padding:1px;
+	margin:0 0 2px 0;
+}
+#commit {
+	width:98%;
+	cursor:pointer;
+	text-align:center;
+	border-radius:3px;
+	padding:1px;
+}
+/* アイテムボックス */
+.itembox {
+	border-radius:3px;
+	padding:2px 2px 3px 2px;
+}
+/* ブックマークアイテム */
+.item {
+	text-decoration:none;
+	display:block;
+	height:16px;
+	border:2px solid transparent;
+	border-radius:3px;
+	white-space:nowrap;
+	overflow:hidden;
+}
+.item:hover {
+	/* TODO:Firefoxでどうもhover処理が重くて追従性が悪い…改善策はあるのだろうか… */
+	/*padding:0 0 0 1px;*/
+}
+/* パネルドラッグ先領域 */
+.ui-sortable-placeholder {
+	visibility:visible !important;
+	border-radius:3px !important;
+	height:50px !important;
+}
+.ui-sortable-placeholder * {
+	visibility:hidden;
+}
+/* アイテムドラッグ先領域 */
+.item-placeholder {
+	display:block;
+}
+/* サイドバー */
+#sidebar {
+	position:fixed;
+	top:10px;
+	left:-31px;
+	width:34px;
+	padding:1px;
+	border-radius:0 3px 3px 0;
+}
+.barico {
+	float:right;
+	width:32px;
+	height:32px;
+}
+.clear {
+	clear:both;
+}
+/* パネル設定ダイアログ */
+#option {
+	display:none;
+	text-align:center;
+}
+#option table {
+	font-size:13px;
+	margin:auto;
+}
+#option th {
+	padding:5px 10px;
+	text-align:right;
+	white-space:nowrap;
+}
+#option td {
+	text-align:left;
+	white-space:nowrap;
+}
+#option .updown {
+	width:18px;
+	height:18px;
+	line-height:1;
+	padding:0;
+}
+#page_title {
+	width:200px;
+	border-radius:3px;
+}
+#panel_width, #panel_margin, #column_count, #font_size {
+	width:60px;
+	border-radius:3px;
+}
+/* ファイラ */
+#filer {
+	display:none;
+	position:absolute;
+	left:0; top:0;
+	border:0;
+}
+/* コンテキストメニュー */
+#contextmenu {
+	display:none;
+	position:absolute;
+	left:0; top:0;
+	width:200px;
+}
+#contextmenu div {
+	padding:1px;
+}
+#contextmenu a {
+	font-family:"MS PGothic",sans-serif;
+	font-size:13px;
+	display:block;
+	padding:4px 0 4px 15px;
+	cursor:default;
+}
+#contextmenu hr {
+	margin:3px 0 3px 0;
+}
+/* アイテムをテキストで取得 */
+#itemtext {
+	display:none;
+}
+#itemtext textarea {
+	width:445px;
+	height:305px;
+	padding:2px;
+}
+/* HTMLインポート・エクスポート・いろいろダイアログ */
+#impexp, #dialog {
+	display:none;
+	line-height:1.5;
+	padding:20px;
+}
+#impexp input {
+	width:400px;
+}
+/* jQuery UI Dialog */
+.ui-dialog {
+	font-size:14px;
+}
+.ui-button-text {
+	font-size:13px;
+	font-weight:bold;
+}

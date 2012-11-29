@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang=ja>
+<head>
+<meta charset=utf-8>
+<title>ブックマーク</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/themes/base/jquery-ui.css">
+<link rel="stylesheet" href="index.css">
+<link rel="stylesheet" href="black.css" id=colorcss>
+</head>
+<body>
+<div id=modified>【 現在の状態を保存するにはここをクリックしてください。 】</div>
+<div id=wall></div>
+<div id=sidebar>
+  <img class=barico id=optionico src="option.png" title="パネル設定" tabindex=0>
+  <img class=barico id=filerico src="filer.png" title="ブックマークの整理" tabindex=0>
+  <img class=barico id=chromeico src="chrome.png" title="Google Chrome ブックマークのインポート" tabindex=0>
+  <img class=barico id=ieico src="ie.png" title="Internet Explorer お気に入りのインポート" tabindex=0>
+  <img class=barico id=firefoxico src="firefox.png" title="Firefox ブックマークのインポート" tabindex=0>
+  <img class=barico id=impexpico src="impexp.png" title="HTMLインポート・エクスポート" tabindex=0>
+  <br class=clear>
+</div>
+<div id=option>
+  <table>
+  <tr>
+    <th>ページタイトル</th>
+    <td><input id=page_title></td>
+  </tr>
+  <tr>
+    <th>色テーマ</th>
+    <td>
+      <input type=radio name=colorcss value="white.css" id=white><label for=white>&nbsp;白&nbsp;</label>&nbsp;&nbsp;
+      <input type=radio name=colorcss value="black.css" id=black><label for=black>&nbsp;黒&nbsp;</label>
+    </td>
+  </tr>
+  <tr>
+    <th>パネルの横幅</th>
+    <td>
+      <input id=panel_width><button id=panel_width_inc class=updown>▲</button><button id=panel_width_dec class=updown>▼</button> (100-1000px)
+    </td>
+  </tr>
+  <tr>
+    <th>パネル間の広さ</th>
+    <td>
+      <input id=panel_margin><button id=panel_margin_inc class=updown>▲</button><button id=panel_margin_dec class=updown>▼</button> (0-100px)
+    </td>
+  </tr>
+  <tr>
+    <th>カラム（列）の数</th>
+    <td>
+      <input id=column_count><button id=column_count_inc class=updown>▲</button><button id=column_count_dec class=updown>▼</button> (1-30)
+    </td>
+  </tr>
+  <tr>
+    <th>フォントサイズ</th>
+    <td>
+      <input id=font_size readonly><button id=font_size_inc class=updown>▲</button><button id=font_size_dec class=updown>▼</button> (px)
+    </td>
+  </tr>
+  </table>
+</div>
+<div id=contextmenu><div>
+  <a id=allopen>パネルアイテムすべて開く</a>
+  <hr>
+  <a id=showtext>アイテムをテキストで取得</a>
+</div></div>
+<div id=itemtext><textarea></textarea></div>
+<div id=impexp>
+  ブックマーク形式HTMLファイル(NETSCAPE-Bookmark-file-1)からインポートします。ファイルを選択して、インポートをクリックしてください。<br>データ量が多いと時間がかかります。
+  <form target=uploader method=post action="import.html" enctype="multipart/form-data">
+    <input type=file name=file size=50>
+  </form>
+  <a id=import>インポート</a><br>
+  <iframe name=uploader style="width:1px;height:1px;border:0;"></iframe>
+  <br>
+  現在の状態をブックマーク形式HTMLファイルにエクスポートします。エクスポートをクリックするとファイルをダウンロードします。<br>
+  <a id=export>エクスポート (ダウンロード)</a>
+</div>
+<div id=dialog></div>
+<iframe id=filer frameborder=0 seamless></iframe>
+<script src="index.js"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+/* 色テーマ：白(既定) */
+@charset "utf-8";
+body {
+	background:#f6faff;
+}
+/* 変更通知 */
+#modified {
+	color:#e44;
+}
+#modified:hover {
+	background:#ffd;
+}
+/* パネル */
+.panel {
+	border:1px solid #d0d0d0;
+	background:#f3f3f5;
+}
+/* パネルマウスオーバーで枠を少し強調 */
+.panel:hover {
+	border-color:#aac;
+}
+/* パネルタイトル(フォルダ名) */
+.title {
+	color:#335;
+	background:#dadae0;
+	background:-o-linear-gradient(#e7e7f7,#dddde7);
+	background:-moz-linear-gradient(#e7e7f7,#dddde7);
+	background:-webkit-linear-gradient(#e7e7f7,#dddde7);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#e7e7f7,endcolorstr=#dddde7)";
+}
+/* パネルマウスオーバーでタイトルグラデを少し強調 */
+.panel:hover .title {
+	background:-o-linear-gradient(#f5f5ff,#d5d5dd);
+	background:-moz-linear-gradient(#f5f5ff,#d5d5dd);
+	background:-webkit-linear-gradient(#f5f5ff,#d5d5dd);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#f5f5ff,endcolorstr=#d5d5dd)";
+}
+/* パネル開閉ボタン */
+.plusminus:hover {
+	border:1px solid #aaa;
+	background:#f5f5f5;
+}
+/* 新規ブックマークURL投入INPUTボックス */
+#newurl {
+	color:#000;
+	border:1px solid #ccc;
+	background:#fff;
+}
+#newurl:hover {
+	border-color:#fa3;
+}
+#commit {
+	color:#555;
+	border:1px solid #aaa;
+	background:#eee;
+}
+#commit:hover {
+	color:#333;
+	background:#fed;
+	border-color:#c95;
+}
+/* アイテムボックス */
+.itembox {
+	background:#fafafc;
+	background:-o-linear-gradient(#fcfcfe,#f5f5f7);
+	background:-moz-linear-gradient(#fcfcfe,#f5f5f7);
+	background:-webkit-linear-gradient(#fcfcfe,#f5f5f7);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fcfcfe,endcolorstr=#f5f5f7)";
+}
+/* ブックマークアイテム */
+.item {
+	color:#14d;
+}
+.item:hover {
+	color:#600020;
+	border:2px solid #dcb9b9;
+	background:#f7f0f5;
+	background:-o-linear-gradient(#fffafc,#f3e5ec);
+	background:-moz-linear-gradient(#fffafc,#f3e5ec);
+	background:-webkit-linear-gradient(#fffafc,#f3e5ec);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fffafc,endcolorstr=#f3e5ec)";
+}
+/* パネルドラッグ先領域 */
+.ui-sortable-placeholder {
+	border:1px dashed #888 !important;
+	background:#ddd !important;
+}
+/* アイテムドラッグ先領域 */
+.item-placeholder {
+	border:2px solid #f88;
+}
+/* サイドバー */
+#sidebar {
+	border-top:1px solid #aaa;
+	border-right:1px solid #aaa;
+	border-bottom:1px solid #aaa;
+	background:#eee;
+}
+.barico {
+	border:1px solid #eee;
+	background:#eee;
+}
+.barico:hover {
+	border-color:#aaa;
+	background:#fff;
+}
+/* パネル設定ダイアログ */
+#page_title, #panel_width, #panel_margin, #column_count, #font_size {
+	border:1px solid gray;
+}
+/* コンテキストメニュー */
+#contextmenu {
+	border:1px solid #999;
+	background:#e7e7e7;
+	box-shadow:3px 3px 4px #555;
+}
+#contextmenu div {
+	border-top:1px solid #fff;
+	border-left:1px solid #fff;
+	border-right:1px solid #999;
+	border-bottom:1px solid #999;
+}
+#contextmenu a:hover {
+	color:#fff;
+	background:#337;
+}
+#contextmenu hr {
+	border-top:1px solid #999;
+	border-bottom:1px solid #fff;
+}
+/* アイテムをテキストで取得 */
+#itemtext textarea {
+	border:1px solid #888;
+}
+/* jQuery UI Dialog Button Style */
+.ui-button-text {
+	color:#666;
+}

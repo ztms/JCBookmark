@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual C++ Express 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "JCBookmark", "JCBookmark.vcproj", "{BB33844A-9CAA-4900-B3AD-D09871BE6E93}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BB33844A-9CAA-4900-B3AD-D09871BE6E93}.Debug|Win32.ActiveCfg = Debug|Win32
+		{BB33844A-9CAA-4900-B3AD-D09871BE6E93}.Debug|Win32.Build.0 = Debug|Win32
+		{BB33844A-9CAA-4900-B3AD-D09871BE6E93}.Release|Win32.ActiveCfg = Release|Win32
+		{BB33844A-9CAA-4900-B3AD-D09871BE6E93}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
