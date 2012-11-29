@@ -128,8 +128,8 @@ u_char		ListenPort[8]		="10080";			// Listenポート
 WCHAR		wListenPort[8]		=L"10080";			// Listenポート
 #define		CLIENT_MAX			16					// クライアント最大同時接続数
 TClient		Client[CLIENT_MAX]	={0};				// クライアント
-u_char*		DocumentRoot		=NULL;				// ドキュメントルートフルパス
-size_t		DocumentRootLen		=0;					// strlen(DocumentRoot)
+WCHAR*		DocumentRoot		=NULL;				// ドキュメントルートフルパス
+size_t		DocumentRootLen		=0;					// wcslen(DocumentRoot)
 SSL_CTX*	ssl_ctx				=NULL;				// OpenSSL
 #define		TIMER1000			1000				// タイマーイベントID
 HANDLE		ThisProcess			=NULL;				// 自プロセスハンドル
@@ -162,13 +162,13 @@ HANDLE		Heap				=NULL;				// GetProcessHeap()
 FILE* mlog=NULL;
 void mlogopen( void )
 {
-	u_char log[MAX_PATH+1]="";
-	u_char* p;
-	GetModuleFileNameA( NULL, log, sizeof(log) );
-	p = strrchr(log,'\\');
+	WCHAR log[MAX_PATH+1]=L"";
+	WCHAR* p;
+	GetModuleFileNameW( NULL, log, sizeof(log)/sizeof(WCHAR) );
+	p = wcsrchr(log,L'\\');
 	if( p ){
-		strcpy( p+1, "memory.log" );
-		mlog = fopen(log,"wb");
+		wcscpy( p+1, L"memory.log" );
+		mlog = _wfopen( log, L"wb" );
 	}
 }
 void* mymalloc( size_t size, const u_char* file, u_int line )
@@ -218,14 +218,6 @@ int myfclose( FILE* fp )
 	if( mlog ) fprintf(mlog,"-%p\r\n",fp);
 	return fclose( fp );
 }
-HANDLE myCreateFileA( LPCSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, const u_char* file, u_int line )
-{
-	HANDLE handle = CreateFileA( path, access, mode, sec, disp, attr, templete );
-	if( !mlog ) mlogopen();
-	if( mlog && handle!=INVALID_HANDLE_VALUE )
-		fprintf(mlog,"+%p:CreateFileA(%s):%s:%u\r\n",handle,path,file,line);
-	return handle;
-}
 HANDLE myCreateFileW( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, const u_char* file, u_int line )
 {
 	HANDLE handle = CreateFileW( path, access, mode, sec, disp, attr, templete );
@@ -247,7 +239,6 @@ BOOL myCloseHandle( HANDLE handle )
 #define fopen(a,b) myfopen(a,b,__FILE__,__LINE__)
 #define _wfopen(a,b) mywfopen(a,b,__FILE__,__LINE__)
 #define fclose(a) myfclose(a)
-#define CreateFileA(a,b,c,d,e,f,g) myCreateFileA(a,b,c,d,e,f,g,__FILE__,__LINE__)
 #define CreateFileW(a,b,c,d,e,f,g) myCreateFileW(a,b,c,d,e,f,g,__FILE__,__LINE__)
 #define CloseHandle(a) myCloseHandle(a)
 #else // MEMLOG
@@ -416,7 +407,7 @@ void LogA( const u_char* fmt, ... )
 	LogCacheAdd( wstr );
 }
 
-u_char* WideCharToUTF8alloc( WCHAR* wstr )
+u_char* WideCharToUTF8alloc( const WCHAR* wstr )
 {
 	if( wstr ){
 		int bytes = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
@@ -433,7 +424,7 @@ u_char* WideCharToUTF8alloc( WCHAR* wstr )
 	}
 	return NULL;
 }
-WCHAR* UTF8toWideCharAlloc( u_char* utf8 )
+WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 {
 	if( utf8 ){
 		int count = MultiByteToWideChar( CP_UTF8, 0, utf8, -1, NULL, 0 );
@@ -445,7 +436,7 @@ WCHAR* UTF8toWideCharAlloc( u_char* utf8 )
 				return wstr;
 			}
 			LogW(L"UTF8→Unicode変換エラー");
-			free( utf8 );
+			free( wstr );
 		}
 		else LogW(L"L%u:malloc(%u)エラー",__LINE__,(count+1)*sizeof(WCHAR));
 	}
@@ -544,15 +535,15 @@ void ConfigFree( void )
 
 void ConfigRead( void )
 {
-	u_char ini[MAX_PATH+1]="";
-	u_char* p;
+	WCHAR ini[MAX_PATH+1]=L"";
+	WCHAR* p;
 	ConfigFree();
-	GetModuleFileNameA( NULL, ini, sizeof(ini) );
-	p = strrchr(ini,'\\');
+	GetModuleFileNameW( NULL, ini, sizeof(ini)/sizeof(WCHAR) );
+	p = wcsrchr(ini,L'\\');
 	if( p ){
 		FILE* fp;
-		strcpy( p+1, "my.ini" );
-		fp = fopen(ini,"rb");
+		wcscpy( p+1, L"my.ini" );
+		fp = _wfopen(ini,L"rb");
 		if( fp ){
 			u_char buf[1024];
 			while( fgets(buf,sizeof(buf),fp) ){
@@ -582,17 +573,17 @@ void ConfigRead( void )
 
 void ConfigSave( WCHAR* wListenPort, WCHAR* wChromeArg, WCHAR* wFirefoxArg, WCHAR* wIeArg, WCHAR* wOperaArg )
 {
-	u_char new[MAX_PATH+1]="";
-	u_char* p;
-	GetModuleFileNameA( NULL, new, sizeof(new) );
-	p = strrchr(new,'\\');
+	WCHAR new[MAX_PATH+1]=L"";
+	WCHAR* p;
+	GetModuleFileNameW( NULL, new, sizeof(new)/sizeof(WCHAR) );
+	p = wcsrchr(new,L'\\');
 	if( p ){
 		// my.ini.new 作成
 		FILE* fp;
-		strcpy( p+1, "my.ini.new" );
-		fp = fopen(new,"wb");
+		wcscpy( p+1, L"my.ini.new" );
+		fp = _wfopen(new,L"wb");
 		if( fp ){
-			u_char ini[MAX_PATH+1]="";
+			WCHAR ini[MAX_PATH+1]=L"";
 			u_char* listenPort = WideCharToUTF8alloc( wListenPort );
 			u_char* chromeArg  = WideCharToUTF8alloc( wChromeArg );
 			u_char* firefoxArg = WideCharToUTF8alloc( wFirefoxArg );
@@ -610,12 +601,12 @@ void ConfigSave( WCHAR* wListenPort, WCHAR* wChromeArg, WCHAR* wFirefoxArg, WCHA
 			if( operaArg ) free( operaArg );
 			fclose(fp);
 			// my.ini.new -> my.ini
-			strcpy( ini, new );
-			ini[strlen(ini)-4]='\0';
-			if( !MoveFileExA( new, ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
-				LogA("MoveFileEx(%s)エラー%u",new,GetLastError());
+			wcscpy( ini, new );
+			ini[wcslen(ini)-4]=L'\0';
+			if( !MoveFileExW( new, ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
+				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
 		}
-		else LogA("fopen(%s)エラー",new);
+		else LogW(L"fopen(%s)エラー",new);
 	}
 }
 
@@ -640,16 +631,16 @@ void ClientInit( TClient* cp )
 	}
 }
 
-u_char* ClientTempPath( TClient* cp, u_char* path, size_t size )
+WCHAR* ClientTempPath( TClient* cp, WCHAR* path, size_t size )
 {
-	_snprintf(path,size,"%s\\$%u",DocumentRoot,Num(cp));
-	path[size-1]='\0';
+	_snwprintf(path,size,L"%s\\$%u",DocumentRoot,Num(cp));
+	path[size-1]=L'\0';
 	return path;
 }
 
 void ClientShutdown( TClient* cp )
 {
-	u_char path[MAX_PATH+1]="";
+	WCHAR wpath[MAX_PATH+1]=L"";
 	if( cp ){
 		if( cp->thread ){
 			CloseHandle( cp->thread );
@@ -670,7 +661,7 @@ void ClientShutdown( TClient* cp )
 		if( cp->rsp.buf ){
 			free( cp->rsp.buf );
 		}
-		DeleteFileA( ClientTempPath(cp,path,sizeof(path)) );
+		DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
 		ClientInit( cp );
 	}
 }
@@ -930,7 +921,7 @@ void FavoritesJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_c
 											}
 											fclose( _fp );
 										}
-										else LogW(L"_wfopen(%s)エラー",wpath);
+										else LogW(L"fopen(%s)エラー",wpath);
 									}
 								}
 								free( wpath );
@@ -968,7 +959,8 @@ void FavoritesJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_c
 	else LogW(L"不正なフォルダ:%s",wdir);
 }
 
-u_char* FileContentType( u_char* file )
+// ANSIとUnicodeとどううまく共通化すれば…
+u_char* FileContentTypeA( u_char* file )
 {
 	if( file ){
 		u_char* ext = strrchr(file,'.');
@@ -983,17 +975,43 @@ u_char* FileContentType( u_char* file )
 			if( stricmp(ext,"jpeg")==0 ) return "image/jpeg";
 			if( stricmp(ext,"png")==0 )  return "image/png";
 			if( stricmp(ext,"gif")==0 )  return "image/gif";
-			//if( stricmp(ext,"ico")==0 )  return "image/icon";
 			if( stricmp(ext,"ico")==0 )  return "image/vnd.microsoft.icon";
 			if( stricmp(ext,"zip")==0 )  return "application/zip";
 			if( stricmp(ext,"pdf")==0 )  return "application/pdf";
-			//if( stricmp(ext,"exe")==0 )  return "application/octet-stream";
 			if( stricmp(ext,"exe")==0 )  return "application/x-msdownload";
 			if( stricmp(ext,"dll")==0 )  return "application/x-msdownload";
 			if( stricmp(ext,"json")==0 ) return "application/json";
 			if( stricmp(ext,"jsonp")==0 )return "application/javascript";
 			if( stricmp(ext,"mp4")==0 )  return "video/mp4";
 			if( stricmp(ext,"flv")==0 )  return "video/flv";
+		}
+	}
+	return "application/octet-stream";
+}
+u_char* FileContentTypeW( WCHAR* file )
+{
+	if( file ){
+		WCHAR* ext = wcsrchr(file,L'.');
+		if( ext ){
+			ext++;
+			if( wcsicmp(ext,L"txt")==0 )  return "text/plain";
+			if( wcsicmp(ext,L"htm")==0 )  return "text/html";
+			if( wcsicmp(ext,L"html")==0 ) return "text/html";
+			if( wcsicmp(ext,L"js")==0 )   return "text/javascript";
+			if( wcsicmp(ext,L"css")==0 )  return "text/css";
+			if( wcsicmp(ext,L"jpg")==0 )  return "image/jpeg";
+			if( wcsicmp(ext,L"jpeg")==0 ) return "image/jpeg";
+			if( wcsicmp(ext,L"png")==0 )  return "image/png";
+			if( wcsicmp(ext,L"gif")==0 )  return "image/gif";
+			if( wcsicmp(ext,L"ico")==0 )  return "image/vnd.microsoft.icon";
+			if( wcsicmp(ext,L"zip")==0 )  return "application/zip";
+			if( wcsicmp(ext,L"pdf")==0 )  return "application/pdf";
+			if( wcsicmp(ext,L"exe")==0 )  return "application/x-msdownload";
+			if( wcsicmp(ext,L"dll")==0 )  return "application/x-msdownload";
+			if( wcsicmp(ext,L"json")==0 ) return "application/json";
+			if( wcsicmp(ext,L"jsonp")==0 )return "application/javascript";
+			if( wcsicmp(ext,L"mp4")==0 )  return "video/mp4";
+			if( wcsicmp(ext,L"flv")==0 )  return "video/flv";
 		}
 	}
 	return "application/octet-stream";
@@ -1052,17 +1070,17 @@ u_char* stristr( const u_char* buf, const u_char* word )
 	return NULL;
 }
 
-// 文字列連結strdup
-u_char* strjoin( const u_char* s1, const u_char* s2 )
+// 文字列連結wcsdup
+WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2 )
 {
 	if( s1 && s2 ){
-		size_t len1 = strlen( s1 );
-		size_t len2 = strlen( s2 );
-		u_char* ss = (u_char*)malloc( len1 + len2 + 1 );
+		size_t len1 = wcslen( s1 );
+		size_t len2 = wcslen( s2 );
+		WCHAR* ss = (WCHAR*)malloc( (len1 + len2 + 1) *sizeof(WCHAR) );
 		if( ss ){
-			memcpy( ss, s1, len1 );
-			memcpy( ss + len1, s2, len2 );
-			ss[len1+len2] = '\0';
+			memcpy( ss, s1, len1 *sizeof(WCHAR) );
+			memcpy( ss + len1, s2, len2 *sizeof(WCHAR) );
+			ss[len1+len2] = L'\0';
 		}
 		else LogW(L"L%u:mallocエラー",__LINE__);
 		return ss;
@@ -1122,14 +1140,11 @@ u_char* strHeaderValue( const u_char* buf, const u_char* name )
 	return NULL;
 }
 
-BOOL UnderDocumentRoot( const u_char* path )
+BOOL UnderDocumentRoot( const WCHAR* path )
 {
-	if( path && strnicmp( path, DocumentRoot, DocumentRootLen )==0 ){
-		switch( path[DocumentRootLen] ){
-		case '\\':
-		case '\0':
-			return TRUE;
-		}
+	if( path && wcsnicmp(path,DocumentRoot,DocumentRootLen)==0 ){
+		if( path[DocumentRootLen]==L'\\' ) return TRUE;
+		if( path[DocumentRootLen]==L'\0' ) return TRUE;
 	}
 	return FALSE;
 }
@@ -1168,7 +1183,7 @@ u_char* strMonth( WORD wMonth )
 }
 
 // HTTP日付文字列をUINT64に変換
-UINT64 UINT64InetTimeA( u_char* intime )
+UINT64 UINT64InetTime( u_char* intime )
 {
 	SYSTEMTIME st;
 	FILETIME ft;
@@ -1759,28 +1774,30 @@ unsigned __stdcall analyze( void* p )
 // TODO:Firefox起動引数で別のプロファイルフォルダを使うこともできるらしく、
 // そっちの places.sqlite を参照したい場合はフォルダをユーザ指定する機能をつけないと…
 //
-u_char* FirefoxPlacesPathAlloc( void )
+WCHAR* FirefoxPlacesPathAlloc( void )
 {
-	#define PROFILES_INI "%APPDATA%\\Mozilla\\Firefox\\Profiles.ini"
-	#define PLACES_SQLITE "places.sqlite"
-	u_char* places = NULL;
-	DWORD length = ExpandEnvironmentStringsA( PROFILES_INI, NULL, 0 );
-	u_char* profiles = (u_char*)malloc( length );
+	#define PROFILES_INI L"%APPDATA%\\Mozilla\\Firefox\\profiles.ini"
+	#define PLACES_SQLITE L"places.sqlite"
+	WCHAR* places = NULL;
+	// 環境変数展開
+	DWORD length = ExpandEnvironmentStringsW( PROFILES_INI, NULL, 0 );
+	WCHAR* profiles = (WCHAR*)malloc( length *sizeof(WCHAR) );
 	if( profiles ){
-		u_char path[MAX_PATH+1];
-		ExpandEnvironmentStringsA( PROFILES_INI, profiles, length ); // 環境変数展開
-		GetPrivateProfileStringA("Profile0","Path","",path,sizeof(path),profiles);
+		WCHAR path[MAX_PATH+1];
+		ExpandEnvironmentStringsW( PROFILES_INI, profiles, length );
+		GetPrivateProfileStringW(L"Profile0",L"Path",L"",path,sizeof(path)/sizeof(WCHAR),profiles);
 		if( *path ){
-			u_char* sep = strrchr( profiles, '\\' );
+			WCHAR* sep = wcsrchr( profiles, L'\\' );
 			if( sep ){
-				// 末尾"\\Profiles.ini"を削除
-				*sep = '\0';
+				size_t len = (sep-profiles) +wcslen(path) +wcslen(PLACES_SQLITE) +3;
+				// 末尾"\\profiles.ini"を削除
+				*sep = L'\0';
 				// profiles\path\places.sqlite
-				places = (u_char*)malloc( strlen(profiles) +strlen(path) +strlen(PLACES_SQLITE) +3 );
-				if( places ) sprintf(places,"%s\\%s\\%s",profiles,path,PLACES_SQLITE);
+				places = (WCHAR*)malloc( len *sizeof(WCHAR) );
+				if( places ) _snwprintf(places,len,L"%s\\%s\\%s",profiles,path,PLACES_SQLITE);
 				else LogW(L"L%u:mallocエラー",__LINE__);
 			}
-			else LogA("不正パス？:%s",profiles);
+			else LogW(L"不正パス？:%s",profiles);
 		}
 		else LogW(L"Firefoxプロファイルパスがわかりません");
 		free( profiles );
@@ -1888,7 +1905,7 @@ u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth
 	u_int count=0;
 	int rc;
 
-	sqlite3_prepare_v2( db, moz_bookmarks, -1, &bookmarks, 0 );
+	sqlite3_prepare( db, moz_bookmarks, -1, &bookmarks, 0 );
 	sqlite3_bind_int( bookmarks, 1, parent );
 
   sqlite3_step:
@@ -1906,7 +1923,7 @@ u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth
 				sqlite3_stmt* places;
 				u_char* moz_places = "select url,favicon_id from moz_places where id=?";
 				int rc;
-				sqlite3_prepare_v2( db, moz_places, -1, &places, 0 );
+				sqlite3_prepare( db, moz_places, -1, &places, 0 );
 				sqlite3_bind_int( places, 1, fk );
 				rc = sqlite3_step( places );
 				if( sqlite3_data_count( places ) ){
@@ -1918,7 +1935,7 @@ u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth
 						u_char* moz_favicons = "select url from moz_favicons where id=?";
 						int favicon_id = sqlite3_column_int( places, 1 );
 						int rc;
-						sqlite3_prepare_v2( db, moz_favicons, -1, &favicons, 0 );
+						sqlite3_prepare( db, moz_favicons, -1, &favicons, 0 );
 						sqlite3_bind_int( favicons, 1, favicon_id );
 						rc = sqlite3_step( favicons );
 						if( sqlite3_data_count( favicons ) ){
@@ -2166,20 +2183,20 @@ u_int ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
-BOOL FileBackup( const u_char* path )
+BOOL FileBackup( const WCHAR* path )
 {
 	if( path && *path ){
-		HANDLE rFile = CreateFileA( path
+		HANDLE rFile = CreateFileW( path
 							,GENERIC_READ
 							,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
 		);
 		if( rFile !=INVALID_HANDLE_VALUE ){
 			BOOL success = FALSE;
-			u_char* tmp = strjoin( path, ".$$$" );
-			u_char* bak = strjoin( path, ".bak" );
+			WCHAR* tmp = wcsjoin( path, L".$$$" );
+			WCHAR* bak = wcsjoin( path, L".bak" );
 			if( tmp && bak ){
-				HANDLE wFile = CreateFileA( tmp, GENERIC_WRITE, 0
+				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, 0
 									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 				);
 				if( wFile !=INVALID_HANDLE_VALUE ){
@@ -2207,13 +2224,13 @@ BOOL FileBackup( const u_char* path )
 					}
 					SetEndOfFile( wFile );
 					CloseHandle( wFile );
-					if( MoveFileExA( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
-						LogA("バックアップ作成:%s",bak);
+					if( MoveFileExW( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
+						LogW(L"バックアップ作成:%s",bak);
 						success = TRUE;
 					}
-					else LogA("L%u:MoveFileEx(%s)エラー",__LINE__,tmp);
+					else LogW(L"L%u:MoveFileEx(%s)エラー",__LINE__,tmp);
 				}
-				else LogA("L%u:CreateFile(%s)エラー",__LINE__,tmp);
+				else LogW(L"L%u:CreateFile(%s)エラー",__LINE__,tmp);
 			}
 			if( tmp ) free( tmp );
 			if( bak ) free( bak );
@@ -2225,60 +2242,64 @@ BOOL FileBackup( const u_char* path )
 }
 
 // ドキュメントルート配下のフルパスに変換する
-u_char* RealPath( const u_char* path, u_char* realpath, size_t size )
+WCHAR* RealPath( const u_char* path, WCHAR* realpath, size_t size )
 {
 	if( path && realpath ){
-		u_char* p;
-		_snprintf(realpath,size,"%s\\%s",DocumentRoot,path);
-		realpath[size-1]='\0';
-		// パス区切りを \ に
-		for( p=realpath; *p; p++ ){
-			if( *p=='/' ) *p = '\\';
-		}
-		// 連続 \ を削除
-		p = realpath;
-		while( (p=strstr(p,"\\\\")) ){
-			u_char* next;
-			for( next=p+2; *next; next++ ){
-				if( *next !='\\' ) break;
+		WCHAR* wpath = UTF8toWideCharAlloc( path );
+		if( wpath ){
+			WCHAR* p;
+			_snwprintf(realpath,size,L"%s\\%s",DocumentRoot,wpath);
+			realpath[size-1]=L'\0';
+			// パス区切りを \ に
+			for( p=realpath; *p; p++ ){
+				if( *p==L'/' ) *p = L'\\';
 			}
-			if( *next ){
-				memmove( p+1, next, size - (next - realpath) );
-				p++;
+			// 連続 \ を削除
+			p = realpath;
+			while( (p=wcsstr(p,L"\\\\")) ){
+				WCHAR* next;
+				for( next=p+2; *next; next++ ){
+					if( *next !=L'\\' ) break;
+				}
+				if( *next ){
+					memmove( p+1, next, (size - (next - realpath)) *sizeof(WCHAR) );
+					p++;
+				}
+				else{
+					*p = L'\0';
+					break;
+				}
 			}
-			else{
-				*p = '\0';
-				break;
+			// \..\ を削除
+			p = realpath;
+			while( (p=wcsstr(p,L"\\..\\")) ){
+				WCHAR* prev;
+				for( prev=p-1; realpath<prev; prev-- ){
+					if( *prev==L'\\' ) break;
+				}
+				if( *prev==L'\\' ){
+					memmove( prev+1, p+4, (size - (p+4 - realpath)) *sizeof(WCHAR) );
+					p = prev;
+				}
+				else{
+					memmove( p, p+3, (size - (p+3 - realpath)) *sizeof(WCHAR) );
+					p++;
+				}
 			}
-		}
-		// \..\ を削除
-		p = realpath;
-		while( (p=strstr(p,"\\..\\")) ){
-			u_char* prev;
-			for( prev=p-1; realpath<prev; prev-- ){
-				if( *prev=='\\' ) break;
-			}
-			if( *prev=='\\' ){
-				memmove( prev+1, p+4, size - (p+4 - realpath) );
-				p = prev;
-			}
-			else{
-				memmove( p, p+3, size - (p+3 - realpath ) );
-				p++;
-			}
+			free( wpath );
 		}
 	}
 	return realpath;
 }
 
 // ファイルを全部メモリに読み込む。CreateFileMappingのがはやい…？
-u_char* file2memory( const u_char* path )
+u_char* file2memory( const WCHAR* path )
 {
 	if( path && *path ){
-		HANDLE hFile = CreateFileA( path
-						,GENERIC_READ
-						,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-						,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+		HANDLE hFile = CreateFileW( path
+							,GENERIC_READ
+							,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
+							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
 		);
 		if( hFile != INVALID_HANDLE_VALUE ){
 			DWORD size = GetFileSize( hFile,NULL );
@@ -2307,7 +2328,7 @@ u_char* file2memory( const u_char* path )
 
 //
 // multipart/form-dataのPOSTデータを処理する。いまのところHTMLインポート機能でのみ利用。
-// POSTデータ(リクエスト本文)は、この関数呼出前に一時ファイル(cp->tmppath)にそのまま出力されている。
+// POSTデータ(リクエスト本文)は、この関数呼出前に一時ファイル(tmppath)にそのまま出力されている。
 // この関数から戻った後は、ファイルがクローズされてレスポンス送信処理(SEND_READY)に移るので、
 // この関数は必ずレスポンス送信準備が完了した状態で終了しなければならない。
 // [multipart/form-data]
@@ -2326,7 +2347,7 @@ u_char* file2memory( const u_char* path )
 // xxx
 // --XXX--
 //
-void MultipartFormdataProc( TClient* cp, u_char* tmppath )
+void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 {
 	u_char* path = cp->req.path;
 	if( *path=='/' ) path++;
@@ -2338,7 +2359,7 @@ void MultipartFormdataProc( TClient* cp, u_char* tmppath )
 		// 文字コードはUTF-8前提。チェックはしない。
 		u_char* data = file2memory( tmppath );
 		if( data ){
-			FILE* fp = fopen( tmppath, "wb" );
+			FILE* fp = _wfopen( tmppath, L"wb" );
 			if( fp ){
 				u_char* folderNameTop=NULL, *folderNameEnd=NULL;
 				u_char* folderDateTop=NULL, *folderDateEnd=NULL;
@@ -2513,7 +2534,7 @@ void MultipartFormdataProc( TClient* cp, u_char* tmppath )
 				}
 				fclose( fp );
 				// GETとおなじ処理になっとる…
-				cp->rsp.readfh = CreateFileA( tmppath
+				cp->rsp.readfh = CreateFileW( tmppath
 						,GENERIC_READ
 						,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 						,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -2535,12 +2556,12 @@ void MultipartFormdataProc( TClient* cp, u_char* tmppath )
 					);
 				}
 				else{
-					LogW(L"[%u]CreateFileA(%s)エラー%u",Num(cp),tmppath,GetLastError());
+					LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
 					ClientSendErr(cp,"500 Internal Server Error");
 				}
 			}
 			else{
-				LogA("[%u]fopen(%s)エラー",Num(cp),tmppath);
+				LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 				ClientSendErr(cp,"500 Internal Server Error");
 			}
 			free( data );
@@ -2561,6 +2582,7 @@ void SocketAccept( SOCKET sock )
 		BOOL success = FALSE;
 		WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
 		// GetNameInfoW は XP SP2 以降のAPIらしい
+		// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
 		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
 		// クライアントと接続確立したので、次
 		// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら、メッセージ
@@ -2663,7 +2685,7 @@ void SocketRead( SOCKET sock )
 {
 	TClient* cp = ClientOfSocket( sock );
 	if( cp ){
-		u_char tmppath[MAX_PATH+1]="", realpath[MAX_PATH+1]="";
+		WCHAR tmppath[MAX_PATH+1]=L"", realpath[MAX_PATH+1]=L"";
 		Request* req = &(cp->req);
 		int bytes;
 		switch( cp->status ){
@@ -2744,14 +2766,14 @@ void SocketRead( SOCKET sock )
 							// IEお気に入りインポート
 							WCHAR* favdir = FavoritesPathAlloc();
 							if( favdir ){
-								FILE* fp = fopen( ClientTempPath(cp,tmppath,sizeof(tmppath)), "wb" );
+								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 								if( fp ){
 									u_int nextid=1;	// ノードID
 									u_int depth=0;	// 階層深さ
 									FavoritesJSON( fp, favdir, &nextid, depth, cp->req.param );
 									fclose( fp );
 									if( nextid >1 ){
-										cp->rsp.readfh = CreateFileA( tmppath
+										cp->rsp.readfh = CreateFileW( tmppath
 												,GENERIC_READ
 												,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 												,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -2759,17 +2781,17 @@ void SocketRead( SOCKET sock )
 									}
 									else LogW(L"[%u]IEお気に入りデータありません",Num(cp));
 								}
-								else LogA("[%u]fopen(%s)エラー",Num(cp),tmppath);
+								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 								free( favdir );
 							}
 						}
 						else if( stricmp(file,":firefox.json")==0 ){
 							// Firefoxブックマークインポート
-							u_char* places = FirefoxPlacesPathAlloc();
+							WCHAR* places = FirefoxPlacesPathAlloc();
 							if( places ){
 								sqlite3* db = NULL;
-								if( sqlite3_open_v2( places, &db, SQLITE_OPEN_READONLY, 0 )==SQLITE_OK ){
-									FILE* fp = fopen( ClientTempPath(cp,tmppath,sizeof(tmppath)), "wb" );
+								if( sqlite3_open16( places, &db )==SQLITE_OK ){
+									FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 									if( fp ){
 										int parent=0;	// places.sqliteルートエントリparentID
 										u_int nextid=1;	// ノードID
@@ -2777,7 +2799,7 @@ void SocketRead( SOCKET sock )
 										FirefoxJSON( db, fp, parent, &nextid, depth, cp->req.param );
 										fclose( fp );
 										if( nextid >1 ){
-											cp->rsp.readfh = CreateFileA( tmppath
+											cp->rsp.readfh = CreateFileW( tmppath
 													,GENERIC_READ
 													,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 													,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -2785,10 +2807,10 @@ void SocketRead( SOCKET sock )
 										}
 										else LogW(L"[%u]Firefoxブックマークデータありません",Num(cp));
 									}
-									else LogA("[%u]fopen(%s)エラー",Num(cp),tmppath);
+									else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 									sqlite3_close( db );
 								}
-								else LogW(L"[%u]sqlite3_open_v2エラー%s",Num(cp),sqlite3_errmsg(db));
+								else LogW(L"[%u]sqlite3_open16(%s)エラー%s",Num(cp),places,sqlite3_errmsg16(db));
 								free( places );
 							}
 						}
@@ -2810,35 +2832,35 @@ void SocketRead( SOCKET sock )
 							if( favicons ){
 								sqlite3* db = NULL;
 								if( sqlite3_open16( favicons, &db )==SQLITE_OK ){
-									FILE* fp = fopen( ClientTempPath(cp,tmppath,sizeof(tmppath)), "wb" );
+									FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 									if( fp ){
 										u_int count = ChromeFaviconJSON( db, fp, cp->req.param );
 										fclose( fp );
 										if( count ){
-											cp->rsp.readfh = CreateFileA( tmppath
+											cp->rsp.readfh = CreateFileW( tmppath
 													,GENERIC_READ
 													,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 													,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
 											);
 										}
 									}
-									else LogA("[%u]fopen(%s)エラー",Num(cp),tmppath);
+									else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 									sqlite3_close( db );
 								}
-								else LogW(L"[%u]sqlite3_open_v2エラー%s",Num(cp),sqlite3_errmsg(db));
+								else LogW(L"[%u]sqlite3_open16(%s)エラー%s",Num(cp),favicons,sqlite3_errmsg16(db));
 								free( favicons );
 							}
 						}
 						else{
 							// 通常ファイル,index.html補完
-							size_t len = strlen( RealPath(file,realpath,sizeof(realpath)) );
-							if( realpath[len-1]=='\\' ){
-								_snprintf(realpath+len,sizeof(realpath)-len,"%s","index.html");
-								realpath[sizeof(realpath)-1]='\0';
+							size_t len = wcslen( RealPath(file,realpath,sizeof(realpath)/sizeof(WCHAR)) );
+							if( realpath[len-1]==L'\\' ){
+								_snwprintf(realpath+len,sizeof(realpath)/sizeof(WCHAR)-len,L"%s",L"index.html");
+								realpath[sizeof(realpath)/sizeof(WCHAR)-1]=L'\0';
 							}
 							// ドキュメントルート配下のみ
 							if( UnderDocumentRoot(realpath) ){
-								cp->rsp.readfh = CreateFileA( realpath
+								cp->rsp.readfh = CreateFileW( realpath
 										,GENERIC_READ
 										,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
 										,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -2862,7 +2884,7 @@ void SocketRead( SOCKET sock )
 								// 復旧したJSONで表示されないことになってしまう。どうするか…Pragma:no-cache
 								// とかもCGIじゃないから変な気がするし…、ブラウザキャッシュをクリアしてくれ
 								// ということでいいかな…？
-								if( UINT64InetTimeA(cp->req.IfModifiedSince) >= UINT64InetTimeA(inetTime) ){
+								if( UINT64InetTime(cp->req.IfModifiedSince) >= UINT64InetTime(inetTime) ){
 									ClientSends(cp,"HTTP/1.0 304 Not Modified\r\n");
 									// ファイル中身送らない
 									CloseHandle( cp->rsp.readfh );
@@ -2889,7 +2911,7 @@ void SocketRead( SOCKET sock )
 								else{
 									ClientSendf(cp
 											,"Content-Type: %s\r\n"
-											,(*realpath)? FileContentType(realpath) : FileContentType(file)
+											,(*realpath)? FileContentTypeW(realpath) : FileContentTypeA(file)
 									);
 								}
 								ClientSendf(cp,"Last-Modified: %s\r\n",inetTime);
@@ -2909,18 +2931,14 @@ void SocketRead( SOCKET sock )
 					else if( stricmp(req->method,"POST")==0 ){
 						// HTMLインポート
 						if( req->ContentLength ){
-							ClientTempPath(cp,tmppath,sizeof(tmppath));
+							ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR));
 							// リクエスト本文を一時ファイルに書き出す
 							// TODO:PUTとおなじ処理になっとる
 							if( req->writefh==INVALID_HANDLE_VALUE ){
 								if( req->ContentType && strnicmp(req->ContentType,"multipart/form-data;",20)==0 ){
-									req->writefh = CreateFileA( tmppath
-														,GENERIC_WRITE
-														,0
-														,NULL
-														,CREATE_ALWAYS
-														,FILE_ATTRIBUTE_NORMAL
-														,NULL
+									req->writefh = CreateFileW( tmppath
+														,GENERIC_WRITE, 0, NULL
+														,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 									);
 									if( req->writefh !=INVALID_HANDLE_VALUE ){
 										// 連続領域確保（断片化抑制）
@@ -2929,7 +2947,7 @@ void SocketRead( SOCKET sock )
 										SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
 									}
 									else{
-										LogA("[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
+										LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
 										ClientSendErr(cp,"500 Internal Server Error");
 										goto send_ready;
 									}
@@ -2974,8 +2992,8 @@ void SocketRead( SOCKET sock )
 						if( req->ContentLength ){
 							u_char* file = req->path;
 							if( *file=='/' ) file++;
-							RealPath( file, realpath, sizeof(realpath) );
-							ClientTempPath( cp, tmppath, sizeof(tmppath) );
+							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
+							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							// リクエスト本文を一時ファイルに書き出す
 							// TODO:POSTとおなじ処理になっとる
 							if( req->writefh==INVALID_HANDLE_VALUE ){
@@ -2984,13 +3002,9 @@ void SocketRead( SOCKET sock )
 								if( (ext && stricmp(ext,".json")==0 && UnderDocumentRoot(realpath))
 									|| stricmp(file,"export.html")==0
 								){
-									req->writefh = CreateFileA( tmppath
-														,GENERIC_WRITE
-														,0
-														,NULL
-														,CREATE_ALWAYS
-														,FILE_ATTRIBUTE_NORMAL
-														,NULL
+									req->writefh = CreateFileW( tmppath
+														,GENERIC_WRITE, 0, NULL
+														,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 									);
 									if( req->writefh !=INVALID_HANDLE_VALUE ){
 										// 連続領域確保（断片化抑制）
@@ -2999,7 +3013,7 @@ void SocketRead( SOCKET sock )
 										SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
 									}
 									else{
-										LogA("[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
+										LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
 										ClientSendErr(cp,"500 Internal Server Error");
 										goto send_ready;
 									}
@@ -3028,13 +3042,13 @@ void SocketRead( SOCKET sock )
 									CloseHandle( req->writefh );
 									req->writefh = INVALID_HANDLE_VALUE;
 									if( FileBackup( realpath ) ){
-										if( MoveFileExA( tmppath, realpath
+										if( MoveFileExW( tmppath, realpath
 												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
 										)){
 											ClientSendErr(cp,"200 OK");
 										}
 										else{
-											LogA("[%u]MoveFileExA(%s)エラー%u",Num(cp),tmppath,GetLastError());
+											LogW(L"[%u]MoveFileEx(%s)エラー%u",Num(cp),tmppath,GetLastError());
 											ClientSendErr(cp,"500 Internal Server Error");
 										}
 									}
@@ -3342,7 +3356,7 @@ void BrowserIconClick( BrowserIcon* bp )
 			else LogW(L"L%u:wcsdupエラー",__LINE__);
 			free(cmdline), cmdline=NULL;
 		}
-		else LogW(L"L%:mallocエラー",__LINE__);
+		else LogW(L"L%u:mallocエラー",__LINE__);
 	}
 }
 
@@ -3757,6 +3771,7 @@ void MainFormTimer1000( void )
 void MainFormCreateAfter( void )
 {
 	u_char path[MAX_PATH+1];
+	WCHAR wpath[MAX_PATH+1];
 	// OpenSSL
 	SSL_library_init();
 	ssl_ctx = SSL_CTX_new( SSLv23_client_method() );	// SSLv2,SSLv3,TLSv1すべて利用
@@ -3774,10 +3789,10 @@ void MainFormCreateAfter( void )
 		memset( &mlang, 0, sizeof(mlang) );
 	}
 	// 空ノードファイル作る。既存ファイル上書きしない。
-	GetCurrentDirectoryA( sizeof(path), path );
-	if( SetCurrentDirectoryA( DocumentRoot ) ){
+	GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
+	if( SetCurrentDirectoryW( DocumentRoot ) ){
 		MoveFileA( "tree.json.empty", "tree.json" );
-		SetCurrentDirectoryA( path );
+		SetCurrentDirectoryW( wpath );
 	}
 	// クライアント初期化
 	{ u_int i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
@@ -4003,34 +4018,34 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	Heap = GetProcessHeap();
 	// ドキュメントルート(exeフォルダ\\root)
 	{
-		size_t bytes = 32;
-		u_char* path = NULL;
-		while( !path ){
-			path = (u_char*)malloc( bytes );
-			if( path ){
-				DWORD len = GetModuleFileNameA( NULL, path, bytes );
-				if( len && len < bytes-1 ){
-					u_char* p = strrchr(path,'\\');
+		size_t length = 32;
+		WCHAR* wpath = NULL;
+		while( !wpath ){
+			wpath = (WCHAR*)malloc( length *sizeof(WCHAR) );
+			if( wpath ){
+				DWORD len = GetModuleFileNameW( NULL, wpath, length );
+				if( len && len < length-1 ){
+					WCHAR* p = wcsrchr(wpath,L'\\');
 					if( p ){
-						strcpy( p+1, "root" );
-						DocumentRootLen = strlen( path );
-						DocumentRoot = path;
+						wcscpy( p+1, L"root" );
+						DocumentRootLen = wcslen( wpath );
+						DocumentRoot = wpath;
 						break;
 					}
 					else{
-						ErrorBoxA("GetModuleFileName()=%s",path);
-						free(path);
+						ErrorBoxW(L"GetModuleFileName()=%s",wpath);
+						free(wpath);
 						return NULL;
 					}
 				}
 				else{
-					free( path );
-					path = NULL;
-					bytes += 32;
+					free(wpath);
+					wpath = NULL;
+					length += 32;
 				}
 			}
 			else{
-				ErrorBoxA("L%:mallocエラー",__LINE__);
+				ErrorBoxW(L"L%u:mallocエラー",__LINE__);
 				return NULL;
 			}
 		}

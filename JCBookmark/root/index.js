@@ -109,8 +109,12 @@ var tree = {
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
-			url		:tree.path
-			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
+			url:tree.path
+			,beforeSend:function(xhr){
+				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
+			}
+			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
@@ -256,8 +260,12 @@ var option = {
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
 		$.ajax({
-			url		 :option.path
-			,success :function(data){ option.data = data; }
+			url:option.path
+			,beforeSend:function(xhr){
+				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
+			}
+			,success:function(data){ option.data = data; }
 			,complete:onComplete
 		});
 		return option;
@@ -674,8 +682,8 @@ $('#ieico').click(function(){
 				})
 			};
 			work.ajax = $.ajax({
-				//url		:':favorites.json'
-				url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
+				url		:':favorites.json'
+				//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
 				,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
 				,success:function(data){ analyzer( data, work ); }
 			});
@@ -702,8 +710,8 @@ $('#firefoxico').click(function(){
 				})
 			};
 			work.ajax = $.ajax({
-				//url		:':firefox.json'
-				url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
+				url		:':firefox.json'
+				//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
 				,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
 				,success:function(data){ analyzer( data, work ); }
 			});

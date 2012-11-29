@@ -141,8 +141,12 @@ var tree = {
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
-			url	:tree.path
-			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
+			url:tree.path
+			,beforeSend:function(xhr){
+				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
+			}
+			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
