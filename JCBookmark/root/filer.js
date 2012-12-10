@@ -718,6 +718,7 @@ tree.load(function(){
 function folderTree(){
 	// フォルダツリー生成
 	// TODO:フォルダの左側にプラスマイナスボタンほしい
+	// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
 	var $folders = $('#folders').empty();
 	var $folder = function(){
 		var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
@@ -749,6 +750,7 @@ function folderTree(){
 	})( tree.top(), 0 );
 	// ごみ箱
 	// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていい
+	// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
 	$folders.append( $folder(tree.trash().id, tree.trash().title, 'trash.png', 0) );
 	(function( child, depth ){
 		for( var i=0, n=child.length; i<n; i++ ){

@@ -14,6 +14,8 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
+//	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
+//	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
 //	[C言語で文字列を簡単にかつ少し高速に操作する]
 //	http://d.hatena.ne.jp/htz/20090222/1235322977
@@ -73,7 +75,7 @@
 #define		WM_SETTING_OK		(WM_APP+3)		// 設定ダイアログOK後の処理
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.0"
+#define		APPNAME				L"JCBookmark v1.2"
 
 typedef struct {
 	u_char*		buf;				// リクエスト受信バッファ
@@ -88,7 +90,7 @@ typedef struct {
 	u_char*		body;				// リクエストボディ開始位置
 	u_char*		boundary;			// Content-Type:multipart/form-dataのboundary
 	HANDLE		writefh;			// 書出ファイルハンドル
-	DWORD		written;			// 書出済みバイト
+	DWORD		wrote;				// 書出済みバイト
 	u_int		ContentLength;		// Content-Length値
 	u_int		bytes;				// 受信バッファ有効バイト
 	size_t		bufsize;			// 受信バッファサイズ
@@ -96,7 +98,6 @@ typedef struct {
 
 typedef struct {
 	u_char*		buf;				// レスポンス送信バッファ
-	//HANDLE		handle;				// 送信ファイルハンドル
 	HANDLE		readfh;				// 送信ファイルハンドル
 	DWORD		readed;				// 送信ファイル読込済みバイト
 	u_int		sended;				// 送信済みバイト
@@ -763,7 +764,8 @@ UINT64 JSTime( void )
 	GetSystemTimeAsFileTime( &ft );
 	return FileTimeToJSTime( &ft );
 }
-//
+//---------------------------------------------------------------------------------------------------------------
+// IEお気に入りJSONイメージ作成
 // IEお気に入りフォルダ(Favorites)パス取得
 // * 参考サイト
 //		http://www.wa.commufa.jp/~exd/contents/backup/01002.html
@@ -780,7 +782,8 @@ UINT64 JSTime( void )
 // * 環境変数取得(展開)関数は、
 //		getenv / GetEnvironmentVariable / ExpandEnvironmentStrings
 //   の3つくらいかな。
-//
+// TODO:SHGetSpecialFolderPath/SHGetFolderPath(CSIDL_FAVORITES)でもいい？簡単？
+// でもバッファサイズ指定がない嫌なAPIである。
 WCHAR* FavoritesPathAlloc( void )
 {
 	WCHAR* path = NULL;
@@ -815,10 +818,441 @@ WCHAR* FavoritesPathAlloc( void )
 	else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
 	return path;
 }
-//
+// Favoritesフォルダ内を検索してノードリスト(単方向チェーン)を生成
+typedef struct NodeList {
+	struct NodeList*	next;		// 次ノード
+	struct NodeList*	child;		// 子ノード
+	BOOL				isFolder;	// フォルダかどうか
+	DWORD				sortIndex;	// ソートインデックス
+	UINT64				dateAdded;	// 作成日
+	WCHAR*				name;		// 名前(ファイル/フォルダ名)
+	//u_char*				title;		// タイトル
+	u_char*				url;		// サイトURL
+	u_char*				icon;		// favicon URL
+} NodeList;
+// 全ノード破棄
+void NodeListDestroy( NodeList* node )
+{
+	while( node ){
+		NodeList* next = node->next;
+		if( node->child ) NodeListDestroy( node->child );
+		free( node );
+		node = next;
+	}
+}
+// ノード１つメモリ確保
+NodeList* NodeCreate( const WCHAR* name, u_char* url, u_char* icon )
+{
+	NodeList* node = NULL;
+	size_t namesize=0, urlsize=0, iconsize=0;
+	size_t bytes = sizeof(NodeList);
+	if( name ){
+		namesize = (wcslen(name) + 1) * sizeof(WCHAR);
+		bytes += namesize;
+		//LogW(L"NodeCreate:%s",name);
+	}
+	else LogW(L"NodeCreate empty name. bug???");
+	if( url ){
+		urlsize = strlen(url) + 1;
+		bytes += urlsize;
+	}
+	if( icon ){
+		iconsize = strlen(icon) + 1;
+		bytes += iconsize;
+	}
+	node = (NodeList*)malloc( bytes );
+	if( node ){
+		BYTE* p = (BYTE*)(node+1);
+		node->sortIndex = UINT_MAX;
+		if( name ){
+			memcpy(p,name,namesize);
+			node->name = (WCHAR*)p;
+			p += namesize;
+		}
+		if( url ){
+			memcpy(p,url,urlsize);
+			node->url = (u_char*)p;
+			p += urlsize;
+		}
+		if( icon ){
+			memcpy(p,icon,iconsize);
+			node->icon = (u_char*)p;
+			p += iconsize;
+		}
+	}
+	else LogW(L"L%u:mallocエラー",__LINE__);
+	return node;
+}
+
+NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
+{
+	NodeList* folder = NULL;
+	size_t wdirlen = wcslen(wdir);
+	WCHAR* wfindir = (WCHAR*)malloc( (wdirlen +3) *sizeof(WCHAR) );
+	if( wfindir ){
+		HANDLE handle;
+		WIN32_FIND_DATAW wfd;
+		_snwprintf(wfindir,wdirlen+3,L"%s\\*",wdir);
+		handle = FindFirstFileW( wfindir, &wfd );
+		if( handle !=INVALID_HANDLE_VALUE ){
+			// フォルダノード
+			folder = NodeCreate( wcsrchr(wdir,L'\\')+1, NULL, NULL );
+			if( folder ){
+				NodeList* last = NULL;
+				folder->isFolder = TRUE;
+				do{
+					if( wcscmp(wfd.cFileName,L"..") && wcscmp(wfd.cFileName,L".") ){
+						size_t wpathlen = wdirlen + wcslen(wfd.cFileName) + 2;
+						WCHAR *wpath = (WCHAR*)malloc( wpathlen *sizeof(WCHAR) );
+						if( wpath ){
+							NodeList* node = NULL;
+							_snwprintf(wpath,wpathlen,L"%s\\%s",wdir,wfd.cFileName);
+							if( wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ){
+								// ディレクトリ再帰
+								node = FolderFavoriteListCreate( wpath );
+							}
+							else{
+								// ファイル
+								WCHAR* dot = wcsrchr( wfd.cFileName, L'.' );
+								if( dot && wcsicmp(dot+1,L"URL")==0 ){
+									// 拡張子url
+									u_char *url=NULL, *icon=NULL;
+									FILE* fp = _wfopen( wpath, L"rb" );
+									if( fp ){
+										u_char line[1024];
+										while( fgets( line, sizeof(line), fp ) ){
+											if( strnicmp(line,"URL=",4)==0 ){
+												url = strdup(chomp(line+4));
+												if( !url ) LogW(L"L%u:strdupエラー",__LINE__);
+												else if( icon ) break;
+											}
+											else if( strnicmp(line,"IconFile=",9)==0 ){
+												icon = strdup(chomp(line+9));
+												if( !icon ) LogW(L"L%u:strdupエラー",__LINE__);
+												else if( url ) break;
+											}
+										}
+										fclose( fp );
+									}
+									else LogW(L"fopen(%s)エラー",wpath);
+									// URLノード生成
+									node = NodeCreate( wfd.cFileName, url, icon );
+									if( url ) free( url );
+									if( icon ) free( icon );
+								}
+							}
+							// ノードリスト末尾に登録
+							if( node ){
+								node->dateAdded = FileTimeToJSTime(&wfd.ftCreationTime);
+								if( last ){
+									last->next = node;
+									last = node;
+								}
+								else folder->child = last = node;
+							}
+							free( wpath );
+						}
+						else LogW(L"L%u:mallocエラー",__LINE__);
+					}
+				}
+				while( FindNextFileW( handle, &wfd ) );
+			}
+			FindClose( handle );
+		}
+		else LogW(L"FindFirstFileW(%s)エラー%u",wfindir,GetLastError());
+		free( wfindir );
+	}
+	else LogW(L"L%u:mallocエラー",__LINE__);
+	return folder;
+}
+// お気に入り並び順をレジストリから取得
+// http://www.arstdesign.com/articles/iefavorites.html
+// http://mikeo410.lv9.org/lumadcms/~IE_FAVORITES_XBEL
+// http://www.atmark.gr.jp/~s2000/r/memo.txt
+typedef struct {
+	DWORD		bytes;
+	DWORD		sortIndex;
+	WORD		key1;
+	WORD		key2;		// bit0不明, bit1=1(URL)0(フォルダ), bit2=1(UNICODE)0(非UNICODE)
+	DWORD		unknown0;
+	DWORD		unknown1;
+	WORD		key3;		// 0x0010はURL, 0x0020はフォルダ。key2と同じなので使わない。
+	BYTE		name[1];	// 可変長ファイル(フォルダ)名。非UNICODEの場合は8.3形式NULL終端文字列。UNICODEでフォルダの場合5文字までならそのまま、6文字以上は謎のゴミつき文字列。UNICODEでURLの場合は9文字までならそのまま、10文字以上は謎のゴミつき文字列。ゴミがついている場合でもいちおうNULL終端しているもよう。
+} RegFavoriteOrderItem;
+
+typedef struct {
+	DWORD					unknown0;
+	DWORD					unknown1;
+	DWORD					bytes;		// 全体バイト数
+	DWORD					unknown2;
+	DWORD					itemCount;	// アイテム(レコード)数
+	RegFavoriteOrderItem	item[1];	// 先頭アイテム
+} RegFavoriteOrder;
+
+void FavoriteOrder( NodeList* folder, const WCHAR* subkey )
+{
+	if( folder ){
+		HKEY key;
+		if( RegOpenKeyExW( HKEY_CURRENT_USER, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
+			WCHAR* name = L"Order";
+			DWORD type, bytes;
+			// データサイズ取得(終端NULL含む)
+			if( RegQueryValueExW( key, name, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
+				RegFavoriteOrder* order = (RegFavoriteOrder*)malloc( bytes );
+				if( order ){
+					BYTE* limit = (BYTE*)order + bytes;
+					// データ取得
+					if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)order, &bytes )==ERROR_SUCCESS ){
+						RegFavoriteOrderItem* item = order->item;
+						//DWORD count=0;
+						//LogW(L"FavoriteOrder[%s]: %ubytes itemCount=%u %ubytes",wcsrchr(subkey,L'\\'),bytes,order->itemCount,order->bytes);
+						while( (BYTE*)item < limit ){
+							BOOL isURL = (item->key2 & 0x0002) ? TRUE : FALSE; // url or folder
+							BOOL isUnicode = (item->key2 & 0x0004) ? TRUE : FALSE; // unicode encoding or codepage encoding
+							//WCHAR* shortname;
+							BYTE* longname;
+							size_t len;
+							NodeList* node;
+							// nameの次にさらに可変長のUNICODE長いファイル(フォルダ)名が格納されている。
+							// 可変長が2つ続いており構造体にできないためここで取り出す。
+							if( isUnicode ){
+								// nameがUNICODEの場合、URLなら9文字まで、フォルダなら5文字までは、謎の20バイト
+								// をはさんで長いファイル名が始まる。nameがそれより長い場合はすぐ次に続けて長い
+								// ファイル名が始まる。
+								len = wcslen((WCHAR*)item->name);
+								//shortname = wcsdup( (WCHAR*)item->name );
+								longname = item->name + len * sizeof(WCHAR) + sizeof(WCHAR);
+								// pass dummy bytes
+								if( isURL ){
+									if( len <= 9 ) longname += 20;
+								}
+								else{
+									if( len <= 5 ) longname += 20;
+								}
+							}
+							else{
+								// nameが非UNICODEの場合、NULL文字含めたnameの長さを偶数にするためのパディング
+								// 1バイトと、さらに謎の20バイトをはさんで長いファイル名(NULL終端)が続く。
+								len = strlen((u_char*)item->name) + sizeof(u_char);
+								//shortname = UTF8toWideCharAlloc( item->name );
+								// make sure to take into account that we are at an uneven position
+								longname = item->name + len + ((len%2)?1:0);
+								// pass dummy bytes
+								longname += 20;
+							}
+							//LogW(L"FavoriteOrderItem%u: %ubytes sortIndex=%u Url=%u Unicode=%u shortname(%u)=%s longname=%s"
+							//		,count++,item->bytes,item->sortIndex,isURL,isUnicode,len,shortname,(WCHAR*)longname);
+							//free( shortname );
+							// ノードリストの該当ノードにソートインデックスをセット
+							for( node=folder->child; node; node=node->next ){
+								if( wcsicmp(node->name,(WCHAR*)longname)==0 ){
+									node->sortIndex = item->sortIndex;
+									break;
+								}
+							}
+							// フォルダ
+							if( !isURL ){
+								size_t len = wcslen(subkey) + 1 + wcslen((WCHAR*)longname) + 1;
+								WCHAR* subkey2 = (WCHAR*)malloc( len * sizeof(WCHAR) );
+								if( subkey2 ){
+									_snwprintf(subkey2,len,L"%s\\%s",subkey,(WCHAR*)longname);
+									FavoriteOrder( node, subkey2 );
+									free( subkey2 );
+								}
+							}
+							// 次のアイテム
+							item = (RegFavoriteOrderItem*)( (BYTE*)item + item->bytes );
+						}
+					}
+					else LogW(L"RegQueryValueExW(%s\\%s)エラー%u",subkey,name,GetLastError());
+					free( order );
+				}
+				else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
+			}
+			//else LogW(L"RegQueryValueExW(%s)エラー%u",subkey,GetLastError());
+			RegCloseKey( key );
+		}
+		//else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
+	}
+}
+// ソートインデックス値で並べ替え
+// アルゴリズム的には単純バブルソートかな？ノード移動は単方向リストの鎖つなぎかえ。
+NodeList* NodeListSort( NodeList* top, int (*isReversed)( NodeList*, NodeList* ) )
+{
+	NodeList* this = top;
+	NodeList* prev = NULL;
+	while( this ){
+		NodeList* next = this->next;
+		// 子ノード並べ替え
+		if( this->child ) this->child = NodeListSort( this->child, isReversed );
+		// このノード並べ替え
+		if( prev && isReversed(prev,this) ){
+			// thisを前方に移動する
+			if( isReversed(top,this) ){
+				// 先頭に
+				prev->next = next;
+				this->next = top;
+				top = this;
+			}
+			else{
+				// 途中に
+				NodeList* target = top;
+				while( target->next ){
+					if( isReversed(target->next,this) ) break;
+					target = target->next;
+				}
+				prev->next = next;
+				this->next = target->next;
+				target->next = this;
+			}
+			// 前ノードポインタ変更なし
+		}
+		else{
+			// 移動なし前ノードポインタ更新
+			prev = this;
+		}
+		this = next;
+	}
+	return top;
+}
+// ソート用比較関数。p1が前、p2が次のノード。
+// 1を返却した場合、p2がp1より前にあるべきとして並べ替えが行われる。
+int NodeIndexCompare( NodeList* p1, NodeList* p2 )
+{
+	// ソートインデックスが小さいものを前に
+	if( p1->sortIndex > p2->sortIndex ) return 1;
+	return 0;
+}
+int NodeNameCompare( NodeList* p1, NodeList* p2 )
+{
+	// ソートインデックスが同じ場合の名前の並び順。IE8と同じ並びになるように比較関数を選ぶ。
+	// wcsicmpダメ、CompareStringWダメ、lstrcmpiWで同じになった。
+	//if( p1->sortIndex==p2->sortIndex && wcsicmp(p1->name,p2->name)>0 ) return 1;
+	/*
+	if( p1->sortIndex==p2->sortIndex &&
+		CompareStringW(
+			LOCALE_USER_DEFAULT
+			,NORM_IGNORECASE |NORM_IGNOREKANATYPE |NORM_IGNORENONSPACE |NORM_IGNORESYMBOLS |NORM_IGNOREWIDTH
+			,p1->name, -1
+			,p2->name, -1
+		)<0
+	) return 1;
+	*/
+	if( p1->sortIndex==p2->sortIndex && lstrcmpiW(p1->name,p2->name)>0 ) return 1;
+	return 0;
+}
+int NodeTypeCompare( NodeList* p1, NodeList* p2 )
+{
+	// ソートインデックスが同じ場合フォルダを前に
+	if( p1->sortIndex==p2->sortIndex && !p1->isFolder && p2->isFolder ) return 1;
+	return 0;
+}
+
+NodeList* FavoriteListCreate( void )
+{
+	NodeList* list = NULL;
+	WCHAR* favdir = FavoritesPathAlloc();
+	if( favdir ){
+		// Favoritesフォルダからノードリスト生成
+		list = FolderFavoriteListCreate( favdir );
+		free( favdir );
+	}
+	if( list ){
+		// レジストリのソートインデックス取得
+		FavoriteOrder(list,L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MenuOrder\\Favorites");
+		// ソートインデックスで並べ替え
+		list = NodeListSort( list, NodeIndexCompare );
+		// ソートインデックスが同じ中で名前で並べ替え
+		list = NodeListSort( list, NodeNameCompare );
+		// ソートインデックスが同じ中でフォルダを前に集める
+		list = NodeListSort( list, NodeTypeCompare );
+	}
+	return list;
+}
+// ノードリストをJSONでファイル出力
+void NodeListJSON( NodeList* node, FILE* fp, u_int* nextid, u_int depth, u_char* view )
+{
+	u_int count=0;
+	if( depth==0 ){
+		// ルートノード
+		fprintf(fp,
+			"{\"id\":%u"
+			",\"dateAdded\":%I64u"
+			",\"title\":\"root\""
+			",\"child\":["
+			,(*nextid)++
+			,JSTime()
+		);
+		if( view ) fputs("\r\n",fp);
+	}
+	while( node ){
+		u_char* title = WideCharToUTF8alloc( node->name );
+		u_char* dot = strrchr(title,'.');
+		if( dot ) *dot = '\0';
+		//LogW(L"%u:%s%s",node->sortIndex,node->isFolder?L"フォルダ：":L"",node->name);
+		if( node->isFolder ){
+			// フォルダ
+			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			if( count ) fputc(',',fp);
+			fprintf(fp,
+				"{\"id\":%u"
+				",\"dateAdded\":%I64u"
+				",\"title\":\"%s\""
+				",\"child\":["
+				,(*nextid)++
+				,node->dateAdded
+				,depth?(title?title:""):"お気に入り"	// トップフォルダは「お気に入り」固定
+			);
+			if( view ) fputs("\r\n",fp);
+			// 再帰
+			NodeListJSON( node->child, fp, nextid, depth+1, view );
+			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			fputs("]}",fp);
+			count++;
+			if( view ) fputs("\r\n",fp);
+		}
+		else{
+			// URL
+			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			if( count ) fputc(',',fp);
+			fprintf( fp,
+				"{\"id\":%u"
+				",\"dateAdded\":%I64u"
+				",\"title\":\"%s\""
+				",\"url\":\"%s\""
+				",\"icon\":\"%s\"}"
+				,(*nextid)++
+				,node->dateAdded
+				,title?title:""
+				,node->url?node->url:""
+				,node->icon?node->icon:""
+			);
+			count++;
+			if( view ) fputs("\r\n",fp);
+		}
+		if( title ) free( title );
+		node = node->next;
+	}
+	if( depth==0 ){
+		// ごみ箱
+		if( view ) fputc('\t',fp);
+		fprintf(fp,
+			",{\"id\":%u"
+			",\"dateAdded\":%I64u"
+			",\"title\":\"ごみ箱\""
+			",\"child\":[]}%s]"
+			",\"nextid\":%u}"
+			,*nextid
+			,JSTime()
+			,view?"\r\n":""
+			,*nextid +1
+		);
+		(*nextid) += 2;
+	}
+}
+/*
 // IEお気に入りJSONイメージ作成
-//
-void FavoritesJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_char* view )
+void FavoriteJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_char* view )
 {
 	WCHAR* wname = wdir? wcsrchr( wdir, L'\\' ) : NULL;
 	if( wname ){
@@ -870,7 +1304,7 @@ void FavoritesJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_c
 									// ディレクトリ再帰
 									if( view ){ u_int n; for( n=depth+2; n; n-- ) fputc('\t',fp); }
 									if( count ) fputc(',',fp);
-									FavoritesJSON( fp, wpath, nextid, depth+1, view );
+									FavoriteJSON( fp, wpath, nextid, depth+1, view );
 									count++;
 									if( view ){ u_int n; for( n=depth+2; n; n-- ) fputc('\t',fp); }
 									fputs("]}",fp);
@@ -958,7 +1392,11 @@ void FavoritesJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_c
 	}
 	else LogW(L"不正なフォルダ:%s",wdir);
 }
+*/
 
+
+
+//---------------------------------------------------------------------------------------------------------------
 // ANSIとUnicodeとどううまく共通化すれば…
 u_char* FileContentTypeA( u_char* file )
 {
@@ -1504,6 +1942,15 @@ struct {
 // URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
 //		{"title":"タイトル","icon":"URL"}
 // URLのエンコードは施されている前提。単純ブロッキングソケット利用。
+// TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
+// 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
+// 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
+// できないっぽいので、やるとしたらサーバ側で自動で「18歳以上」をクリックする
+// 動作をやってしまうことか…。ブラウザが保持してるamazonクッキーを取得する手
+// はあるのかな？でもそんなことするアプリはセキュリティ的にまずそうで厳しいか。
+// しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
+// イマイチなのも確か…。なにかいい手はないものか…。
+// ブラウザのアドオンを使う手もあるか？
 unsigned __stdcall analyze( void* p )
 {
 	TClient* cp = (TClient*)p;
@@ -1757,7 +2204,10 @@ unsigned __stdcall analyze( void* p )
 	_endthreadex(0);
 	return 0;
 }
-//
+
+
+
+//---------------------------------------------------------------------------------------------------------------
 // Firefoxのplaces.sqliteパスを取得
 // 1. Profiles.ini の Path= を取得
 //    パス＝%APPDATA%\Mozilla\Firefox\Profiles.ini
@@ -1806,7 +2256,6 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 
 	return places;
 }
-//
 // FirefoxブックマークJSONイメージ作成
 // ブックマーク管理画面だとトップレベルに以下３つの固定フォルダ(?)
 //  - ブックマークツールバー
@@ -2054,7 +2503,10 @@ u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth
 	sqlite3_finalize( bookmarks );
 	return count;
 }
-//
+
+
+
+//--------------------------------------------------------------------------------------------------------------
 // Chromeブックマークファイルパス取得
 // [Google Chromeの同期について 先日パソコンを購入しました。]
 // http://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1348120633
@@ -2114,7 +2566,6 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 	}
 	return NULL;
 }
-//
 // Chromeのfaviconデータ(SQLite3)からJSONイメージを作成する。
 // {
 //     "サイトURL": "faviconURL",
@@ -2129,7 +2580,6 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 // 実装は、まずテーブル icon_mapping の url をぜんぶ取得して、１エントリずつ対応
 // するテーブル favicons の url を取得するのかな…。テーブル favicons を検索する
 // 回数が多いけど、もっと楽に対応づけを一気に取得する方法が…わからん。
-//
 u_int ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 {
 	sqlite3_stmt* icon_mapping;
@@ -2181,6 +2631,9 @@ u_int ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 	return count;
 }
 
+
+
+//---------------------------------------------------------------------------------------------------------------
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
 BOOL FileBackup( const WCHAR* path )
@@ -2326,7 +2779,9 @@ u_char* file2memory( const WCHAR* path )
 	return NULL;
 }
 
-//
+
+
+//-----------------------------------------------------------------------------------------------------------------
 // multipart/form-dataのPOSTデータを処理する。いまのところHTMLインポート機能でのみ利用。
 // POSTデータ(リクエスト本文)は、この関数呼出前に一時ファイル(tmppath)にそのまま出力されている。
 // この関数から戻った後は、ファイルがクローズされてレスポンス送信処理(SEND_READY)に移るので、
@@ -2764,13 +3219,14 @@ void SocketRead( SOCKET sock )
 						}
 						else if( stricmp(file,":favorites.json")==0 ){
 							// IEお気に入りインポート
+							/*
 							WCHAR* favdir = FavoritesPathAlloc();
 							if( favdir ){
 								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 								if( fp ){
 									u_int nextid=1;	// ノードID
 									u_int depth=0;	// 階層深さ
-									FavoritesJSON( fp, favdir, &nextid, depth, cp->req.param );
+									FavoriteJSON( fp, favdir, &nextid, depth, cp->req.param );
 									fclose( fp );
 									if( nextid >1 ){
 										cp->rsp.readfh = CreateFileW( tmppath
@@ -2783,6 +3239,27 @@ void SocketRead( SOCKET sock )
 								}
 								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 								free( favdir );
+							}
+							*/
+							NodeList* list = FavoriteListCreate();
+							if( list ){
+								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
+								if( fp ){
+									u_int nextid=1;	// ノードID
+									u_int depth=0;	// 階層深さ
+									NodeListJSON( list, fp, &nextid, depth, cp->req.param );
+									fclose( fp );
+									if( nextid >1 ){
+										cp->rsp.readfh = CreateFileW( tmppath
+												,GENERIC_READ
+												,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
+												,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+										);
+									}
+									else LogW(L"[%u]IEお気に入りデータありません",Num(cp));
+								}
+								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
+								NodeListDestroy( list );
 							}
 						}
 						else if( stricmp(file,":firefox.json")==0 ){
@@ -2963,14 +3440,14 @@ void SocketRead( SOCKET sock )
 								// 無通信監視機能を入れないと対処できないか…
 								DWORD bodybytes = req->bytes - (req->body - req->buf);
 								DWORD bWrite=0;
-								if( bodybytes > req->ContentLength - req->written )
-									bodybytes = req->ContentLength - req->written;
+								if( bodybytes > req->ContentLength - req->wrote )
+									bodybytes = req->ContentLength - req->wrote;
 								if( WriteFile( req->writefh, req->body, bodybytes, &bWrite, NULL )==0 )
 									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
 								memmove( req->body, req->body + bWrite, bodybytes - bWrite );
 								req->bytes -= bWrite;
-								req->written += bWrite;
-								if( req->written >= req->ContentLength ){
+								req->wrote += bWrite;
+								if( req->wrote >= req->ContentLength ){
 									SetEndOfFile( req->writefh );
 									CloseHandle( req->writefh );
 									req->writefh = INVALID_HANDLE_VALUE;
@@ -3030,14 +3507,14 @@ void SocketRead( SOCKET sock )
 								// 無通信監視機能を入れないと対処できないか・・
 								DWORD bodybytes = req->bytes - (req->body - req->buf);
 								DWORD bWrite=0;
-								if( bodybytes > req->ContentLength - req->written )
-									bodybytes = req->ContentLength - req->written;
+								if( bodybytes > req->ContentLength - req->wrote )
+									bodybytes = req->ContentLength - req->wrote;
 								if( WriteFile( req->writefh, req->body, bodybytes, &bWrite, NULL )==0 )
 									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
 								memmove( req->body, req->body + bWrite, bodybytes - bWrite );
 								req->bytes -= bWrite;
-								req->written += bWrite;
-								if( req->written >= req->ContentLength ){
+								req->wrote += bWrite;
+								if( req->wrote >= req->ContentLength ){
 									SetEndOfFile( req->writefh );
 									CloseHandle( req->writefh );
 									req->writefh = INVALID_HANDLE_VALUE;

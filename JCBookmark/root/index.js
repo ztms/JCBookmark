@@ -1,6 +1,11 @@
 // vim:set ts=4:vim modeline
-// Google AJAX Feed API というのがある。
-// http://ascii.jp/elem/000/000/407/407910/
+// TODO:jQueryUIのsortableをやめて独自実装にして、ブックマークも並べ替えやフォルダ移動できるように。
+// TODO:ブックマークのコンテキストメニューで名前変更。そうするとURLコピーができないのが難点だが、
+// テキスト表示メニューがあればいいかな？あと削除もできるように。
+// TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
+// TODO:パネル色分け。既定のセットがいくつか選べて、さらに自由にRGBかHSVで決められる感じかな。
+// TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
+// TODO:一括でパネル開閉。閉パネルはDOM要素を(非表示でなく)削除してメモリ節約。
 (function($){
 /*
 var start = new Date(); // 測定
@@ -919,6 +924,7 @@ function paneler( nodeTop ){
 				$('<div class=title><img class=icon src="folder.png"><span></span></div>')
 				.on({
 					// ダブルクリックでパネル開閉
+					// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
 					dblclick:function(){
 						// 自分(.title)の親つまりパネルID=XXならボックスID=boxXXでボタンID=btnXX
 						var $box = $('#box'+this.parentNode.id);
@@ -973,7 +979,10 @@ function paneler( nodeTop ){
 					}
 				})
 				.prepend(
-					$('<img class=plusminus src="minus.png">').click(function(){
+					$('<img class=plusminus src="minus.png">')
+					// パネル開閉
+					// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
+					.click(function(){
 						// 自身のID=btnXXならボックスID=boxXX
 						var $box = $('#box'+this.id.slice(3));
 						if( $box.css('display')=='none' ){
@@ -1145,6 +1154,7 @@ function paneler( nodeTop ){
 		})
 	);
 	// パネル開閉状態反映
+	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
 	(function(){
 		var status = option.panel.status();
 		for( var btnN in status ){
