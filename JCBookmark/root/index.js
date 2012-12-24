@@ -115,14 +115,14 @@ var tree = {
 	,load:function( onSuccess ){
 		$.ajax({
 			url:tree.path
-			,beforeSend:function(xhr){
-				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
-			}
 			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
+			}
+			,beforeSend:function(xhr){
+				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 			}
 		});
 	}
@@ -266,12 +266,12 @@ var option = {
 	,load:function( onComplete ){
 		$.ajax({
 			url:option.path
+			,success:function(data){ option.data = data; }
+			,complete:onComplete
 			,beforeSend:function(xhr){
 				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 			}
-			,success:function(data){ option.data = data; }
-			,complete:onComplete
 		});
 		return option;
 	}
@@ -575,6 +575,20 @@ $('#chromeico').click(function(){
 								,title		:'root'
 								,child		:[]
 							};
+							// トップノード
+							root.child[0] = {
+								id			:root.nextid++
+								,dateAdded	:now
+								,title		:'Chromeブックマーク'
+								,child		:[]
+							};
+							// ごみ箱
+							root.child[1] = {
+								id			:root.nextid++
+								,dateAdded	:now
+								,title		:tree.trash().title
+								,child		:[]
+							};
 							// Chromeノードから自ノード形式変換
 							var chrome2node = function( data ){
 								// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
@@ -626,24 +640,14 @@ $('#chromeico').click(function(){
 								}
 								return node;
 							};
-							// トップノード
-							root.child.push({
-								id			:root.nextid++
-								,dateAdded	:now
-								,title		:'Chromeブックマーク'
-								,child		:[
-									chrome2node( bookmarks.roots.bookmark_bar )
-									,chrome2node( bookmarks.roots.other )
-									,chrome2node( bookmarks.roots.synced )
-								]
-							});
-							// ごみ箱
-							root.child.push({
-								id			:root.nextid++
-								,dateAdded	:now
-								,title		:tree.trash().title
-								,child		:[]
-							});
+							// トップノードchildに登録('synced'は存在しない場合あり)
+							bookmarks = bookmarks.roots;
+							if( 'bookmark_bar' in bookmarks )
+								root.child[0].child.push( chrome2node(bookmarks.bookmark_bar) );
+							if( 'other' in bookmarks )
+								root.child[0].child.push( chrome2node(bookmarks.other) );
+							if( 'synced' in bookmarks )
+								root.child[0].child.push( chrome2node(bookmarks.synced) );
 							// プログレスバー
 							work.progress( 1, analyze.length +1 );
 							// favicon解析完了待ち

@@ -469,13 +469,14 @@ BrowserIcon Browser[]={
 		,NULL
 		,NULL	// ex) --incognito --disk-cache-dir="I:\tmp\Chrome\Cache"
 		// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
-		// HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
-		// HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
-		,HKEY_CLASSES_ROOT
-		,L"ChromeHTML\\DefaultIcon"	// C:\...\Google\Chrome\Application\chrome.exe,0
+		// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
+		// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
+		// 2.HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
+		// 3.HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
+		// 4.HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
+		// 5.HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
+		,HKEY_LOCAL_MACHINE
+		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
 		,CMD_CHROME
 	}
 	,{// Browser[BI_IE]
@@ -504,8 +505,8 @@ BrowserIcon Browser[]={
 		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxURL\DefaultIcon
 		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\DefaultIcon
 		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe
-		,HKEY_CLASSES_ROOT
-		,L"FirefoxHTML\\DefaultIcon"	// D:\Program Files\Firefox\firefox.exe,1
+		,HKEY_LOCAL_MACHINE
+		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
 		,CMD_FIREFOX
 	}
 	,{// Browser[BI_OPERA]
@@ -764,6 +765,10 @@ UINT64 JSTime( void )
 	GetSystemTimeAsFileTime( &ft );
 	return FileTimeToJSTime( &ft );
 }
+
+
+
+
 //---------------------------------------------------------------------------------------------------------------
 // IEお気に入りJSONイメージ作成
 // IEお気に入りフォルダ(Favorites)パス取得
@@ -969,6 +974,8 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 // http://www.arstdesign.com/articles/iefavorites.html
 // http://mikeo410.lv9.org/lumadcms/~IE_FAVORITES_XBEL
 // http://www.atmark.gr.jp/~s2000/r/memo.txt
+// http://www.codeproject.com/Articles/22267/Internet-Explorer-Favorites-deconstructed
+// http://deployment.xtremeconsulting.com/2010/09/24/windows-7-ie8-favorites-bar-organization-a-descent-into-binary-registry-storage/
 typedef struct {
 	DWORD		bytes;
 	DWORD		sortIndex;
@@ -989,7 +996,7 @@ typedef struct {
 	RegFavoriteOrderItem	item[1];	// 先頭アイテム
 } RegFavoriteOrder;
 
-void FavoriteOrder( NodeList* folder, const WCHAR* subkey )
+void FavoriteOrder( NodeList* folder, const WCHAR* subkey, DWORD ignoreBytes )
 {
 	if( folder ){
 		HKEY key;
@@ -1016,29 +1023,29 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey )
 							// nameの次にさらに可変長のUNICODE長いファイル(フォルダ)名が格納されている。
 							// 可変長が2つ続いており構造体にできないためここで取り出す。
 							if( isUnicode ){
-								// nameがUNICODEの場合、URLなら9文字まで、フォルダなら5文字までは、謎の20バイト
-								// をはさんで長いファイル名が始まる。nameがそれより長い場合はすぐ次に続けて長い
-								// ファイル名が始まる。
+								// nameがUNICODEの場合、URLなら9文字まで、フォルダなら5文字までは、謎の20～42
+								// バイトをはさんで長いファイル名が始まる。nameがそれより長い場合はすぐ次に
+								// 続けて長いファイル名が始まる。
 								len = wcslen((WCHAR*)item->name);
 								//shortname = wcsdup( (WCHAR*)item->name );
-								longname = item->name + len * sizeof(WCHAR) + sizeof(WCHAR);
+								longname = item->name + (len+1) * sizeof(WCHAR);
 								// pass dummy bytes
 								if( isURL ){
-									if( len <= 9 ) longname += 20;
+									if( len <= 9 ) longname += ignoreBytes;
 								}
 								else{
-									if( len <= 5 ) longname += 20;
+									if( len <= 5 ) longname += ignoreBytes;
 								}
 							}
 							else{
 								// nameが非UNICODEの場合、NULL文字含めたnameの長さを偶数にするためのパディング
-								// 1バイトと、さらに謎の20バイトをはさんで長いファイル名(NULL終端)が続く。
+								// バイトと、さらに謎の20～42バイトをはさんで長いファイル名(NULL終端)が続く。
 								len = strlen((u_char*)item->name) + sizeof(u_char);
 								//shortname = UTF8toWideCharAlloc( item->name );
 								// make sure to take into account that we are at an uneven position
 								longname = item->name + len + ((len%2)?1:0);
 								// pass dummy bytes
-								longname += 20;
+								longname += ignoreBytes;
 							}
 							//LogW(L"FavoriteOrderItem%u: %ubytes sortIndex=%u Url=%u Unicode=%u shortname(%u)=%s longname=%s"
 							//		,count++,item->bytes,item->sortIndex,isURL,isUnicode,len,shortname,(WCHAR*)longname);
@@ -1056,7 +1063,7 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey )
 								WCHAR* subkey2 = (WCHAR*)malloc( len * sizeof(WCHAR) );
 								if( subkey2 ){
 									_snwprintf(subkey2,len,L"%s\\%s",subkey,(WCHAR*)longname);
-									FavoriteOrder( node, subkey2 );
+									FavoriteOrder( node, subkey2, ignoreBytes );
 									free( subkey2 );
 								}
 							}
@@ -1075,8 +1082,8 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey )
 		//else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
 	}
 }
-// ソートインデックス値で並べ替え
-// アルゴリズム的には単純バブルソートかな？ノード移動は単方向リストの鎖つなぎかえ。
+// ノードリスト並べ替え
+// アルゴリズム的には単純バブルソートか…？ノード移動は単方向リストのつなぎかえ。
 NodeList* NodeListSort( NodeList* top, int (*isReversed)( NodeList*, NodeList* ) )
 {
 	NodeList* this = top;
@@ -1116,7 +1123,7 @@ NodeList* NodeListSort( NodeList* top, int (*isReversed)( NodeList*, NodeList* )
 	return top;
 }
 // ソート用比較関数。p1が前、p2が次のノード。
-// 1を返却した場合、p2がp1より前にあるべきとして並べ替えが行われる。
+// 1を返却した場合、p2がp1より前にあるべきとしてp2が前方に移動する。
 int NodeIndexCompare( NodeList* p1, NodeList* p2 )
 {
 	// ソートインデックスが小さいものを前に
@@ -1158,8 +1165,31 @@ NodeList* FavoriteListCreate( void )
 		free( favdir );
 	}
 	if( list ){
+		DWORD ignoreBytes=0;	// Windows種類により異なるレジストリOrderバイナリレコード謎の無視バイト数
+		OSVERSIONINFOA os;
+		// [WindowsのOS判定]
+		// http://cherrynoyakata.web.fc2.com/sprogram_1_3.htm
+		// http://www.westbrook.jp/Tips/Win/OSVersion.html
+		memset( &os, 0, sizeof(os) );
+		os.dwOSVersionInfoSize = sizeof(os);
+		GetVersionExA( &os );
+		LogW(L"Windows%u.%u",os.dwMajorVersion,os.dwMinorVersion);
+		switch( os.dwMajorVersion ){
+		case 5: ignoreBytes = 20; break;	// XP,2003
+		case 6: // Vista以降
+			switch( os.dwMinorVersion ){
+			case 0: ignoreBytes = 38; break;	// Vista,2008
+			case 1: ignoreBytes = 42; break;	// 7,2008R2
+			case 2: ignoreBytes = 42; break;	// 8,2012
+			}
+			break;
+		}
 		// レジストリのソートインデックス取得
-		FavoriteOrder(list,L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MenuOrder\\Favorites");
+		FavoriteOrder(
+				list
+				,L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MenuOrder\\Favorites"
+				,ignoreBytes
+		);
 		// ソートインデックスで並べ替え
 		list = NodeListSort( list, NodeIndexCompare );
 		// ソートインデックスが同じ中で名前で並べ替え
@@ -1250,149 +1280,6 @@ void NodeListJSON( NodeList* node, FILE* fp, u_int* nextid, u_int depth, u_char*
 		(*nextid) += 2;
 	}
 }
-/*
-// IEお気に入りJSONイメージ作成
-void FavoriteJSON( FILE* fp, const WCHAR* wdir, u_int* nextid, u_int depth, u_char* view )
-{
-	WCHAR* wname = wdir? wcsrchr( wdir, L'\\' ) : NULL;
-	if( wname ){
-		u_char* u8name = WideCharToUTF8alloc( wname+1 );
-		if( u8name ){
-			WCHAR* wfindir = (WCHAR*)malloc( (wcslen(wdir) +3) *sizeof(WCHAR) );
-			if( wfindir ){
-				HANDLE handle;
-				WIN32_FIND_DATAW wfd;
-				wcscpy( wfindir, wdir );
-				wcscat( wfindir, L"\\*" );
-				handle = FindFirstFileW( wfindir, &wfd );
-				if( handle !=INVALID_HANDLE_VALUE ){
-					u_int count = 0;
-					if( depth==0 ){
-						// ルートノード
-						fprintf(fp,
-							"{\"id\":%u"
-							",\"dateAdded\":%I64u"
-							",\"title\":\"root\""
-							",\"child\":["
-							,(*nextid)++
-							,JSTime()
-						);
-						if( view ) fputs("\r\n\t",fp);
-					}
-					// フォルダ
-					fprintf(fp,
-						"{\"id\":%u"
-						",\"dateAdded\":%I64u"
-						",\"title\":\"%s\""
-						",\"child\":["
-						,(*nextid)++
-						,FileTimeToJSTime(&wfd.ftCreationTime)
-						,depth?u8name:"お気に入り"	// トップフォルダは「お気に入り」固定
-					);
-					if( view ) fputs("\r\n",fp);
-					do{
-						if( wcscmp(wfd.cFileName,L"..") && wcscmp(wfd.cFileName,L".") ){
-							WCHAR *wpath = (WCHAR*)malloc( (wcslen(wdir) + wcslen(wfd.cFileName) +2) *sizeof(WCHAR) );
-							if( wpath ){
-								// なぜかswprintfが期待通り動かない文字列不正になる
-								//swprintf(wpath,L"%s\\%s",wdir,wfd.cFileName);
-								*wpath = L'\0';
-								wcscat( wpath, wdir );
-								wcscat( wpath, L"\\" );
-								wcscat( wpath, wfd.cFileName );
-								if( wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ){
-									// ディレクトリ再帰
-									if( view ){ u_int n; for( n=depth+2; n; n-- ) fputc('\t',fp); }
-									if( count ) fputc(',',fp);
-									FavoriteJSON( fp, wpath, nextid, depth+1, view );
-									count++;
-									if( view ){ u_int n; for( n=depth+2; n; n-- ) fputc('\t',fp); }
-									fputs("]}",fp);
-									if( view ) fputs("\r\n",fp);
-								}
-								else{
-									WCHAR* dot = wcsrchr( wfd.cFileName, L'.' );
-									if( dot && wcsicmp(dot+1,L"URL")==0 ){
-										// 拡張子url
-										FILE* _fp = _wfopen( wpath, L"rb" );
-										if( _fp ){
-											u_char* title = WideCharToUTF8alloc( wfd.cFileName );
-											u_char* url = NULL;
-											u_char* icon = NULL;
-											u_char line[1024];
-											if( title ){
-												title[strlen(title)-4] = '\0';
-												while( fgets( line, sizeof(line), _fp ) ){
-													if( strnicmp(line,"URL=",4)==0 ){
-														url = strdup(chomp(line+4));
-														if( !url ) LogW(L"L%u:strdupエラー",__LINE__);
-													}
-													else if( strnicmp(line,"IconFile=",9)==0 ){
-														icon = strdup(chomp(line+9));
-														if( !icon ) LogW(L"L%u:strdupエラー",__LINE__);
-													}
-													if( url && icon ) break;
-												}
-												if( view ){ u_int n; for( n=depth+2; n; n-- ) fputc('\t',fp); }
-												if( count ) fputc(',',fp);
-												fprintf( fp,
-													"{\"id\":%u"
-													",\"dateAdded\":%I64u"
-													",\"title\":\"%s\""
-													",\"url\":\"%s\""
-													",\"icon\":\"%s\"}"
-													,(*nextid)++
-													,FileTimeToJSTime(&wfd.ftCreationTime)
-													,title
-													,url?url:""
-													,icon?icon:""
-												);
-												count++;
-												if( view ) fputs("\r\n",fp);
-												if( url ) free( url );
-												if( icon ) free( icon );
-												free( title );
-											}
-											fclose( _fp );
-										}
-										else LogW(L"fopen(%s)エラー",wpath);
-									}
-								}
-								free( wpath );
-							}
-							else LogW(L"L%u:mallocエラー",__LINE__);
-						}
-					}
-					while( FindNextFileW( handle, &wfd ) );
-					FindClose( handle );
-					if( depth==0 ){
-						if( view ) fputc('\t',fp);
-						fputs("]}",fp);
-						if( view ) fputs("\r\n",fp);
-						// ごみ箱
-						fprintf(fp,
-							",{\"id\":%u"
-							",\"dateAdded\":%I64u"
-							",\"title\":\"ごみ箱\""
-							",\"child\":[]}]"
-							",\"nextid\":%u}"
-							,*nextid
-							,JSTime()
-							,*nextid +1
-						);
-						(*nextid) += 2;
-					}
-				}
-				else LogW(L"FindFirstFileW(%s)エラー%u",wfindir,GetLastError());
-				free( wfindir );
-			}
-			else LogW(L"L%u:mallocエラー",__LINE__);
-			free( u8name );
-		}
-	}
-	else LogW(L"不正なフォルダ:%s",wdir);
-}
-*/
 
 
 
@@ -2535,16 +2422,12 @@ WCHAR* ChromeBookmarksPathAlloc( void )
 	DWORD length;
 	// [WindowsのOS判定]
 	// http://cherrynoyakata.web.fc2.com/sprogram_1_3.htm
+	// http://www.westbrook.jp/Tips/Win/OSVersion.html
 	memset( &os, 0, sizeof(os) );
 	os.dwOSVersionInfoSize = sizeof(os);
 	GetVersionExA( &os );
-	if( os.dwPlatformId==VER_PLATFORM_WIN32_NT ){ // WinNT,2000,XP,Vista,7
-		switch( os.dwMajorVersion ){
-		case 7: // 7以降
-		case 6: // Vista,7,7以降
-			path = L"%USERPROFILE%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks";
-		}
-	}
+	if( os.dwMajorVersion>=6 ) // Vista以降
+		path = L"%USERPROFILE%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks";
 	length = ExpandEnvironmentStringsW( path, NULL, 0 );
 	fullpath = (WCHAR*)malloc( length *sizeof(WCHAR) );
 	if( fullpath ) ExpandEnvironmentStringsW( path, fullpath, length ); // 環境変数展開

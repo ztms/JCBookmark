@@ -1178,9 +1178,9 @@ function itemMouseMove(ev){
 	}
 
 	function SiblingAndChild(){
-		if( Y <=7 )
+		if( Y <6 )
 			$this.addClass('dropTop');
-		else if( Y >=17 )
+		else if( Y >18 )
 			$this.addClass('dropBottom');
 		else
 			$this.addClass('dropIN');
