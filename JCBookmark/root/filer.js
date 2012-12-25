@@ -432,6 +432,12 @@ if( IE && IE<9 ){
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
 
+// ブックマークデータ取得
+tree.load(function(){
+	$(window).resize();
+	$('#toolbar,#folderbox,#border,#itembox').show();
+	$( folderTree()[0].childNodes[0] ).click();
+});
 // 終了
 $('#exit').click(function(){
 	if( tree.modified() ){
@@ -707,12 +713,6 @@ $('#itembox').mousedown(function(ev){
 			$('#selectbox').hide();
 		});
 	}
-});
-// 開始
-tree.load(function(){
-	$(window).resize();
-	$('#toolbar,#folderbox,#border,#itembox').show();
-	$( folderTree()[0].childNodes[0] ).click();
 });
 
 function folderTree(){
