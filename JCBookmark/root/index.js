@@ -324,569 +324,7 @@ $(document).on({
 		};
 	})()
 });
-// ノードツリー変更保存リンク
-$('#modified').click(function(){
-	// 順番に保存
-	tree.modified()? tree.save( optionSave ) : optionSave();
-	function optionSave(){
-		option.modified()? option.save(function(){$('#modified').hide();}) : $('#modified').hide();
-	}
-});
-// パネル設定ダイアログ
-$('#optionico').click(function(){
-	// ページタイトル
-	$('#page_title').val( option.page.title() )
-	.off().on('input keyup paste',function(){
-		if( this.value != option.page.title() ){
-			option.page.title( this.value );
-			document.title = this.value;
-		}
-	});
-	// 色テーマ
-	$('input[name=colorcss]').each(function(){
-		if( this.value==option.color.css() )
-			$(this).attr('checked','checked');
-	})
-	.off().change(function(){
-		option.color.css( this.value );
-		$('#colorcss').attr('href',this.value);
-	});
-	// パネル幅
-	$('#panel_width').val( option.panel.width() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
-		if( this.value !=option.panel.width() ){
-			option.panel.width( this.value );
-			playLocalParam();
-		}
-	});
-	$('#panel_width_inc').off().click(function(){
-		var val = option.panel.width();
-		if( val <1000 ){
-			option.panel.width( ++val );
-			playLocalParam();
-			$('#panel_width').val( val );
-		}
-	});
-	$('#panel_width_dec').off().click(function(){
-		var val = option.panel.width();
-		if( val >100 ){
-			option.panel.width( --val );
-			playLocalParam();
-			$('#panel_width').val( val );
-		}
-	});
-	// パネル余白
-	$('#panel_margin').val( option.panel.margin() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
-		if( this.value !=option.panel.margin() ){
-			option.panel.margin( this.value );
-			playLocalParam();
-		}
-	});
-	$('#panel_margin_inc').off().click(function(){
-		var val = option.panel.margin();
-		if( val <100 ){
-			option.panel.margin( ++val );
-			playLocalParam();
-			$('#panel_margin').val( val );
-		}
-	});
-	$('#panel_margin_dec').off().click(function(){
-		var val = option.panel.margin();
-		if( val >0 ){
-			option.panel.margin( --val );
-			playLocalParam();
-			$('#panel_margin').val( val );
-		}
-	});
-	// 列数
-	$('#column_count').val( option.column.count() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
-		if( this.value !=option.column.count() ){
-			changeColumnCount( { prev:option.column.count(), next:this.value } );
-			option.column.count( this.value );
-			playLocalParam();
-		}
-	});
-	$('#column_count_inc').off().click(function(){
-		var val = option.column.count();
-		if( val <30 ){
-			changeColumnCount( { prev:val, next:val+1 } );
-			option.column.count( ++val );
-			playLocalParam();
-			$('#column_count').val( val );
-		}
-	});
-	$('#column_count_dec').off().click(function(){
-		var val = option.column.count();
-		if( val >1 ){
-			changeColumnCount( { prev:val, next:val-1 } );
-			option.column.count( --val );
-			playLocalParam();
-			$('#column_count').val( val );
-		}
-	});
-	// フォントサイズ
-	$('#font_size').val( option.font.size() );
-	$('#font_size_inc').off().click(function(){
-		var val = option.font.size();
-		if( val <24 ){
-			option.font.size( ++val );
-			playLocalParam();
-			$('#font_size').val( val );
-		}
-	});
-	$('#font_size_dec').off().click(function(){
-		var val = option.font.size();
-		if( val >9 ){
-			option.font.size( --val );
-			playLocalParam();
-			$('#font_size').val( val );
-		}
-	});
-	// ダイアログ表示
-	$('#option').dialog({
-		title		:'パネル設定'
-		,modal		:true
-		,width		:390
-		,height		:290
-		,close		:function(){ $(this).dialog('destroy'); }
-		,buttons	:{
-			'パネル設定クリア':function(){
-				option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
-				$('#panel_width').val( option.panel.width() );
-				$('#panel_margin').val( option.panel.margin() );
-				$('#column_count').val( option.column.count() );
-				$('#font_size').val( option.font.size() );
-				playLocalParam();
-			}
-			,'パネル配置クリア':function(){
-				option.panel.layout({}).panel.status({});
-				paneler( tree.top() );
-			}
-		}
-	});
-});
-// ブックマークの整理
-$('#filerico').click(function(){
-	if( !tree.modified() && !option.modified() ){
-		gotoFiler();
-	}
-	else Confirm({
-		msg	:'変更が保存されていません。保存しますか？'
-		,no	:function(){ gotoFiler(); }
-		,yes:function(){
-			// 順番に保存
-			tree.modified()? tree.save( optionSave ) : optionSave();
-			function optionSave(){
-				option.modified()? option.save( gotoFiler ) : gotoFiler();
-			}
-		}
-	});
-	// filer.htmlを単純に開いてもいいけど、index.htmlとfiler.htmlで同時ツリー変更できないので、
-	// 同じURLで動作させるためiframeで開く。
-	function gotoFiler(){
-		//$debug.remove();
-		$('#modified,#wall,#sidebar,#option,#contextmenu,#itemtext,#dialog').remove();
-		$('#filer').width($window.width()).height($window.height()).show().attr('src','filer.html');
-		$window.on('resize',function(){
-			$('#filer').width($window.width()).height($window.height());
-		});
-	}
-});
-// Chromeブックマークインポート
-// サーバから２つのJSONイメージを取得して、結合して独自形式JSONを生成する。
-// GET :chrome.json で、Chromeの Bookmarks を取得(もともとJSON)、
-// GET :chrome.icon.json で Favicons を取得(SQLite3からサーバ側でJSONをつくる)。
-// ※サーバ側で１つに結合しないのは、C言語でJSONを操作したくないから。
-// Bookmarks は、ブックマークのサイトURLを集めたJSONファイル。フォルダ構成を含む。
-//{
-//	version: 1
-//	roots: {
-//		bookmark_bar: {
-//			type: folder
-//			,name: 
-//			,date_added:
-//			,children: [
-//				{ type:folder, name:"", date_added:"", children:[ ... ] }
-//				,{ type:url, name:"", date_added:"", url:url }
-//				,{ type:url, name:"", date_added:"", url:url }
-//			]
-//		}
-//		other: {
-//			type: folder
-//			,name: 
-//			,date_added:
-//			,children: []
-//		}
-//		synced: {
-//			type: folder
-//			,name: 
-//			,date_added:
-//			,children: []
-//		}
-//	}
-//}
-// Favicons は、faviconURLとfavicon画像データを集めたSQLite3データファイル。
-// をれをサーバで { "サイトURL":"faviconURL",... } のJSONに変換する。これは
-// 取得エラーでも動作させる。(自力favicon取得の量が増えて時間がかかる)
-// 独自形式JSONは、BookmarksのJSONにfaviconURLを加えたような感じ(いろいろ違うけど)。
-$('#chromeico').click(function(){
-	Confirm({
-		msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
-		,ok:function(){
-			var work={
-				cancel	 :false
-				,ajax1	 :null
-				,ajax2	 :null
-				,analyze :[]
-				,progress:Progress(function(){
-					// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
-					// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
-					work.cancel = true;
-					if( work.ajax1 ) work.ajax1.abort();
-					if( work.ajax2 ) work.ajax2.abort();
-					var analyze = work.analyze;
-					for( var i=0; i<analyze.length; i++ ){
-						analyze[i].ajax.abort();
-						analyze[i].done = true;
-					}
-				})
-			};
-			work.ajax1 = $.ajax({
-				url		:':chrome.json'
-				,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-				,success:function( bookmarks ){
-					var favicons={};
-					work.ajax2 = $.ajax({
-						url		 :':chrome.icon.json'
-						,success :function(data){ favicons=data; }
-						,complete:function(){
-							var analyze = work.analyze;
-							var now = (new Date()).getTime();
-							// ルートノード
-							var root ={
-								id			:1
-								,nextid		:2
-								,dateAdded	:now
-								,title		:'root'
-								,child		:[]
-							};
-							// トップノード
-							root.child[0] = {
-								id			:root.nextid++
-								,dateAdded	:now
-								,title		:'Chromeブックマーク'
-								,child		:[]
-							};
-							// ごみ箱
-							root.child[1] = {
-								id			:root.nextid++
-								,dateAdded	:now
-								,title		:tree.trash().title
-								,child		:[]
-							};
-							// Chromeノードから自ノード形式変換
-							var chrome2node = function( data ){
-								// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
-								// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
-								// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
-								// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
-								// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
-								// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
-								// 1347278204225 の13桁。ということで、以下サイトを参考に、
-								//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
-								//   http://support.microsoft.com/kb/167296/ja
-								// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
-								// 2. 1000で割る＝マイクロ秒からミリ秒に。
-								var jstime = function( date_added ){
-									var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
-									return ( t >0 )? parseInt(t) : 0;
-								};
-								var node = {
-									id			:root.nextid++				// 新規ID
-									,dateAdded	:jstime( data.date_added )	// 変換
-									,title		:data.name					// 移行
-								};
-								if( data.children ){
-									// フォルダ
-									node.child = [];
-									for( var i=0, n=data.children.length; i<n; i++ ){
-										node.child.push( arguments.callee( data.children[i] ) );
-									}
-								}else{
-									// ブックマーク
-									node.url = data.url;
-									node.icon = favicons[data.url];
-									if( !node.icon ){
-										// favicon解析
-										var index = analyze.length;
-										analyze[index] = {
-											done : false
-											,ajax: $.ajax({
-												url		 :':analyze?'+node.url.replace(/#/g,'%23')
-												,success :function(data){
-													if( data.icon.length ) node.icon = data.icon;
-												}
-												,complete:function(){
-													analyze[index].done = true;
-												}
-											})
-										};
-									}
-								}
-								return node;
-							};
-							// トップノードchildに登録('synced'は存在しない場合あり)
-							bookmarks = bookmarks.roots;
-							if( 'bookmark_bar' in bookmarks )
-								root.child[0].child.push( chrome2node(bookmarks.bookmark_bar) );
-							if( 'other' in bookmarks )
-								root.child[0].child.push( chrome2node(bookmarks.other) );
-							if( 'synced' in bookmarks )
-								root.child[0].child.push( chrome2node(bookmarks.synced) );
-							// プログレスバー
-							work.progress( 1, analyze.length +1 );
-							// favicon解析完了待ち
-							(function(){
-								var waiting=0;
-								for( var i=0, n=analyze.length; i<n; i++ ){
-									if( !analyze[i].done ) waiting++;
-								}
-								if( waiting ){
-									work.progress( 1 +analyze.length -waiting, analyze.length +1 );
-									setTimeout(arguments.callee,500);
-									return;
-								}
-								// 完了
-								if( !work.cancel ) importer( root );
-							})();
-						}
-					});
-				}
-			});
-		}
-	});
-});
-// IEお気に入りインポート
-$('#ieico').click(function(){
-	Confirm({
-		msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
-		,ok:function(){
-			var work={
-				ajax	 :null
-				,cancel	 :false
-				,analyze :[]
-				,progress:Progress(function(){
-					work.cancel = true;
-					if( work.ajax ) work.ajax.abort();
-					var analyze = work.analyze;
-					for( var i=0; i<analyze.length; i++ ){
-						analyze[i].ajax.abort();
-						analyze[i].done = true;
-					}
-				})
-			};
-			work.ajax = $.ajax({
-				url		:':favorites.json'
-				//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-				,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-				,success:function(data){ analyzer( data, work ); }
-			});
-		}
-	});
-});
-// Firefoxお気に入りのインポート
-$('#firefoxico').click(function(){
-	Confirm({
-		msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
-		,ok:function(){
-			var work={
-				ajax	 :null
-				,cancel	 :false
-				,analyze :[]
-				,progress:Progress(function(){
-					work.cancel = true;
-					if( work.ajax ) work.ajax.abort();
-					var analyze = work.analyze;
-					for( var i=0; i<analyze.length; i++ ){
-						analyze[i].ajax.abort();
-						analyze[i].done = true;
-					}
-				})
-			};
-			work.ajax = $.ajax({
-				url		:':firefox.json'
-				//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-				,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-				,success:function(data){ analyzer( data, work ); }
-			});
-		}
-	});
-});
-// * HTMLエクスポート
-//   クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
-//   クライアント側で生成する場合、それを単純にダウンロードできればよいが、
-//   HTML5のFileAPIを使う必要がありそう。こんな↓トリッキーな方法もあるようだが、
-//     [JavaScriptでテキストファイルを生成してダウンロードさせる]
-//     http://piro.sakura.ne.jp/latest/blosxom.cgi/webtech/javascript/2005-10-05_download.htm
-//   トリッキーなだけに動いたり動かなかったりといった懸念がある。
-//     http://productforums.google.com/forum/#!topic/chrome-ja/q5QdYQVZctM
-//   そうするとやはり一旦サーバ側にアップロードして、それをダウンロードするのが適切？
-//   サーバ側ではファイル保存ではなくメモリ保持もありうるが…、実装が面倒くさいのでファイル保存。
-//   エクスポートボタン押下でサーバに PUT bookmarks.html 後、GET bookmarks.html に移動する。
-//   この場合、クライアント側で保持しているノードツリーがHTML化される。つまりまだ保存していない
-//   データならそれがHTML化される。
-//   サーバ側でHTML生成する場合は、ブラウザが持ってる未保存データは無視して保存済みtree.json
-//   をHTML化することになる。CでJSONパースコードを書くか、適当なライブラリを導入してパースする。
-//   これは単にサーバ側で /bookmarks.html のリクエストに対応してリアルタイムにJSON→HTML変換して
-//   応答を返せばいいので、サーバ側で無駄にファイル作ることもない。その方が単純かなぁ？
-//   どっちでもいい気がするが、とりあえず実装が楽な方、クライアント側でのHTML生成にしてみよう。
-// * HTMLインポート
-//   NETSCAPE-Bookmark-file-1をパースしてJSONに変換する処理を、JavaScriptで書くかCで書くか。
-//   JavaScriptのが楽かな。…と思ったら、<input type=file>のファイルデータをJavaScriptで取得
-//   できないのか。HTML5のFileAPIでできるようになったと…。なんだじゃあサーバに一旦アップする
-//   しかないか。そしてサーバ側でJSONに変換するか、無加工で取得してクライアント側で変換するか？
-//   HTMLのパースをCで書くかJavaScriptで書くか…。どっちも手間そうだから動作軽そうなCにしよう。
-//   画面遷移せずにアップロードできるというトリッキーな方法。
-//   [Ajax的に画像などのファイルをアップロードする方法]
-//   http://havelog.ayumusato.com/develop/javascript/e171-ajax-file-upload.html
-//   [画面遷移なしでファイルアップロードする方法 と Safariの注意点]
-//   http://groundwalker.com/blog/2007/02/file_uploader_and_safari.html
-//   TODO:Firefoxはインポートしたブックマークタイトルで&#39;がそのまま表示されてしまう…
-//   TODO:FirefoxダイレクトインポートとHTML経由インポートとでツリー構造が異なる。
-//   独自ダイレクトインポートのJSONを、Firefoxが生成するHTMLにあわせればよいのだが…。
-//
-$('#impexpico').click(function(){
-	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
-	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
-	$('#import,#export').off().button().hover(
-		function(){ $(this).addClass('ui-state-hover'); },
-		function(){ $(this).removeClass('ui-state-hover'); }
-	);
-	$('#import').click(function(){
-		var $impexp = $('#impexp');
-		if( $impexp.find('input').val().length ){
-			$impexp.find('form').off().submit(function(){
-				var work={
-					cancel	 :false
-					,analyze :[]
-					,progress:Progress(function(){
-						work.cancel = true;
-						var analyze = work.analyze;
-						for( var i=0; i<analyze.length; i++ ){
-							analyze[i].ajax.abort();
-							analyze[i].done = true;
-						}
-					})
-				};
-				$impexp.find('iframe').off().one('load',function(){
-					var jsonText = $(this).contents().text();
-					if( jsonText.length ){
-						//alert(jsonText);
-						try{
-							analyzer( $.parseJSON(jsonText), work );
-						}
-						catch( e ){
-							Alert(e);
-						}
-					}
-					$(this).empty();
-					// 終わったらダイアログ閉じないとなぜか連続インポート＋差し替えが
-					// 効かないとかファイル変更しても効かないとか挙動がおかしくなる。
-					$impexp.dialog('destroy');
-				});
-			}).submit();
-		}
-	});
-	$('#export').click(function(){
-		// ブックマーク形式HTML(NETSCAPE-Bookmark-file-1)フォーマット
-		// [Netscape Bookmark File Format]
-		// http://msdn.microsoft.com/en-us/library/aa753582%28v=vs.85%29.aspx
-		// [Netscape 4/6のブックマークファイルの形式]
-		// http://homepage3.nifty.com/Tatsu_syo/Devroom/NS_BM.txt
-		var html ='<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
-				 +'<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
-				 +'<TITLE>Bookmarks</TITLE>\n'
-				 +'<H1>'+tree.top().title+'</H1>\n'
-				 +'<DL><p>\n';
-		(function( child, depth ){
-			var indent='';
-			for(var i=0,n=depth*4; i<n; i++ ) indent +=' ';
-			for(var i=0,n=child.length; i<n; i++ ){
-				var node = child[i];
-				// 日付時刻情報は、ADD_DATE=,LAST_MODIFIED=,LAST_VISIT=があるようだが、
-				// ADD_DATE=しか持ってないからそれだけでいいかな…。10桁なので1970/1/1
-				// からの秒数(UnixTime)かな？そういうことにしておこう。。
-				var add_date = ' ADD_DATE="' +parseInt( (node.dateAdded||0) /1000 ) +'"';
-				if( node.child ){
-					// フォルダ
-					html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
-					html += indent +'<DL><p>\n';
-					arguments.callee( node.child, depth+1 );
-					html += indent +'</DL><p>\n';
-				}
-				else{
-					// ブックマーク
-					// faviconの情報が、Chromeが生成したものはICON=に画像のPNG形式+Base64データ。
-					//   <DT><A HREF="xxx" ICON="data:image/png;base64,iVBOR...">タイトル</A>
-					// IEが生成したものはICON_URI=にfaviconアドレス。
-					//   <DT><A HREF="xxx" ICON_URI="http://xxx.ico" >タイトル</A>
-					// Firefoxが生成したものはICON=とICON_URI=と両方入ってるもよう。
-					// faviconの生データは保持してないから、IE方式でいくかな…。
-					// TODO:エクスポートしたHTMLをChrome,Firefoxにインポートすると、やはり
-					// favicon情報が欠落したような状態。ICON=を記述しないとダメなのか…。
-					// 画像データを独自保持したり、時間かかるけどエクスポート時に取得してもよいが、
-					// Chromeにあわせるなら画像形式をPNGに変換しないといけないので手間がかかる…。
-					// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
-					// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
-					// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
-					var href = ' HREF="' +encodeURI(node.url||'') +'"';
-					var icon_uri = ' ICON_URI="' +encodeURI(node.icon||'') +'"';
-					html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
-				}
-			}
-		})( tree.top().child, 1 );
-		html += '</DL><p>\n';
-		// アップロード
-		$.ajax({
-			type	:'put'
-			,url	:'export.html'
-			,data	:html
-			,error	:function(xhr,text){ Alert('データを保存できません:'+text); }
-			,success:function(){
-				// ダウンロード
-				location.href ='http://'+location.host+'/export.html';
-			}
-		});
-	});
-	// ダイアログ表示
-	$('#impexp').dialog({
-		title		:'HTMLインポート・エクスポート'
-		,modal		:true
-		,width		:460
-		,height		:320
-		,close		:function(){ $(this).dialog('destroy'); }
-	});
-});
-// サイドバーボタンキー入力
-$('.barico').on({
-	keypress:function(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 13: $(this).click(); return false;
-		}
-	}
-	// ボタンにフォーカス来たらサイドバーを出したい。CSSに書いておきたいけど、
-	// 子要素(ボタン)がフォーカスした時(:focus)に親要素(サイドバー)のスタイル変更って
-	// どうやって書くの？書けない？しょうがないのでJSで…このピクセル値とindex.cssの
-	// #sidebarは同期必要。
-	,focus:function(){ $sidebar.width(65); }
-	,blur:function(){ $sidebar.width(34); }
-});
-// 開始:ブックマークデータ取得
+// ブックマークデータ取得
 (function(){
 	var option_ok = false;
 	var tree_ok = false;
@@ -1180,6 +618,586 @@ function paneler( nodeTop ){
 	// 測定
 	//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
 }
+// ノードツリー変更保存リンク
+$('#modified').click(function(){
+	// 順番に保存
+	tree.modified()? tree.save( optionSave ) : optionSave();
+	function optionSave(){
+		option.modified()? option.save(function(){$('#modified').hide();}) : $('#modified').hide();
+	}
+});
+// パネル設定ダイアログ
+$('#optionico').click(function(){
+	// ページタイトル
+	$('#page_title').val( option.page.title() )
+	.off().on('input keyup paste',function(){
+		if( this.value != option.page.title() ){
+			option.page.title( this.value );
+			document.title = this.value;
+		}
+	});
+	// 色テーマ
+	$('input[name=colorcss]').each(function(){
+		if( this.value==option.color.css() )
+			$(this).attr('checked','checked');
+	})
+	.off().change(function(){
+		option.color.css( this.value );
+		$('#colorcss').attr('href',this.value);
+	});
+	// パネル幅
+	$('#panel_width').val( option.panel.width() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
+		if( this.value !=option.panel.width() ){
+			option.panel.width( this.value );
+			playLocalParam();
+		}
+	});
+	$('#panel_width_inc').off().click(function(){
+		var val = option.panel.width();
+		if( val <1000 ){
+			option.panel.width( ++val );
+			playLocalParam();
+			$('#panel_width').val( val );
+		}
+	});
+	$('#panel_width_dec').off().click(function(){
+		var val = option.panel.width();
+		if( val >100 ){
+			option.panel.width( --val );
+			playLocalParam();
+			$('#panel_width').val( val );
+		}
+	});
+	// パネル余白
+	$('#panel_margin').val( option.panel.margin() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
+		if( this.value !=option.panel.margin() ){
+			option.panel.margin( this.value );
+			playLocalParam();
+		}
+	});
+	$('#panel_margin_inc').off().click(function(){
+		var val = option.panel.margin();
+		if( val <100 ){
+			option.panel.margin( ++val );
+			playLocalParam();
+			$('#panel_margin').val( val );
+		}
+	});
+	$('#panel_margin_dec').off().click(function(){
+		var val = option.panel.margin();
+		if( val >0 ){
+			option.panel.margin( --val );
+			playLocalParam();
+			$('#panel_margin').val( val );
+		}
+	});
+	// 列数
+	$('#column_count').val( option.column.count() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
+		if( this.value !=option.column.count() ){
+			changeColumnCount( { prev:option.column.count(), next:this.value } );
+			option.column.count( this.value );
+			playLocalParam();
+		}
+	});
+	$('#column_count_inc').off().click(function(){
+		var val = option.column.count();
+		if( val <30 ){
+			changeColumnCount( { prev:val, next:val+1 } );
+			option.column.count( ++val );
+			playLocalParam();
+			$('#column_count').val( val );
+		}
+	});
+	$('#column_count_dec').off().click(function(){
+		var val = option.column.count();
+		if( val >1 ){
+			changeColumnCount( { prev:val, next:val-1 } );
+			option.column.count( --val );
+			playLocalParam();
+			$('#column_count').val( val );
+		}
+	});
+	// フォントサイズ
+	$('#font_size').val( option.font.size() );
+	$('#font_size_inc').off().click(function(){
+		var val = option.font.size();
+		if( val <24 ){
+			option.font.size( ++val );
+			playLocalParam();
+			$('#font_size').val( val );
+		}
+	});
+	$('#font_size_dec').off().click(function(){
+		var val = option.font.size();
+		if( val >9 ){
+			option.font.size( --val );
+			playLocalParam();
+			$('#font_size').val( val );
+		}
+	});
+	// ダイアログ表示
+	$('#option').dialog({
+		title		:'パネル設定'
+		,modal		:true
+		,width		:390
+		,height		:290
+		,close		:function(){ $(this).dialog('destroy'); }
+		,buttons	:{
+			'パネル設定クリア':function(){
+				option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
+				$('#panel_width').val( option.panel.width() );
+				$('#panel_margin').val( option.panel.margin() );
+				$('#column_count').val( option.column.count() );
+				$('#font_size').val( option.font.size() );
+				playLocalParam();
+			}
+			,'パネル配置クリア':function(){
+				option.panel.layout({}).panel.status({});
+				paneler( tree.top() );
+			}
+		}
+	});
+});
+// ブックマークの整理
+$('#filerico').click(function(){
+	if( !tree.modified() && !option.modified() ){
+		gotoFiler();
+	}
+	else Confirm({
+		msg	:'変更が保存されていません。保存しますか？'
+		,no	:function(){ gotoFiler(); }
+		,yes:function(){
+			// 順番に保存
+			tree.modified()? tree.save( optionSave ) : optionSave();
+			function optionSave(){
+				option.modified()? option.save( gotoFiler ) : gotoFiler();
+			}
+		}
+	});
+	// filer.htmlを単純に開いてもいいけど、index.htmlとfiler.htmlで同時ツリー変更できないので、
+	// 同じURLで動作させるためiframeで開く。
+	function gotoFiler(){
+		//$debug.remove();
+		$('#modified,#wall,#sidebar,#option,#contextmenu,#itemtext,#dialog').remove();
+		$('#filer').width($window.width()).height($window.height()).show().attr('src','filer.html');
+		$window.on('resize',function(){
+			$('#filer').width($window.width()).height($window.height());
+		});
+	}
+});
+// ブラウザ情報＋インポートイベント
+$.ajax({
+	url		:':browser.json'
+	,error	:function(xhr,text){ Alert("ブラウザ情報取得エラー:"+text); }
+	,success:function( browser ){
+		if( 'chrome' in browser ){
+			// Chromeブックマークインポート
+			// サーバから２つのJSONイメージを取得して、結合して独自形式JSONを生成する。
+			// GET :chrome.json で、Chromeの Bookmarks を取得(もともとJSON)、
+			// GET :chrome.icon.json で Favicons を取得(SQLite3からサーバ側でJSONをつくる)。
+			// ※サーバ側で１つに結合しないのは、C言語でJSONを操作したくないから。
+			// Bookmarks は、ブックマークのサイトURLを集めたJSONファイル。フォルダ構成を含む。
+			//{
+			//	version: 1
+			//	roots: {
+			//		bookmark_bar: {
+			//			type: folder
+			//			,name: 
+			//			,date_added:
+			//			,children: [
+			//				{ type:folder, name:"", date_added:"", children:[ ... ] }
+			//				,{ type:url, name:"", date_added:"", url:url }
+			//				,{ type:url, name:"", date_added:"", url:url }
+			//			]
+			//		}
+			//		other: {
+			//			type: folder
+			//			,name: 
+			//			,date_added:
+			//			,children: []
+			//		}
+			//		synced: {
+			//			type: folder
+			//			,name: 
+			//			,date_added:
+			//			,children: []
+			//		}
+			//	}
+			//}
+			// Favicons は、faviconURLとfavicon画像データを集めたSQLite3データファイル。
+			// をれをサーバで { "サイトURL":"faviconURL",... } のJSONに変換する。これは
+			// 取得エラーでも動作させる。(自力favicon取得の量が増えて時間がかかる)
+			// 独自形式JSONは、BookmarksのJSONにfaviconURLを加えたような感じ(いろいろ違うけど)。
+			$('#chromeico').click(function(){
+				Confirm({
+					msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+					,ok:function(){
+						var work={
+							cancel	 :false
+							,ajax1	 :null
+							,ajax2	 :null
+							,analyze :[]
+							,progress:Progress(function(){
+								// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
+								// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
+								work.cancel = true;
+								if( work.ajax1 ) work.ajax1.abort();
+								if( work.ajax2 ) work.ajax2.abort();
+								var analyze = work.analyze;
+								for( var i=0; i<analyze.length; i++ ){
+									analyze[i].ajax.abort();
+									analyze[i].done = true;
+								}
+							})
+						};
+						work.ajax1 = $.ajax({
+							url		:':chrome.json'
+							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+							,success:function( bookmarks ){
+								var favicons={};
+								work.ajax2 = $.ajax({
+									url		 :':chrome.icon.json'
+									,success :function(data){ favicons=data; }
+									,complete:function(){
+										var analyze = work.analyze;
+										var now = (new Date()).getTime();
+										// ルートノード
+										var root ={
+											id			:1
+											,nextid		:2
+											,dateAdded	:now
+											,title		:'root'
+											,child		:[]
+										};
+										// トップノード
+										root.child[0] = {
+											id			:root.nextid++
+											,dateAdded	:now
+											,title		:'Chromeブックマーク'
+											,child		:[]
+										};
+										// ごみ箱
+										root.child[1] = {
+											id			:root.nextid++
+											,dateAdded	:now
+											,title		:tree.trash().title
+											,child		:[]
+										};
+										// Chromeノードから自ノード形式変換
+										var chrome2node = function( data ){
+											// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
+											// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
+											// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
+											// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
+											// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
+											// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
+											// 1347278204225 の13桁。ということで、以下サイトを参考に、
+											//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
+											//   http://support.microsoft.com/kb/167296/ja
+											// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
+											// 2. 1000で割る＝マイクロ秒からミリ秒に。
+											var jstime = function( date_added ){
+												var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
+												return ( t >0 )? parseInt(t) : 0;
+											};
+											var node = {
+												id			:root.nextid++				// 新規ID
+												,dateAdded	:jstime( data.date_added )	// 変換
+												,title		:data.name					// 移行
+											};
+											if( data.children ){
+												// フォルダ
+												node.child = [];
+												for( var i=0, n=data.children.length; i<n; i++ ){
+													node.child.push( arguments.callee( data.children[i] ) );
+												}
+											}else{
+												// ブックマーク
+												node.url = data.url;
+												node.icon = favicons[data.url];
+												if( !node.icon ){
+													// favicon解析
+													var index = analyze.length;
+													analyze[index] = {
+														done : false
+														,ajax: $.ajax({
+															url		 :':analyze?'+node.url.replace(/#/g,'%23')
+															,success :function(data){
+																if( data.icon.length ) node.icon = data.icon;
+															}
+															,complete:function(){
+																analyze[index].done = true;
+															}
+														})
+													};
+												}
+											}
+											return node;
+										};
+										// トップノードchildに登録('synced'は存在しない場合あり)
+										bookmarks = bookmarks.roots;
+										if( 'bookmark_bar' in bookmarks )
+											root.child[0].child.push( chrome2node(bookmarks.bookmark_bar) );
+										if( 'other' in bookmarks )
+											root.child[0].child.push( chrome2node(bookmarks.other) );
+										if( 'synced' in bookmarks )
+											root.child[0].child.push( chrome2node(bookmarks.synced) );
+										// プログレスバー
+										work.progress( 1, analyze.length +1 );
+										// favicon解析完了待ち
+										(function(){
+											var waiting=0;
+											for( var i=0, n=analyze.length; i<n; i++ ){
+												if( !analyze[i].done ) waiting++;
+											}
+											if( waiting ){
+												work.progress( 1 +analyze.length -waiting, analyze.length +1 );
+												setTimeout(arguments.callee,500);
+												return;
+											}
+											// 完了
+											if( !work.cancel ) importer( root );
+										})();
+									}
+								});
+							}
+						});
+					}
+				});
+			});
+		}
+		else $('#chromeico').hide();
+
+		if( 'ie' in browser ){
+			// IEお気に入りインポート
+			$('#ieico').click(function(){
+				Confirm({
+					msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
+					,ok:function(){
+						var work={
+							ajax	 :null
+							,cancel	 :false
+							,analyze :[]
+							,progress:Progress(function(){
+								work.cancel = true;
+								if( work.ajax ) work.ajax.abort();
+								var analyze = work.analyze;
+								for( var i=0; i<analyze.length; i++ ){
+									analyze[i].ajax.abort();
+									analyze[i].done = true;
+								}
+							})
+						};
+						work.ajax = $.ajax({
+							url		:':favorites.json'
+							//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
+							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+							,success:function(data){ analyzer( data, work ); }
+						});
+					}
+				});
+			});
+		}
+		else $('#ieico').hide();
+
+		if( 'firefox' in browser ){
+			// Firefoxブックマークインポート
+			$('#firefoxico').click(function(){
+				Confirm({
+					msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+					,ok:function(){
+						var work={
+							ajax	 :null
+							,cancel	 :false
+							,analyze :[]
+							,progress:Progress(function(){
+								work.cancel = true;
+								if( work.ajax ) work.ajax.abort();
+								var analyze = work.analyze;
+								for( var i=0; i<analyze.length; i++ ){
+									analyze[i].ajax.abort();
+									analyze[i].done = true;
+								}
+							})
+						};
+						work.ajax = $.ajax({
+							url		:':firefox.json'
+							//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
+							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+							,success:function(data){ analyzer( data, work ); }
+						});
+					}
+				});
+			});
+		}
+		else $('#firefoxico').hide();
+	}
+});
+// * HTMLエクスポート
+//   クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
+//   クライアント側で生成する場合、それを単純にダウンロードできればよいが、
+//   HTML5のFileAPIを使う必要がありそう。こんな↓トリッキーな方法もあるようだが、
+//     [JavaScriptでテキストファイルを生成してダウンロードさせる]
+//     http://piro.sakura.ne.jp/latest/blosxom.cgi/webtech/javascript/2005-10-05_download.htm
+//   トリッキーなだけに動いたり動かなかったりといった懸念がある。
+//     http://productforums.google.com/forum/#!topic/chrome-ja/q5QdYQVZctM
+//   そうするとやはり一旦サーバ側にアップロードして、それをダウンロードするのが適切？
+//   サーバ側ではファイル保存ではなくメモリ保持もありうるが…、実装が面倒くさいのでファイル保存。
+//   エクスポートボタン押下でサーバに PUT bookmarks.html 後、GET bookmarks.html に移動する。
+//   この場合、クライアント側で保持しているノードツリーがHTML化される。つまりまだ保存していない
+//   データならそれがHTML化される。
+//   サーバ側でHTML生成する場合は、ブラウザが持ってる未保存データは無視して保存済みtree.json
+//   をHTML化することになる。CでJSONパースコードを書くか、適当なライブラリを導入してパースする。
+//   これは単にサーバ側で /bookmarks.html のリクエストに対応してリアルタイムにJSON→HTML変換して
+//   応答を返せばいいので、サーバ側で無駄にファイル作ることもない。その方が単純かなぁ？
+//   どっちでもいい気がするが、とりあえず実装が楽な方、クライアント側でのHTML生成にしてみよう。
+// * HTMLインポート
+//   NETSCAPE-Bookmark-file-1をパースしてJSONに変換する処理を、JavaScriptで書くかCで書くか。
+//   JavaScriptのが楽かな。…と思ったら、<input type=file>のファイルデータをJavaScriptで取得
+//   できないのか。HTML5のFileAPIでできるようになったと…。なんだじゃあサーバに一旦アップする
+//   しかないか。そしてサーバ側でJSONに変換するか、無加工で取得してクライアント側で変換するか？
+//   HTMLのパースをCで書くかJavaScriptで書くか…。どっちも手間そうだから動作軽そうなCにしよう。
+//   画面遷移せずにアップロードできるというトリッキーな方法。
+//   [Ajax的に画像などのファイルをアップロードする方法]
+//   http://havelog.ayumusato.com/develop/javascript/e171-ajax-file-upload.html
+//   [画面遷移なしでファイルアップロードする方法 と Safariの注意点]
+//   http://groundwalker.com/blog/2007/02/file_uploader_and_safari.html
+//   TODO:Firefoxはインポートしたブックマークタイトルで&#39;がそのまま表示されてしまう…
+//   TODO:FirefoxダイレクトインポートとHTML経由インポートとでツリー構造が異なる。
+//   独自ダイレクトインポートのJSONを、Firefoxが生成するHTMLにあわせればよいのだが…。
+//
+$('#impexpico').click(function(){
+	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
+	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
+	$('#import,#export').off().button().hover(
+		function(){ $(this).addClass('ui-state-hover'); },
+		function(){ $(this).removeClass('ui-state-hover'); }
+	);
+	$('#import').click(function(){
+		var $impexp = $('#impexp');
+		if( $impexp.find('input').val().length ){
+			$impexp.find('form').off().submit(function(){
+				var work={
+					cancel	 :false
+					,analyze :[]
+					,progress:Progress(function(){
+						work.cancel = true;
+						var analyze = work.analyze;
+						for( var i=0; i<analyze.length; i++ ){
+							analyze[i].ajax.abort();
+							analyze[i].done = true;
+						}
+					})
+				};
+				$impexp.find('iframe').off().one('load',function(){
+					var jsonText = $(this).contents().text();
+					if( jsonText.length ){
+						//alert(jsonText);
+						try{
+							analyzer( $.parseJSON(jsonText), work );
+						}
+						catch( e ){
+							Alert(e);
+						}
+					}
+					$(this).empty();
+					// 終わったらダイアログ閉じないとなぜか連続インポート＋差し替えが
+					// 効かないとかファイル変更しても効かないとか挙動がおかしくなる。
+					$impexp.dialog('destroy');
+				});
+			}).submit();
+		}
+	});
+	$('#export').click(function(){
+		// ブックマーク形式HTML(NETSCAPE-Bookmark-file-1)フォーマット
+		// [Netscape Bookmark File Format]
+		// http://msdn.microsoft.com/en-us/library/aa753582%28v=vs.85%29.aspx
+		// [Netscape 4/6のブックマークファイルの形式]
+		// http://homepage3.nifty.com/Tatsu_syo/Devroom/NS_BM.txt
+		var html ='<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
+				 +'<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
+				 +'<TITLE>Bookmarks</TITLE>\n'
+				 +'<H1>'+tree.top().title+'</H1>\n'
+				 +'<DL><p>\n';
+		(function( child, depth ){
+			var indent='';
+			for(var i=0,n=depth*4; i<n; i++ ) indent +=' ';
+			for(var i=0,n=child.length; i<n; i++ ){
+				var node = child[i];
+				// 日付時刻情報は、ADD_DATE=,LAST_MODIFIED=,LAST_VISIT=があるようだが、
+				// ADD_DATE=しか持ってないからそれだけでいいかな…。10桁なので1970/1/1
+				// からの秒数(UnixTime)かな？そういうことにしておこう。。
+				var add_date = ' ADD_DATE="' +parseInt( (node.dateAdded||0) /1000 ) +'"';
+				if( node.child ){
+					// フォルダ
+					html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
+					html += indent +'<DL><p>\n';
+					arguments.callee( node.child, depth+1 );
+					html += indent +'</DL><p>\n';
+				}
+				else{
+					// ブックマーク
+					// faviconの情報が、Chromeが生成したものはICON=に画像のPNG形式+Base64データ。
+					//   <DT><A HREF="xxx" ICON="data:image/png;base64,iVBOR...">タイトル</A>
+					// IEが生成したものはICON_URI=にfaviconアドレス。
+					//   <DT><A HREF="xxx" ICON_URI="http://xxx.ico" >タイトル</A>
+					// Firefoxが生成したものはICON=とICON_URI=と両方入ってるもよう。
+					// faviconの生データは保持してないから、IE方式でいくかな…。
+					// TODO:エクスポートしたHTMLをChrome,Firefoxにインポートすると、やはり
+					// favicon情報が欠落したような状態。ICON=を記述しないとダメなのか…。
+					// 画像データを独自保持したり、時間かかるけどエクスポート時に取得してもよいが、
+					// Chromeにあわせるなら画像形式をPNGに変換しないといけないので手間がかかる…。
+					// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
+					// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
+					// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
+					var href = ' HREF="' +encodeURI(node.url||'') +'"';
+					var icon_uri = ' ICON_URI="' +encodeURI(node.icon||'') +'"';
+					html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
+				}
+			}
+		})( tree.top().child, 1 );
+		html += '</DL><p>\n';
+		// アップロード
+		$.ajax({
+			type	:'put'
+			,url	:'export.html'
+			,data	:html
+			,error	:function(xhr,text){ Alert('データを保存できません:'+text); }
+			,success:function(){
+				// ダウンロード
+				location.href ='http://'+location.host+'/export.html';
+			}
+		});
+	});
+	// ダイアログ表示
+	$('#impexp').dialog({
+		title		:'HTMLインポート・エクスポート'
+		,modal		:true
+		,width		:460
+		,height		:320
+		,close		:function(){ $(this).dialog('destroy'); }
+	});
+});
+// サイドバーボタンキー入力
+$('.barico').on({
+	keypress:function(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: $(this).click(); return false;
+		}
+	}
+	// ボタンにフォーカス来たらサイドバーを出したい。CSSに書いておきたいけど、
+	// 子要素(ボタン)がフォーカスした時(:focus)に親要素(サイドバー)のスタイル変更って
+	// どうやって書くの？書けない？しょうがないのでJSで…このピクセル値とindex.cssの
+	// #sidebarは同期必要。
+	,focus:function(){ $sidebar.width(65); }
+	,blur:function(){ $sidebar.width(34); }
+});
 // favicon解析してから移行データ取り込み
 function analyzer( data, work ){
 	var analyze = work.analyze;

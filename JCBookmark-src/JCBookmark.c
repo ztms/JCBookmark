@@ -3100,30 +3100,41 @@ void SocketRead( SOCKET sock )
 							Sleep(50);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
+						else if( stricmp(file,":browser.json")==0 ){
+							// index.htmlサイドバーブラウザアイコン不要なものを表示しないための情報。
+							//   {"chrome":0,"firefox":0,"ie":0,"opera":0}
+							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
+							// そもそもサーバから返す時にHTML加工してしまう方が無駄がないような…。
+							// それを言ってしまうとtree.jsonもサーバ側でHTMLにした方が無駄がない…。
+							u_int count=0;
+							ClientSends(cp,
+									"HTTP/1.0 200 OK\r\n"
+									"Content-Type: application/json\r\n"
+									"Connection: close\r\n"
+									"\r\n"
+									"{"
+							);
+							if( Browser[BI_CHROME].exe ){
+								count++;
+								ClientSends(cp,"\"chrome\":1");
+							}
+							if( Browser[BI_FIREFOX].exe ){
+								if( count++ ) ClientSends(cp,",");
+								ClientSends(cp,"\"firefox\":1");
+							}
+							if( Browser[BI_IE].exe ){
+								if( count++ ) ClientSends(cp,",");
+								ClientSends(cp,"\"ie\":1");
+							}
+							if( Browser[BI_OPERA].exe ){
+								if( count++ ) ClientSends(cp,",");
+								ClientSends(cp,"\"opera\":1");
+							}
+							ClientSends(cp,"}");
+							goto send_ready;
+						}
 						else if( stricmp(file,":favorites.json")==0 ){
 							// IEお気に入りインポート
-							/*
-							WCHAR* favdir = FavoritesPathAlloc();
-							if( favdir ){
-								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
-								if( fp ){
-									u_int nextid=1;	// ノードID
-									u_int depth=0;	// 階層深さ
-									FavoriteJSON( fp, favdir, &nextid, depth, cp->req.param );
-									fclose( fp );
-									if( nextid >1 ){
-										cp->rsp.readfh = CreateFileW( tmppath
-												,GENERIC_READ
-												,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-												,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
-										);
-									}
-									else LogW(L"[%u]IEお気に入りデータありません",Num(cp));
-								}
-								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
-								free( favdir );
-							}
-							*/
 							NodeList* list = FavoriteListCreate();
 							if( list ){
 								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
@@ -4154,6 +4165,8 @@ void MainFormCreateAfter( void )
 		MoveFileA( "tree.json.empty", "tree.json" );
 		SetCurrentDirectoryW( wpath );
 	}
+	// ブラウザ起動ボタン
+	BrowserIconCreate();
 	// クライアント初期化
 	{ u_int i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
@@ -4166,8 +4179,6 @@ void MainFormCreateAfter( void )
 		if( ConfigDialog()==ID_DLG_CANCEL ) break;
 		// ダイアログOK、listenリトライ
 	}
-	// ブラウザ起動ボタン
-	BrowserIconCreate();
 	// タイマー起動
 	MainFormTimer1000();
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
