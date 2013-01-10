@@ -306,17 +306,18 @@ var tree = {
 						if( dstParent.child[i].id==dstid ){
 							// 見つけた
 							if( isAfter ){
-								// 後に逆順に挿入
 								if( i==dstParent.child.length-1 ){
-									for( var j=movenodes.length-1; j>=0; j-- )
+									// 末尾ノードの後に挿入＝末尾追加
+									for( var j=0; j<movenodes.length; j++ )
 										dstParent.child.push(movenodes[j]);
 								}else{
+									// (末尾ノード以外の)後に挿入＝次ノードの前に挿入(逆順に１つずつ)
 									i++;
 									for( var j=movenodes.length-1; j>=0; j-- )
 										dstParent.child.splice(i,0, movenodes[j]);
 								}
 							}else{
-								// 前に逆順に挿入
+								// 前に挿入(逆順に１つずつ)
 								for( var j=movenodes.length-1; j>=0; j-- )
 									dstParent.child.splice(i,0, movenodes[j]);
 							}
