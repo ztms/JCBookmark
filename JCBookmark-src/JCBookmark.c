@@ -154,7 +154,7 @@ HANDLE		Heap				=NULL;				// GetProcessHeap()
 #define CMD_USER3		16		// ユーザ指定ブラウザ3
 #define CMD_USER4		17		// ユーザ指定ブラウザ4
 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 //
 // 自力メモリリークチェック用ログ生成
@@ -3793,35 +3793,40 @@ void BrowserIconCreate( void )
 void BrowserExec( BrowserIcon* bp )
 {
 	if( bp->exe ){
-		size_t arglen = bp->arg? wcslen(bp->arg) : 0;
-		size_t cmdlen = wcslen( bp->exe ) +arglen +32;
-		WCHAR* cmdline = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
-		if( cmdline ){
-			WCHAR* dir = wcsdup( bp->exe );
-			_snwprintf(cmdline,cmdlen,L"\"%s\" %s http://localhost:%s/",bp->exe,bp->arg?bp->arg:L"",wListenPort);
-			if( dir ){
-				STARTUPINFOW si;
-				PROCESS_INFORMATION pi;
-				WCHAR* p = wcsrchr( dir, L'\\' );
-				if( p ) *p = L'\0';
-				memset( &si, 0, sizeof(si) );
-				si.cb = sizeof(si);
-				CreateProcessW(
+		// exeパスは環境変数(%windir%など)展開する
+		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
+		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
+		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+		if( exe && dir && cmd ){
+			STARTUPINFOW si;
+			PROCESS_INFORMATION pi;
+			WCHAR* p;
+			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
+			memcpy( dir, exe, exelen * sizeof(WCHAR) );
+			_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
+			p = wcsrchr( dir, L'\\' );
+			if( p ) *p = L'\0';
+			memset( &si, 0, sizeof(si) );
+			si.cb = sizeof(si);
+			if( !CreateProcessW(
 					NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
-					,cmdline		// しょうがないのでここにコマンドライン全体を渡す
+					,cmd			// しょうがないのでここにコマンドライン全体を渡す
 					,NULL, NULL
 					,FALSE, 0
 					,NULL			// 環境ブロック？
 					,dir			// カレントディレクトリ
 					,&si, &pi
-				);
-				CloseHandle( pi.hProcess );
-				free(dir), dir=NULL;
-			}
-			else LogW(L"L%u:wcsdupエラー",__LINE__);
-			free(cmdline), cmdline=NULL;
+				)
+			) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
+			CloseHandle( pi.hThread );
+			CloseHandle( pi.hProcess );
 		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
+		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
+		if( exe ) free(exe), exe=NULL;
+		if( dir ) free(dir), dir=NULL;
+		if( cmd ) free(cmd), cmd=NULL;
 	}
 }
 
@@ -3937,6 +3942,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
 			// ブラウザ
+			// TODO:EXEをダイアログで選択するボタン(GetOpenFileName)
 			hTxtExe = CreateWindowW(
 						L"static",L"実行ﾌｧｲﾙ"
 						,SS_SIMPLE |WS_CHILD
@@ -4107,6 +4113,7 @@ DWORD ConfigDialog( u_int tabid )
 	// ダイアログウィンドウプロシージャに結果変数のアドレスを渡す
 	if( ConfigDialogProc( NULL, (UINT)(&dwRes), 0, 0 )==0 ){
 		// ダイアログウィンドウ作成
+		// TODO:ドラッグ＆ドロップでブラウザEXEパス登録したい
 		HWND hwnd = CreateWindowW(
 						CONFIGDIALOGNAME
 						,APPNAME L" 設定"
