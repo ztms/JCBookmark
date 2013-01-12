@@ -453,6 +453,7 @@ WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 }
 
 // ブラウザ起動ボタン
+// TODO:ユーザ指定ブラウザを４つ登録するとメモリ使用量が1MBくらい増える。削減できないものか。
 #define BUTTON_WIDTH	36		// ボタン縦横ピクセル
 typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
@@ -3687,6 +3688,8 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
+// TODO:いらないブラウザボタンを非表示にするチェックボックスが欲しいかも。
+// ボタンだけ非表示で設定画面のタブは存在する感じ。
 // ダイアログ用ID
 #define ID_DLG_UNKNOWN	0
 #define ID_DLG_OK		1
@@ -4167,6 +4170,7 @@ void BrowserIconDestroy( void )
 // ブラウザアイコンボタン作成
 // ボタンにアイコンを表示する
 // http://keicode.com/windows/ui03.php
+// TODO:ツールヒントでnameを表示するとよいか？
 void BrowserIconCreate( void )
 {
 	HINSTANCE hinst = GetModuleHandle(NULL);
@@ -4217,7 +4221,7 @@ void BrowserIconClick( u_int index )
 				_snwprintf(arg,arglen,L"%s http://localhost:%s/",bp->arg?bp->arg:L"",wListenPort);
 				p = wcsrchr( dir, L'\\' );
 				if( p ) *p = L'\0';
-				err = (DWORD)ShellExecuteW( NULL, NULL, exe, arg, dir, 0 );
+				err = (DWORD)ShellExecuteW( NULL, NULL, exe, arg, dir, SW_SHOWNORMAL );
 				if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
 			}
 			else{
