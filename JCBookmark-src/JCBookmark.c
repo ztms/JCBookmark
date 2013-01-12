@@ -496,9 +496,21 @@ void ConfigFree( void )
 void BrowserIconUserSet( BrowserIcon* bp, WCHAR* exe )
 {
 	if( bp && exe ){
+		WCHAR* ext = wcsrchr(exe,L'.');
+		if( ext && wcsicmp(ext,L".exe")==0 ){
+			ExtractIconExW( exe, 0, &(bp->icon), NULL, 1 );
+		}
+		else{
+			// .exe以外はSHGetFileInfoでアイコン取得。ショートカット(.lnk)もアイコン取得できる。
+			// exeで実行してもだいたい問題ないようだが、wscript.exeがエラーアイコンになって
+			// しまうようで、仕方ないのでexeはExtractIconExを使うままにした。
+			SHFILEINFOW info;
+			if( SHGetFileInfoW( exe, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
+				bp->icon = info.hIcon;
+			}
+		}
 		bp->exe = exe;
-		bp->name = PathFindFileNameW( exe );
-		ExtractIconExW( exe, 0, &(bp->icon), NULL, 1 );
+		bp->name = PathFindFileNameW(exe);
 	}
 }
 void ConfigRead( void )
@@ -1888,6 +1900,7 @@ unsigned __stdcall analyze( void* p )
 						HRESULT res;
 						CoInitialize(NULL);
 						// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
+						// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
 						res = CoCreateInstance(
 									&CLSID_CMultiLanguage
 									,NULL
@@ -1910,8 +1923,8 @@ unsigned __stdcall analyze( void* p )
 							if( SUCCEEDED(res) ){
 								CP = info.nCodePage;
 							}
+							mlang2->lpVtbl->Release( mlang2 );
 						}
-						mlang2->lpVtbl->Release( mlang2 );
 						CoUninitialize();
 					}
 				}
@@ -3621,217 +3634,6 @@ void SocketShutdown( void )
 	}
 }
 
-void BrowserIconFinalize( void )
-{
-	u_int i;
-	for( i=0; i<BI_COUNT; i++ ){
-		BrowserIcon* bp = &(Browser[i]);
-		if( bp->hwnd ) DestroyWindow( bp->hwnd ), bp->hwnd=NULL;
-		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
-		if( bp->arg ) free( bp->arg ), bp->arg=NULL;
-		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
-	}
-}
-void BrowserIconDefault( BrowserIcon* bp, WCHAR* name, WORD cmdid, HKEY topkey, WCHAR* subkey )
-{
-	BOOL success = FALSE;
-	HKEY key;
-
-	bp->name = name;
-	bp->cmdid = cmdid;
-
-	// レジストリからEXEパスとアイコン取得
-	// 実行ファイルからアイコンを取り出す
-	// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
-	// 実行可能ファイルからのアイコンの抽出
-	// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
-	if( RegOpenKeyExW( topkey, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
-		DWORD type, bytes;
-		// データバイト数取得(終端NULL含む)
-		if( RegQueryValueExW( key, NULL, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
-			// バッファ確保
-			bp->exe = (WCHAR*)malloc( bytes );
-			if( bp->exe ){
-				DWORD realbytes = bytes;
-				// データ取得
-				if( RegQueryValueExW( key, NULL, NULL, &type, (BYTE*)bp->exe, &realbytes )==ERROR_SUCCESS ){
-					if( bytes==realbytes ){
-						// 最後の「,数値」とダブルクォート削除
-						WCHAR *p = wcsrchr(bp->exe,L',');
-						if( p ){
-							*p-- = L'\0';
-							if( *p==L'"') *p = L'\0';
-						}
-						if( *(bp->exe)==L'"')
-							memmove( bp->exe, bp->exe+1, (wcslen(bp->exe)+1)*sizeof(WCHAR) );
-						// アイコン取得
-						if( ExtractIconExW( bp->exe, 0, &(bp->icon), NULL, 1 ) && bp->icon ){
-							success = TRUE;
-						}
-						else LogW(L"ExtraceIconExW(%s)エラー(%u)",bp->exe,GetLastError());
-					}
-					else LogW(L"RegQueryValueExW(%s)エラー？",bp->exe);
-				}
-				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
-			}
-			else LogW(L"L%u:mallocエラー",__LINE__);
-		}
-		else LogW(L"RegQueryValueExW(%s)エラー",subkey);
-		// レジストリ閉じる
-		RegCloseKey( key );
-	}
-	else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
-
-	if( !success ){
-		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
-		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
-	}
-}
-void BrowserIconInitialize( void )
-{
-	memset( Browser, 0, sizeof(Browser) );
-
-	// 既定ブラウザ(Browser[0]～[3])
-	BrowserIconDefault(
-		&(Browser[BI_IE])
-		,L"IE"
-		,CMD_IE
-		// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
-		// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\IEXPLORE.EXE\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IEXPLORE.EXE
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie7
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie8
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
-	);
-	BrowserIconDefault(
-		&(Browser[BI_CHROME])
-		,L"Chrome"
-		,CMD_CHROME
-		// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
-		// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
-		// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
-		// 2.HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
-		// 3.HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
-		// 4.HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
-		// 5.HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
-	);
-	BrowserIconDefault(
-		&(Browser[BI_FIREFOX])
-		,L"Firefox"
-		,CMD_FIREFOX
-		// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
-		// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
-		// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxHTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxURL\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
-	);
-	BrowserIconDefault(
-		&(Browser[BI_OPERA])
-		,L"Opera"
-		,CMD_OPERA
-		// TODO:Opera？
-		// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
-		// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
-		,HKEY_CLASSES_ROOT
-		,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
-	);
-	// ユーザ指定ブラウザ(Browser[4]～[7])
-	Browser[BI_USER1].cmdid = CMD_USER1;
-	Browser[BI_USER2].cmdid = CMD_USER2;
-	Browser[BI_USER3].cmdid = CMD_USER3;
-	Browser[BI_USER4].cmdid = CMD_USER4;
-	Browser[BI_USER1].name = L"1";
-	Browser[BI_USER2].name = L"2";
-	Browser[BI_USER3].name = L"3";
-	Browser[BI_USER4].name = L"4";
-}
-void BrowserIconDestroy( void )
-{
-	u_int i;
-	for( i=0; i<BI_COUNT; i++ ){
-		if( Browser[i].hwnd ) DestroyWindow( Browser[i].hwnd ), Browser[i].hwnd=NULL;
-	}
-}
-// ブラウザアイコンボタン作成
-// ボタンにアイコンを表示する
-// http://keicode.com/windows/ui03.php
-void BrowserIconCreate( void )
-{
-	HINSTANCE hinst = GetModuleHandle(NULL);
-	int left=0;
-	u_int i;
-
-	for( i=0; i<BI_COUNT; i++ ){
-		BrowserIcon* bp = &(Browser[i]);
-		if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
-			bp->hwnd = CreateWindowA(
-							"button"
-							,""
-							,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
-							,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
-							,MainForm
-							,(HMENU)bp->cmdid		// WM_COMMANDのLOWORD(wp)に入る数値
-							,hinst
-							,NULL
-			);
-			if( bp->icon ) SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
-			left += BUTTON_WIDTH;
-		}
-	}
-}
-// ブラウザ起動
-void BrowserRun( BrowserIcon* bp )
-{
-	if( bp->exe ){
-		// exeパスは環境変数(%windir%など)展開する
-		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
-		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
-		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
-		if( exe && dir && cmd ){
-			STARTUPINFOW si;
-			PROCESS_INFORMATION pi;
-			WCHAR* p;
-			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
-			memcpy( dir, exe, exelen * sizeof(WCHAR) );
-			_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
-			p = wcsrchr( dir, L'\\' );
-			if( p ) *p = L'\0';
-			memset( &si, 0, sizeof(si) );
-			si.cb = sizeof(si);
-			if( !CreateProcessW(
-					NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
-					,cmd			// しょうがないのでここにコマンドライン全体を渡す
-					,NULL, NULL
-					,FALSE, 0
-					,NULL			// 環境ブロック？
-					,dir			// カレントディレクトリ
-					,&si, &pi
-				)
-			) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
-			CloseHandle( pi.hThread );
-			CloseHandle( pi.hProcess );
-		}
-		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
-		if( exe ) free(exe), exe=NULL;
-		if( dir ) free(dir), dir=NULL;
-		if( cmd ) free(cmd), cmd=NULL;
-	}
-}
-
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
 BOOL TrayIconNotify( HWND hwnd, UINT msg )
@@ -4115,29 +3917,15 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_DROPFILES:
 		{
-#if 0
-			// ドロップ位置は関係なく、ドロップ時にユーザ指定ブラウザタブが選択されていれば
-			// ファイルパスをEXEパスに反映する。
-			WCHAR dropfile0[MAX_PATH+1]=L"";
-			int browserIndex = TabCtrl_GetCurSel(hTabc) - 1;
-			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH ); // (先頭)ドロップファイル
-			DragFinish( (HDROP)wp );
-			switch( browserIndex ){
-			case BI_USER1: case BI_USER2: case BI_USER3: case BI_USER4:
-				SetWindowTextW( hExe[browserIndex], dropfile0 );
-				LogW(L"ブラウザ%dにドロップファイル反映");
-				break;
-			}
-#endif
 			// ドロップした場所がユーザ指定ブラウザEXEパス用エディットコントール上なら
 			// ファイルパスをEXEパスに反映する。その他のドロップ操作は無視。
 			WCHAR dropfile0[MAX_PATH+1]=L"";
 			POINT po;
 			HWND poWnd;
-			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH ); // (先頭)ドロップファイル
-			DragQueryPoint( (HDROP)wp, &po ); // ドロップ座標(クライアント座標系)
+			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH );// (先頭)ドロップファイル
+			DragQueryPoint( (HDROP)wp, &po );					// ドロップ座標(クライアント座標系)
 			DragFinish( (HDROP)wp );
-			ClientToScreen( hwnd, &po ); // ドロップ座標をスクリーン座標系に
+			ClientToScreen( hwnd, &po );						// 座標をスクリーン座標系に
 			poWnd = WindowFromPoint(po);
 			if( poWnd==hExe[BI_USER1] ) SetWindowTextW( hExe[BI_USER1], dropfile0 );
 			else if( poWnd==hExe[BI_USER2] ) SetWindowTextW( hExe[BI_USER2], dropfile0 );
@@ -4161,7 +3949,6 @@ DWORD ConfigDialog( u_int tabid )
 	// ダイアログウィンドウプロシージャに結果変数のアドレスを渡す
 	if( ConfigDialogProc( NULL, (UINT)(&dwRes), 0, 0 )==0 ){
 		// ダイアログウィンドウ作成
-		// TODO:ドラッグ＆ドロップでブラウザEXEパス登録したい
 		HWND hwnd = CreateWindowW(
 						CONFIGDIALOGNAME
 						,APPNAME L" 設定"
@@ -4196,6 +3983,288 @@ DWORD ConfigDialog( u_int tabid )
 	}
 	return dwRes;
 }
+
+void BrowserIconFinalize( void )
+{
+	u_int i;
+	for( i=0; i<BI_COUNT; i++ ){
+		BrowserIcon* bp = &(Browser[i]);
+		if( bp->hwnd ) DestroyWindow( bp->hwnd ), bp->hwnd=NULL;
+		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
+		if( bp->arg ) free( bp->arg ), bp->arg=NULL;
+		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
+	}
+}
+void BrowserIconDefault( BrowserIcon* bp, WCHAR* name, WORD cmdid, HKEY topkey, WCHAR* subkey )
+{
+	BOOL success = FALSE;
+	HKEY key;
+
+	bp->name = name;
+	bp->cmdid = cmdid;
+
+	// レジストリからEXEパスとアイコン取得
+	// 実行ファイルからアイコンを取り出す
+	// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
+	// 実行可能ファイルからのアイコンの抽出
+	// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
+	if( RegOpenKeyExW( topkey, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
+		DWORD type, bytes;
+		// データバイト数取得(終端NULL含む)
+		if( RegQueryValueExW( key, NULL, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
+			// バッファ確保
+			bp->exe = (WCHAR*)malloc( bytes );
+			if( bp->exe ){
+				DWORD realbytes = bytes;
+				// データ取得
+				if( RegQueryValueExW( key, NULL, NULL, &type, (BYTE*)bp->exe, &realbytes )==ERROR_SUCCESS ){
+					if( bytes==realbytes ){
+						// 最後の「,数値」とダブルクォート削除
+						WCHAR *p = wcsrchr(bp->exe,L',');
+						if( p ){
+							*p-- = L'\0';
+							if( *p==L'"') *p = L'\0';
+						}
+						if( *(bp->exe)==L'"')
+							memmove( bp->exe, bp->exe+1, (wcslen(bp->exe)+1)*sizeof(WCHAR) );
+						// アイコン取得
+						if( ExtractIconExW( bp->exe, 0, &(bp->icon), NULL, 1 ) && bp->icon ){
+							success = TRUE;
+						}
+						else LogW(L"ExtraceIconExW(%s)エラー(%u)",bp->exe,GetLastError());
+					}
+					else LogW(L"RegQueryValueExW(%s)エラー？",bp->exe);
+				}
+				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
+			}
+			else LogW(L"L%u:mallocエラー",__LINE__);
+		}
+		else LogW(L"RegQueryValueExW(%s)エラー",subkey);
+		// レジストリ閉じる
+		RegCloseKey( key );
+	}
+	else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
+
+	if( !success ){
+		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
+		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
+	}
+}
+void BrowserIconInitialize( void )
+{
+	memset( Browser, 0, sizeof(Browser) );
+
+	// 既定ブラウザ(Browser[0]～[3])
+	BrowserIconDefault(
+		&(Browser[BI_IE])
+		,L"IE"
+		,CMD_IE
+		// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
+		// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\IEXPLORE.EXE\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IEXPLORE.EXE
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie7
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie8
+		,HKEY_LOCAL_MACHINE
+		,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
+	);
+	BrowserIconDefault(
+		&(Browser[BI_CHROME])
+		,L"Chrome"
+		,CMD_CHROME
+		// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
+		// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
+		// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
+		// 2.HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
+		// 3.HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
+		// 4.HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
+		// 5.HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
+		,HKEY_LOCAL_MACHINE
+		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
+	);
+	BrowserIconDefault(
+		&(Browser[BI_FIREFOX])
+		,L"Firefox"
+		,CMD_FIREFOX
+		// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
+		// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
+		// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxHTML\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxURL\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe
+		,HKEY_LOCAL_MACHINE
+		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
+	);
+	BrowserIconDefault(
+		&(Browser[BI_OPERA])
+		,L"Opera"
+		,CMD_OPERA
+		// TODO:Opera？
+		// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
+		// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
+		,HKEY_CLASSES_ROOT
+		,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
+	);
+	// ユーザ指定ブラウザ(Browser[4]～[7])
+	Browser[BI_USER1].cmdid = CMD_USER1;
+	Browser[BI_USER2].cmdid = CMD_USER2;
+	Browser[BI_USER3].cmdid = CMD_USER3;
+	Browser[BI_USER4].cmdid = CMD_USER4;
+	Browser[BI_USER1].name = L"1";
+	Browser[BI_USER2].name = L"2";
+	Browser[BI_USER3].name = L"3";
+	Browser[BI_USER4].name = L"4";
+}
+void BrowserIconDestroy( void )
+{
+	u_int i;
+	for( i=0; i<BI_COUNT; i++ ){
+		if( Browser[i].hwnd ) DestroyWindow( Browser[i].hwnd ), Browser[i].hwnd=NULL;
+	}
+}
+// ブラウザアイコンボタン作成
+// ボタンにアイコンを表示する
+// http://keicode.com/windows/ui03.php
+void BrowserIconCreate( void )
+{
+	HINSTANCE hinst = GetModuleHandle(NULL);
+	int left=0;
+	u_int i;
+
+	for( i=0; i<BI_COUNT; i++ ){
+		BrowserIcon* bp = &(Browser[i]);
+		if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
+			bp->hwnd = CreateWindowA(
+							"button"
+							,""
+							,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
+							,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
+							,MainForm
+							,(HMENU)bp->cmdid		// WM_COMMANDのLOWORD(wp)に入る数値
+							,hinst
+							,NULL
+			);
+			if( bp->icon ){
+				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
+			}
+			else if( bp->exe && !PathFileExistsW(bp->exe) ){
+				// ファイルがない時はエラーアイコン
+				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
+			}
+			left += BUTTON_WIDTH;
+		}
+	}
+}
+// ブラウザアイコンクリック
+void BrowserIconClick( u_int index )
+{
+	BrowserIcon* bp = &(Browser[index]);
+	if( bp->exe ){
+		// exeパスは環境変数(%windir%など)展開する
+		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
+		size_t arglen = (bp->arg?wcslen(bp->arg):0) + 32;
+		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* arg = (WCHAR*)malloc( arglen * sizeof(WCHAR) );
+		if( exe && dir && arg ){
+			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
+			if( PathFileExistsW(exe) ){
+				DWORD err;
+				WCHAR* p;
+				memcpy( dir, exe, exelen * sizeof(WCHAR) );
+				_snwprintf(arg,arglen,L"%s http://localhost:%s/",bp->arg?bp->arg:L"",wListenPort);
+				p = wcsrchr( dir, L'\\' );
+				if( p ) *p = L'\0';
+				err = (DWORD)ShellExecuteW( NULL, NULL, exe, arg, dir, 0 );
+				if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+			}
+			else{
+				ErrorBoxW(L"%s\r\nは存在しません",exe);
+				goto config;
+			}
+		}
+		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),arglen*sizeof(WCHAR));
+		if( exe ) free(exe), exe=NULL;
+		if( dir ) free(dir), dir=NULL;
+		if( arg ) free(arg), arg=NULL;
+	}
+	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す
+	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
+	else{
+	config:
+		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
+	}
+}
+/*
+// ブラウザ起動
+void BrowserRun( BrowserIcon* bp )
+{
+	if( bp->exe ){
+		// exeパスは環境変数(%windir%など)展開する
+		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
+		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
+		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+		if( exe && dir && cmd ){
+			STARTUPINFOW si;
+			PROCESS_INFORMATION pi;
+			WCHAR* p;
+			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
+			memcpy( dir, exe, exelen * sizeof(WCHAR) );
+			_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
+			p = wcsrchr( dir, L'\\' );
+			if( p ) *p = L'\0';
+			memset( &si, 0, sizeof(si) );
+			si.cb = sizeof(si);
+			if( !CreateProcessW(
+					NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
+					,cmd			// しょうがないのでここにコマンドライン全体を渡す
+					,NULL, NULL
+					,FALSE, 0
+					,NULL			// 環境ブロック？
+					,dir			// カレントディレクトリ
+					,&si, &pi
+				)
+			) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
+			CloseHandle( pi.hThread );
+			CloseHandle( pi.hProcess );
+		}
+		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
+		if( exe ) free(exe), exe=NULL;
+		if( dir ) free(dir), dir=NULL;
+		if( cmd ) free(cmd), cmd=NULL;
+	}
+}
+void BrowserIconClick( u_int index )
+{
+	switch( index ){
+	case BI_IE:
+	case BI_CHROME:
+	case BI_FIREFOX:
+	case BI_OPERA:
+		BrowserRun( &(Browser[index]) );
+		break;
+	case BI_USER1:
+	case BI_USER2:
+	case BI_USER3:
+	case BI_USER4:
+		if( Browser[index].exe ){
+			BrowserRun( &(Browser[index]) );
+			break;
+		}
+		// 未登録の場合は設定画面
+		// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
+		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
+		break;
+	}
+}
+*/
 
 void LogSave( void )
 {
@@ -4345,29 +4414,6 @@ void MainFormCreateAfter( void )
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
 }
 
-void BrowserIconClick( u_int index )
-{
-	switch( index ){
-	case BI_IE:
-	case BI_CHROME:
-	case BI_FIREFOX:
-	case BI_OPERA:
-		BrowserRun( &(Browser[index]) );
-		break;
-	case BI_USER1:
-	case BI_USER2:
-	case BI_USER3:
-	case BI_USER4:
-		if( Browser[index].exe ){
-			BrowserRun( &(Browser[index]) );
-			break;
-		}
-		// 未登録の場合は設定画面
-		// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
-		break;
-	}
-}
 
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -4509,10 +4555,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case CMD_SETTING:	// 設定
 			if( ConfigDialog(0)==ID_DLG_OK ) PostMessage( hwnd, WM_SETTING_OK, 0,0 );
 			break;
-		case CMD_IE     : BrowserRun( &(Browser[BI_IE]) );     break;
-		case CMD_CHROME : BrowserRun( &(Browser[BI_CHROME]) ); break;
-		case CMD_FIREFOX: BrowserRun( &(Browser[BI_FIREFOX]) );break;
-		case CMD_OPERA  : BrowserRun( &(Browser[BI_OPERA]) );  break;
+		case CMD_IE     : BrowserIconClick( BI_IE );     break;
+		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
+		case CMD_FIREFOX: BrowserIconClick( BI_FIREFOX );break;
+		case CMD_OPERA  : BrowserIconClick( BI_OPERA );  break;
 		case CMD_USER1	: BrowserIconClick( BI_USER1 ); break;
 		case CMD_USER2	: BrowserIconClick( BI_USER2 ); break;
 		case CMD_USER3	: BrowserIconClick( BI_USER3 ); break;
