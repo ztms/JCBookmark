@@ -3775,22 +3775,24 @@ void BrowserIconCreate( void )
 
 	for( i=0; i<BI_COUNT; i++ ){
 		BrowserIcon* bp = &(Browser[i]);
-		bp->hwnd = CreateWindowA(
-						"button"
-						,""
-						,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
-						,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
-						,MainForm
-						,(HMENU)bp->cmdid		// WM_COMMANDのLOWORD(wp)に入る数値
-						,hinst
-						,NULL
-		);
-		if( bp->icon ) SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
-		left += BUTTON_WIDTH;
+		if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
+			bp->hwnd = CreateWindowA(
+							"button"
+							,""
+							,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
+							,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
+							,MainForm
+							,(HMENU)bp->cmdid		// WM_COMMANDのLOWORD(wp)に入る数値
+							,hinst
+							,NULL
+			);
+			if( bp->icon ) SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
+			left += BUTTON_WIDTH;
+		}
 	}
 }
 // ブラウザ起動
-void BrowserExec( BrowserIcon* bp )
+void BrowserRun( BrowserIcon* bp )
 {
 	if( bp->exe ){
 		// exeパスは環境変数(%windir%など)展開する
@@ -3867,6 +3869,20 @@ WCHAR* WindowTextAllocW( HWND hwnd )
 	return text;
 }
 
+// タブアイテムのlParam(タブ識別IDを)が指定した値をもつタブインデックスを返却
+int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
+{
+	int index;
+	for( index=TabCtrl_GetItemCount(hTab)-1; index>=0; index-- ){
+		TCITEM item;
+		memset( &item, 0, sizeof(item) );
+		item.mask = TCIF_PARAM;
+		TabCtrl_GetItem( hTab, index, &item );
+		if( item.lParam==lParam ) return index;
+	}
+	return -1;
+}
+
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
 // ダイアログ用ID
@@ -3896,6 +3912,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			u_int tabid;
 			u_int i;
 			// タブコントロール
+			// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
+			// タブの識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこのIDを
+			// 取り出してタブを特定する。
 			hTabc = CreateWindowW(
 						WC_TABCONTROLW, L""
 						,WS_CHILD |WS_VISIBLE |TCS_RIGHTJUSTIFY |TCS_MULTILINE
@@ -3904,30 +3923,22 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
 			// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
 			ImageList_SetBkColor( hImage, GetSysColor(COLOR_BTNFACE) );
-			// タブの数と種別は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
-			// タブ種別の識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこれを
-			// 取り出してタブ種別を特定する。
-			// HTTPサーバタブ
+			// HTTPサーバタブ(ID=0)
 			item.mask = TCIF_TEXT |TCIF_IMAGE |TCIF_PARAM;
 			item.pszText = L"HTTPサーバ";
 			item.iImage = ImageList_AddIcon( hImage, TrayIcon );
 			item.lParam = (LPARAM)0;					// タブ識別ID
 			TabCtrl_InsertItem( hTabc, 0, &item );		// タブインデックス
-			// ブラウザタブ
+			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 			for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
 				BrowserIcon* bp = &(Browser[i]);
-				if( bp->exe ){
-					// 登録済み
-					item.pszText = bp->name? bp->name : PathFindFileNameW( bp->exe );
-					item.iImage = ImageList_AddIcon( hImage, bp->icon );
+				// 登録済みまたはユーザ指定ブラウザ
+				if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
+					item.pszText = bp->name? bp->name : bp->exe? PathFindFileNameW(bp->exe) : L"";
+					item.iImage = bp->icon? ImageList_AddIcon( hImage, bp->icon ) : -1;
+					item.lParam = (LPARAM)tabid;				// タブ識別ID
+					TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
 				}
-				else{
-					// 未登録(空)
-					item.pszText = bp->name? bp->name : L"";
-					item.iImage = -1; // アイコンなし
-				}
-				item.lParam = (LPARAM)tabid;				// タブ識別ID
-				TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
 			}
 			SendMessageA( hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)hImage );
 			// HTTPサーバ
@@ -3998,6 +4009,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 			SendMessageA( hOK, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hCancel, WM_SETFONT, (WPARAM)hFont, 0 );
+			// ドラッグ＆ドロップ可
+			DragAcceptFiles( hwnd, TRUE );
 		}
 		break;
 
@@ -4024,7 +4037,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_NOTIFY:
 		if( ((NMHDR*)lp)->code==TCN_SELCHANGE ){
-			// 選択タブの識別ID(lParam)取得
+			// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
 			TCITEM item;
 			item.mask = TCIF_PARAM;
 			TabCtrl_GetItem( hTabc, TabCtrl_GetCurSel(hTabc), &item );
@@ -4034,9 +4047,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_TABSELECT:
 		{
+			// wParamにタブIDが入っている（※タブインデックスではない）
+			int tabindex = TabCtrl_GetSelHasLParam( hTabc, (int)wp );
 			u_int i;
-			TabCtrl_SetCurSel( hTabc, (int)wp );
-			TabCtrl_SetCurFocus( hTabc, (int)wp );
+			TabCtrl_SetCurSel( hTabc, tabindex );
+			TabCtrl_SetCurFocus( hTabc, tabindex );
 			// いったん全部隠して
 			ShowWindow( hTxtListenPort, SW_HIDE );
 			ShowWindow( hTxtExe, SW_HIDE );
@@ -4047,7 +4062,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( hArg[i], SW_HIDE );
 			}
 			// 該当タブのものだけ表示
-			switch( wp ){
+			switch( (int)wp ){
 			case 0: // HTTPサーバ
 				ShowWindow( hTxtListenPort, SW_SHOW );
 				ShowWindow( hListenPort, SW_SHOW );
@@ -4098,6 +4113,39 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0;
 
+	case WM_DROPFILES:
+		{
+#if 0
+			// ドロップ位置は関係なく、ドロップ時にユーザ指定ブラウザタブが選択されていれば
+			// ファイルパスをEXEパスに反映する。
+			WCHAR dropfile0[MAX_PATH+1]=L"";
+			int browserIndex = TabCtrl_GetCurSel(hTabc) - 1;
+			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH ); // (先頭)ドロップファイル
+			DragFinish( (HDROP)wp );
+			switch( browserIndex ){
+			case BI_USER1: case BI_USER2: case BI_USER3: case BI_USER4:
+				SetWindowTextW( hExe[browserIndex], dropfile0 );
+				LogW(L"ブラウザ%dにドロップファイル反映");
+				break;
+			}
+#endif
+			// ドロップした場所がユーザ指定ブラウザEXEパス用エディットコントール上なら
+			// ファイルパスをEXEパスに反映する。その他のドロップ操作は無視。
+			WCHAR dropfile0[MAX_PATH+1]=L"";
+			POINT po;
+			HWND poWnd;
+			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH ); // (先頭)ドロップファイル
+			DragQueryPoint( (HDROP)wp, &po ); // ドロップ座標(クライアント座標系)
+			DragFinish( (HDROP)wp );
+			ClientToScreen( hwnd, &po ); // ドロップ座標をスクリーン座標系に
+			poWnd = WindowFromPoint(po);
+			if( poWnd==hExe[BI_USER1] ) SetWindowTextW( hExe[BI_USER1], dropfile0 );
+			else if( poWnd==hExe[BI_USER2] ) SetWindowTextW( hExe[BI_USER2], dropfile0 );
+			else if( poWnd==hExe[BI_USER3] ) SetWindowTextW( hExe[BI_USER3], dropfile0 );
+			else if( poWnd==hExe[BI_USER4] ) SetWindowTextW( hExe[BI_USER4], dropfile0 );
+		}
+		return 0;
+
 	case WM_DESTROY:
 		ImageList_Destroy( hImage );
 		DeleteObject( hFont );
@@ -4106,7 +4154,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	}
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
-
+// 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
 DWORD ConfigDialog( u_int tabid )
 {
 	DWORD dwRes=ID_DLG_UNKNOWN;
@@ -4304,14 +4352,14 @@ void BrowserIconClick( u_int index )
 	case BI_CHROME:
 	case BI_FIREFOX:
 	case BI_OPERA:
-		BrowserExec( &(Browser[index]) );
+		BrowserRun( &(Browser[index]) );
 		break;
 	case BI_USER1:
 	case BI_USER2:
 	case BI_USER3:
 	case BI_USER4:
 		if( Browser[index].exe ){
-			BrowserExec( &(Browser[index]) );
+			BrowserRun( &(Browser[index]) );
 			break;
 		}
 		// 未登録の場合は設定画面
@@ -4461,10 +4509,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case CMD_SETTING:	// 設定
 			if( ConfigDialog(0)==ID_DLG_OK ) PostMessage( hwnd, WM_SETTING_OK, 0,0 );
 			break;
-		case CMD_IE     : BrowserExec( &(Browser[BI_IE]) );     break;
-		case CMD_CHROME : BrowserExec( &(Browser[BI_CHROME]) ); break;
-		case CMD_FIREFOX: BrowserExec( &(Browser[BI_FIREFOX]) );break;
-		case CMD_OPERA  : BrowserExec( &(Browser[BI_OPERA]) );  break;
+		case CMD_IE     : BrowserRun( &(Browser[BI_IE]) );     break;
+		case CMD_CHROME : BrowserRun( &(Browser[BI_CHROME]) ); break;
+		case CMD_FIREFOX: BrowserRun( &(Browser[BI_FIREFOX]) );break;
+		case CMD_OPERA  : BrowserRun( &(Browser[BI_OPERA]) );  break;
 		case CMD_USER1	: BrowserIconClick( BI_USER1 ); break;
 		case CMD_USER2	: BrowserIconClick( BI_USER2 ); break;
 		case CMD_USER3	: BrowserIconClick( BI_USER3 ); break;
