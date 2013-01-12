@@ -3691,12 +3691,13 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 #define ID_DLG_UNKNOWN	0
 #define ID_DLG_OK		1
 #define ID_DLG_CANCEL	2
+#define ID_DLG_FOPEN	3
 #define ID_DLG_DESTROY	99
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	static LPDWORD		lpRes;
-	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort, hTxtExe, hTxtArg
-						,hExe[BI_COUNT], hArg[BI_COUNT];
+	static HWND			hTabc, hOK, hCancel, hFOpen, hListenPort, hTxtListenPort
+						,hTxtExe, hTxtArg, hExe[BI_COUNT], hArg[BI_COUNT];
 	static HFONT		hFont;
 	static HIMAGELIST	hImage;
 
@@ -3755,14 +3756,13 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
 			// ブラウザ
-			// TODO:EXEをダイアログで選択するボタン(GetOpenFileName)
 			hTxtExe = CreateWindowW(
 						L"static",L"実行ﾌｧｲﾙ"
 						,SS_SIMPLE |WS_CHILD
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
 			hTxtArg = CreateWindowW(
-						L"static",L"引数"
+						L"static",L"引 数"
 						,SS_SIMPLE |WS_CHILD
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
@@ -3778,12 +3778,15 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 			}
-			// 既定ブラウザEXEパスは編集不可
-			SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
-			// ボタン
+			// ファイル選択ボタン
+			hFOpen = CreateWindowA(
+						"button",NULL
+						,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
+						,0,0,0,0
+						,hwnd,(HMENU)ID_DLG_FOPEN
+						,hinst,NULL
+			);
+			// OK・キャンセルボタン
 			hOK = CreateWindowW(
 						L"button",L" O K "
 						,WS_CHILD |WS_VISIBLE |WS_TABSTOP
@@ -3798,6 +3801,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,hwnd,(HMENU)ID_DLG_CANCEL
 						,hinst,NULL
 			);
+			// 既定ブラウザEXEパスは編集不可
+			SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
+			SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
+			SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
+			SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
 			// フォント
 			hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
 			SendMessageA( hTabc, WM_SETFONT, (WPARAM)hFont, 0 );
@@ -3811,6 +3819,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 			SendMessageA( hOK, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hCancel, WM_SETFONT, (WPARAM)hFont, 0 );
+			// アイコン
+			SendMessageA( hFOpen, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0) );
 			// ドラッグ＆ドロップ可
 			DragAcceptFiles( hwnd, TRUE );
 		}
@@ -3827,11 +3837,16 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			MoveWindow( hTxtListenPort,	40,	rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
 			MoveWindow( hListenPort,	160, rc.top+30, 80, 22, TRUE );
 			MoveWindow( hTxtExe,		20, rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
-			MoveWindow( hTxtArg,		20, rc.top+70+3, LOWORD(lp)-90, 22, TRUE );
-			for( i=0; i<BI_COUNT; i++ ){
+			MoveWindow( hTxtArg,		50, rc.top+70+3, LOWORD(lp)-90, 22, TRUE );
+			for( i=0; i<BI_USER1; i++ ){
 				MoveWindow( hExe[i],	100, rc.top+30, LOWORD(lp)-120, 22, TRUE );
 				MoveWindow( hArg[i],	100, rc.top+70, LOWORD(lp)-120, 22, TRUE );
 			}
+			for( i=BI_USER1; i<BI_COUNT; i++ ){
+				MoveWindow( hExe[i],	100, rc.top+30, LOWORD(lp)-120-24, 22, TRUE );
+				MoveWindow( hArg[i],	100, rc.top+70, LOWORD(lp)-120, 22, TRUE );
+			}
+			MoveWindow( hFOpen,			LOWORD(lp)-44, rc.top+30-1, 24, 24, TRUE );
 			MoveWindow( hOK,			LOWORD(lp)-200, HIWORD(lp)-50, 80, 30, TRUE );
 			MoveWindow( hCancel,		LOWORD(lp)-100, HIWORD(lp)-50, 80, 30, TRUE );
 		}
@@ -3859,6 +3874,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			ShowWindow( hTxtExe, SW_HIDE );
 			ShowWindow( hTxtArg, SW_HIDE );
 			ShowWindow( hListenPort, SW_HIDE );
+			ShowWindow( hFOpen, SW_HIDE );
 			for( i=0; i<BI_COUNT; i++ ){
 				ShowWindow( hExe[i], SW_HIDE );
 				ShowWindow( hArg[i], SW_HIDE );
@@ -3869,8 +3885,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( hTxtListenPort, SW_SHOW );
 				ShowWindow( hListenPort, SW_SHOW );
 				break;
-			case 1: case 2: case 3: case 4:
 			case 5: case 6: case 7: case 8:
+				ShowWindow( hFOpen, SW_SHOW );	// ファイル選択ボタンはユーザ指定ブラウザのみ
+			case 1: case 2: case 3: case 4:
 				ShowWindow( hTxtExe, SW_SHOW );
 				ShowWindow( hTxtArg, SW_SHOW );
 				// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
@@ -3911,6 +3928,26 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case ID_DLG_CANCEL:
 			*lpRes = ID_DLG_CANCEL;
 			DestroyWindow( hwnd );
+			break;
+		case ID_DLG_FOPEN:
+			{
+				// ユーザ指定ブラウザ実行ファイルをファイル選択ダイアログで入力
+				WCHAR wpath[MAX_PATH+1] = L"";
+				OPENFILENAMEW ofn;
+				memset( &ofn, 0, sizeof(ofn) );
+				ofn.lStructSize = sizeof(ofn);
+				ofn.hwndOwner = hwnd;
+				ofn.lpstrFile = wpath;
+				ofn.nMaxFile = sizeof(wpath)/sizeof(WCHAR);
+				if( GetOpenFileNameW( &ofn ) ){
+					// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
+					TCITEM item;
+					item.mask = TCIF_PARAM;
+					TabCtrl_GetItem( hTabc, TabCtrl_GetCurSel(hTabc), &item );
+					// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
+					SetWindowTextW( hExe[item.lParam-1], wpath );
+				}
+			}
 			break;
 		}
 		return 0;
@@ -3955,7 +3992,7 @@ DWORD ConfigDialog( u_int tabid )
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
 						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 150
 						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 75
-						,430, 250
+						,480, 300
 						,MainForm,NULL
 						,GetModuleHandle(NULL),NULL
 		);
@@ -4200,71 +4237,6 @@ void BrowserIconClick( u_int index )
 		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
 	}
 }
-/*
-// ブラウザ起動
-void BrowserRun( BrowserIcon* bp )
-{
-	if( bp->exe ){
-		// exeパスは環境変数(%windir%など)展開する
-		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
-		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
-		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
-		if( exe && dir && cmd ){
-			STARTUPINFOW si;
-			PROCESS_INFORMATION pi;
-			WCHAR* p;
-			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
-			memcpy( dir, exe, exelen * sizeof(WCHAR) );
-			_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
-			p = wcsrchr( dir, L'\\' );
-			if( p ) *p = L'\0';
-			memset( &si, 0, sizeof(si) );
-			si.cb = sizeof(si);
-			if( !CreateProcessW(
-					NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
-					,cmd			// しょうがないのでここにコマンドライン全体を渡す
-					,NULL, NULL
-					,FALSE, 0
-					,NULL			// 環境ブロック？
-					,dir			// カレントディレクトリ
-					,&si, &pi
-				)
-			) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
-			CloseHandle( pi.hThread );
-			CloseHandle( pi.hProcess );
-		}
-		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
-		if( exe ) free(exe), exe=NULL;
-		if( dir ) free(dir), dir=NULL;
-		if( cmd ) free(cmd), cmd=NULL;
-	}
-}
-void BrowserIconClick( u_int index )
-{
-	switch( index ){
-	case BI_IE:
-	case BI_CHROME:
-	case BI_FIREFOX:
-	case BI_OPERA:
-		BrowserRun( &(Browser[index]) );
-		break;
-	case BI_USER1:
-	case BI_USER2:
-	case BI_USER3:
-	case BI_USER4:
-		if( Browser[index].exe ){
-			BrowserRun( &(Browser[index]) );
-			break;
-		}
-		// 未登録の場合は設定画面
-		// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
-		break;
-	}
-}
-*/
 
 void LogSave( void )
 {
