@@ -517,7 +517,7 @@ typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
 	WCHAR*		exe;			// exeフルパス
 	WCHAR*		arg;			// 引数
-	int			hide;			// 表示しない
+	BOOL		hide;			// 表示しない
 } BrowserInfo;
 
 typedef struct {
@@ -666,16 +666,16 @@ BrowserInfo* BrowserInfoAlloc( void )
 						br[BI_OPERA].arg = UTF8toWideCharAlloc(buf+9);
 					}
 					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
-						br[BI_IE].hide = atoi(buf+7);
+						br[BI_IE].hide = atoi(buf+7)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"ChromeHide=",11)==0 && *(buf+11) ){
-						br[BI_CHROME].hide = atoi(buf+11);
+						br[BI_CHROME].hide = atoi(buf+11)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"FirefoxHide=",12)==0 && *(buf+12) ){
-						br[BI_FIREFOX].hide = atoi(buf+12);
+						br[BI_FIREFOX].hide = atoi(buf+12)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"OperaHide=",10)==0 && *(buf+10) ){
-						br[BI_OPERA].hide = atoi(buf+10);
+						br[BI_OPERA].hide = atoi(buf+10)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"Exe1=",5)==0 && *(buf+5) ){
 						br[BI_USER1].exe = UTF8toWideCharAlloc(buf+5);
@@ -702,16 +702,16 @@ BrowserInfo* BrowserInfoAlloc( void )
 						br[BI_USER4].arg = UTF8toWideCharAlloc(buf+5);
 					}
 					else if( strnicmp(buf,"Hide1=",6)==0 && *(buf+6) ){
-						br[BI_USER1].hide = atoi(buf+6);
+						br[BI_USER1].hide = atoi(buf+6)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"Hide2=",6)==0 && *(buf+6) ){
-						br[BI_USER2].hide = atoi(buf+6);
+						br[BI_USER2].hide = atoi(buf+6)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"Hide3=",6)==0 && *(buf+6) ){
-						br[BI_USER3].hide = atoi(buf+6);
+						br[BI_USER3].hide = atoi(buf+6)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"Hide4=",6)==0 && *(buf+6) ){
-						br[BI_USER4].hide = atoi(buf+6);
+						br[BI_USER4].hide = atoi(buf+6)?TRUE:FALSE;
 					}
 				}
 				fclose( fp );
@@ -726,7 +726,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 	}
 	return br;
 }
-void BrowserInfoFree( BrowserInfo* br )
+void BrowserInfoFree( BrowserInfo br[BI_COUNT] )
 {
 	UINT i;
 	for( i=0; i<BI_COUNT; i++ ){
@@ -787,7 +787,7 @@ void ListenPortGet( void )
 	}
 }
 
-void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT] )
+void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
 {
 	WCHAR new[MAX_PATH+1]=L"";
 	WCHAR* p;
@@ -799,46 +799,33 @@ void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT
 		wcscpy( p+1, L"my.ini.new" );
 		fp = _wfopen(new,L"wb");
 		if( fp ){
-			WCHAR ini[MAX_PATH+1]=L"";
 			u_char* listenPort = WideCharToUTF8alloc( wListenPort );
-			u_char* ieArg      = WideCharToUTF8alloc( wArg[BI_IE] );
-			u_char* chromeArg  = WideCharToUTF8alloc( wArg[BI_CHROME] );
-			u_char* firefoxArg = WideCharToUTF8alloc( wArg[BI_FIREFOX] );
-			u_char* operaArg   = WideCharToUTF8alloc( wArg[BI_OPERA] );
-			u_char* Exe1	   = WideCharToUTF8alloc( wExe[BI_USER1] );
-			u_char* Exe2	   = WideCharToUTF8alloc( wExe[BI_USER2] );
-			u_char* Exe3	   = WideCharToUTF8alloc( wExe[BI_USER3] );
-			u_char* Exe4	   = WideCharToUTF8alloc( wExe[BI_USER4] );
-			u_char* Arg1	   = WideCharToUTF8alloc( wArg[BI_USER1] );
-			u_char* Arg2	   = WideCharToUTF8alloc( wArg[BI_USER2] );
-			u_char* Arg3	   = WideCharToUTF8alloc( wArg[BI_USER3] );
-			u_char* Arg4	   = WideCharToUTF8alloc( wArg[BI_USER4] );
-			fprintf(fp,"ListenPort=%s\r\n",listenPort?listenPort:"");
-			fprintf(fp,"IEArg=%s\r\n",ieArg?ieArg:"");
-			fprintf(fp,"ChromeArg=%s\r\n",chromeArg?chromeArg:"");
-			fprintf(fp,"FirefoxArg=%s\r\n",firefoxArg?firefoxArg:"");
-			fprintf(fp,"OperaArg=%s\r\n",operaArg?operaArg:"");
-			fprintf(fp,"Exe1=%s\r\n",Exe1?Exe1:"");
-			fprintf(fp,"Arg1=%s\r\n",Arg1?Arg1:"");
-			fprintf(fp,"Exe2=%s\r\n",Exe2?Exe2:"");
-			fprintf(fp,"Arg2=%s\r\n",Arg2?Arg2:"");
-			fprintf(fp,"Exe3=%s\r\n",Exe3?Exe3:"");
-			fprintf(fp,"Arg3=%s\r\n",Arg3?Arg3:"");
-			fprintf(fp,"Exe4=%s\r\n",Exe4?Exe4:"");
-			fprintf(fp,"Arg4=%s\r\n",Arg4?Arg4:"");
+			u_char* exe[BI_COUNT], *arg[BI_COUNT];
+			WCHAR ini[MAX_PATH+1]=L"";
+			UINT i;
+			for( i=0; i<BI_COUNT; i++ ){
+				exe[i] = WideCharToUTF8alloc( wExe[i] );
+				arg[i] = WideCharToUTF8alloc( wArg[i] );
+			}
+			fprintf(fp,"ListenPort=%s\r\n",	listenPort		?listenPort:"");
+			fprintf(fp,"IEArg=%s\r\n",		arg[BI_IE]		?arg[BI_IE]:"");
+			fprintf(fp,"IEHide=%s\r\n",		hide[BI_IE]		?"1":"");
+			fprintf(fp,"ChromeArg=%s\r\n",	arg[BI_CHROME]	?arg[BI_CHROME]:"");
+			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME]	?"1":"");
+			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX]	?arg[BI_FIREFOX]:"");
+			fprintf(fp,"FirefoxHide=%s\r\n",hide[BI_FIREFOX]?"1":"");
+			fprintf(fp,"OperaArg=%s\r\n",	arg[BI_OPERA]	?arg[BI_OPERA]:"");
+			fprintf(fp,"OperaHide=%s\r\n",	hide[BI_OPERA]	?"1":"");
+			for( i=BI_USER1; i<BI_COUNT; i++ ){
+				fprintf(fp,"Exe%u=%s\r\n",i-BI_USER1+1,exe[i]?exe[i]:"");
+				fprintf(fp,"Arg%u=%s\r\n",i-BI_USER1+1,arg[i]?arg[i]:"");
+				fprintf(fp,"Hide%u=%s\r\n",i-BI_USER1+1,hide[i]?"1":"");
+			}
 			if( listenPort ) free( listenPort );
-			if( chromeArg ) free( chromeArg );
-			if( firefoxArg ) free( firefoxArg );
-			if( ieArg ) free( ieArg );
-			if( operaArg ) free( operaArg );
-			if( Exe1 ) free( Exe1 );
-			if( Exe2 ) free( Exe2 );
-			if( Exe3 ) free( Exe3 );
-			if( Exe4 ) free( Exe4 );
-			if( Arg1 ) free( Arg1 );
-			if( Arg2 ) free( Arg2 );
-			if( Arg3 ) free( Arg3 );
-			if( Arg4 ) free( Arg4 );
+			for( i=0; i<BI_COUNT; i++ ){
+				if( exe[i] ) free( exe[i] );
+				if( arg[i] ) free( arg[i] );
+			}
 			fclose(fp);
 			// my.ini.new -> my.ini
 			wcscpy( ini, new );
@@ -3252,7 +3239,7 @@ void SocketWrite( SOCKET sock )
 	}
 }
 
-void SocketRead( SOCKET sock, BrowserIcon* browser )
+void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 {
 	TClient* cp = ClientOfSocket( sock );
 	if( cp ){
@@ -3907,7 +3894,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	static LPDWORD		lpRes;
 	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort
-						,hFOpen=NULL, hTxtExe=NULL, hTxtArg=NULL
+						,hTxtBtn=NULL, hTxtExe=NULL, hTxtArg=NULL, hFOpen=NULL
 						,hHide[BI_COUNT]={0}, hExe[BI_COUNT]={0}, hArg[BI_COUNT]={0};
 	static HICON		hIcon[BI_COUNT]={0};
 	static HFONT		hFont;
@@ -3973,6 +3960,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
 					}
 				}
+				hTxtBtn = CreateWindowW(
+							L"static",L"ボタンを"
+							,SS_SIMPLE |WS_CHILD
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
 				hTxtExe = CreateWindowW(
 							L"static",L"実行ﾌｧｲﾙ"
 							,SS_SIMPLE |WS_CHILD
@@ -3983,6 +3975,14 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
+				hFOpen = CreateWindowA(
+							"button",NULL // L"参照"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_FOPEN
+							,hinst,NULL
+				);
+				SendMessageA( hTxtBtn, WM_SETFONT, (WPARAM)hFont, 0 );
 				SendMessageA( hTxtExe, WM_SETFONT, (WPARAM)hFont, 0 );
 				SendMessageA( hTxtArg, WM_SETFONT, (WPARAM)hFont, 0 );
 				for( i=0; i<BI_COUNT; i++ ){
@@ -4004,21 +4004,14 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					SendMessageA( hHide[i], WM_SETFONT, (WPARAM)hFont, 0 );
 					SendMessageA( hExe[i], WM_SETFONT, (WPARAM)hFont, 0 );
 					SendMessageA( hArg[i], WM_SETFONT, (WPARAM)hFont, 0 );
+					if( br[i].hide ) SendMessageA( hHide[i], BM_SETCHECK, BST_CHECKED, 0 );
 				}
 				// 既定ブラウザEXEパスは編集不可
 				SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
 				SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
 				SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
 				SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
-				// ファイル選択ボタン
-				hFOpen = CreateWindowA(
-							"button",NULL
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_FOPEN
-							,hinst,NULL
-				);
-				// アイコン
+				// 参照ボタンアイコン
 				SendMessageA( hFOpen, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0) );
 				BrowserInfoFree(br), br=NULL;
 			}
@@ -4053,21 +4046,22 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// タブを除いた表示領域を取得(rc.topがタブの高さになる)
 			TabCtrl_AdjustRect( hTabc, FALSE, &rc );
 			// パーツ移動
-			MoveWindow( hTxtListenPort,	40,  rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
-			MoveWindow( hListenPort,	160, rc.top+30,   80,            22, TRUE );
-			MoveWindow( hTxtExe,		20,  rc.top+50+3, LOWORD(lp)-90, 22, TRUE );
-			MoveWindow( hTxtArg,		50,  rc.top+90+3, LOWORD(lp)-90, 22, TRUE );
+			MoveWindow( hTxtListenPort,	40,  rc.top+30+3,  110, 22, TRUE );
+			MoveWindow( hListenPort,	160, rc.top+30,    80, 22, TRUE );
+			MoveWindow( hTxtBtn,		40,  rc.top+26,    70, 22, TRUE );
+			MoveWindow( hTxtExe,		20,  rc.top+60+3,  90, 22, TRUE );
+			MoveWindow( hTxtArg,		50,  rc.top+100+3, 60, 22, TRUE );
 			for( i=0; i<BI_USER1; i++ ){
-				MoveWindow( hHide[i],	20,  rc.top+16, LOWORD(lp)-120, 22, TRUE );
-				MoveWindow( hExe[i],	100, rc.top+50, LOWORD(lp)-120, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+90, LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hHide[i],	100, rc.top+24,  LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120, 22, TRUE );
 			}
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				MoveWindow( hHide[i],	20,  rc.top+16, LOWORD(lp)-120,    22, TRUE );
-				MoveWindow( hExe[i],	100, rc.top+50, LOWORD(lp)-120-24, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+90, LOWORD(lp)-120,    22, TRUE );
+				MoveWindow( hHide[i],	100, rc.top+24,  LOWORD(lp)-120,    22, TRUE );
+				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120-24, 22, TRUE );
+				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120,    22, TRUE );
 			}
-			MoveWindow( hFOpen,			LOWORD(lp)-44,  rc.top+50-1,   24, 24, TRUE );
+			MoveWindow( hFOpen,			LOWORD(lp)-44,  rc.top+60-1,   24, 24, TRUE );
 			MoveWindow( hOK,			LOWORD(lp)-200, HIWORD(lp)-50, 80, 30, TRUE );
 			MoveWindow( hCancel,		LOWORD(lp)-100, HIWORD(lp)-50, 80, 30, TRUE );
 		}
@@ -4092,6 +4086,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			TabCtrl_SetCurFocus( hTabc, tabindex );
 			// いったん全部隠して
 			ShowWindow( hTxtListenPort, SW_HIDE );
+			ShowWindow( hTxtBtn, SW_HIDE );
 			ShowWindow( hTxtExe, SW_HIDE );
 			ShowWindow( hTxtArg, SW_HIDE );
 			ShowWindow( hListenPort, SW_HIDE );
@@ -4110,6 +4105,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			case 5: case 6: case 7: case 8:
 				ShowWindow( hFOpen, SW_SHOW );	// ファイル選択ボタンはユーザ指定ブラウザのみ
 			case 1: case 2: case 3: case 4:
+				ShowWindow( hTxtBtn, SW_SHOW );
 				ShowWindow( hTxtExe, SW_SHOW );
 				ShowWindow( hTxtArg, SW_SHOW );
 				// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
@@ -4126,7 +4122,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case ID_DLG_OK:
 			{
 				// 設定ファイル保存
-				WCHAR	wPort[8], *exe[BI_COUNT], *arg[BI_COUNT];
+				WCHAR	wPort[8], *wExe[BI_COUNT], *wArg[BI_COUNT];
+				BOOL	hide[BI_COUNT];
 				int		iPort;
 				UINT	i;
 				GetWindowTextW( hListenPort, wPort, sizeof(wPort)/sizeof(WCHAR) );
@@ -4136,13 +4133,14 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					return 0;
 				}
 				for( i=0; i<BI_COUNT; i++ ){
-					exe[i] = WindowTextAllocW( hExe[i] );
-					arg[i] = WindowTextAllocW( hArg[i] );
+					wExe[i] = WindowTextAllocW( hExe[i] );
+					wArg[i] = WindowTextAllocW( hArg[i] );
+					hide[i] = (BST_CHECKED==SendMessage( hHide[i], BM_GETCHECK, 0,0 ))? TRUE:FALSE;
 				}
-				ConfigSave( wPort, exe, arg );
+				ConfigSave( wPort, wExe, wArg, hide );
 				for( i=0; i<BI_COUNT; i++ ){
-					if( exe[i] ) free( exe[i] );
-					if( arg[i] ) free( arg[i] );
+					if( wExe[i] ) free( wExe[i] );
+					if( wArg[i] ) free( wArg[i] );
 				}
 				*lpRes = ID_DLG_OK;
 				DestroyWindow( hwnd );
@@ -4244,7 +4242,7 @@ DWORD ConfigDialog( UINT tabid )
 	}
 	return dwRes;
 }
-void BrowserIconDestroy( BrowserIcon br[] )
+void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 {
 	if( br ){
 		UINT i;
@@ -4265,13 +4263,12 @@ BrowserIcon* BrowserIconCreate( void )
 	if( ico ){
 		BrowserInfo* br;
 		memset( ico, 0, sizeof(BrowserIcon)*BI_COUNT );
-		
+
 		br = BrowserInfoAlloc();
 		if( br ){
 			HINSTANCE hinst = GetModuleHandle(NULL);
 			int left=0;
 			UINT i;
-
 			for( i=0; i<BI_COUNT; i++ ){
 				if( !br[i].hide && (br[i].exe || (BI_USER1<=i && i<=BI_USER4)) ){
 					ico[i].hwnd = CreateWindowA(
