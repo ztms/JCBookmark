@@ -95,8 +95,8 @@ typedef struct {
 	u_char*		boundary;			// Content-Type:multipart/form-dataのboundary
 	HANDLE		writefh;			// 書出ファイルハンドル
 	DWORD		wrote;				// 書出済みバイト
-	u_int		ContentLength;		// Content-Length値
-	u_int		bytes;				// 受信バッファ有効バイト
+	UINT		ContentLength;		// Content-Length値
+	UINT		bytes;				// 受信バッファ有効バイト
 	size_t		bufsize;			// 受信バッファサイズ
 } Request;
 
@@ -104,8 +104,8 @@ typedef struct {
 	u_char*		buf;				// レスポンス送信バッファ
 	HANDLE		readfh;				// 送信ファイルハンドル
 	DWORD		readed;				// 送信ファイル読込済みバイト
-	u_int		sended;				// 送信済みバイト
-	u_int		bytes;				// 送信バッファ有効バイト
+	UINT		sended;				// 送信済みバイト
+	UINT		bytes;				// 送信バッファ有効バイト
 	size_t		bufsize;			// 送信バッファサイズ
 } Response;
 
@@ -180,85 +180,129 @@ void mlogopen( void )
 		mlog = _wfopen( log, L"wb" );
 	}
 }
-void* mymalloc( size_t size, const u_char* file, u_int line )
+SIZE_T PF( void )
+{
+	if( ThisProcess ){
+		PROCESS_MEMORY_COUNTERS pmc;
+		memset( &pmc, 0, sizeof(pmc) );
+		if( GetProcessMemoryInfo( ThisProcess, &pmc, sizeof(pmc) ) )
+			return pmc.PagefileUsage /1024;	// KB
+	}
+	return 0;
+}
+void* mymalloc( size_t size, UINT line )
 {
 	void* p = HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
 	if( !mlog ) mlogopen();
-	if( mlog && p ) fprintf(mlog,"+%p:malloc(%u):%s:%u\r\n",p,size,file,line);
+	if( mlog && p ) fprintf(mlog,"+%p:L%u:malloc(%u) (%ukb)\r\n",p,line,size,PF());
 	return p;
 }
-void myfree( void* p )
+void myfree( void* p, UINT line )
 {
 	HeapFree( Heap, 0, p );
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p\r\n",p);
+	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",p,line,PF());
 }
-char* mystrdup( const char* str, const u_char* file, u_int line )
+char* mystrdup( LPCSTR str, UINT line )
 {
 	size_t size = strlen(str)+1;
-	char* p = (char*)mymalloc( size, file, line );
+	char* p = (char*)mymalloc( size, line );
 	memcpy( p, str, size );
 	return p;
 }
-WCHAR* mywcsdup( const WCHAR* wstr, const u_char* file, u_int line )
+WCHAR* mywcsdup( LPCWSTR wstr, UINT line )
 {
 	size_t size = (wcslen(wstr)+1)*sizeof(WCHAR);
-	WCHAR* p = (WCHAR*)mymalloc( size, file, line );
+	WCHAR* p = (WCHAR*)mymalloc( size, line );
 	memcpy( p, wstr, size );
 	return p;
 }
-FILE* myfopen( const char* path, const char* mode, const u_char* file, u_int line )
+FILE* myfopen( LPCSTR path, LPCSTR mode, UINT line )
 {
 	FILE* fp = fopen( path, mode );
 	if( !mlog ) mlogopen();
-	if( mlog && fp ) fprintf(mlog,"+%p:fopen(%s):%s:%u\r\n",fp,path,file,line);
+	if( mlog && fp ) fprintf(mlog,"+%p:L%u:fopen(%s) (%ukb)\r\n",fp,line,path,PF());
 	return fp;
 }
-FILE* mywfopen( const WCHAR* path, const WCHAR* mode, const u_char* file, u_int line )
+FILE* mywfopen( LPCWSTR path, const WCHAR* mode, UINT line )
 {
 	FILE* fp = _wfopen( path, mode );
 	if( !mlog ) mlogopen();
-	if( mlog && fp ) fprintf(mlog,"+%p:_wfopen(?):%s:%u\r\n",fp,file,line);
+	if( mlog && fp ) fprintf(mlog,"+%p:L%u:_wfopen(?) (%ukb)\r\n",fp,line,PF());
 	return fp;
 }
-int myfclose( FILE* fp )
+int myfclose( FILE* fp, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p\r\n",fp);
+	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",fp,line,PF());
 	return fclose( fp );
 }
-HANDLE myCreateFileW( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, const u_char* file, u_int line )
+HANDLE myCreateFileW( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, UINT line )
 {
 	HANDLE handle = CreateFileW( path, access, mode, sec, disp, attr, templete );
 	if( !mlog ) mlogopen();
 	if( mlog && handle!=INVALID_HANDLE_VALUE )
-		fprintf(mlog,"+%p:CreateFileW(%s):%s:%u\r\n",handle,path,file,line);
+		fprintf(mlog,"+%p:L%u:CreateFileW(?) (%ukb)\r\n",handle,line,PF());
 	return handle;
 }
-BOOL myCloseHandle( HANDLE handle )
+BOOL myCloseHandle( HANDLE handle, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p\r\n",handle);
+	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",handle,line,PF());
 	return CloseHandle( handle );
 }
-#define malloc(a) mymalloc(a,__FILE__,__LINE__)
-#define strdup(a) mystrdup(a,__FILE__,__LINE__)
-#define wcsdup(a) mywcsdup(a,__FILE__,__LINE__)
-#define free(a) myfree(a)
-#define fopen(a,b) myfopen(a,b,__FILE__,__LINE__)
-#define _wfopen(a,b) mywfopen(a,b,__FILE__,__LINE__)
-#define fclose(a) myfclose(a)
-#define CreateFileW(a,b,c,d,e,f,g) myCreateFileW(a,b,c,d,e,f,g,__FILE__,__LINE__)
-#define CloseHandle(a) myCloseHandle(a)
+UINT myExtractIconExW( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT n, UINT line )
+{
+	UINT ret = ExtractIconExW( path, index, iconL, iconS, n );
+	if( !mlog ) mlogopen();
+	if( mlog && ret ){
+		if( iconL && *iconL ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%ukb)\r\n",*iconL,line,PF());
+		if( iconS && *iconS ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%ukb)\r\n",*iconS,line,PF());
+	}
+	return ret;
+}
+HICON myExtractAssociatedIconW( HINSTANCE hinst, LPWSTR path, LPWORD index, UINT line )
+{
+	HICON icon = ExtractAssociatedIconW( hinst, path, index );
+	if( !mlog ) mlogopen();
+	if( mlog && icon ) fprintf(mlog,"+%p:L%u:ExtractAssociatedIconW(?) (%ukb)\r\n",icon,line,PF());
+	return icon;
+}
+DWORD_PTR mySHGetFileInfoW( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byte, UINT flag, UINT line )
+{
+	DWORD_PTR ret = SHGetFileInfoW( path, attr, info, byte, flag );
+	if( mlog && ret && info && info->hIcon )
+		fprintf(mlog,"+%p:L%u:SHGetFileInfoW(?) (%ukb)\r\n",info->hIcon,line,PF());
+	return ret;
+}
+BOOL myDestroyIcon( HICON icon, UINT line )
+{
+	if( !mlog ) mlogopen();
+	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",icon,line,PF());
+	return DestroyIcon( icon );
+}
+#define malloc(a) mymalloc(a,__LINE__)
+#define strdup(a) mystrdup(a,__LINE__)
+#define wcsdup(a) mywcsdup(a,__LINE__)
+#define free(a) myfree(a,__LINE__)
+#define fopen(a,b) myfopen(a,b,__LINE__)
+#define _wfopen(a,b) mywfopen(a,b,__LINE__)
+#define fclose(a) myfclose(a,__LINE__)
+#define CreateFileW(a,b,c,d,e,f,g) myCreateFileW(a,b,c,d,e,f,g,__LINE__)
+#define CloseHandle(a) myCloseHandle(a,__LINE__)
+#define ExtractIconExW(a,b,c,d,e) myExtractIconExW(a,b,c,d,e,__LINE__)
+#define ExtractAssociatedIconW(a,b,c) myExtractAssociatedIconW(a,b,c,__LINE__)
+#define SHGetFileInfoW(a,b,c,d,e) mySHGetFileInfoW(a,b,c,d,e,__LINE__)
+#define DestroyIcon(a) myDestroyIcon(a,__LINE__)
 #else // MEMLOG
-char* mystrdup( const char* str )
+char* mystrdup( LPCSTR str )
 {
 	size_t size = strlen(str)+1;
 	char* p = (char*)HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
 	if( p ) memcpy( p, str, size );
 	return p;
 }
-WCHAR* mywcsdup( const WCHAR* wstr )
+WCHAR* mywcsdup( LPCWSTR wstr )
 {
 	size_t size = (wcslen(wstr)+1) *sizeof(WCHAR);
 	WCHAR* p = (WCHAR*)HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
@@ -454,6 +498,21 @@ WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 
 // ブラウザ起動ボタン
 // TODO:ユーザ指定ブラウザを４つ登録するとメモリ使用量が1MBくらい増える。削減できないものか。
+//  - 最小化でブラウザボタンウィンドウをDestroyしてみたけどなにも変らなかった。
+//  - アイコンを取得しないようにしたら700～800KBほど減少。アイコン1つ100KB近くも使うのか？
+//  - アイコンボタンを作るだけのサンプルプログラムを実行しても1つ100KBなんてまったく使わない。
+//  - アイコンではないのか？しかしアイコンをロードしなければメモリ使用量が減るのはなぜ…？？？
+//  - どうもExtractAssociatedIconまたはSHGetFileInfoを実行すると一気に700～800KB増えるもよう。
+//  　実行のたびに増えるわけではなく一度増えた後はそのままな感じ。
+//  - このAPIはショートカット(.lnk)からアイコン取得するために導入したAPIなので、exeを登録
+//  　していれば使われずメモリ使用量も増えない。.lnkからアイコン取得する他の方法(COMの
+//  　IShellLinkインタフェース)も面倒だし、うーむ諦めるか…
+//  - LoadResource/CreateIconFromResourceEx？
+//  　http://bbs.wankuma.com/index.cgi?mode=al2&namber=62203&KLOG=104
+// TODO:ボタンクリックでブラウザ起動するタイミングで1.2MBくらいメモリ使用量ふえる。
+//  - どうもShellExecuteが実行されると一気に1MB以上増えるようだ…そして戻らない…。
+//  - ShellExecuteだけ実行してすぐ終了するラッパプログラムをCreateProcessすれば回避できる？
+//  　メモリ1～2MBのために涙ぐましい嫌な改造になるのでやめよう…。
 #define BUTTON_WIDTH	36		// ボタン縦横ピクセル
 typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
@@ -479,7 +538,7 @@ BrowserIcon Browser[BI_COUNT];
 void ConfigFree( void )
 {
 	BrowserIcon* bp;
-	u_int i;
+	UINT i;
 	for( i=0; i<BI_COUNT; i++ ){
 		bp = &(Browser[i]);
 		if( bp->arg ) free( bp->arg ), bp->arg=NULL;
@@ -497,17 +556,18 @@ void ConfigFree( void )
 void BrowserIconUserSet( BrowserIcon* bp, WCHAR* exe )
 {
 	if( bp && exe ){
-		WCHAR* ext = wcsrchr(exe,L'.');
-		if( ext && wcsicmp(ext,L".exe")==0 ){
-			ExtractIconExW( exe, 0, &(bp->icon), NULL, 1 );
-		}
-		else{
-			// .exe以外はSHGetFileInfoでアイコン取得。ショートカット(.lnk)もアイコン取得できる。
-			// exeで実行してもだいたい問題ないようだが、wscript.exeがエラーアイコンになって
-			// しまうようで、仕方ないのでexeはExtractIconExを使うままにした。
-			SHFILEINFOW info;
-			if( SHGetFileInfoW( exe, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
-				bp->icon = info.hIcon;
+		// ExtractIconはexeやdllは大丈夫だが、ショートカット(.lnk)のアイコンは取得できない。
+		// ExtractAssociatedIcon/SHGetFileInfoで取得できるが、PF使用量がふえるし、wscript.exe
+		// のアイコンがなぜかエラーアイコンになったりする。とりあえずExtractIconがエラーの場合
+		// に実行する。
+		if( !ExtractIconExW( exe, 0, &(bp->icon), NULL, 1 ) || !bp->icon ){
+			WORD index = 0;
+			bp->icon = ExtractAssociatedIconW( GetModuleHandle(NULL), exe, &index );
+			if( !bp->icon ){
+				SHFILEINFOW info;
+				if( SHGetFileInfoW( exe, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
+					bp->icon = info.hIcon;
+				}
 			}
 		}
 		bp->exe = exe;
@@ -643,7 +703,7 @@ void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT
 
 TClient* ClientOfSocket( SOCKET sock )
 {
-	u_int i;
+	UINT i;
 	for( i=0; i<CLIENT_MAX; i++ ){
 		if( Client[i].sock==sock ) return &(Client[i]);
 	}
@@ -671,19 +731,13 @@ void ClientShutdown( TClient* cp )
 {
 	WCHAR wpath[MAX_PATH+1]=L"";
 	if( cp ){
-		if( cp->thread ){
-			CloseHandle( cp->thread );
-		}
+		CloseHandle( cp->thread );
 		if( cp->sock !=INVALID_SOCKET ){
 			shutdown( cp->sock, SD_BOTH );
 			closesocket( cp->sock );
 		}
-		if( cp->req.writefh !=INVALID_HANDLE_VALUE ){
-			CloseHandle( cp->req.writefh );
-		}
-		if( cp->rsp.readfh !=INVALID_HANDLE_VALUE ){
-			CloseHandle( cp->rsp.readfh );
-		}
+		CloseHandle( cp->req.writefh );
+		CloseHandle( cp->rsp.readfh );
 		if( cp->req.buf ){
 			free( cp->req.buf );
 		}
@@ -1227,9 +1281,9 @@ NodeList* FavoriteListCreate( void )
 	return list;
 }
 // ノードリストをJSONでファイル出力
-void NodeListJSON( NodeList* node, FILE* fp, u_int* nextid, u_int depth, u_char* view )
+void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, u_char* view )
 {
-	u_int count=0;
+	UINT count=0;
 	if( depth==0 ){
 		// ルートノード
 		fprintf(fp,
@@ -1249,7 +1303,7 @@ void NodeListJSON( NodeList* node, FILE* fp, u_int* nextid, u_int depth, u_char*
 		//LogW(L"%u:%s%s",node->sortIndex,node->isFolder?L"フォルダ：":L"",node->name);
 		if( node->isFolder ){
 			// フォルダ
-			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			if( view ){ UINT n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
 			if( count ) fputc(',',fp);
 			fprintf(fp,
 				"{\"id\":%u"
@@ -1263,14 +1317,14 @@ void NodeListJSON( NodeList* node, FILE* fp, u_int* nextid, u_int depth, u_char*
 			if( view ) fputs("\r\n",fp);
 			// 再帰
 			NodeListJSON( node->child, fp, nextid, depth+1, view );
-			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			if( view ){ UINT n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
 			fputs("]}",fp);
 			count++;
 			if( view ) fputs("\r\n",fp);
 		}
 		else{
 			// URL
-			if( view ){ u_int n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
+			if( view ){ UINT n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
 			if( count ) fputc(',',fp);
 			fprintf( fp,
 				"{\"id\":%u"
@@ -1599,7 +1653,7 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 typedef struct {
 	size_t		bufsize;		// 受信バッファサイズ
 	size_t		bytes;			// 受信バッファ有効バイト
-	u_int		ContentLength;	// Content-Length値
+	UINT		ContentLength;	// Content-Length値
 	u_char		ContentType;	// Content-Type識別
 	#define		TEXT_HTML		0x01
 	u_char		charset;		// 文字コード識別
@@ -1776,7 +1830,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 									if( !rsp->ContentLength ){
 										u_char* p = strHeaderValue(rsp->buf,"Content-Length");
 										if( p ){
-											u_int n = 0;
+											UINT n = 0;
 											while( isdigit(*p) ){
 												n = n*10 + *p - '0';
 												p++;
@@ -2262,11 +2316,11 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 //   「すべてのブックマーク」の中に、「ブックマークツールバー」「ブクマークメニュー」「未整理」の順に
 //   並んでいるが、places.sqliteの中身を見てもそんな順番には並んでいない。
 //
-u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth, u_char* view )
+UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, u_char* view )
 {
 	sqlite3_stmt* bookmarks;
 	u_char* moz_bookmarks = "select id,type,fk,title,dateAdded from moz_bookmarks where parent=? order by position";
-	u_int count=0;
+	UINT count=0;
 	int rc;
 
 	sqlite3_prepare( db, moz_bookmarks, -1, &bookmarks, 0 );
@@ -2279,7 +2333,7 @@ u_int FirefoxJSON( sqlite3* db, FILE* fp, int parent, u_int* nextid, u_int depth
 			int type = sqlite3_column_int( bookmarks, 1 );
 			const u_char* title = sqlite3_column_text( bookmarks, 3 );
 			const u_char* dateAdded = sqlite3_column_text( bookmarks, 4 );
-			u_int n;
+			UINT n;
 			if( !dateAdded ) dateAdded = "";
 			if( type==1 ){
 				// ブックマーク
@@ -2491,13 +2545,13 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 // 実装は、まずテーブル icon_mapping の url をぜんぶ取得して、１エントリずつ対応
 // するテーブル favicons の url を取得するのかな…。テーブル favicons を検索する
 // 回数が多いけど、もっと楽に対応づけを一気に取得する方法が…わからん。
-u_int ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
+UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 {
 	sqlite3_stmt* icon_mapping;
 	sqlite3_stmt* favicons;
 	u_char* select_icon_mapping = "select page_url,icon_id from icon_mapping";
 	u_char* select_favicons = "select url from favicons where id=?";
-	u_int count=0;
+	UINT count=0;
 	int rc;
 
 	sqlite3_prepare( db, select_icon_mapping, -1, &icon_mapping, 0 );
@@ -2730,8 +2784,8 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 				u_char* folderNameTop=NULL, *folderNameEnd=NULL;
 				u_char* folderDateTop=NULL, *folderDateEnd=NULL;
 				BYTE comment=0, doctype=0, topentry=0;
-				u_int nextid=3;
-				u_int count=0;
+				UINT nextid=3;
+				UINT count=0;
 				int depth=0;
 				u_char last='\0';
 				u_char* p;
@@ -2994,7 +3048,7 @@ void SocketWrite( SOCKET sock )
 			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
 			LogA("[%u]送信:%s",Num(cp),rsp->buf);
 			// スレッドは終了してるはず
-			if( cp->thread ) CloseHandle( cp->thread ), cp->thread=NULL;
+			CloseHandle( cp->thread ), cp->thread=NULL;
 			rsp->sended = rsp->readed = 0;
 			cp->status = CLIENT_SENDING;
 
@@ -3089,7 +3143,7 @@ void SocketRead( SOCKET sock )
 						u_char* ims= strHeaderValue(  req->head,"If-Modified-Since");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
-							u_int n = 0;
+							UINT n = 0;
 							while( isdigit(*cl) ){
 								n = n*10 + *cl - '0';
 								cl++;
@@ -3134,7 +3188,7 @@ void SocketRead( SOCKET sock )
 							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
 							// そもそもサーバから返す時にHTML加工してしまう方が無駄がないような…。
 							// それを言ってしまうとtree.jsonもサーバ側でHTMLにした方が無駄がない…。
-							u_int count=0;
+							UINT count=0;
 							ClientSends(cp,
 									"HTTP/1.0 200 OK\r\n"
 									"Content-Type: application/json\r\n"
@@ -3167,8 +3221,8 @@ void SocketRead( SOCKET sock )
 							if( list ){
 								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 								if( fp ){
-									u_int nextid=1;	// ノードID
-									u_int depth=0;	// 階層深さ
+									UINT nextid=1;	// ノードID
+									UINT depth=0;	// 階層深さ
 									NodeListJSON( list, fp, &nextid, depth, cp->req.param );
 									fclose( fp );
 									if( nextid >1 ){
@@ -3193,8 +3247,8 @@ void SocketRead( SOCKET sock )
 									FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 									if( fp ){
 										int parent=0;	// places.sqliteルートエントリparentID
-										u_int nextid=1;	// ノードID
-										u_int depth=0;	// 階層深さ
+										UINT nextid=1;	// ノードID
+										UINT depth=0;	// 階層深さ
 										FirefoxJSON( db, fp, parent, &nextid, depth, cp->req.param );
 										fclose( fp );
 										if( nextid >1 ){
@@ -3233,7 +3287,7 @@ void SocketRead( SOCKET sock )
 								if( sqlite3_open16( favicons, &db )==SQLITE_OK ){
 									FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 									if( fp ){
-										u_int count = ChromeFaviconJSON( db, fp, cp->req.param );
+										UINT count = ChromeFaviconJSON( db, fp, cp->req.param );
 										fclose( fp );
 										if( count ){
 											cp->rsp.readfh = CreateFileW( tmppath
@@ -3611,7 +3665,7 @@ BOOL ListenStart( void )
 void SocketShutdown( void )
 {
 	BOOL retry;
-	u_int i, count=0;
+	UINT i, count=0;
 
 	if( ListenSock !=INVALID_SOCKET ){
 		shutdown( ListenSock, SD_BOTH );
@@ -3715,8 +3769,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		{
 			HINSTANCE hinst = GetModuleHandle(NULL);
 			TCITEMW item;
-			u_int tabid;
-			u_int i;
+			UINT tabid;
+			UINT i;
 			// タブコントロール
 			// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
 			// タブの識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこのIDを
@@ -3832,7 +3886,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_SIZE:
 		{
 			RECT rc = { 0, 0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
-			u_int i;
+			UINT i;
 			MoveWindow( hTabc, 0, 0, LOWORD(lp), HIWORD(lp), TRUE );
 			// タブを除いた表示領域を取得(rc.topがタブの高さになる)
 			TabCtrl_AdjustRect( hTabc, FALSE, &rc );
@@ -3869,7 +3923,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		{
 			// wParamにタブIDが入っている（※タブインデックスではない）
 			int tabindex = TabCtrl_GetSelHasLParam( hTabc, (int)wp );
-			u_int i;
+			UINT i;
 			TabCtrl_SetCurSel( hTabc, tabindex );
 			TabCtrl_SetCurFocus( hTabc, tabindex );
 			// いったん全部隠して
@@ -3908,7 +3962,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				// 設定ファイル保存
 				WCHAR	wPort[8], *exe[BI_COUNT], *arg[BI_COUNT];
 				int		iPort;
-				u_int	i;
+				UINT	i;
 				GetWindowTextW( hListenPort, wPort, sizeof(wPort)/sizeof(WCHAR) );
 				iPort = _wtoi(wPort);
 				if( iPort<=0 || iPort >65535 ){
@@ -3983,7 +4037,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
-DWORD ConfigDialog( u_int tabid )
+DWORD ConfigDialog( UINT tabid )
 {
 	DWORD dwRes=ID_DLG_UNKNOWN;
 	// ダイアログウィンドウプロシージャに結果変数のアドレスを渡す
@@ -4026,7 +4080,7 @@ DWORD ConfigDialog( u_int tabid )
 
 void BrowserIconFinalize( void )
 {
-	u_int i;
+	UINT i;
 	for( i=0; i<BI_COUNT; i++ ){
 		BrowserIcon* bp = &(Browser[i]);
 		if( bp->hwnd ) DestroyWindow( bp->hwnd ), bp->hwnd=NULL;
@@ -4162,7 +4216,7 @@ void BrowserIconInitialize( void )
 }
 void BrowserIconDestroy( void )
 {
-	u_int i;
+	UINT i;
 	for( i=0; i<BI_COUNT; i++ ){
 		if( Browser[i].hwnd ) DestroyWindow( Browser[i].hwnd ), Browser[i].hwnd=NULL;
 	}
@@ -4175,7 +4229,7 @@ void BrowserIconCreate( void )
 {
 	HINSTANCE hinst = GetModuleHandle(NULL);
 	int left=0;
-	u_int i;
+	UINT i;
 
 	for( i=0; i<BI_COUNT; i++ ){
 		BrowserIcon* bp = &(Browser[i]);
@@ -4193,46 +4247,80 @@ void BrowserIconCreate( void )
 			if( bp->icon ){
 				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
 			}
-			else if( bp->exe && !PathFileExistsW(bp->exe) ){
-				// ファイルがない時はエラーアイコン
-				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
+			else{
+				HICON icon;
+				if( bp->exe && !PathFileExistsW(bp->exe) )
+					// exeファイルが存在しないのはエラーアイコン
+					icon = LoadIcon(NULL,IDI_ERROR);
+				else
+					// exeあるけどアイコンない(アイコン取得できない)
+					icon = LoadIcon(NULL,IDI_APPLICATION);
+
+				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)icon );
 			}
 			left += BUTTON_WIDTH;
 		}
 	}
 }
 // ブラウザアイコンクリック
-void BrowserIconClick( u_int index )
+void BrowserIconClick( UINT index )
 {
 	BrowserIcon* bp = &(Browser[index]);
 	if( bp->exe ){
 		// exeパスは環境変数(%windir%など)展開する
 		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
-		size_t arglen = (bp->arg?wcslen(bp->arg):0) + 32;
+		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
 		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
 		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* arg = (WCHAR*)malloc( arglen * sizeof(WCHAR) );
-		if( exe && dir && arg ){
+		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+		if( exe && dir && cmd ){
 			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
 			if( PathFileExistsW(exe) ){
-				DWORD err;
+				STARTUPINFOW si;
+				PROCESS_INFORMATION pi;
+				BOOL good;
 				WCHAR* p;
+				memset( &si, 0, sizeof(si) );
+				memset( &pi, 0, sizeof(pi) );
+				si.cb = sizeof(si);
+				// コマンドライン全体
+				_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
+				// EXEフォルダ
 				memcpy( dir, exe, exelen * sizeof(WCHAR) );
-				_snwprintf(arg,arglen,L"%s http://localhost:%s/",bp->arg?bp->arg:L"",wListenPort);
 				p = wcsrchr( dir, L'\\' );
 				if( p ) *p = L'\0';
-				err = (DWORD)ShellExecuteW( NULL, NULL, exe, arg, dir, SW_SHOWNORMAL );
-				if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+				good = CreateProcessW(
+							NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
+							,cmd			// しょうがないのでここにコマンドライン全体を渡す
+							,NULL, NULL
+							,FALSE, 0
+							,NULL			// 環境ブロック？
+							,dir			// カレントディレクトリ
+							,&si, &pi
+				);
+				CloseHandle( pi.hThread );
+				CloseHandle( pi.hProcess );
+				if( !good ){
+					// ショートカット(.lnk)はCreateProcessエラーになるのでShellExecuteを使う。
+					// ShellExecuteはPF使用量が増えるので、CreateProcessがエラーの時だけ使う。
+					DWORD err;
+					p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
+					if( p && wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
+					// 引数
+					_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",bp->arg?bp->arg:L"",wListenPort);
+					err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
+					if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+				}
 			}
 			else{
 				ErrorBoxW(L"%s\r\nは存在しません",exe);
 				goto config;
 			}
 		}
-		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),arglen*sizeof(WCHAR));
+		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
 		if( exe ) free(exe), exe=NULL;
 		if( dir ) free(dir), dir=NULL;
-		if( arg ) free(arg), arg=NULL;
+		if( cmd ) free(cmd), cmd=NULL;
 	}
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
@@ -4333,7 +4421,7 @@ void MainFormTimer1000( void )
 	// なく7-8MBで落ち着くのでリークしてるわけではないと思うんだが…。起動直後のメモリ使用量
 	// に戻す術はないのか？HeapCompact()実行してみたけど効果なさそう。
 	{
-		u_int i;
+		UINT i;
 		for( i=0; i<CLIENT_MAX; i++ ) if( Client[i].sock !=INVALID_SOCKET ) break;
 		if( i>=CLIENT_MAX ) HeapCompact( Heap, 0 );
 	}
@@ -4371,7 +4459,7 @@ void MainFormCreateAfter( void )
 	// ブラウザ起動ボタン初期化
 	BrowserIconInitialize();
 	// クライアント初期化
-	{ u_int i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
+	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
 	for( ;; ){
 		ConfigFree();
