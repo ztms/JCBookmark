@@ -497,94 +497,280 @@ WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 }
 
 // ブラウザ起動ボタン
-// TODO:ユーザ指定ブラウザを４つ登録するとメモリ使用量が1MBくらい増える。削減できないものか。
-//  - 最小化でブラウザボタンウィンドウをDestroyしてみたけどなにも変らなかった。
-//  - アイコンを取得しないようにしたら700～800KBほど減少。アイコン1つ100KB近くも使うのか？
-//  - アイコンボタンを作るだけのサンプルプログラムを実行しても1つ100KBなんてまったく使わない。
-//  - アイコンではないのか？しかしアイコンをロードしなければメモリ使用量が減るのはなぜ…？？？
-//  - どうもExtractAssociatedIconまたはSHGetFileInfoを実行すると一気に700～800KB増えるもよう。
-//  　実行のたびに増えるわけではなく一度増えた後はそのままな感じ。
-//  - このAPIはショートカット(.lnk)からアイコン取得するために導入したAPIなので、exeを登録
-//  　していれば使われずメモリ使用量も増えない。.lnkからアイコン取得する他の方法(COMの
-//  　IShellLinkインタフェース)も面倒だし、うーむ諦めるか…
-//  - LoadResource/CreateIconFromResourceEx？
-//  　http://bbs.wankuma.com/index.cgi?mode=al2&namber=62203&KLOG=104
-// TODO:ボタンクリックでブラウザ起動するタイミングで1.2MBくらいメモリ使用量ふえる。
-//  - どうもShellExecuteが実行されると一気に1MB以上増えるようだ…そして戻らない…。
-//  - ShellExecuteだけ実行してすぐ終了するラッパプログラムをCreateProcessすれば回避できる？
-//  　メモリ1～2MBのために涙ぐましい嫌な改造になるのでやめよう…。
 #define BUTTON_WIDTH	36		// ボタン縦横ピクセル
+// ブラウザインデックス
+#define BI_IE			0		// IE
+#define BI_CHROME		1		// Chrome
+#define BI_FIREFOX		2		// Firefox
+#define BI_OPERA		3		// Opera
+#define BI_USER1		4		// ユーザ指定ブラウザ1
+#define BI_USER2		5		// ユーザ指定ブラウザ2
+#define BI_USER3		6		// ユーザ指定ブラウザ3
+#define BI_USER4		7		// ユーザ指定ブラウザ4
+#define BI_COUNT		8
+// ブラウザインデックスからブラウザボタンコマンドIDに変換
+#define BrowserCommand(i)	((i)+CMD_IE)
+// ブラウザボタンコマンドIDからブラウザインデックスに変換
+#define CommandBrowser(i)	((i)-CMD_IE)
+
 typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
-	HICON		icon;			// アイコンハンドル
 	WCHAR*		exe;			// exeフルパス
-	WCHAR*		arg;			// 起動オプション
-	WORD		cmdid;			// WM_COMMANDのLOWORD(wp)に入るID
-	HWND		hwnd;			// ボタンウィンドウハンドル
-} BrowserIcon;
-// 配列インデックス
-#define BI_IE		0	// IE
-#define BI_CHROME	1	// Chrome
-#define BI_FIREFOX	2	// Firefox
-#define BI_OPERA	3	// Opera
-#define BI_USER1	4	// ユーザ指定ブラウザ1
-#define BI_USER2	5	// ユーザ指定ブラウザ2
-#define BI_USER3	6	// ユーザ指定ブラウザ3
-#define BI_USER4	7	// ユーザ指定ブラウザ4
-#define BI_COUNT	8
-BrowserIcon Browser[BI_COUNT];
+	WCHAR*		arg;			// 引数
+	int			hide;			// 表示しない
+} BrowserInfo;
 
-// 設定ファイルからmallocしたものを解放
-void ConfigFree( void )
+typedef struct {
+	HWND		hwnd;			// ウィンドウハンドル
+	HICON		icon;			// アイコンハンドル
+} BrowserIcon;
+
+// レジストリからブラウザEXEパス取得
+// 実行ファイルからアイコンを取り出す
+// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
+// 実行可能ファイルからのアイコンの抽出
+// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
+WCHAR* BrowserDefaultExe( HKEY topkey, WCHAR* subkey )
 {
-	BrowserIcon* bp;
+	BOOL ok = FALSE;
+	WCHAR* exe = NULL;
+	HKEY key;
+
+	if( RegOpenKeyExW( topkey, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
+		DWORD type, bytes;
+		// データバイト数取得(終端NULL含む)
+		if( RegQueryValueExW( key, NULL, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
+			// バッファ確保
+			exe = (WCHAR*)malloc( bytes );
+			if( exe ){
+				DWORD realbytes = bytes;
+				// データ取得
+				if( RegQueryValueExW( key, NULL, NULL, &type, (BYTE*)exe, &realbytes )==ERROR_SUCCESS ){
+					if( bytes==realbytes ){
+						// 最後の「,数値」とダブルクォート削除
+						WCHAR *p = wcsrchr(exe,L',');
+						if( p ){
+							*p-- = L'\0';
+							if( *p==L'"') *p = L'\0';
+						}
+						if( *exe==L'"') memmove( exe, exe+1, (wcslen(exe)+1)*sizeof(WCHAR) );
+
+						ok = TRUE;
+					}
+					else LogW(L"RegQueryValueExW(%s)エラー？",exe);
+				}
+				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
+			}
+			else LogW(L"L%u:mallocエラー",__LINE__);
+		}
+		else LogW(L"RegQueryValueExW(%s)エラー",subkey);
+		// レジストリ閉じる
+		RegCloseKey( key );
+	}
+	//else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
+
+	if( !ok && exe ) free(exe),exe=NULL;
+	return exe;
+}
+// 設定ファイル(my.ini)パス取得
+WCHAR* ConfigFilePath( void )
+{
+	WCHAR* path = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+	if( path ){
+		WCHAR* p;
+		GetModuleFileNameW( NULL, path, MAX_PATH );
+		path[MAX_PATH] = L'\0';
+		p = wcsrchr(path,L'\\');
+		if( p ){
+			wcscpy( p+1, L"my.ini" );
+			return path;
+		}
+	}
+	if( path ) free( path );
+	return NULL;
+}
+// ブラウザ情報をレジストリや設定ファイルからまとめて取得
+BrowserInfo* BrowserInfoAlloc( void )
+{
+	BrowserInfo* br = (BrowserInfo*)malloc( sizeof(BrowserInfo)*BI_COUNT );
+	if( br ){
+		WCHAR* ini;
+		memset( br, 0, sizeof(BrowserInfo)*BI_COUNT );
+		// 既定ブラウザ名
+		br[BI_IE].name		= L"IE";
+		br[BI_CHROME].name	= L"Chrome";
+		br[BI_FIREFOX].name = L"Firefox";
+		br[BI_OPERA].name	= L"Opera";
+		// 既定ブラウザEXEパス
+		br[BI_IE].exe = BrowserDefaultExe(
+			// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
+			// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\IEXPLORE.EXE\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IEXPLORE.EXE
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie7
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie8
+			HKEY_LOCAL_MACHINE
+			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
+		);
+		br[BI_CHROME].exe = BrowserDefaultExe(
+			// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
+			// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
+			// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
+			// 2.HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
+			// 3.HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
+			// 4.HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
+			// 5.HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
+			HKEY_LOCAL_MACHINE
+			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
+		);
+		br[BI_FIREFOX].exe = BrowserDefaultExe(
+			// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
+			// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
+			// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxHTML\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxURL\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe
+			HKEY_LOCAL_MACHINE
+			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
+		);
+		br[BI_OPERA].exe = BrowserDefaultExe(
+			// TODO:Opera？
+			// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
+			// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
+			HKEY_CLASSES_ROOT
+			,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
+		);
+		// 既定ブラウザ引数とユーザ指定ブラウザ
+		ini = ConfigFilePath();
+		if( ini ){
+			FILE* fp = _wfopen(ini,L"rb");
+			if( fp ){
+				u_char buf[1024];
+				while( fgets(buf,sizeof(buf),fp) ){
+					chomp(buf);
+					if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
+						br[BI_IE].arg = UTF8toWideCharAlloc(buf+6);
+					}
+					else if( strnicmp(buf,"ChromeArg=",10)==0 && *(buf+10) ){
+						br[BI_CHROME].arg = UTF8toWideCharAlloc(buf+10);
+					}
+					else if( strnicmp(buf,"FirefoxArg=",11)==0 && *(buf+11) ){
+						br[BI_FIREFOX].arg = UTF8toWideCharAlloc(buf+11);
+					}
+					else if( strnicmp(buf,"OperaArg=",9)==0 && *(buf+9) ){
+						br[BI_OPERA].arg = UTF8toWideCharAlloc(buf+9);
+					}
+					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
+						br[BI_IE].hide = atoi(buf+7);
+					}
+					else if( strnicmp(buf,"ChromeHide=",11)==0 && *(buf+11) ){
+						br[BI_CHROME].hide = atoi(buf+11);
+					}
+					else if( strnicmp(buf,"FirefoxHide=",12)==0 && *(buf+12) ){
+						br[BI_FIREFOX].hide = atoi(buf+12);
+					}
+					else if( strnicmp(buf,"OperaHide=",10)==0 && *(buf+10) ){
+						br[BI_OPERA].hide = atoi(buf+10);
+					}
+					else if( strnicmp(buf,"Exe1=",5)==0 && *(buf+5) ){
+						br[BI_USER1].exe = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Exe2=",5)==0 && *(buf+5) ){
+						br[BI_USER2].exe = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Exe3=",5)==0 && *(buf+5) ){
+						br[BI_USER3].exe = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Exe4=",5)==0 && *(buf+5) ){
+						br[BI_USER4].exe = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Arg1=",5)==0 && *(buf+5) ){
+						br[BI_USER1].arg = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Arg2=",5)==0 && *(buf+5) ){
+						br[BI_USER2].arg = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Arg3=",5)==0 && *(buf+5) ){
+						br[BI_USER3].arg = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Arg4=",5)==0 && *(buf+5) ){
+						br[BI_USER4].arg = UTF8toWideCharAlloc(buf+5);
+					}
+					else if( strnicmp(buf,"Hide1=",6)==0 && *(buf+6) ){
+						br[BI_USER1].hide = atoi(buf+6);
+					}
+					else if( strnicmp(buf,"Hide2=",6)==0 && *(buf+6) ){
+						br[BI_USER2].hide = atoi(buf+6);
+					}
+					else if( strnicmp(buf,"Hide3=",6)==0 && *(buf+6) ){
+						br[BI_USER3].hide = atoi(buf+6);
+					}
+					else if( strnicmp(buf,"Hide4=",6)==0 && *(buf+6) ){
+						br[BI_USER4].hide = atoi(buf+6);
+					}
+				}
+				fclose( fp );
+			}
+			free( ini );
+		}
+		// ユーザ指定ブラウザ名
+		br[BI_USER1].name = br[BI_USER1].exe? PathFindFileNameW(br[BI_USER1].exe) : L"1";
+		br[BI_USER2].name = br[BI_USER2].exe? PathFindFileNameW(br[BI_USER2].exe) : L"2";
+		br[BI_USER3].name = br[BI_USER3].exe? PathFindFileNameW(br[BI_USER3].exe) : L"3";
+		br[BI_USER4].name = br[BI_USER4].exe? PathFindFileNameW(br[BI_USER4].exe) : L"4";
+	}
+	return br;
+}
+void BrowserInfoFree( BrowserInfo* br )
+{
 	UINT i;
 	for( i=0; i<BI_COUNT; i++ ){
-		bp = &(Browser[i]);
-		if( bp->arg ) free( bp->arg ), bp->arg=NULL;
+		if( br[i].exe ) free( br[i].exe );
+		if( br[i].arg ) free( br[i].arg );
 	}
-	for( i=BI_USER1; i<=BI_USER4; i++ ){
-		bp = &(Browser[i]);
-		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
-		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
-	}
-	Browser[BI_USER1].name = L"1";
-	Browser[BI_USER2].name = L"2";
-	Browser[BI_USER3].name = L"3";
-	Browser[BI_USER4].name = L"4";
+	free( br );
 }
-void BrowserIconUserSet( BrowserIcon* bp, WCHAR* exe )
+
+// ファイルのアイコン取得
+HICON FileIconLoad( WCHAR* path )
 {
-	if( bp && exe ){
-		// ExtractIconはexeやdllは大丈夫だが、ショートカット(.lnk)のアイコンは取得できない。
-		// ExtractAssociatedIcon/SHGetFileInfoで取得できるが、PF使用量がふえるし、wscript.exe
-		// のアイコンがなぜかエラーアイコンになったりする。とりあえずExtractIconがエラーの場合
-		// に実行する。
-		if( !ExtractIconExW( exe, 0, &(bp->icon), NULL, 1 ) || !bp->icon ){
+	HICON icon = NULL;
+	if( path && PathFileExistsW(path) ){
+		if( !ExtractIconExW( path, 0, &icon, NULL, 1 ) || !icon ){
+			// ExtractIconはexeやdllはよいが、ショートカット(.lnk)のアイコンは取得できない。
+			// ExtractAssociatedIcon/SHGetFileInfoで取得できるが、PF使用量が7-800KBも増える。
+			// (wscript.exeのアイコンがなぜかエラーアイコンになったりする謎もある)
+			// PF使用量は削減したいが、COMのIShellLinkインタフェースはコード量がやたら多く却下。
+			// LoadResource/CreateIconFromResourceExはちょっと違うかな？
+			//  　http://bbs.wankuma.com/index.cgi?mode=al2&namber=62203&KLOG=104
+			// ということでPF使用量削減は難しそう。
 			WORD index = 0;
-			bp->icon = ExtractAssociatedIconW( GetModuleHandle(NULL), exe, &index );
-			if( !bp->icon ){
+			icon = ExtractAssociatedIconW( GetModuleHandle(NULL), path, &index );
+			if( !icon ){
 				SHFILEINFOW info;
-				if( SHGetFileInfoW( exe, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
-					bp->icon = info.hIcon;
+				if( SHGetFileInfoW( path, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
+					icon = info.hIcon;
+					if( !icon ){
+						// アイコン取得できない時は標準アプリアイコン
+						icon = CopyIcon( LoadIcon(NULL,IDI_APPLICATION) );
+					}
 				}
 			}
 		}
-		bp->exe = exe;
-		bp->name = PathFindFileNameW(exe);
 	}
+	return icon;
 }
-void ConfigRead( void )
+// 待受ポートを設定ファイルからグローバル変数に読込
+void ListenPortGet( void )
 {
-	WCHAR ini[MAX_PATH+1]=L"";
-	WCHAR* p;
-
-	GetModuleFileNameW( NULL, ini, sizeof(ini)/sizeof(WCHAR) );
-	p = wcsrchr(ini,L'\\');
-	if( p ){
-		FILE* fp;
-		wcscpy( p+1, L"my.ini" );
-		fp = _wfopen(ini,L"rb");
+	WCHAR* ini = ConfigFilePath();
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			u_char buf[1024];
 			while( fgets(buf,sizeof(buf),fp) ){
@@ -594,45 +780,10 @@ void ConfigRead( void )
 					ListenPort[sizeof(ListenPort)-1]='\0';
 					MultiByteToWideChar( CP_UTF8, 0, ListenPort, -1, wListenPort, sizeof(wListenPort)/sizeof(WCHAR) );
 				}
-				else if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
-					Browser[BI_IE].arg = UTF8toWideCharAlloc(buf+6);
-				}
-				else if( strnicmp(buf,"ChromeArg=",10)==0 && *(buf+10) ){
-					Browser[BI_CHROME].arg = UTF8toWideCharAlloc(buf+10);
-				}
-				else if( strnicmp(buf,"FirefoxArg=",11)==0 && *(buf+11) ){
-					Browser[BI_FIREFOX].arg = UTF8toWideCharAlloc(buf+11);
-				}
-				else if( strnicmp(buf,"OperaArg=",9)==0 && *(buf+9) ){
-					Browser[BI_OPERA].arg = UTF8toWideCharAlloc(buf+9);
-				}
-				else if( strnicmp(buf,"Exe1=",5)==0 && *(buf+5) ){
-					BrowserIconUserSet( &(Browser[BI_USER1]), UTF8toWideCharAlloc(buf+5) );
-				}
-				else if( strnicmp(buf,"Exe2=",5)==0 && *(buf+5) ){
-					BrowserIconUserSet( &(Browser[BI_USER2]), UTF8toWideCharAlloc(buf+5) );
-				}
-				else if( strnicmp(buf,"Exe3=",5)==0 && *(buf+5) ){
-					BrowserIconUserSet( &(Browser[BI_USER3]), UTF8toWideCharAlloc(buf+5) );
-				}
-				else if( strnicmp(buf,"Exe4=",5)==0 && *(buf+5) ){
-					BrowserIconUserSet( &(Browser[BI_USER4]), UTF8toWideCharAlloc(buf+5) );
-				}
-				else if( strnicmp(buf,"Arg1=",5)==0 && *(buf+5) ){
-					Browser[BI_USER1].arg = UTF8toWideCharAlloc(buf+5);
-				}
-				else if( strnicmp(buf,"Arg2=",5)==0 && *(buf+5) ){
-					Browser[BI_USER2].arg = UTF8toWideCharAlloc(buf+5);
-				}
-				else if( strnicmp(buf,"Arg3=",5)==0 && *(buf+5) ){
-					Browser[BI_USER3].arg = UTF8toWideCharAlloc(buf+5);
-				}
-				else if( strnicmp(buf,"Arg4=",5)==0 && *(buf+5) ){
-					Browser[BI_USER4].arg = UTF8toWideCharAlloc(buf+5);
-				}
 			}
 			fclose(fp);
 		}
+		free( ini );
 	}
 }
 
@@ -3101,7 +3252,7 @@ void SocketWrite( SOCKET sock )
 	}
 }
 
-void SocketRead( SOCKET sock )
+void SocketRead( SOCKET sock, BrowserIcon* browser )
 {
 	TClient* cp = ClientOfSocket( sock );
 	if( cp ){
@@ -3196,21 +3347,23 @@ void SocketRead( SOCKET sock )
 									"\r\n"
 									"{"
 							);
-							if( Browser[BI_IE].exe ){
-								count++;
-								ClientSends(cp,"\"ie\":1");
-							}
-							if( Browser[BI_CHROME].exe ){
-								if( count++ ) ClientSends(cp,",");
-								ClientSends(cp,"\"chrome\":1");
-							}
-							if( Browser[BI_FIREFOX].exe ){
-								if( count++ ) ClientSends(cp,",");
-								ClientSends(cp,"\"firefox\":1");
-							}
-							if( Browser[BI_OPERA].exe ){
-								if( count++ ) ClientSends(cp,",");
-								ClientSends(cp,"\"opera\":1");
+							if( browser ){
+								if( browser[BI_IE].hwnd ){
+									count++;
+									ClientSends(cp,"\"ie\":1");
+								}
+								if( browser[BI_CHROME].hwnd ){
+									if( count++ ) ClientSends(cp,",");
+									ClientSends(cp,"\"chrome\":1");
+								}
+								if( browser[BI_FIREFOX].hwnd ){
+									if( count++ ) ClientSends(cp,",");
+									ClientSends(cp,"\"firefox\":1");
+								}
+								if( browser[BI_OPERA].hwnd ){
+									if( count++ ) ClientSends(cp,",");
+									ClientSends(cp,"\"opera\":1");
+								}
 							}
 							ClientSends(cp,"}");
 							goto send_ready;
@@ -3753,8 +3906,10 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	static LPDWORD		lpRes;
-	static HWND			hTabc, hOK, hCancel, hFOpen, hListenPort, hTxtListenPort
-						,hTxtExe, hTxtArg, hExe[BI_COUNT], hArg[BI_COUNT];
+	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort
+						,hFOpen=NULL, hTxtExe=NULL, hTxtArg=NULL
+						,hHide[BI_COUNT]={0}, hExe[BI_COUNT]={0}, hArg[BI_COUNT]={0};
+	static HICON		hIcon[BI_COUNT]={0};
 	static HFONT		hFont;
 	static HIMAGELIST	hImage;
 
@@ -3768,9 +3923,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_CREATE:
 		{
 			HINSTANCE hinst = GetModuleHandle(NULL);
+			BrowserInfo* br;
 			TCITEMW item;
 			UINT tabid;
 			UINT i;
+
+			hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
 			// タブコントロール
 			// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
 			// タブの識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこのIDを
@@ -3780,6 +3938,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,WS_CHILD |WS_VISIBLE |TCS_RIGHTJUSTIFY |TCS_MULTILINE
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
+			SendMessageA( hTabc, WM_SETFONT, (WPARAM)hFont, 0 );
 			hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
 			// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
 			ImageList_SetBkColor( hImage, GetSysColor(COLOR_BTNFACE) );
@@ -3789,19 +3948,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			item.iImage = ImageList_AddIcon( hImage, TrayIcon );
 			item.lParam = (LPARAM)0;					// タブ識別ID
 			TabCtrl_InsertItem( hTabc, 0, &item );		// タブインデックス
-			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
-			for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
-				BrowserIcon* bp = &(Browser[i]);
-				// 登録済みまたはユーザ指定ブラウザ
-				if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
-					item.pszText = bp->name? bp->name : bp->exe? PathFindFileNameW(bp->exe) : L"";
-					item.iImage = bp->icon? ImageList_AddIcon( hImage, bp->icon ) : -1;
-					item.lParam = (LPARAM)tabid;				// タブ識別ID
-					TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
-				}
-			}
-			SendMessageA( hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)hImage );
-			// HTTPサーバ
 			hTxtListenPort = CreateWindowW(
 						L"static",L"待受ポート番号"
 						,SS_SIMPLE |WS_CHILD
@@ -3812,37 +3958,71 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
-			// ブラウザ
-			hTxtExe = CreateWindowW(
-						L"static",L"実行ﾌｧｲﾙ"
-						,SS_SIMPLE |WS_CHILD
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			hTxtArg = CreateWindowW(
-						L"static",L"引 数"
-						,SS_SIMPLE |WS_CHILD
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			for( i=0; i<BI_COUNT; i++ ){
-				hExe[i] = CreateWindowW(
-							L"edit",Browser[i].exe
-							,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+			SendMessageA( hTxtListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
+			SendMessageA( hListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
+			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
+			br = BrowserInfoAlloc();
+			if( br ){
+				for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
+					if( br[i].exe || (BI_USER1<=i && i<=BI_USER4) ){
+						hIcon[i] = FileIconLoad( br[i].exe );
+						//item.pszText = br[i].name? br[i].name : br[i].exe? PathFindFileNameW(br[i].exe) : L"";
+						item.pszText = br[i].name;
+						item.iImage = hIcon[i]? ImageList_AddIcon( hImage, hIcon[i] ) : -1;
+						item.lParam = (LPARAM)tabid;				// タブ識別ID
+						TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
+					}
+				}
+				hTxtExe = CreateWindowW(
+							L"static",L"実行ﾌｧｲﾙ"
+							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				hArg[i] = CreateWindowW(
-							L"edit",Browser[i].arg
-							,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+				hTxtArg = CreateWindowW(
+							L"static",L"引 数"
+							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
+				SendMessageA( hTxtExe, WM_SETFONT, (WPARAM)hFont, 0 );
+				SendMessageA( hTxtArg, WM_SETFONT, (WPARAM)hFont, 0 );
+				for( i=0; i<BI_COUNT; i++ ){
+					hHide[i] = CreateWindowW(
+								L"button",L"表示しない"
+								,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_CHECKBOX |BS_AUTOCHECKBOX
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					hExe[i] = CreateWindowW(
+								L"edit",br[i].exe
+								,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					hArg[i] = CreateWindowW(
+								L"edit",br[i].arg
+								,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					SendMessageA( hHide[i], WM_SETFONT, (WPARAM)hFont, 0 );
+					SendMessageA( hExe[i], WM_SETFONT, (WPARAM)hFont, 0 );
+					SendMessageA( hArg[i], WM_SETFONT, (WPARAM)hFont, 0 );
+				}
+				// 既定ブラウザEXEパスは編集不可
+				SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
+				SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
+				SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
+				SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
+				// ファイル選択ボタン
+				hFOpen = CreateWindowA(
+							"button",NULL
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_FOPEN
+							,hinst,NULL
+				);
+				// アイコン
+				SendMessageA( hFOpen, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0) );
+				BrowserInfoFree(br), br=NULL;
 			}
-			// ファイル選択ボタン
-			hFOpen = CreateWindowA(
-						"button",NULL
-						,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
-						,0,0,0,0
-						,hwnd,(HMENU)ID_DLG_FOPEN
-						,hinst,NULL
-			);
+			SendMessageA( hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)hImage );
 			// OK・キャンセルボタン
 			hOK = CreateWindowW(
 						L"button",L" O K "
@@ -3858,26 +4038,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,hwnd,(HMENU)ID_DLG_CANCEL
 						,hinst,NULL
 			);
-			// 既定ブラウザEXEパスは編集不可
-			SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
-			SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
-			// フォント
-			hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
-			SendMessageA( hTabc, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hTxtListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hTxtExe, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hTxtArg, WM_SETFONT, (WPARAM)hFont, 0 );
-			for( i=0; i<BI_COUNT; i++ ){
-				SendMessageA( hExe[i], WM_SETFONT, (WPARAM)hFont, 0 );
-				SendMessageA( hArg[i], WM_SETFONT, (WPARAM)hFont, 0 );
-			}
 			SendMessageA( hOK, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hCancel, WM_SETFONT, (WPARAM)hFont, 0 );
-			// アイコン
-			SendMessageA( hFOpen, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0) );
 			// ドラッグ＆ドロップ可
 			DragAcceptFiles( hwnd, TRUE );
 		}
@@ -3891,19 +4053,21 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// タブを除いた表示領域を取得(rc.topがタブの高さになる)
 			TabCtrl_AdjustRect( hTabc, FALSE, &rc );
 			// パーツ移動
-			MoveWindow( hTxtListenPort,	40,	rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
-			MoveWindow( hListenPort,	160, rc.top+30, 80, 22, TRUE );
-			MoveWindow( hTxtExe,		20, rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
-			MoveWindow( hTxtArg,		50, rc.top+70+3, LOWORD(lp)-90, 22, TRUE );
+			MoveWindow( hTxtListenPort,	40,  rc.top+30+3, LOWORD(lp)-90, 22, TRUE );
+			MoveWindow( hListenPort,	160, rc.top+30,   80,            22, TRUE );
+			MoveWindow( hTxtExe,		20,  rc.top+50+3, LOWORD(lp)-90, 22, TRUE );
+			MoveWindow( hTxtArg,		50,  rc.top+90+3, LOWORD(lp)-90, 22, TRUE );
 			for( i=0; i<BI_USER1; i++ ){
-				MoveWindow( hExe[i],	100, rc.top+30, LOWORD(lp)-120, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+70, LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hHide[i],	20,  rc.top+16, LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hExe[i],	100, rc.top+50, LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hArg[i],	100, rc.top+90, LOWORD(lp)-120, 22, TRUE );
 			}
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				MoveWindow( hExe[i],	100, rc.top+30, LOWORD(lp)-120-24, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+70, LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hHide[i],	20,  rc.top+16, LOWORD(lp)-120,    22, TRUE );
+				MoveWindow( hExe[i],	100, rc.top+50, LOWORD(lp)-120-24, 22, TRUE );
+				MoveWindow( hArg[i],	100, rc.top+90, LOWORD(lp)-120,    22, TRUE );
 			}
-			MoveWindow( hFOpen,			LOWORD(lp)-44, rc.top+30-1, 24, 24, TRUE );
+			MoveWindow( hFOpen,			LOWORD(lp)-44,  rc.top+50-1,   24, 24, TRUE );
 			MoveWindow( hOK,			LOWORD(lp)-200, HIWORD(lp)-50, 80, 30, TRUE );
 			MoveWindow( hCancel,		LOWORD(lp)-100, HIWORD(lp)-50, 80, 30, TRUE );
 		}
@@ -3933,6 +4097,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			ShowWindow( hListenPort, SW_HIDE );
 			ShowWindow( hFOpen, SW_HIDE );
 			for( i=0; i<BI_COUNT; i++ ){
+				ShowWindow( hHide[i], SW_HIDE );
 				ShowWindow( hExe[i], SW_HIDE );
 				ShowWindow( hArg[i], SW_HIDE );
 			}
@@ -3948,6 +4113,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( hTxtExe, SW_SHOW );
 				ShowWindow( hTxtArg, SW_SHOW );
 				// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
+				ShowWindow( hHide[wp-1], SW_SHOW );
 				ShowWindow( hExe[wp-1], SW_SHOW );
 				ShowWindow( hArg[wp-1], SW_SHOW );
 				break;
@@ -4029,6 +4195,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_DESTROY:
+		{ UINT i; for(i=0;i<BI_COUNT;i++) DestroyIcon( hIcon[i] ); }
 		ImageList_Destroy( hImage );
 		DeleteObject( hFont );
 		if( *lpRes==ID_DLG_UNKNOWN ) *lpRes=ID_DLG_DESTROY;
@@ -4077,256 +4244,134 @@ DWORD ConfigDialog( UINT tabid )
 	}
 	return dwRes;
 }
-
-void BrowserIconFinalize( void )
+void BrowserIconDestroy( BrowserIcon br[] )
 {
-	UINT i;
-	for( i=0; i<BI_COUNT; i++ ){
-		BrowserIcon* bp = &(Browser[i]);
-		if( bp->hwnd ) DestroyWindow( bp->hwnd ), bp->hwnd=NULL;
-		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
-		if( bp->arg ) free( bp->arg ), bp->arg=NULL;
-		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
-	}
-}
-void BrowserIconDefault( BrowserIcon* bp, WCHAR* name, WORD cmdid, HKEY topkey, WCHAR* subkey )
-{
-	BOOL success = FALSE;
-	HKEY key;
-
-	bp->name = name;
-	bp->cmdid = cmdid;
-
-	// レジストリからEXEパスとアイコン取得
-	// 実行ファイルからアイコンを取り出す
-	// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
-	// 実行可能ファイルからのアイコンの抽出
-	// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
-	if( RegOpenKeyExW( topkey, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
-		DWORD type, bytes;
-		// データバイト数取得(終端NULL含む)
-		if( RegQueryValueExW( key, NULL, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
-			// バッファ確保
-			bp->exe = (WCHAR*)malloc( bytes );
-			if( bp->exe ){
-				DWORD realbytes = bytes;
-				// データ取得
-				if( RegQueryValueExW( key, NULL, NULL, &type, (BYTE*)bp->exe, &realbytes )==ERROR_SUCCESS ){
-					if( bytes==realbytes ){
-						// 最後の「,数値」とダブルクォート削除
-						WCHAR *p = wcsrchr(bp->exe,L',');
-						if( p ){
-							*p-- = L'\0';
-							if( *p==L'"') *p = L'\0';
-						}
-						if( *(bp->exe)==L'"')
-							memmove( bp->exe, bp->exe+1, (wcslen(bp->exe)+1)*sizeof(WCHAR) );
-						// アイコン取得
-						if( ExtractIconExW( bp->exe, 0, &(bp->icon), NULL, 1 ) && bp->icon ){
-							success = TRUE;
-						}
-						else LogW(L"ExtraceIconExW(%s)エラー(%u)",bp->exe,GetLastError());
-					}
-					else LogW(L"RegQueryValueExW(%s)エラー？",bp->exe);
-				}
-				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
-			}
-			else LogW(L"L%u:mallocエラー",__LINE__);
+	if( br ){
+		UINT i;
+		for( i=0; i<BI_COUNT; i++ ){
+			if( br[i].hwnd ) DestroyWindow( br[i].hwnd );
+			if( br[i].icon ) DestroyIcon( br[i].icon );
 		}
-		else LogW(L"RegQueryValueExW(%s)エラー",subkey);
-		// レジストリ閉じる
-		RegCloseKey( key );
-	}
-	else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
-
-	if( !success ){
-		if( bp->icon ) DestroyIcon( bp->icon ), bp->icon=NULL;
-		if( bp->exe ) free( bp->exe ), bp->exe=NULL;
-	}
-}
-void BrowserIconInitialize( void )
-{
-	memset( Browser, 0, sizeof(Browser) );
-
-	// 既定ブラウザ(Browser[0]～[3])
-	BrowserIconDefault(
-		&(Browser[BI_IE])
-		,L"IE"
-		,CMD_IE
-		// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
-		// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\IEXPLORE.EXE\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\IEXPLORE.EXE
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie7
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie8
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
-	);
-	BrowserIconDefault(
-		&(Browser[BI_CHROME])
-		,L"Chrome"
-		,CMD_CHROME
-		// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
-		// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
-		// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
-		// 2.HKEY_LOCAL_MACHINE\SOFTWARE\Classes\ChromeHTML\DefaultIcon
-		// 3.HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Google Chrome\DefaultIcon
-		// 4.HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome\DisplayIcon
-		// 5.HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
-	);
-	BrowserIconDefault(
-		&(Browser[BI_FIREFOX])
-		,L"Firefox"
-		,CMD_FIREFOX
-		// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
-		// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
-		// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxHTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\FirefoxURL\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe
-		,HKEY_LOCAL_MACHINE
-		,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
-	);
-	BrowserIconDefault(
-		&(Browser[BI_OPERA])
-		,L"Opera"
-		,CMD_OPERA
-		// TODO:Opera？
-		// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
-		// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
-		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
-		,HKEY_CLASSES_ROOT
-		,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
-	);
-	// ユーザ指定ブラウザ(Browser[4]～[7])
-	Browser[BI_USER1].cmdid = CMD_USER1;
-	Browser[BI_USER2].cmdid = CMD_USER2;
-	Browser[BI_USER3].cmdid = CMD_USER3;
-	Browser[BI_USER4].cmdid = CMD_USER4;
-	Browser[BI_USER1].name = L"1";
-	Browser[BI_USER2].name = L"2";
-	Browser[BI_USER3].name = L"3";
-	Browser[BI_USER4].name = L"4";
-}
-void BrowserIconDestroy( void )
-{
-	UINT i;
-	for( i=0; i<BI_COUNT; i++ ){
-		if( Browser[i].hwnd ) DestroyWindow( Browser[i].hwnd ), Browser[i].hwnd=NULL;
+		free( br );
 	}
 }
 // ブラウザアイコンボタン作成
 // ボタンにアイコンを表示する
 // http://keicode.com/windows/ui03.php
 // TODO:ツールヒントでnameを表示するとよいか？
-void BrowserIconCreate( void )
+BrowserIcon* BrowserIconCreate( void )
 {
-	HINSTANCE hinst = GetModuleHandle(NULL);
-	int left=0;
-	UINT i;
+	BrowserIcon* ico = (BrowserIcon*)malloc( sizeof(BrowserIcon)*BI_COUNT );
+	if( ico ){
+		BrowserInfo* br;
+		memset( ico, 0, sizeof(BrowserIcon)*BI_COUNT );
+		
+		br = BrowserInfoAlloc();
+		if( br ){
+			HINSTANCE hinst = GetModuleHandle(NULL);
+			int left=0;
+			UINT i;
 
-	for( i=0; i<BI_COUNT; i++ ){
-		BrowserIcon* bp = &(Browser[i]);
-		if( bp->exe || (BI_USER1<=i && i<=BI_USER4) ){
-			bp->hwnd = CreateWindowA(
-							"button"
-							,""
-							,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
-							,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
-							,MainForm
-							,(HMENU)bp->cmdid		// WM_COMMANDのLOWORD(wp)に入る数値
-							,hinst
-							,NULL
-			);
-			if( bp->icon ){
-				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)bp->icon );
-			}
-			else{
-				HICON icon;
-				if( bp->exe && !PathFileExistsW(bp->exe) )
-					// exeファイルが存在しないのはエラーアイコン
-					icon = LoadIcon(NULL,IDI_ERROR);
-				else
-					// exeあるけどアイコンない(アイコン取得できない)
-					icon = LoadIcon(NULL,IDI_APPLICATION);
-
-				SendMessageA( bp->hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)icon );
-			}
-			left += BUTTON_WIDTH;
-		}
-	}
-}
-// ブラウザアイコンクリック
-void BrowserIconClick( UINT index )
-{
-	BrowserIcon* bp = &(Browser[index]);
-	if( bp->exe ){
-		// exeパスは環境変数(%windir%など)展開する
-		DWORD exelen = ExpandEnvironmentStringsW( bp->exe, NULL, 0 );
-		size_t cmdlen = exelen + (bp->arg?wcslen(bp->arg):0) + 32;
-		WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-		WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
-		if( exe && dir && cmd ){
-			ExpandEnvironmentStringsW( bp->exe, exe, exelen );
-			if( PathFileExistsW(exe) ){
-				STARTUPINFOW si;
-				PROCESS_INFORMATION pi;
-				BOOL good;
-				WCHAR* p;
-				memset( &si, 0, sizeof(si) );
-				memset( &pi, 0, sizeof(pi) );
-				si.cb = sizeof(si);
-				// コマンドライン全体
-				_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,bp->arg?bp->arg:L"",wListenPort);
-				// EXEフォルダ
-				memcpy( dir, exe, exelen * sizeof(WCHAR) );
-				p = wcsrchr( dir, L'\\' );
-				if( p ) *p = L'\0';
-				good = CreateProcessW(
-							NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
-							,cmd			// しょうがないのでここにコマンドライン全体を渡す
-							,NULL, NULL
-							,FALSE, 0
-							,NULL			// 環境ブロック？
-							,dir			// カレントディレクトリ
-							,&si, &pi
-				);
-				CloseHandle( pi.hThread );
-				CloseHandle( pi.hProcess );
-				if( !good ){
-					// ショートカット(.lnk)はCreateProcessエラーになるのでShellExecuteを使う。
-					// ShellExecuteはPF使用量が増えるので、CreateProcessがエラーの時だけ使う。
-					DWORD err;
-					p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
-					if( p && wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
-					// 引数
-					_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",bp->arg?bp->arg:L"",wListenPort);
-					err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
-					if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+			for( i=0; i<BI_COUNT; i++ ){
+				if( !br[i].hide && (br[i].exe || (BI_USER1<=i && i<=BI_USER4)) ){
+					ico[i].hwnd = CreateWindowA(
+									"button"
+									,""
+									,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
+									,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
+									,MainForm
+									,(HMENU)BrowserCommand(i)	// WM_COMMANDのLOWORD(wp)に入る数値
+									,hinst
+									,NULL
+					);
+					ico[i].icon = FileIconLoad( br[i].exe );
+					if( ico[i].icon ){
+						SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
+					}
+					else if( br[i].exe ){
+						// エラーアイコン
+						SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
+					}
+					left += BUTTON_WIDTH;
 				}
 			}
-			else{
-				ErrorBoxW(L"%s\r\nは存在しません",exe);
-				goto config;
-			}
+			BrowserInfoFree(br), br=NULL;
 		}
-		else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
-		if( exe ) free(exe), exe=NULL;
-		if( dir ) free(dir), dir=NULL;
-		if( cmd ) free(cmd), cmd=NULL;
 	}
-	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す
+	return ico;
+}
+// ブラウザボタンクリック
+void BrowserIconClick( UINT ix )
+{
+	BOOL empty=FALSE, invalid=FALSE;
+	BrowserInfo* br = BrowserInfoAlloc();
+	if( br ){
+		if( br[ix].exe ){
+			// exeパスは環境変数(%windir%など)展開する
+			DWORD exelen = ExpandEnvironmentStringsW( br[ix].exe, NULL, 0 );
+			size_t cmdlen = exelen + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
+			WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+			WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
+			WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+			if( exe && dir && cmd ){
+				ExpandEnvironmentStringsW( br[ix].exe, exe, exelen );
+				if( PathFileExistsW(exe) ){
+					STARTUPINFOW si;
+					PROCESS_INFORMATION pi;
+					BOOL good;
+					WCHAR* p;
+					memset( &si, 0, sizeof(si) );
+					memset( &pi, 0, sizeof(pi) );
+					si.cb = sizeof(si);
+					// コマンドライン全体
+					_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,br[ix].arg?br[ix].arg:L"",wListenPort);
+					// EXEフォルダ
+					memcpy( dir, exe, exelen * sizeof(WCHAR) );
+					p = wcsrchr( dir, L'\\' );
+					if( p ) *p = L'\0';
+					good = CreateProcessW(
+								NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
+								,cmd			// しょうがないのでここにコマンドライン全体を渡す
+								,NULL, NULL
+								,FALSE, 0
+								,NULL			// 環境ブロック？
+								,dir			// カレントディレクトリ
+								,&si, &pi
+					);
+					CloseHandle( pi.hThread );
+					CloseHandle( pi.hProcess );
+					if( !good ){
+						// CreateProcessはショートカット(.lnk)を実行できないのでShellExecuteを使う。
+						// ただしShellExecuteはPF使用量が1.2MBくらい増えるので、CreateProcessエラー時のみ。
+						// ここで直接ShellExecuteを実行せず、ラッパexeをCreateProcessすればPF使用量増えない？
+						// でもメモリ1～2MBのために涙ぐましい嫌な改造になるのでやめよう…。
+						DWORD err;
+						p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
+						if( p && wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
+						// 引数
+						_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",br[ix].arg?br[ix].arg:L"",wListenPort);
+						err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
+						if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+					}
+				}
+				else{
+					invalid = TRUE;
+					ErrorBoxW(L"%s\r\nは存在しません",exe);
+				}
+			}
+			else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
+			if( exe ) free(exe), exe=NULL;
+			if( dir ) free(dir), dir=NULL;
+			if( cmd ) free(cmd), cmd=NULL;
+		}
+		else empty = TRUE;
+
+		BrowserInfoFree(br), br=NULL;
+	}
+	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-	else{
-	config:
-		if( ConfigDialog(index+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
+	if( empty || invalid ){
+		if( ConfigDialog(ix+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
 	}
 }
 
@@ -4456,31 +4501,14 @@ void MainFormCreateAfter( void )
 		MoveFileA( "tree.json.empty", "tree.json" );
 		SetCurrentDirectoryW( wpath );
 	}
-	// ブラウザ起動ボタン初期化
-	BrowserIconInitialize();
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
-	// 待受開始
-	for( ;; ){
-		ConfigFree();
-		ConfigRead();
-		// listen成功でループ抜け
-		if( ListenStart() ) break;
-		ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
-		// listenエラー設定ダイアログ出す
-		if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
-		// ダイアログOK、listenリトライ
-	}
-	// ブラウザ起動ボタン作成
-	BrowserIconCreate();
-	// タイマー起動
-	MainFormTimer1000();
-	SetTimer( MainForm, TIMER1000, 1000, NULL );
 }
 
 
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
+	static BrowserIcon* browser=NULL;
 	static HFONT hFont=NULL;
 
 	switch( msg ){
@@ -4523,6 +4551,21 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_CREATE_AFTER:
 		MainFormCreateAfter();
+		// ブラウザ起動ボタン作成
+		browser = BrowserIconCreate();
+		// 待受開始
+		for( ;; ){
+			ListenPortGet();
+			// listen成功でループ抜け
+			if( ListenStart() ) break;
+			ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
+			// listenエラー設定ダイアログ出す
+			if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
+			// ダイアログOK、listenリトライ
+		}
+		// タイマー起動
+		MainFormTimer1000();
+		SetTimer( MainForm, TIMER1000, 1000, NULL );
 		return 0;
 
 	case WM_SIZE:
@@ -4634,8 +4677,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		{
 			u_char oldPort[8];
 			strcpy( oldPort, ListenPort );			// 現在ポート退避
-			ConfigFree();							// 設定破棄
-			ConfigRead();							// 設定読み込み(ポート更新)
+			ListenPortGet();
 			if( strcmp(oldPort,ListenPort) ){		// ポート番号変わった
 				BOOL success;
 				SocketShutdown();					// コネクション切断
@@ -4645,8 +4687,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				// Listen失敗時は再び設定ダイアログ
 				if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
 			}
-			BrowserIconDestroy();
-			BrowserIconCreate();
+			BrowserIconDestroy( browser );
+			browser = BrowserIconCreate();
 		}
 		return 0;
 
@@ -4658,10 +4700,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		switch( WSAGETSELECTEVENT(lp) ){
 		//	http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html
 		//case FD_CONNECT: break; // connect成功した
-		case FD_ACCEPT: SocketAccept( (SOCKET)wp ); break; // acceptできる
-		case FD_READ  : SocketRead( (SOCKET)wp );   break; // recvできる
-		case FD_WRITE : SocketWrite( (SOCKET)wp );  break; // sendできる
-		case FD_CLOSE : SocketClose( (SOCKET)wp );  break; // 接続は閉じられた
+		case FD_ACCEPT: SocketAccept( (SOCKET)wp );			break; // acceptできる
+		case FD_READ  : SocketRead( (SOCKET)wp, browser );	break; // recvできる
+		case FD_WRITE : SocketWrite( (SOCKET)wp );			break; // sendできる
+		case FD_CLOSE : SocketClose( (SOCKET)wp );			break; // 接続は閉じられた
 		default: LogW(L"[%u]不明なソケットイベント(%u)",(SOCKET)wp,WSAGETSELECTEVENT(lp));
 		}
 		return 0;
@@ -4672,7 +4714,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_DESTROY:
 		SocketShutdown();
-		BrowserIconFinalize();
+		BrowserIconDestroy( browser );
 		TrayIconNotify( hwnd, NIM_DELETE );
 		if( mlang.dll ) FreeLibrary( mlang.dll ), memset(&mlang,0,sizeof(mlang));
 		ReleaseDC( ListBox, ListBoxDC ), ListBoxDC=NULL;
