@@ -233,7 +233,10 @@ var option = {
 		,status:function( val ){
 			if( arguments.length ){
 				option.data.panel.status = val;
-				option.modified(true);
+				// パネルの開閉でいちいち「保存しろ」メッセージが出るのは使いづらい？
+				// なにもメッセージ出さず自動保存してしまう方がいいかな？
+				//option.modified(true);
+				option.save();
 				return option;
 			}
 			return option.data.panel.status;
