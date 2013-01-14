@@ -3953,7 +3953,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
 					if( br[i].exe || (BI_USER1<=i && i<=BI_USER4) ){
 						hIcon[i] = FileIconLoad( br[i].exe );
-						//item.pszText = br[i].name? br[i].name : br[i].exe? PathFindFileNameW(br[i].exe) : L"";
 						item.pszText = br[i].name;
 						item.iImage = hIcon[i]? ImageList_AddIcon( hImage, hIcon[i] ) : -1;
 						item.lParam = (LPARAM)tabid;				// タブ識別ID
@@ -4449,7 +4448,7 @@ void MainFormTimer1000( void )
 
 		memset( &pmc, 0, sizeof(pmc) );
 		if( GetProcessMemoryInfo( ThisProcess, &pmc, sizeof(pmc) ) )
-			_snwprintf(mem,sizeof(mem)/sizeof(WCHAR),L" (Page %u KB)",pmc.PagefileUsage /1024);
+			_snwprintf(mem,sizeof(mem)/sizeof(WCHAR),L" (PF %u KB)",pmc.PagefileUsage /1024);
 
 		if( ListenSock==INVALID_SOCKET )
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - エラー%s",APPNAME,mem);
