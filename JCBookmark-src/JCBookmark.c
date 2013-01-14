@@ -154,7 +154,7 @@ HANDLE		Heap				=NULL;				// GetProcessHeap()
 #define CMD_USER3		16		// ユーザ指定ブラウザ3
 #define CMD_USER4		17		// ユーザ指定ブラウザ4
 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 //
 // 自力メモリリークチェック用ログ生成
