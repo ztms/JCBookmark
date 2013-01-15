@@ -154,7 +154,7 @@ HANDLE		Heap				=NULL;				// GetProcessHeap()
 #define CMD_USER3		16		// ユーザ指定ブラウザ3
 #define CMD_USER4		17		// ユーザ指定ブラウザ4
 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 //
 // 自力メモリリークチェック用ログ生成
@@ -495,6 +495,24 @@ WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 	}
 	return NULL;
 }
+// 文字列連結wcsdup
+WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2 )
+{
+	if( s1 && s2 ){
+		size_t len1 = wcslen( s1 );
+		size_t len2 = wcslen( s2 );
+		WCHAR* ss = (WCHAR*)malloc( (len1 + len2 + 1) *sizeof(WCHAR) );
+		if( ss ){
+			memcpy( ss, s1, len1 *sizeof(WCHAR) );
+			memcpy( ss + len1, s2, len2 *sizeof(WCHAR) );
+			ss[len1+len2] = L'\0';
+		}
+		else LogW(L"L%u:mallocエラー",__LINE__);
+		return ss;
+	}
+	return NULL;
+}
+
 
 // ブラウザ起動ボタン
 #define BUTTON_WIDTH	36		// ボタン縦横ピクセル
@@ -525,39 +543,25 @@ typedef struct {
 	HICON		icon;			// アイコンハンドル
 } BrowserIcon;
 
-// レジストリからブラウザEXEパス取得
-// 実行ファイルからアイコンを取り出す
-// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
-// 実行可能ファイルからのアイコンの抽出
-// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
-WCHAR* BrowserDefaultExe( HKEY topkey, WCHAR* subkey )
+WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
 {
+	WCHAR* value = NULL;
 	BOOL ok = FALSE;
-	WCHAR* exe = NULL;
 	HKEY key;
-
 	if( RegOpenKeyExW( topkey, subkey, 0, KEY_READ, &key )==ERROR_SUCCESS ){
 		DWORD type, bytes;
 		// データバイト数取得(終端NULL含む)
-		if( RegQueryValueExW( key, NULL, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
+		if( RegQueryValueExW( key, name, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
 			// バッファ確保
-			exe = (WCHAR*)malloc( bytes );
-			if( exe ){
+			value = (WCHAR*)malloc( bytes );
+			if( value ){
 				DWORD realbytes = bytes;
 				// データ取得
-				if( RegQueryValueExW( key, NULL, NULL, &type, (BYTE*)exe, &realbytes )==ERROR_SUCCESS ){
+				if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)value, &realbytes )==ERROR_SUCCESS ){
 					if( bytes==realbytes ){
-						// 最後の「,数値」とダブルクォート削除
-						WCHAR *p = wcsrchr(exe,L',');
-						if( p ){
-							*p-- = L'\0';
-							if( *p==L'"') *p = L'\0';
-						}
-						if( *exe==L'"') memmove( exe, exe+1, (wcslen(exe)+1)*sizeof(WCHAR) );
-
 						ok = TRUE;
 					}
-					else LogW(L"RegQueryValueExW(%s)エラー？",exe);
+					else LogW(L"RegQueryValueExW(%s)エラー？",value);
 				}
 				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
 			}
@@ -569,7 +573,34 @@ WCHAR* BrowserDefaultExe( HKEY topkey, WCHAR* subkey )
 	}
 	//else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
 
-	if( !ok && exe ) free(exe),exe=NULL;
+	if( !ok && value ) free(value),value=NULL;
+	return value;
+}
+// レジストリキーDefaultIconからブラウザEXEパス取得
+WCHAR* RegDefaultIconValueAlloc( HKEY topkey, WCHAR* subkey )
+{
+	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
+	if( exe ){
+		// 最後の「,数値」とダブルクォート削除
+		WCHAR *p = wcsrchr(exe,L',');
+		if( p ){
+			*p-- = L'\0';
+			if( *p==L'"') *p = L'\0';
+		}
+		if( *exe==L'"') memmove( exe, exe+1, (wcslen(exe)+1)*sizeof(WCHAR) );
+	}
+	return exe;
+}
+// レジストリキーApp PathsからブラウザEXEパス取得
+WCHAR* RegAppPathValueAlloc( HKEY topkey, WCHAR* subkey )
+{
+	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
+	if( exe ){
+		// ダブルクォート削除
+		WCHAR *p = wcsrchr(exe,L'"');
+		if( p ) *p = L'\0';
+		if( *exe==L'"') memmove( exe, exe+1, (wcslen(exe)+1)*sizeof(WCHAR) );
+	}
 	return exe;
 }
 // 設定ファイル(my.ini)パス取得
@@ -602,7 +633,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 		br[BI_FIREFOX].name = L"Firefox";
 		br[BI_OPERA].name	= L"Opera";
 		// 既定ブラウザEXEパス
-		br[BI_IE].exe = BrowserDefaultExe(
+		br[BI_IE].exe = RegDefaultIconValueAlloc(
 			// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
 			// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
@@ -613,7 +644,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
 		);
-		br[BI_CHROME].exe = BrowserDefaultExe(
+		br[BI_CHROME].exe = RegAppPathValueAlloc(
 			// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
 			// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
 			// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
@@ -624,7 +655,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
 		);
-		br[BI_FIREFOX].exe = BrowserDefaultExe(
+		br[BI_FIREFOX].exe = RegAppPathValueAlloc(
 			// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
 			// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
 			// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
@@ -635,13 +666,14 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
 		);
-		br[BI_OPERA].exe = BrowserDefaultExe(
+		br[BI_OPERA].exe = RegDefaultIconValueAlloc(
 			// TODO:Opera？
 			// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
 			// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
+			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Opera.exe
 			HKEY_CLASSES_ROOT
 			,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
 		);
@@ -735,32 +767,177 @@ void BrowserInfoFree( BrowserInfo br[BI_COUNT] )
 	}
 	free( br );
 }
-
-// ファイルのアイコン取得
-HICON FileIconLoad( WCHAR* path )
+// 自身のフォルダに移動する
+BOOL SetCurrentDirectorySelf( void )
 {
-	HICON icon = NULL;
-	if( path && PathFileExistsW(path) ){
-		if( !ExtractIconExW( path, 0, &icon, NULL, 1 ) || !icon ){
-			// ExtractIconはexeやdllはよいが、ショートカット(.lnk)のアイコンは取得できない。
-			// ExtractAssociatedIcon/SHGetFileInfoで取得できるが、PF使用量が7-800KBも増える。
-			// (wscript.exeのアイコンがなぜかエラーアイコンになったりする謎もある)
-			// PF使用量は削減したいが、COMのIShellLinkインタフェースはコード量がやたら多く却下。
-			// LoadResource/CreateIconFromResourceExはちょっと違うかな？
-			//  　http://bbs.wankuma.com/index.cgi?mode=al2&namber=62203&KLOG=104
-			// ということでPF使用量削減は難しそう。
-			WORD index = 0;
-			icon = ExtractAssociatedIconW( GetModuleHandle(NULL), path, &index );
-			if( !icon ){
-				SHFILEINFOW info;
-				if( SHGetFileInfoW( path, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) ){
-					icon = info.hIcon;
-					if( !icon ){
-						// アイコン取得できない時は標準アプリアイコン
-						icon = CopyIcon( LoadIcon(NULL,IDI_APPLICATION) );
+	WCHAR dir[MAX_PATH+1]=L"";
+	WCHAR* bs;
+	BOOL ok;
+	GetModuleFileNameW( NULL, dir, sizeof(dir)/sizeof(WCHAR) );
+	bs = wcsrchr( dir, L'\\' );
+	if( bs ) *bs = L'\0';
+	ok = SetCurrentDirectoryW( dir );
+	if( !ok ) LogW(L"SetCurrentDirectory(%s)エラー%u",dir,GetLastError());
+	return ok;
+}
+
+// パスを解決する
+// "chrome"だけでも実行できるShellExecuteの機能を取り入れるための自力パス解決。
+// アイコン表示とShellExecute実行可否を確実に揃えるためどちらも同じパス解決を行う。
+// 以下の入力に対応する。
+// 1. 絶対パス
+// 2. 絶対パス(拡張子なし)
+// 3. 環境変数入り絶対パス(%windir%など)
+// 4. 相対パス(自身のフォルダから)
+// 5. 環境変数PATHの実行ファイル名
+// 6. レジストリAppPath登録アプリ名("chrome"など)
+// * 4～6の優先順位は並びの通り4.を優先する。
+// * レジストリAppPathは自力参照する。
+//   Application Registration (Windows)
+//   http://msdn.microsoft.com/en-us/library/windows/desktop/ee872121(v=vs.85).aspx
+//   拡張子がない場合は.exeを補完する。
+// * 相対パスと環境変数PATHからの検索は、SearchPath/FindExecutable関数を使う。
+// * FindExecutable関数は、"a.txt"を渡したら"notepad"が返ってくるという関連付けまで参照する
+//   (このアプリには不要な機能)が、拡張子がない場合は、exe/bat/cmd等の実行形式ファイルを探
+//   してくれるので、拡張子がない入力に用いる。ただし.lnkは実行形式とみなされず無視のもよう。
+//   拡張子がないファイルが実際に存在しても(実行不能なためか)無視される。
+// * SearchPath関数は、拡張子は補わない。拡張子がある場合はこの関数を用いる。
+WCHAR* PathResolve( const WCHAR* path )
+{
+	WCHAR* realpath = NULL;
+	if( path ){
+		// 環境変数(%windir%など)展開
+		DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
+		WCHAR* path2 = (WCHAR*)malloc( length * sizeof(WCHAR) );
+		if( path2 ){
+			ExpandEnvironmentStringsW( path, path2, length );
+			if( PathIsRelativeW(path2) ){
+				// 相対パス
+				WCHAR dir[MAX_PATH+1]=L"";
+				GetCurrentDirectoryW( sizeof(dir)/sizeof(WCHAR), dir );
+				if( SetCurrentDirectorySelf() ){
+					// 自身のディレクトリおよび環境変数PATHから検索
+					WCHAR* ext = wcsrchr(path2,L'.');
+					realpath = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+					if( realpath ){
+						*realpath = L'\0';
+						if( !ext ) FindExecutableW( path2, NULL, realpath );
+						if( !*realpath ) SearchPathW( NULL, path2, NULL, MAX_PATH, realpath, NULL );
+						if( !*realpath ) free( realpath ), realpath=NULL;
 					}
+					else LogW(L"L%u:mallocエラー",__LINE__);
+
+					if( !realpath && PathIsFileSpecW(path2) ){
+						// パス区切り(:\)なし、レジストリ App Paths 自力参照
+						// HKEY_CURRENT_USER 優先、HKEY_LOCAL_MACHINE が後
+						#define APP_PATH L"Microsoft\\Windows\\CurrentVersion\\App Paths"
+						WCHAR key[MAX_PATH+1];
+						WCHAR* value;
+						_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,path2);
+						value = RegAppPathValueAlloc( HKEY_CURRENT_USER, key );
+						if( value ){
+							if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+							else free( value );
+						}
+						if( !realpath ){
+							_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,path2);
+							value = RegAppPathValueAlloc( HKEY_LOCAL_MACHINE, key );
+							if( value ){
+								if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+								else free( value );
+							}
+						}
+						if( !realpath && !ext ){
+							// ドット(拡張子)なしの場合は .exe 補完(chrome→chrome.exe)
+							WCHAR* exe = wcsjoin( path2, L".exe" );
+							if( exe ){
+								_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,exe);
+								value = RegAppPathValueAlloc( HKEY_CURRENT_USER, key );
+								if( value ){
+									if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
+									else free( value );
+								}
+								if( !realpath ){
+									_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,exe);
+									value = RegAppPathValueAlloc( HKEY_LOCAL_MACHINE, key );
+									if( value ){
+										if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
+										else free( value );
+									}
+								}
+								free( exe );
+							}
+							else LogW(L"L%u:wcsjoinエラー",__LINE__);
+						}
+					}
+					if( !realpath ) LogW(L"%s が見つかりません",path);
+					SetCurrentDirectoryW( dir );
+				}
+				else ;// SetCurrentDirectoryエラー
+			}
+			else{
+				// 絶対パス
+				if( PathFileExists( path2 ) ){
+					realpath = wcsdup( path2 );
+					if( !realpath ) LogW(L"L%u:wcsdupエラー",__LINE__);
+				}
+				else{
+					realpath = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+					if( realpath ){
+						*realpath = L'\0';
+						FindExecutableW( path2, NULL, realpath );
+						if( !*realpath ){
+							LogW(L"%s が見つかりません",path);
+							free( realpath ), realpath=NULL;
+						}
+					}
+					else LogW(L"L%u:mallocエラー",__LINE__);
 				}
 			}
+			free( path2 );
+		}
+		else LogW(L"L%u:mallocエラー",__LINE__);
+	}
+	return realpath;
+}
+// ファイルのアイコン取得
+// 実行ファイルからアイコンを取り出す
+// http://hp.vector.co.jp/authors/VA016117/rsrc2icon.html
+// 実行可能ファイルからのアイコンの抽出
+// http://pf-j.sakura.ne.jp/program/tips/extrcicn.htm
+HICON FileIconLoad( const WCHAR* path )
+{
+	HICON icon = NULL;
+	if( path ){
+		WCHAR* realpath = PathResolve( path );
+		if( realpath ){
+			if( !ExtractIconExW( realpath, 0, &icon, NULL, 1 ) || !icon ){
+				// ExtractIconはexeやdllはよいが、ショートカット(.lnk)のアイコンは取得できない。
+				// ExtractAssociatedIcon/SHGetFileInfoで取得できるが、PF使用量が7-800KBも増える。
+				// (wscript.exeのアイコンがなぜかエラーアイコンになったりする謎もある)
+				// PF使用量は削減したいが、COMのIShellLinkインタフェースはコード量がやたら多く却下。
+				// LoadResource/CreateIconFromResourceExはちょっと違うかな？
+				//  　http://bbs.wankuma.com/index.cgi?mode=al2&namber=62203&KLOG=104
+				// ということでPF使用量削減は難しそう。
+				// SHDefExtractIconというXP以降の新しい関数があるようだが、よくわからんのでスルー。
+				SHFILEINFOW info;
+				if( !SHGetFileInfoW( realpath, 0, &info, sizeof(info), SHGFI_ICON |SHGFI_LARGEICON ) || !info.hIcon ){
+					// ExtractAssociatedIconは"chrome"という文字列を渡しても成功するが、
+					// それが引き金でアクセス違反が発生したり謎なので却下。詳細不明。
+					//WORD index = 0;
+					//icon = ExtractAssociatedIconW( GetModuleHandle(NULL), realpath, &index );
+					//if( !icon ){
+						// アイコン取得できない時は標準アプリアイコンを返す
+						// http://msdn.microsoft.com/en-us/library/windows/desktop/bb762149(v=vs.85).aspx
+						// DestroyIconするため標準アイコンをCopyIconしておく。
+						// 似たようなDuplicateIconもあるけどCopyIconでいいかなきっと…
+						LogW(L"\"%s\"のアイコンを取得できません",realpath);
+						icon = CopyIcon( LoadIcon(NULL,IDI_APPLICATION) );
+					//}
+				}
+				else icon = info.hIcon;
+			}
+			free( realpath );
 		}
 	}
 	return icon;
@@ -934,7 +1111,7 @@ void ClientSendf( TClient* cp, u_char* fmt, ... )
 		size_t bufsiz = 512;
 		u_char* buf = (u_char*)malloc( bufsiz );
 		if( buf ){
-		  retry:
+		retry:
 			buf[bufsiz-1]='\0';
 
 			va_start( arg, fmt );
@@ -1614,24 +1791,6 @@ u_char* stristr( const u_char* buf, const u_char* word )
 	return NULL;
 }
 
-// 文字列連結wcsdup
-WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2 )
-{
-	if( s1 && s2 ){
-		size_t len1 = wcslen( s1 );
-		size_t len2 = wcslen( s2 );
-		WCHAR* ss = (WCHAR*)malloc( (len1 + len2 + 1) *sizeof(WCHAR) );
-		if( ss ){
-			memcpy( ss, s1, len1 *sizeof(WCHAR) );
-			memcpy( ss + len1, s2, len2 *sizeof(WCHAR) );
-			ss[len1+len2] = L'\0';
-		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
-		return ss;
-	}
-	return NULL;
-}
-
 // 文字列sにあるN個目の文字cの位置を返す
 // Nが負の場合は末尾から数えてN個目
 WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
@@ -2030,7 +2189,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 		else LogW(L"L%u:mallocエラー",__LINE__);
 	}
 	else LogA("不正なURL:%s",url);
-  fin:
+fin:
 	if( !success ) free(rsp), rsp=NULL;
 	return rsp;
 }
@@ -2292,7 +2451,7 @@ unsigned __stdcall analyze( void* p )
 				,icon?icon:""
 		);
 		// 解放
-	  fin:
+	fin:
 		if( title ) free(title), title=NULL;
 		if( icon ) free(icon), icon=NULL;
 		free(rsp), rsp=NULL;
@@ -2464,7 +2623,7 @@ UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, u
 	sqlite3_prepare( db, moz_bookmarks, -1, &bookmarks, 0 );
 	sqlite3_bind_int( bookmarks, 1, parent );
 
-  sqlite3_step:
+sqlite3_step:
 	rc = sqlite3_step( bookmarks );
 	if( sqlite3_data_count( bookmarks ) ){
 		if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
@@ -3191,7 +3350,7 @@ void SocketWrite( SOCKET sock )
 			cp->status = CLIENT_SENDING;
 
 		case CLIENT_SENDING:
-		  send_more:
+		send_more:
 			// まず送信バッファを送る
 			if( rsp->sended < rsp->bytes ){
 				int ret = send( sock, rsp->buf + rsp->sended, rsp->bytes - rsp->sended, 0 );
@@ -3486,7 +3645,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								else goto _200_ok;
 							}
 							else{
-							  _200_ok:
+							_200_ok:
 								ClientSendf(cp,
 										"HTTP/1.0 200 OK\r\n"
 										"Content-Length: %u\r\n"
@@ -3696,7 +3855,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				else{
 					LogA("[%u]リクエスト大杉:%s",Num(cp),req->buf);
 					ClientSendErr(cp,"400 Bad Request");
-				  send_ready:
+				send_ready:
 					cp->status = CLIENT_SEND_READY;
 					SocketWrite( sock );
 				}
@@ -3812,7 +3971,7 @@ void SocketShutdown( void )
 		closesocket( ListenSock );
 		ListenSock = INVALID_SOCKET;
 	}
-  retry:
+retry:
 	for( retry=FALSE, i=0; i<CLIENT_MAX; i++ ){
 		if( Client[i].status==CLIENT_THREADING ){
 			Client[i].abort = 1;
@@ -3847,7 +4006,7 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		goto tip_create;
 	case NIM_MODIFY:
 		data.uFlags				= NIF_TIP;
-	  tip_create:
+	tip_create:
 		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
 		break;
 	}
@@ -4303,18 +4462,15 @@ void BrowserIconClick( UINT ix )
 	BrowserInfo* br = BrowserInfoAlloc();
 	if( br ){
 		if( br[ix].exe ){
-			// exeパスは環境変数(%windir%など)展開する
-			DWORD exelen = ExpandEnvironmentStringsW( br[ix].exe, NULL, 0 );
-			size_t cmdlen = exelen + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
-			WCHAR* exe = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-			WCHAR* dir = (WCHAR*)malloc( exelen * sizeof(WCHAR) );
-			WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
-			if( exe && dir && cmd ){
-				ExpandEnvironmentStringsW( br[ix].exe, exe, exelen );
-				if( PathFileExistsW(exe) ){
+			WCHAR* exe = PathResolve( br[ix].exe );
+			if( exe ){
+				size_t cmdlen = wcslen(exe) + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
+				WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+				WCHAR* dir = wcsdup( exe );
+				if( cmd && dir ){
 					STARTUPINFOW si;
 					PROCESS_INFORMATION pi;
-					BOOL good;
+					DWORD err=0;
 					WCHAR* p;
 					memset( &si, 0, sizeof(si) );
 					memset( &pi, 0, sizeof(pi) );
@@ -4322,10 +4478,9 @@ void BrowserIconClick( UINT ix )
 					// コマンドライン全体
 					_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,br[ix].arg?br[ix].arg:L"",wListenPort);
 					// EXEフォルダ
-					memcpy( dir, exe, exelen * sizeof(WCHAR) );
 					p = wcsrchr( dir, L'\\' );
 					if( p ) *p = L'\0';
-					good = CreateProcessW(
+					if( !CreateProcessW(
 								NULL			// ここにexeパスを渡すと引数が無視されるなぜだ
 								,cmd			// しょうがないのでここにコマンドライン全体を渡す
 								,NULL, NULL
@@ -4333,35 +4488,36 @@ void BrowserIconClick( UINT ix )
 								,NULL			// 環境ブロック？
 								,dir			// カレントディレクトリ
 								,&si, &pi
-					);
+						)
+					) err = GetLastError();
 					CloseHandle( pi.hThread );
 					CloseHandle( pi.hProcess );
-					if( !good ){
+					if( err ){
 						// CreateProcessはショートカット(.lnk)を実行できないのでShellExecuteを使う。
 						// ただしShellExecuteはPF使用量が1.2MBくらい増えるので、CreateProcessエラー時のみ。
-						// ここで直接ShellExecuteを実行せず、ラッパexeをCreateProcessすればPF使用量増えない？
-						// でもメモリ1～2MBのために涙ぐましい嫌な改造になるのでやめよう…。
-						DWORD err;
 						p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
-						if( p && wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",cmd,GetLastError());
+						if( !p || wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",exe,err);
 						// 引数
 						_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",br[ix].arg?br[ix].arg:L"",wListenPort);
 						err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
-						if( err<=32 ) LogW(L"ShellExecute(%s)エラー%u",exe,err);
+						if( err<=32 ){
+							LogW(L"ShellExecute(%s)エラー%u",exe,err);
+							ErrorBoxW(L"%s\r\nを実行できません",exe);
+							invalid = TRUE;
+						}
 					}
 				}
-				else{
-					invalid = TRUE;
-					ErrorBoxW(L"%s\r\nは存在しません",exe);
-				}
+				else LogW(L"L%u:mallocエラー",__LINE__);
+				if( dir ) free(dir), dir=NULL;
+				if( cmd ) free(cmd), cmd=NULL;
+				free( exe );
 			}
-			else LogW(L"L%u:malloc(%u|%u)エラー",__LINE__,exelen*sizeof(WCHAR),cmdlen*sizeof(WCHAR));
-			if( exe ) free(exe), exe=NULL;
-			if( dir ) free(dir), dir=NULL;
-			if( cmd ) free(cmd), cmd=NULL;
+			else{
+				ErrorBoxW(L"%s\r\nは実行できません",br[ix].exe);
+				invalid = TRUE;
+			}
 		}
 		else empty = TRUE;
-
 		BrowserInfoFree(br), br=NULL;
 	}
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
