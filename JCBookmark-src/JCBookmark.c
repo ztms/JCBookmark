@@ -79,7 +79,7 @@
 #define		WM_TABSELECT		(WM_APP+4)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.3"
+#define		APPNAME				L"JCBookmark v1.4"
 
 typedef struct {
 	u_char*		buf;				// リクエスト受信バッファ
@@ -139,6 +139,7 @@ SSL_CTX*	ssl_ctx				=NULL;				// OpenSSL
 #define		TIMER1000			1000				// タイマーイベントID
 HANDLE		ThisProcess			=NULL;				// 自プロセスハンドル
 HANDLE		Heap				=NULL;				// GetProcessHeap()
+size_t		sizeofTOOLINFOW		=sizeof(TOOLINFOW);	// TOOLINFOW構造体サイズ
 
 // WM_COMMANDのLOWORD(wp)に入るID
 #define CMD_EXIT		1		// ポップアップメニュー終了
@@ -541,6 +542,7 @@ typedef struct {
 typedef struct {
 	HWND		hwnd;			// ウィンドウハンドル
 	HICON		icon;			// アイコンハンドル
+	WCHAR*		text;			// ツールチップ用テキスト(名前)
 } BrowserIcon;
 
 WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
@@ -870,7 +872,7 @@ WCHAR* PathResolve( const WCHAR* path )
 							else LogW(L"L%u:wcsjoinエラー",__LINE__);
 						}
 					}
-					if( !realpath ) LogW(L"%s が見つかりません",path);
+					if( !realpath ) LogW(L"\"%s\"が見つかりません",path);
 					SetCurrentDirectoryW( dir );
 				}
 				else ;// SetCurrentDirectoryエラー
@@ -887,7 +889,7 @@ WCHAR* PathResolve( const WCHAR* path )
 						*realpath = L'\0';
 						FindExecutableW( path2, NULL, realpath );
 						if( !*realpath ){
-							LogW(L"%s が見つかりません",path);
+							LogW(L"\"%s\"が見つかりません",path);
 							free( realpath ), realpath=NULL;
 						}
 					}
@@ -4010,10 +4012,16 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
 		break;
 	}
-
+retry:
 	if( Shell_NotifyIcon( msg, &data ) ) return TRUE;
-
-	if( msg!=NIM_DELETE ) ErrorBoxW(L"タスクトレイアイコンエラー(Shell_NotifyIcon)");
+	//if( msg!=NIM_DELETE ) ErrorBoxW(L"タスクトレイアイコンエラー(Shell_NotifyIcon)");
+	// トレイアイコン消える対策
+	// http://www.geocities.jp/midorinopage/Tips/tasktray.html
+	if( msg==NIM_ADD ){
+		Sleep(2000);
+		Shell_NotifyIcon( NIM_ADD, &data );
+		if( !Shell_NotifyIcon( NIM_MODIFY, &data ) ) goto retry;
+	}
 	return FALSE;
 }
 
@@ -4238,7 +4246,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_TABSELECT:
 		{
 			// wParamにタブIDが入っている（※タブインデックスではない）
-			int tabindex = TabCtrl_GetSelHasLParam( hTabc, (int)wp );
+			int tabid = (int)wp;
+			int tabindex = TabCtrl_GetSelHasLParam( hTabc, tabid );
 			UINT i;
 			TabCtrl_SetCurSel( hTabc, tabindex );
 			TabCtrl_SetCurFocus( hTabc, tabindex );
@@ -4255,21 +4264,23 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( hArg[i], SW_HIDE );
 			}
 			// 該当タブのものだけ表示
-			switch( (int)wp ){
+			switch( tabid ){
 			case 0: // HTTPサーバ
 				ShowWindow( hTxtListenPort, SW_SHOW );
 				ShowWindow( hListenPort, SW_SHOW );
+				SetFocus( hListenPort );
 				break;
-			case 5: case 6: case 7: case 8:
-				ShowWindow( hFOpen, SW_SHOW );	// ファイル選択ボタンはユーザ指定ブラウザのみ
-			case 1: case 2: case 3: case 4:
+			case 5: case 6: case 7: case 8: // ユーザ指定ブラウザ
+				ShowWindow( hFOpen, SW_SHOW );
+			case 1: case 2: case 3: case 4: // 既定ブラウザ
 				ShowWindow( hTxtBtn, SW_SHOW );
 				ShowWindow( hTxtExe, SW_SHOW );
 				ShowWindow( hTxtArg, SW_SHOW );
 				// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
-				ShowWindow( hHide[wp-1], SW_SHOW );
-				ShowWindow( hExe[wp-1], SW_SHOW );
-				ShowWindow( hArg[wp-1], SW_SHOW );
+				ShowWindow( hHide[tabid-1], SW_SHOW );
+				ShowWindow( hExe[tabid-1], SW_SHOW );
+				ShowWindow( hArg[tabid-1], SW_SHOW );
+				SetFocus( (tabid<=4)?hArg[tabid-1]:hExe[tabid-1] );
 				break;
 			}
 		}
@@ -4407,6 +4418,7 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 		for( i=0; i<BI_COUNT; i++ ){
 			if( br[i].hwnd ) DestroyWindow( br[i].hwnd );
 			if( br[i].icon ) DestroyIcon( br[i].icon );
+			if( br[i].text ) free( br[i].text );
 		}
 		free( br );
 	}
@@ -4414,7 +4426,6 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 // ブラウザアイコンボタン作成
 // ボタンにアイコンを表示する
 // http://keicode.com/windows/ui03.php
-// TODO:ツールヒントでnameを表示するとよいか？
 BrowserIcon* BrowserIconCreate( void )
 {
 	BrowserIcon* ico = (BrowserIcon*)malloc( sizeof(BrowserIcon)*BI_COUNT );
@@ -4429,24 +4440,30 @@ BrowserIcon* BrowserIconCreate( void )
 			UINT i;
 			for( i=0; i<BI_COUNT; i++ ){
 				if( !br[i].hide && (br[i].exe || (BI_USER1<=i && i<=BI_USER4)) ){
-					ico[i].hwnd = CreateWindowA(
-									"button"
-									,""
+					// アイコン
+					ico[i].icon = FileIconLoad( br[i].exe );
+					// ツールチップ用文字列
+					ico[i].text = wcsdup( br[i].name );
+					// ボタン
+					ico[i].hwnd = CreateWindowW(
+									L"button", L""
 									,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
 									,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
 									,MainForm
 									,(HMENU)BrowserCommand(i)	// WM_COMMANDのLOWORD(wp)に入る数値
-									,hinst
-									,NULL
+									,hinst, NULL
 					);
-					ico[i].icon = FileIconLoad( br[i].exe );
-					if( ico[i].icon ){
-						SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
+					if( ico[i].hwnd ){
+						if( ico[i].icon ){
+							SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
+						}
+						else if( br[i].exe ){
+							// エラーアイコン
+							SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
+						}
 					}
-					else if( br[i].exe ){
-						// エラーアイコン
-						SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
-					}
+					else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+					// 次
 					left += BUTTON_WIDTH;
 				}
 			}
@@ -4624,10 +4641,48 @@ void MainFormTimer1000( void )
 	}
 }
 
+// ツールチップ
+// http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
+// http://rarara.cafe.coocan.jp/cgi-bin/lng/vc/vclng.cgi?print+200310/03100084.txt
+// http://hpcgi1.nifty.com/MADIA/Vcbbs/wwwlng.cgi?print+201004/10040016.txt
+HWND BrowserIconTipCreate( BrowserIcon* browser )
+{
+	HWND hToolTip = NULL;
+	if( browser ){
+		HINSTANCE hinst = GetModuleHandle(NULL);
+		hToolTip = CreateWindowW(
+						TOOLTIPS_CLASSW, NULL
+						,TTS_ALWAYSTIP |TTS_NOPREFIX |TTS_BALLOON
+						,CW_USEDEFAULT, CW_USEDEFAULT
+						,CW_USEDEFAULT, CW_USEDEFAULT
+						,MainForm, 0, hinst, NULL
+		);
+		if( hToolTip ){
+			TOOLINFOW ti;
+			UINT i;
+			SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
+			memset( &ti, 0, sizeofTOOLINFOW );
+			ti.cbSize = sizeofTOOLINFOW;
+			ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
+			ti.hinst = hinst;
+			for( i=0; i<BI_COUNT; i++ ){
+				if( browser[i].hwnd ){
+					ti.lpszText = browser[i].text;
+					ti.hwnd = browser[i].hwnd;
+					ti.uId = i;
+					GetClientRect( browser[i].hwnd, &ti.rect );
+					SendMessage( hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti );
+				}
+			}
+		}
+	}
+	return hToolTip;
+}
+
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
 // スタック1KB以上使うので関数化。
-void MainFormCreateAfter( void )
+void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip )
 {
 	u_char path[MAX_PATH+1];
 	WCHAR wpath[MAX_PATH+1];
@@ -4655,36 +4710,51 @@ void MainFormCreateAfter( void )
 	}
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
+	// ブラウザ起動ボタン
+	*browser = BrowserIconCreate();
+	*hToolTip = BrowserIconTipCreate( *browser );
+	// 待受開始
+	for( ;; ){
+		ListenPortGet();
+		// listen成功でループ抜け
+		if( ListenStart() ) break;
+		ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
+		// listenエラー設定ダイアログ出す
+		if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
+		// ダイアログOK、listenリトライ
+	}
+	// タイマー起動
+	MainFormTimer1000();
+	SetTimer( MainForm, TIMER1000, 1000, NULL );
 }
 
 
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
-	static BrowserIcon* browser=NULL;
-	static HFONT hFont=NULL;
+	static BrowserIcon*	browser			=NULL;
+	static UINT			taskbarRestart	=0;
+	static HWND			hToolTip		=NULL;
+	static HFONT		hFont			=NULL;
 
 	switch( msg ){
 	case WM_CREATE:
 		// 起動中止するレベルの致命的エラーを含む一次初期化
 		MainForm = hwnd;
-		InitCommonControls();
 		// タスクトレイアイコン
 		TrayIcon = LoadIconA( GetModuleHandle(NULL), "0" );
 		if( !TrayIcon ) return -1;
-		// タスクトレイ登録
 		// TODO:システム起動時にエラーでないのにタスクトレイにアイコンが無い時がある
 		if( !TrayIconNotify( hwnd, NIM_ADD ) ) return -1;
+		// タスクトレイアイコン消える対策
+		taskbarRestart = RegisterWindowMessageW(L"TaskbarCreated");
 		// リストボックス
 		ListBox = CreateWindowExW(
 					WS_EX_CLIENTEDGE
-					,L"listbox"
-					,L""
+					,L"listbox", L""
 					,WS_CHILD |WS_VISIBLE |WS_VSCROLL |WS_HSCROLL
 					,0,0,0,0
-					,hwnd
-					,NULL
-					,((LPCREATESTRUCT)lp)->hInstance
-					,NULL
+					,hwnd, 0
+					,((LPCREATESTRUCT)lp)->hInstance, NULL
 		);
 		if( !ListBox ) return -1;
 		hFont = CreateFontW(15,0,0,0,0,0,0,0,0,0,0,0,0,L"MS Gothic");
@@ -4698,26 +4768,11 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		ThisProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId() );
 		if( !ThisProcess ) return -1;
 		// 二次初期化
-		PostMessage( hwnd, WM_CREATE_AFTER, 0, 0 );
+		PostMessage( hwnd, WM_CREATE_AFTER, (WPARAM)(((LPCREATESTRUCT)lp)->hInstance), 0 );
 		break;
 
 	case WM_CREATE_AFTER:
-		MainFormCreateAfter();
-		// ブラウザ起動ボタン作成
-		browser = BrowserIconCreate();
-		// 待受開始
-		for( ;; ){
-			ListenPortGet();
-			// listen成功でループ抜け
-			if( ListenStart() ) break;
-			ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
-			// listenエラー設定ダイアログ出す
-			if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
-			// ダイアログOK、listenリトライ
-		}
-		// タイマー起動
-		MainFormTimer1000();
-		SetTimer( MainForm, TIMER1000, 1000, NULL );
+		MainFormCreateAfter( (HINSTANCE)wp, &browser, &hToolTip );
 		return 0;
 
 	case WM_SIZE:
@@ -4839,8 +4894,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				// Listen失敗時は再び設定ダイアログ
 				if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
 			}
+			DestroyWindow( hToolTip );
 			BrowserIconDestroy( browser );
 			browser = BrowserIconCreate();
+			hToolTip = BrowserIconTipCreate( browser );
 		}
 		return 0;
 
@@ -4876,6 +4933,9 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		PostQuitMessage(0);
 		return 0;
 	}
+	// タスクトレイアイコン消える対策
+	// http://www.geocities.jp/midorinopage/Tips/tasktray.html
+	if( msg==taskbarRestart ) TrayIconNotify( hwnd, NIM_ADD );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
 
@@ -4886,7 +4946,48 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
+	InitCommonControls();
 	Heap = GetProcessHeap();
+	// comctl32.dllバージョン確認、TOOLINFOW構造体サイズ決定
+	{
+		// ツールチップがぜんぜん動かないので調べた結果、ツールチップ表示で使うTOOLINFOW構造体は
+		// comctl32.dllのバージョン5と6でサイズが異なり、コンパイル時はver6のつもりでも実行時は
+		// ver5(のcomctl32.dll)がロードされてしまい、構造体サイズが不正となる結果、ツールチップ
+		// が動かないという事らしい。
+		//   Unicode環境で、ツールチップを利用するには？
+		//   http://hpcgi1.nifty.com/MADIA/Vcbbs/wwwlng.cgi?print+201008/10080005.txt
+		//   Adding tooltip controls in unicode fails
+		//   http://social.msdn.microsoft.com/Forums/en-US/vclanguage/thread/5cc9a772-5174-4180-a1ca-173dc81886d9
+		//   ツールチップ と コモンコントロール のバージョン差異による落とし穴
+		//   http://ameblo.jp/blueskyame/entry-10398978729.html
+		// 対策は「マニフェストファイルを作ってver6をロードする」方式がまず見つかる。これはXPの
+		// Lunaスタイルをアプリに適用するための話と同じになるもよう。
+		//   自作のプログラムを Windows XP のビジュアルスタイルに対応させる
+		//   http://www.koutou-software.co.jp/junk/apply-winxp-visualstyle.html
+		// マニフェスファイルとかウゼーいらねーということで…今回はcmctl32.dllをロードしてバージ
+		// ョン確認し、TOOLINFOW構造体サイズを調節することにする。
+		//   Common Control Versions (Windows)
+		//   http://msdn.microsoft.com/en-us/library/windows/desktop/hh298349(v=vs.85).aspx
+		//   DllGetVersion function (Windows)
+		//   http://msdn.microsoft.com/ja-jp/library/windows/desktop/bb776404(v=vs.85).aspx
+		#define PACKVERSION(major,minor) MAKELONG(minor,major)
+		DWORD dwVersion=0;
+		HINSTANCE dll = LoadLibraryW( L"comctl32.dll" );
+		if( dll )
+		{
+			DLLGETVERSIONPROC GetVersion = (DLLGETVERSIONPROC)GetProcAddress(dll,"DllGetVersion");
+			if( GetVersion ){
+				DLLVERSIONINFO dvi;
+				HRESULT hr;
+				memset( &dvi, 0, sizeof(dvi) );
+				dvi.cbSize = sizeof(dvi);
+				hr = GetVersion( &dvi );
+				if( SUCCEEDED(hr) ) dwVersion = PACKVERSION(dvi.dwMajorVersion, dvi.dwMinorVersion);
+			}
+			FreeLibrary( dll );
+		}
+		if( dwVersion<PACKVERSION(6,0) ) sizeofTOOLINFOW -= sizeof(void*);
+	}
 	// ドキュメントルート(exeフォルダ\\root)
 	{
 		size_t length = 32;
