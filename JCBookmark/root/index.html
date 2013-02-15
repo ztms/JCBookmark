@@ -10,7 +10,8 @@
 <link rel="stylesheet" href="black.css" id=colorcss>
 </head>
 <body>
-<div id=modified>【 現在の状態を保存するにはここをクリックしてください。 】</div>
+<div id=progress><img src=progress.gif></div>
+<div id=modified>【 変更を保存するにはここをクリックしてください。 】</div>
 <div id=wall></div>
 <div id=sidebar>
   <img class=barico id=optionico src="option.png" title="パネル設定" tabindex=0>
@@ -19,6 +20,7 @@
   <img class=barico id=ieico src="ie.png" title="Internet Explorer お気に入りのインポート" tabindex=0>
   <img class=barico id=firefoxico src="firefox.png" title="Firefox ブックマークのインポート" tabindex=0>
   <img class=barico id=impexpico src="impexp.png" title="HTMLインポート・エクスポート" tabindex=0>
+  <img class=barico id=snapico src="camera.png" title="スナップショット" tabindex=0>
   <br class=clear>
 </div>
 <div id=option>
@@ -74,8 +76,20 @@
   <a id=import>インポート</a><br>
   <iframe name=uploader style="width:1px;height:1px;border:0;"></iframe>
   <br>
-  現在の状態をブックマーク形式HTMLファイルにエクスポートします。エクスポートをクリックするとファイルをダウンロードします。<br>
+  現在の画面上のデータをブックマーク形式HTMLファイルにエクスポートします。エクスポートをクリックするとファイルをダウンロードします。<br>
   <a id=export>エクスポート (ダウンロード)</a>
+</div>
+<div id=snap>
+  現在の保存済みブックマークのスナップショット（バックアップ）を作成します。作成後は下の一覧から復元できます。
+  <div id=shot><a>スナップショット作成</a><img src="wait.gif"></div>
+  作成済みスナップショット一覧
+  <div id=shotbox>
+    <div id=shothead><span class=date>日 時</span><span class=memo>メ モ</span></div>
+    <div id=shots></div>
+  </div>
+  <div id=shotitem>
+    <div>選択したスナップショットを</div> <a id=shotview>画面上に復元する</a><img src="wait.gif"> <a id=shotdel>ディスクから消去</a><img src="wait.gif">
+  </div>
 </div>
 <div id=dialog></div>
 <iframe id=filer frameborder=0 seamless></iframe>

@@ -36,6 +36,12 @@
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
 //	TODO:0.0.0.0でListenする→インターネット公開→SSLでListenする→パスワード認証たいへん後回し
+//	TODO:アプリ実行時のWindowsの警告をどうするか
+//	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
+//	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
+//	http://attosoft.info/blog/item-nozoneinfo/
+//	TODO:Web編集後に自動保存するモードを作れるといいが、新規ブックマーク→favicon取得のところを
+//	どうするか、favicon取得前後どちらも保存する？しない？
 //
 #pragma comment(lib,"gdi32.lib")
 #pragma comment(lib,"user32.lib")
@@ -46,8 +52,6 @@
 #pragma comment(lib,"wininet.lib")
 #pragma comment(lib,"shlwapi.lib")
 #pragma comment(lib,"psapi.lib")
-#pragma comment(lib,"libeay32.lib")
-#pragma comment(lib,"ssleay32.lib")
 // 非ユニコード(Lなし)文字列リテラルをUTF-8でexeに格納する#pragma。
 // KB980263を適用しないと有効にならない。Expressには正式リリースされていない
 // hotfixにも見えるが、ググって非公式サイトからexeダウンロードして適用したら
@@ -69,8 +73,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include "sqlite3.h"
-#include "openssl/ssl.h"
-#include "openssl/rand.h"
 
 #define		WM_SOCKET			WM_APP			// ソケットイベントメッセージ
 #define		WM_TRAYICON			(WM_APP+1)		// タスクトレイクリックメッセージ
@@ -81,65 +83,14 @@
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
 #define		APPNAME				L"JCBookmark v1.4"
 
-typedef struct {
-	u_char*		buf;				// リクエスト受信バッファ
-	u_char*		method;				// GET/PUT
-	u_char*		path;				// パス
-	u_char*		param;				// パラメータ
-	u_char*		ver;				// HTTPバージョン
-	u_char*		head;				// HTTPヘッダ開始位置
-	u_char*		ContentType;		// Content-Type
-	u_char*		UserAgent;			// User-Agent
-	u_char*		IfModifiedSince;	// If-Modified-Since
-	u_char*		body;				// リクエストボディ開始位置
-	u_char*		boundary;			// Content-Type:multipart/form-dataのboundary
-	HANDLE		writefh;			// 書出ファイルハンドル
-	DWORD		wrote;				// 書出済みバイト
-	UINT		ContentLength;		// Content-Length値
-	UINT		bytes;				// 受信バッファ有効バイト
-	size_t		bufsize;			// 受信バッファサイズ
-} Request;
-
-typedef struct {
-	u_char*		buf;				// レスポンス送信バッファ
-	HANDLE		readfh;				// 送信ファイルハンドル
-	DWORD		readed;				// 送信ファイル読込済みバイト
-	UINT		sended;				// 送信済みバイト
-	UINT		bytes;				// 送信バッファ有効バイト
-	size_t		bufsize;			// 送信バッファサイズ
-} Response;
-
-typedef struct TClient {
-	SOCKET		sock;				// クライアント接続ソケット
-	UINT		status;				// 接続状態フラグ
-	#define		CLIENT_ACCEPT_OK	1	// accept完了
-	#define		CLIENT_RECV_MORE	2	// 受信中
-	#define		CLIENT_SEND_READY	3	// 送信準備完了
-	#define		CLIENT_SENDING		4	// 送信中
-	#define		CLIENT_THREADING	5	// スレッド処理中
-	Request		req;
-	Response	rsp;
-	HANDLE		thread;
-	u_char		abort;				// 中断フラグ
-} TClient;
-
-HWND		MainForm			=NULL;				// メインフォームハンドル
-HWND		ListBox				=NULL;				// リストボックスハンドル
-HDC			ListBoxDC			=NULL;				// リストボックスデバイスコンテキスト
-LONG		ListBoxWidth		=0;					// リストボックス横幅
-HICON		TrayIcon			=NULL;				// タスクトレイアイコン
-SOCKET		ListenSock			=INVALID_SOCKET;	// Listenソケット
-u_char		ListenPort[8]		="10080";			// Listenポート
-WCHAR		wListenPort[8]		=L"10080";			// Listenポート
-#define		CLIENT_MAX			16					// クライアント最大同時接続数
-TClient		Client[CLIENT_MAX]	={0};				// クライアント
-WCHAR*		DocumentRoot		=NULL;				// ドキュメントルートフルパス
-size_t		DocumentRootLen		=0;					// wcslen(DocumentRoot)
-SSL_CTX*	ssl_ctx				=NULL;				// OpenSSL
+HWND		MainForm			= NULL;				// メインフォームハンドル
+HWND		ListBox				= NULL;				// リストボックスハンドル
+HDC			ListBoxDC			= NULL;				// リストボックスデバイスコンテキスト
+LONG		ListBoxWidth		= 0;				// リストボックス横幅
+HICON		TrayIcon			= NULL;				// タスクトレイアイコン
 #define		TIMER1000			1000				// タイマーイベントID
-HANDLE		ThisProcess			=NULL;				// 自プロセスハンドル
-HANDLE		Heap				=NULL;				// GetProcessHeap()
-size_t		sizeofTOOLINFOW		=sizeof(TOOLINFOW);	// TOOLINFOW構造体サイズ
+HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
+HANDLE		Heap				= NULL;				// GetProcessHeap()
 
 // WM_COMMANDのLOWORD(wp)に入るID
 #define CMD_EXIT		1		// ポップアップメニュー終了
@@ -155,9 +106,16 @@ size_t		sizeofTOOLINFOW		=sizeof(TOOLINFOW);	// TOOLINFOW構造体サイズ
 #define CMD_USER3		16		// ユーザ指定ブラウザ3
 #define CMD_USER4		17		// ユーザ指定ブラウザ4
 
-#define MEMLOG
-#ifdef MEMLOG
-//
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
 // 自力メモリリークチェック用ログ生成
 // memory.log に確保アドレス＋ソース行数と解放アドレスを記録する。
 // スクリプト memory.pl でログから解放漏れを検出。
@@ -169,6 +127,8 @@ size_t		sizeofTOOLINFOW		=sizeof(TOOLINFOW);	// TOOLINFOW構造体サイズ
 //   -00F56B20
 //   -00F58C10
 // 
+//#define MEMLOG
+#ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
 {
@@ -272,6 +232,7 @@ HICON myExtractAssociatedIconW( HINSTANCE hinst, LPWSTR path, LPWORD index, UINT
 DWORD_PTR mySHGetFileInfoW( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byte, UINT flag, UINT line )
 {
 	DWORD_PTR ret = SHGetFileInfoW( path, attr, info, byte, flag );
+	if( !mlog ) mlogopen();
 	if( mlog && ret && info && info->hIcon )
 		fprintf(mlog,"+%p:L%u:SHGetFileInfoW(?) (%ukb)\r\n",info->hIcon,line,PF());
 	return ret;
@@ -281,6 +242,26 @@ BOOL myDestroyIcon( HICON icon, UINT line )
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",icon,line,PF());
 	return DestroyIcon( icon );
+}
+SOCKET WSAAPI mySocket( int af, int type, int proto, UINT line )
+{
+	SOCKET sock = socket( af, type, proto );
+	if( !mlog ) mlogopen();
+	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:socket() (%ukb)\r\n",sock,line,PF());
+	return sock;
+}
+SOCKET myAccept( SOCKET lsock, struct sockaddr* addr, int* addrlen, UINT line )
+{
+	SOCKET sock = accept( lsock, addr, addrlen );
+	if( !mlog ) mlogopen();
+	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:accept() (%ukb)\r\n",sock,line,PF());
+	return sock;
+}
+int myCloseSocket( SOCKET sock, UINT line )
+{
+	if( !mlog ) mlogopen();
+	if( mlog ) fprintf(mlog,"-SOCK%u:L%u (%ukb)\r\n",sock,line,PF());
+	return closesocket( sock );
 }
 #define malloc(a) mymalloc(a,__LINE__)
 #define strdup(a) mystrdup(a,__LINE__)
@@ -295,6 +276,9 @@ BOOL myDestroyIcon( HICON icon, UINT line )
 #define ExtractAssociatedIconW(a,b,c) myExtractAssociatedIconW(a,b,c,__LINE__)
 #define SHGetFileInfoW(a,b,c,d,e) mySHGetFileInfoW(a,b,c,d,e,__LINE__)
 #define DestroyIcon(a) myDestroyIcon(a,__LINE__)
+#define socket(a,b,c) mySocket(a,b,c,__LINE__)
+#define accept(a,b,c) myAccept(a,b,c,__LINE__)
+#define closesocket(a) myCloseSocket(a,__LINE__)
 #else // MEMLOG
 char* mystrdup( LPCSTR str )
 {
@@ -316,9 +300,22 @@ WCHAR* mywcsdup( LPCWSTR wstr )
 #define free(a) HeapFree(Heap,0,a)
 #endif // MEMLOG
 
-void ErrorBoxA( const u_char* fmt, ... )
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// 共通
+//
+void ErrorBoxA( const UCHAR* fmt, ... )
 {
-	u_char msg[256];
+	UCHAR msg[256];
 	WCHAR wstr[256];
 	va_list arg;
 
@@ -344,8 +341,7 @@ void ErrorBoxW( const WCHAR* fmt, ... )
 
 	MessageBoxW( MainForm, msg, L"エラー", MB_ICONERROR );
 }
-
-void CRLFtoSPACE( u_char* s )
+void CRLFtoSPACE( UCHAR* s )
 {
 	if( s ) for( ; *s; s++ ) if( *s=='\n' || *s=='\r' ) *s=' ';
 }
@@ -353,11 +349,10 @@ void CRLFtoSPACEW( WCHAR* s )
 {
 	if( s ) for( ; *s; s++ ) if( *s==L'\n' || *s==L'\r' ) *s=L' ';
 }
-
-u_char* chomp( u_char* s )
+UCHAR* chomp( UCHAR* s )
 {
 	if( s ){
-		u_char* p;
+		UCHAR* p;
 		for( p=s; *p; p++ ){
 			if( *p=='\r' || *p=='\n' ){
 				*p = '\0';
@@ -381,8 +376,16 @@ WCHAR* chompw( WCHAR* s )
 	return s;
 }
 
-//
-// HTTPログ。一旦メモリに溜めておき、1秒毎のWM_TIMERでListBoxにSendMessageする。
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// サーバログ。一旦メモリに溜めておき、1秒毎のWM_TIMERでListBoxにSendMessageする。
 // はじめは毎回ListBoxにSendMessageしていたが、ワーカースレッドの終了待ちをメインスレッドの
 // 関数内でループ＋Sleepで待ってみたところ、なぜかワーカースレッドも停止。どうやらログ出力＝
 // ListBoxへのSendMessageで止まってフリーズしてしまう感じ。そりゃそうかメインスレッドでビジー
@@ -439,9 +442,9 @@ void LogW( const WCHAR* fmt, ... )
 	CRLFtoSPACEW( wstr );
 	LogCacheAdd( wstr );
 }
-void LogA( const u_char* fmt, ... )
+void LogA( const UCHAR* fmt, ... )
 {
-	u_char		msg[LOGMAX]="";
+	UCHAR		msg[LOGMAX]="";
 	WCHAR		wstr[LOGMAX]=L"";
 	va_list		arg;
 	SYSTEMTIME	st;
@@ -461,11 +464,11 @@ void LogA( const u_char* fmt, ... )
 	LogCacheAdd( wstr );
 }
 
-u_char* WideCharToUTF8alloc( const WCHAR* wstr )
+UCHAR* WideCharToUTF8alloc( const WCHAR* wstr )
 {
 	if( wstr ){
 		int bytes = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
-		u_char* utf8 = (u_char*)malloc(bytes);
+		UCHAR* utf8 = (UCHAR*)malloc(bytes);
 		if( utf8 ){
 			if( WideCharToMultiByte(CP_UTF8, 0, wstr, -1, utf8, bytes, NULL, NULL) !=0 ){
 				// 成功
@@ -478,13 +481,13 @@ u_char* WideCharToUTF8alloc( const WCHAR* wstr )
 	}
 	return NULL;
 }
-WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
+WCHAR* MultiByteToWideCharAlloc( const UCHAR* utf8, UINT cp )
 {
 	if( utf8 ){
-		int count = MultiByteToWideChar( CP_UTF8, 0, utf8, -1, NULL, 0 );
+		int count = MultiByteToWideChar( cp, 0, utf8, -1, NULL, 0 );
 		WCHAR* wstr = (WCHAR*)malloc( (count+1) *sizeof(WCHAR) );
 		if( wstr ){
-			if( MultiByteToWideChar( CP_UTF8, 0, utf8, -1, wstr, count ) !=0 ){
+			if( MultiByteToWideChar( cp, 0, utf8, -1, wstr, count ) !=0 ){
 				// 成功
 				wstr[count] = L'\0';
 				return wstr;
@@ -496,28 +499,143 @@ WCHAR* UTF8toWideCharAlloc( const u_char* utf8 )
 	}
 	return NULL;
 }
-// 文字列連結wcsdup
-WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2 )
+// 文字列連結
+// 実装が面倒なので可変引数は使わない。
+UCHAR* strjoin( const UCHAR* s1, const UCHAR* s2, const UCHAR* s3 ) 
+{
+	if( s1 && s2 ){
+		size_t len1 = strlen( s1 );
+		size_t len2 = strlen( s2 );
+		size_t len3 = s3? strlen( s3 ) : 0;
+		UCHAR* ss = (UCHAR*)malloc( len1 +len2 +len3 +1 );
+		if( ss ){
+			memcpy( ss, s1, len1 );
+			memcpy( ss +len1, s2, len2 );
+			if( len3 ) memcpy( ss +len1 +len2, s3, len3 );
+			ss[len1+len2+len3] = '\0';
+			return ss;
+		}
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,len1+len2+len3+1);
+	}
+	return NULL;
+}
+WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2, const WCHAR* s3, const WCHAR* s4, const WCHAR* s5 )
 {
 	if( s1 && s2 ){
 		size_t len1 = wcslen( s1 );
 		size_t len2 = wcslen( s2 );
-		WCHAR* ss = (WCHAR*)malloc( (len1 + len2 + 1) *sizeof(WCHAR) );
+		size_t len3 = s3? wcslen( s3 ) : 0;
+		size_t len4 = s4? wcslen( s4 ) : 0;
+		size_t len5 = s5? wcslen( s5 ) : 0;
+		WCHAR* ss = (WCHAR*)malloc( (len1 +len2 +len3 +len4 +len5 +1) *sizeof(WCHAR) );
 		if( ss ){
 			memcpy( ss, s1, len1 *sizeof(WCHAR) );
-			memcpy( ss + len1, s2, len2 *sizeof(WCHAR) );
-			ss[len1+len2] = L'\0';
+			memcpy( ss +len1, s2, len2 *sizeof(WCHAR) );
+			if( len3 ) memcpy( ss +len1 +len2, s3, len3 *sizeof(WCHAR) );
+			if( len4 ) memcpy( ss +len1 +len2 +len3, s4, len4 *sizeof(WCHAR) );
+			if( len5 ) memcpy( ss +len1 +len2 +len3 +len4, s5, len5 *sizeof(WCHAR) );
+			ss[len1+len2+len3+len4+len5] = L'\0';
+			return ss;
 		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
-		return ss;
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,(len1+len2+len3+len4+len5+1)*sizeof(WCHAR));
+	}
+	return NULL;
+}
+// 文字数指定strdup
+// srcがnより短い場合は実行してはいけない
+UCHAR* strndup( const UCHAR* src, int n )
+{
+	if( src && n>0 ){
+		UCHAR* dup = (UCHAR*)malloc( n + 1 );
+		if( dup ){
+			memcpy( dup, src, n );
+			dup[n] = '\0';
+			return dup;
+		}
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,n+1);
+	}
+	return NULL;
+}
+// 文字数指定wcsdup
+// srcがnより短い場合は実行してはいけない
+WCHAR* wcsndup( const WCHAR* src, int n )
+{
+	if( src && n>0 ){
+		WCHAR* dup = (WCHAR*)malloc( (n + 1) * sizeof(WCHAR) );
+		if( dup ){
+			memcpy( dup, src, n * sizeof(WCHAR) );
+			dup[n] = L'\0';
+			return dup;
+		}
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,(n+1)*sizeof(WCHAR));
+	}
+	return NULL;
+}
+// " と \ をエスケープしてstrndup
+// srcがnより短い場合は実行してはいけない。
+// UTF-8なら2バイト目以降にASCII文字は出てこない(らしい)ので多バイト文字識別不要。
+UCHAR* strndupJSON( const UCHAR* src, int n )
+{
+	if( src && n>0 ){
+		UCHAR* dup = (UCHAR*)malloc( n * 2 + 1 );
+		if( dup ){
+			UCHAR* dst = dup;
+			int i;
+			for( i=n; i>0; i-- ){
+				if( *src=='"' || *src=='\\' ) *dst++ = '\\';
+				*dst++ = *src++;
+			}
+			*dst = '\0';
+			return dup;
+		}
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,n*2+1);
+	}
+	return NULL;
+}
+// 大小文字区別しないstrstr()
+UCHAR* stristr( const UCHAR* buf, const UCHAR* word )
+{
+	if( buf && word ){
+		size_t len = strlen( word );
+		while( *buf ){
+			if( strnicmp( buf, word, len )==0 ) return buf;
+			buf++;
+		}
+	}
+	//else LogW(L"stristr引数不正");
+	return NULL;
+}
+// 文字列sにあるN個目の文字cの位置を返す
+// Nが負の場合は末尾から数えてN個目
+WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
+{
+	if( s && *s ){
+		int n=0;
+		if( N >0 ){
+			// 先頭から
+			for( ; *s; s++ ) if( *s==c && ++n==N ) return s;
+		}
+		else if( N <0 ){
+			// 末尾から
+			WCHAR* p = s +wcslen(s) -1;
+			for( N=-N; s<=p && *p; p-- ) if( *p==c && ++n==N ) return p;
+		}
 	}
 	return NULL;
 }
 
 
-// ブラウザ起動ボタン
-#define BUTTON_WIDTH	36		// ボタン縦横ピクセル
-// ブラウザインデックス
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// ブラウザ管理
+// ブラウザ情報インデックス
 #define BI_IE			0		// IE
 #define BI_CHROME		1		// Chrome
 #define BI_FIREFOX		2		// Firefox
@@ -527,18 +645,18 @@ WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2 )
 #define BI_USER3		6		// ユーザ指定ブラウザ3
 #define BI_USER4		7		// ユーザ指定ブラウザ4
 #define BI_COUNT		8
-// ブラウザインデックスからブラウザボタンコマンドIDに変換
+// ブラウザ情報インデックスからブラウザボタンコマンドIDに変換
 #define BrowserCommand(i)	((i)+CMD_IE)
-// ブラウザボタンコマンドIDからブラウザインデックスに変換
+// ブラウザボタンコマンドIDからブラウザ情報インデックスに変換
 #define CommandBrowser(i)	((i)-CMD_IE)
-
+// ブラウザ情報
 typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
 	WCHAR*		exe;			// exeフルパス
 	WCHAR*		arg;			// 引数
 	BOOL		hide;			// 表示しない
 } BrowserInfo;
-
+// ブラウザアイコン
 typedef struct {
 	HWND		hwnd;			// ウィンドウハンドル
 	HICON		icon;			// アイコンハンドル
@@ -579,7 +697,7 @@ WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
 	return value;
 }
 // レジストリキーDefaultIconからブラウザEXEパス取得
-WCHAR* RegDefaultIconValueAlloc( HKEY topkey, WCHAR* subkey )
+WCHAR* RegDefaultIconPathAlloc( HKEY topkey, WCHAR* subkey )
 {
 	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
 	if( exe ){
@@ -594,7 +712,7 @@ WCHAR* RegDefaultIconValueAlloc( HKEY topkey, WCHAR* subkey )
 	return exe;
 }
 // レジストリキーApp PathsからブラウザEXEパス取得
-WCHAR* RegAppPathValueAlloc( HKEY topkey, WCHAR* subkey )
+WCHAR* RegAppPathAlloc( HKEY topkey, WCHAR* subkey )
 {
 	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
 	if( exe ){
@@ -635,7 +753,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 		br[BI_FIREFOX].name = L"Firefox";
 		br[BI_OPERA].name	= L"Opera";
 		// 既定ブラウザEXEパス
-		br[BI_IE].exe = RegDefaultIconValueAlloc(
+		br[BI_IE].exe = RegDefaultIconPathAlloc(
 			// TODO:IE(iexplore.exe)パス取得レジストリはどれが適切？
 			// HKEY_CLASSES_ROOT\Applications\iexplore.exe\shell\open\command
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Applications\iexplore.exe\shell\open\command
@@ -646,7 +764,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
 		);
-		br[BI_CHROME].exe = RegAppPathValueAlloc(
+		br[BI_CHROME].exe = RegAppPathAlloc(
 			// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
 			// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
 			// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
@@ -657,7 +775,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe"
 		);
-		br[BI_FIREFOX].exe = RegAppPathValueAlloc(
+		br[BI_FIREFOX].exe = RegAppPathAlloc(
 			// TODO:firefox.exeのパスは？複数バージョン存在する場合がある？
 			// HKEY_CLASSES_ROOT\FirefoxHTML\DefaultIcon
 			// HKEY_CLASSES_ROOT\FirefoxURL\DefaultIcon
@@ -668,7 +786,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
 		);
-		br[BI_OPERA].exe = RegDefaultIconValueAlloc(
+		br[BI_OPERA].exe = RegDefaultIconPathAlloc(
 			// TODO:Opera？
 			// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
 			// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
@@ -684,20 +802,20 @@ BrowserInfo* BrowserInfoAlloc( void )
 		if( ini ){
 			FILE* fp = _wfopen(ini,L"rb");
 			if( fp ){
-				u_char buf[1024];
+				UCHAR buf[1024];
 				while( fgets(buf,sizeof(buf),fp) ){
 					chomp(buf);
 					if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
-						br[BI_IE].arg = UTF8toWideCharAlloc(buf+6);
+						br[BI_IE].arg = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"ChromeArg=",10)==0 && *(buf+10) ){
-						br[BI_CHROME].arg = UTF8toWideCharAlloc(buf+10);
+						br[BI_CHROME].arg = MultiByteToWideCharAlloc( buf+10, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"FirefoxArg=",11)==0 && *(buf+11) ){
-						br[BI_FIREFOX].arg = UTF8toWideCharAlloc(buf+11);
+						br[BI_FIREFOX].arg = MultiByteToWideCharAlloc( buf+11,CP_UTF8 );
 					}
 					else if( strnicmp(buf,"OperaArg=",9)==0 && *(buf+9) ){
-						br[BI_OPERA].arg = UTF8toWideCharAlloc(buf+9);
+						br[BI_OPERA].arg = MultiByteToWideCharAlloc( buf+9,CP_UTF8 );
 					}
 					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
 						br[BI_IE].hide = atoi(buf+7)?TRUE:FALSE;
@@ -712,28 +830,28 @@ BrowserInfo* BrowserInfoAlloc( void )
 						br[BI_OPERA].hide = atoi(buf+10)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"Exe1=",5)==0 && *(buf+5) ){
-						br[BI_USER1].exe = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER1].exe = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Exe2=",5)==0 && *(buf+5) ){
-						br[BI_USER2].exe = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER2].exe = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Exe3=",5)==0 && *(buf+5) ){
-						br[BI_USER3].exe = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER3].exe = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Exe4=",5)==0 && *(buf+5) ){
-						br[BI_USER4].exe = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER4].exe = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Arg1=",5)==0 && *(buf+5) ){
-						br[BI_USER1].arg = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER1].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Arg2=",5)==0 && *(buf+5) ){
-						br[BI_USER2].arg = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER2].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Arg3=",5)==0 && *(buf+5) ){
-						br[BI_USER3].arg = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER3].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Arg4=",5)==0 && *(buf+5) ){
-						br[BI_USER4].arg = UTF8toWideCharAlloc(buf+5);
+						br[BI_USER4].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"Hide1=",6)==0 && *(buf+6) ){
 						br[BI_USER1].hide = atoi(buf+6)?TRUE:FALSE;
@@ -782,7 +900,6 @@ BOOL SetCurrentDirectorySelf( void )
 	if( !ok ) LogW(L"SetCurrentDirectory(%s)エラー%u",dir,GetLastError());
 	return ok;
 }
-
 // パスを解決する
 // "chrome"だけでも実行できるShellExecuteの機能を取り入れるための自力パス解決。
 // アイコン表示とShellExecute実行可否を確実に揃えるためどちらも同じパス解決を行う。
@@ -804,22 +921,30 @@ BOOL SetCurrentDirectorySelf( void )
 //   してくれるので、拡張子がない入力に用いる。ただし.lnkは実行形式とみなされず無視のもよう。
 //   拡張子がないファイルが実際に存在しても(実行不能なためか)無視される。
 // * SearchPath関数は、拡張子は補わない。拡張子がある場合はこの関数を用いる。
-WCHAR* PathResolve( const WCHAR* path )
+WCHAR* ExpandEnvironmentStringsAlloc( const WCHAR* path )
+{
+	DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
+	WCHAR* path2 = (WCHAR*)malloc( length * sizeof(WCHAR) );
+	if( path2 ){
+		ExpandEnvironmentStringsW( path, path2, length );
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
+	return path2;
+}
+WCHAR* myPathResolve( const WCHAR* path )
 {
 	WCHAR* realpath = NULL;
 	if( path ){
 		// 環境変数(%windir%など)展開
-		DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
-		WCHAR* path2 = (WCHAR*)malloc( length * sizeof(WCHAR) );
+		WCHAR* path2 = ExpandEnvironmentStringsAlloc( path );
 		if( path2 ){
-			ExpandEnvironmentStringsW( path, path2, length );
 			if( PathIsRelativeW(path2) ){
 				// 相対パス
+				WCHAR* ext = wcsrchr(path2,L'.');
 				WCHAR dir[MAX_PATH+1]=L"";
 				GetCurrentDirectoryW( sizeof(dir)/sizeof(WCHAR), dir );
 				if( SetCurrentDirectorySelf() ){
 					// 自身のディレクトリおよび環境変数PATHから検索
-					WCHAR* ext = wcsrchr(path2,L'.');
 					realpath = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 					if( realpath ){
 						*realpath = L'\0';
@@ -828,54 +953,59 @@ WCHAR* PathResolve( const WCHAR* path )
 						if( !*realpath ) free( realpath ), realpath=NULL;
 					}
 					else LogW(L"L%u:mallocエラー",__LINE__);
-
-					if( !realpath && PathIsFileSpecW(path2) ){
-						// パス区切り(:\)なし、レジストリ App Paths 自力参照
-						// HKEY_CURRENT_USER 優先、HKEY_LOCAL_MACHINE が後
-						#define APP_PATH L"Microsoft\\Windows\\CurrentVersion\\App Paths"
-						WCHAR key[MAX_PATH+1];
-						WCHAR* value;
-						_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,path2);
-						value = RegAppPathValueAlloc( HKEY_CURRENT_USER, key );
+					SetCurrentDirectoryW( dir );
+				}
+				if( !realpath && PathIsFileSpecW(path2) ){
+					// パス区切り(:\)なし、レジストリ App Paths 自力参照
+					// HKEY_CURRENT_USER 優先、HKEY_LOCAL_MACHINE が後
+					#define APP_PATH L"Microsoft\\Windows\\CurrentVersion\\App Paths"
+					WCHAR key[MAX_PATH+1];
+					WCHAR* value;
+					_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,path2);
+					value = RegAppPathAlloc( HKEY_CURRENT_USER, key );
+					if( value ){
+						if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+						else free( value );
+					}
+					if( !realpath ){
+						_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,path2);
+						value = RegAppPathAlloc( HKEY_LOCAL_MACHINE, key );
 						if( value ){
 							if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
 							else free( value );
 						}
-						if( !realpath ){
-							_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,path2);
-							value = RegAppPathValueAlloc( HKEY_LOCAL_MACHINE, key );
+					}
+					if( !realpath && !ext ){
+						// ドット(拡張子)なしの場合は .exe 補完(chrome→chrome.exe)
+						WCHAR* exe = wcsjoin( path2, L".exe", 0,0,0 );
+						if( exe ){
+							_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,exe);
+							value = RegAppPathAlloc( HKEY_CURRENT_USER, key );
 							if( value ){
-								if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+								if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
 								else free( value );
 							}
-						}
-						if( !realpath && !ext ){
-							// ドット(拡張子)なしの場合は .exe 補完(chrome→chrome.exe)
-							WCHAR* exe = wcsjoin( path2, L".exe" );
-							if( exe ){
-								_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,exe);
-								value = RegAppPathValueAlloc( HKEY_CURRENT_USER, key );
+							if( !realpath ){
+								_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,exe);
+								value = RegAppPathAlloc( HKEY_LOCAL_MACHINE, key );
 								if( value ){
 									if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
 									else free( value );
 								}
-								if( !realpath ){
-									_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,exe);
-									value = RegAppPathValueAlloc( HKEY_LOCAL_MACHINE, key );
-									if( value ){
-										if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
-										else free( value );
-									}
-								}
-								free( exe );
 							}
-							else LogW(L"L%u:wcsjoinエラー",__LINE__);
+							free( exe );
 						}
 					}
-					if( !realpath ) LogW(L"\"%s\"が見つかりません",path);
-					SetCurrentDirectoryW( dir );
 				}
-				else ;// SetCurrentDirectoryエラー
+				if( realpath ){
+					// App Paths が環境変数入りパスの場合がある
+					WCHAR* realpath2 = ExpandEnvironmentStringsAlloc( realpath );
+					if( realpath2 ){
+						free( realpath );
+						realpath = realpath2;
+					}
+				}
+				else LogW(L"\"%s\"が見つかりません",path);
 			}
 			else{
 				// 絶対パス
@@ -898,7 +1028,6 @@ WCHAR* PathResolve( const WCHAR* path )
 			}
 			free( path2 );
 		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
 	}
 	return realpath;
 }
@@ -911,7 +1040,7 @@ HICON FileIconLoad( const WCHAR* path )
 {
 	HICON icon = NULL;
 	if( path ){
-		WCHAR* realpath = PathResolve( path );
+		WCHAR* realpath = myPathResolve( path );
 		if( realpath ){
 			if( !ExtractIconExW( realpath, 0, &icon, NULL, 1 ) || !icon ){
 				// ExtractIconはexeやdllはよいが、ショートカット(.lnk)のアイコンは取得できない。
@@ -944,80 +1073,73 @@ HICON FileIconLoad( const WCHAR* path )
 	}
 	return icon;
 }
-// 待受ポートを設定ファイルからグローバル変数に読込
-void ListenPortGet( void )
-{
-	WCHAR* ini = ConfigFilePath();
-	if( ini ){
-		FILE* fp = _wfopen(ini,L"rb");
-		if( fp ){
-			u_char buf[1024];
-			while( fgets(buf,sizeof(buf),fp) ){
-				chomp(buf);
-				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
-					strncpy( ListenPort, buf+11, sizeof(ListenPort) );
-					ListenPort[sizeof(ListenPort)-1]='\0';
-					MultiByteToWideChar( CP_UTF8, 0, ListenPort, -1, wListenPort, sizeof(wListenPort)/sizeof(WCHAR) );
-				}
-			}
-			fclose(fp);
-		}
-		free( ini );
-	}
-}
 
-void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
-{
-	WCHAR new[MAX_PATH+1]=L"";
-	WCHAR* p;
-	GetModuleFileNameW( NULL, new, sizeof(new)/sizeof(WCHAR) );
-	p = wcsrchr(new,L'\\');
-	if( p ){
-		// my.ini.new 作成
-		FILE* fp;
-		wcscpy( p+1, L"my.ini.new" );
-		fp = _wfopen(new,L"wb");
-		if( fp ){
-			u_char* listenPort = WideCharToUTF8alloc( wListenPort );
-			u_char* exe[BI_COUNT], *arg[BI_COUNT];
-			WCHAR ini[MAX_PATH+1]=L"";
-			UINT i;
-			for( i=0; i<BI_COUNT; i++ ){
-				exe[i] = WideCharToUTF8alloc( wExe[i] );
-				arg[i] = WideCharToUTF8alloc( wArg[i] );
-			}
-			fprintf(fp,"ListenPort=%s\r\n",	listenPort		?listenPort:"");
-			fprintf(fp,"IEArg=%s\r\n",		arg[BI_IE]		?arg[BI_IE]:"");
-			fprintf(fp,"IEHide=%s\r\n",		hide[BI_IE]		?"1":"");
-			fprintf(fp,"ChromeArg=%s\r\n",	arg[BI_CHROME]	?arg[BI_CHROME]:"");
-			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME]	?"1":"");
-			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX]	?arg[BI_FIREFOX]:"");
-			fprintf(fp,"FirefoxHide=%s\r\n",hide[BI_FIREFOX]?"1":"");
-			fprintf(fp,"OperaArg=%s\r\n",	arg[BI_OPERA]	?arg[BI_OPERA]:"");
-			fprintf(fp,"OperaHide=%s\r\n",	hide[BI_OPERA]	?"1":"");
-			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				fprintf(fp,"Exe%u=%s\r\n",i-BI_USER1+1,exe[i]?exe[i]:"");
-				fprintf(fp,"Arg%u=%s\r\n",i-BI_USER1+1,arg[i]?arg[i]:"");
-				fprintf(fp,"Hide%u=%s\r\n",i-BI_USER1+1,hide[i]?"1":"");
-			}
-			if( listenPort ) free( listenPort );
-			for( i=0; i<BI_COUNT; i++ ){
-				if( exe[i] ) free( exe[i] );
-				if( arg[i] ) free( arg[i] );
-			}
-			fclose(fp);
-			// my.ini.new -> my.ini
-			wcscpy( ini, new );
-			ini[wcslen(ini)-4]=L'\0';
-			if( !MoveFileExW( new, ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
-				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
-		}
-		else LogW(L"fopen(%s)エラー",new);
-	}
-}
 
+
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// クライアントコネクション管理
+//
+typedef struct {
+	UCHAR*		buf;				// リクエスト受信バッファ
+	UCHAR*		method;				// GET/PUT
+	UCHAR*		path;				// パス
+	UCHAR*		param;				// パラメータ
+	UCHAR*		ver;				// HTTPバージョン
+	UCHAR*		head;				// HTTPヘッダ開始位置
+	UCHAR*		ContentType;		// Content-Type
+	UCHAR*		UserAgent;			// User-Agent
+	UCHAR*		IfModifiedSince;	// If-Modified-Since
+	UCHAR*		body;				// リクエストボディ開始位置
+	UCHAR*		boundary;			// Content-Type:multipart/form-dataのboundary
+	HANDLE		writefh;			// 書出ファイルハンドル
+	DWORD		wrote;				// 書出済みバイト
+	UINT		ContentLength;		// Content-Length値
+	UINT		bytes;				// 受信バッファ有効バイト
+	size_t		bufsize;			// 受信バッファサイズ
+} Request;
+
+typedef struct {
+	UCHAR*		buf;				// レスポンス送信バッファ
+	HANDLE		readfh;				// 送信ファイルハンドル
+	DWORD		readed;				// 送信ファイル読込済みバイト
+	UINT		sended;				// 送信済みバイト
+	UINT		bytes;				// 送信バッファ有効バイト
+	size_t		bufsize;			// 送信バッファサイズ
+} Response;
+
+typedef struct TClient {
+	SOCKET		sock;				// クライアント接続ソケット
+	UINT		status;				// 接続状態フラグ
+	#define		CLIENT_ACCEPT_OK	1	// accept完了
+	#define		CLIENT_RECV_MORE	2	// 受信中
+	#define		CLIENT_SEND_READY	3	// 送信準備完了
+	#define		CLIENT_SENDING		4	// 送信中
+	#define		CLIENT_THREADING	5	// スレッド処理中
+	Request		req;
+	Response	rsp;
+	HANDLE		thread;
+	UCHAR		abort;				// 中断フラグ
+} TClient;
+
+#define		CLIENT_MAX			16					// クライアント最大同時接続数
+TClient		Client[CLIENT_MAX]	= {0};				// クライアント
+WCHAR*		DocumentRoot		= NULL;				// ドキュメントルートフルパス
+size_t		DocumentRootLen		= 0;				// wcslen(DocumentRoot)
+
+// TClientポインタが何番目のクライアントか返却
 #define Num(p) ( (p)? (p) - Client : -1 )
-
+// 指定ソケットを持つTClientポインタを返却
 TClient* ClientOfSocket( SOCKET sock )
 {
 	UINT i;
@@ -1026,7 +1148,7 @@ TClient* ClientOfSocket( SOCKET sock )
 	}
 	return NULL;
 }
-
+// TClientポインタ１つ初期化
 void ClientInit( TClient* cp )
 {
 	if( cp ){
@@ -1036,14 +1158,12 @@ void ClientInit( TClient* cp )
 		cp->rsp.readfh = INVALID_HANDLE_VALUE;
 	}
 }
-
 WCHAR* ClientTempPath( TClient* cp, WCHAR* path, size_t size )
 {
 	_snwprintf(path,size,L"%s\\$%u",DocumentRoot,Num(cp));
 	path[size-1]=L'\0';
 	return path;
 }
-
 void ClientShutdown( TClient* cp )
 {
 	WCHAR wpath[MAX_PATH+1]=L"";
@@ -1065,38 +1185,58 @@ void ClientShutdown( TClient* cp )
 		ClientInit( cp );
 	}
 }
-
-void ClientSend( TClient* cp, u_char* data, size_t len )
+BOOL ClientSendBytes( TClient* cp, size_t bytes )
 {
 	Response* rsp = &(cp->rsp);
-	size_t need = rsp->bytes + len;
+	size_t need = rsp->bytes + bytes;
 	if( need > rsp->bufsize ){
 		// バッファ拡大
-		u_char* newbuf;
+		UCHAR* newbuf;
 		size_t newsize = rsp->bufsize * 2;
 		while( need > newsize ){ newsize *= 2; }
-		newbuf = (u_char*)malloc( newsize );
+		newbuf = (UCHAR*)malloc( newsize );
 		if( newbuf ){
 			memcpy( newbuf, rsp->buf, rsp->bytes );
 			free( rsp->buf );
 			rsp->buf = newbuf;
 			rsp->bufsize = newsize;
 			LogW(L"[%u]送信バッファ拡大%ubytes",Num(cp),newsize);
+			return TRUE;
 		}
-		else{
-			LogW(L"[%u]mallocエラー送信データ破棄",Num(cp));
-			return;
-		}
+		LogW(L"[%u]mallocエラー送信データ破棄",Num(cp));
+		return FALSE;
 	}
-	memcpy( rsp->buf + rsp->bytes, data, len );
-	rsp->bytes += len;
+	return TRUE;
 }
-
-#define ClientSends(cp,msg) ClientSend(cp,msg,strlen(msg))
-
-void ClientSendf( TClient* cp, u_char* fmt, ... )
+void ClientSend( TClient* cp, UCHAR* data, size_t bytes )
 {
-	u_char msg[256];
+	if( ClientSendBytes( cp, bytes ) ){
+		memcpy( cp->rsp.buf + cp->rsp.bytes, data, bytes );
+		cp->rsp.bytes += bytes;
+	}
+}
+void ClientSendFile( TClient*cp, WCHAR* path )
+{
+	HANDLE hFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
+							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+	);
+	if( hFile !=INVALID_HANDLE_VALUE ){
+		DWORD bytes = GetFileSize( hFile, NULL );
+		if( ClientSendBytes( cp, bytes ) ){
+			DWORD bRead=0;
+			if( ReadFile( hFile, cp->rsp.buf + cp->rsp.bytes, bytes, &bRead, NULL ) && bytes==bRead ){
+				cp->rsp.bytes += bytes;
+			}
+			else LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+		}
+		CloseHandle( hFile );
+	}
+	else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
+}
+#define ClientSends(cp,msg) ClientSend(cp,msg,strlen(msg))
+void ClientSendf( TClient* cp, UCHAR* fmt, ... )
+{
+	UCHAR msg[256];
 	va_list arg;
 
 	msg[sizeof(msg)-1]='\0';
@@ -1111,7 +1251,7 @@ void ClientSendf( TClient* cp, u_char* fmt, ... )
 	else{
 		// バッファ不足ヒープ使う
 		size_t bufsiz = 512;
-		u_char* buf = (u_char*)malloc( bufsiz );
+		UCHAR* buf = (UCHAR*)malloc( bufsiz );
 		if( buf ){
 		retry:
 			buf[bufsiz-1]='\0';
@@ -1128,7 +1268,7 @@ void ClientSendf( TClient* cp, u_char* fmt, ... )
 			else{
 				free( buf );
 				bufsiz += bufsiz;	// 2倍
-				buf = (u_char*)malloc( bufsiz );
+				buf = (UCHAR*)malloc( bufsiz );
 				if( buf ){
 					goto retry;
 				}
@@ -1137,10 +1277,21 @@ void ClientSendf( TClient* cp, u_char* fmt, ... )
 		}
 	}
 }
-
 #define ClientSendErr(p,s) ClientSendf(p,"HTTP/1.0 %s\r\n\r\n<head><title>%s</title></head><body>%s</body>",s,s,s)
+void ClientSendEmpty( TClient* cp )
+{
+	cp->rsp.bytes = 0;
+	cp->rsp.buf[0] = '\0';
+}
 
-//
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
 // FILETIME値(1601/1/1からの100ナノ秒単位の値)をJavaScript.Date.getTime(1970/1/1からのミリ秒)に
 // 変換する。Win32:FILETIMEは1601/1/1からの100ナノ秒単位の値、中身はUINT64値で、書式 %I64u で
 // 出力すると例えば 129917516702250000 の 18桁。JavaScript.Date.getTimeは1970/1/1からのミリ秒で、
@@ -1163,6 +1314,14 @@ UINT64 JSTime( void )
 	GetSystemTimeAsFileTime( &ft );
 	return FileTimeToJSTime( &ft );
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -1202,13 +1361,8 @@ WCHAR* FavoritesPathAlloc( void )
 			if( value ){
 				// データ取得
 				if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)value, &bytes )==ERROR_SUCCESS ){
-					// 環境変数(%USERPROFILE%)展開後の文字数(終端NULL含む)取得
-					DWORD length = ExpandEnvironmentStringsW( value, NULL, 0 );
-					path = (WCHAR*)malloc( length *sizeof(WCHAR) );
-					if( path ){
-						ExpandEnvironmentStringsW( value, path, length ); // 環境変数展開
-					}
-					else LogW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
+					// 環境変数展開
+					path = ExpandEnvironmentStringsAlloc( value );
 				}
 				else LogW(L"RegQueryValueExW(%s)エラー%u",subkey,GetLastError());
 				free( value );
@@ -1229,9 +1383,9 @@ typedef struct NodeList {
 	DWORD				sortIndex;	// ソートインデックス
 	UINT64				dateAdded;	// 作成日
 	WCHAR*				name;		// 名前(ファイル/フォルダ名)
-	//u_char*				title;		// タイトル
-	u_char*				url;		// サイトURL
-	u_char*				icon;		// favicon URL
+	//UCHAR*				title;		// タイトル
+	UCHAR*				url;		// サイトURL
+	UCHAR*				icon;		// favicon URL
 } NodeList;
 // 全ノード破棄
 void NodeListDestroy( NodeList* node )
@@ -1244,7 +1398,7 @@ void NodeListDestroy( NodeList* node )
 	}
 }
 // ノード１つメモリ確保
-NodeList* NodeCreate( const WCHAR* name, u_char* url, u_char* icon )
+NodeList* NodeCreate( const WCHAR* name, UCHAR* url, UCHAR* icon )
 {
 	NodeList* node = NULL;
 	size_t namesize=0, urlsize=0, iconsize=0;
@@ -1274,12 +1428,12 @@ NodeList* NodeCreate( const WCHAR* name, u_char* url, u_char* icon )
 		}
 		if( url ){
 			memcpy(p,url,urlsize);
-			node->url = (u_char*)p;
+			node->url = (UCHAR*)p;
 			p += urlsize;
 		}
 		if( icon ){
 			memcpy(p,icon,iconsize);
-			node->icon = (u_char*)p;
+			node->icon = (UCHAR*)p;
 			p += iconsize;
 		}
 	}
@@ -1290,13 +1444,10 @@ NodeList* NodeCreate( const WCHAR* name, u_char* url, u_char* icon )
 NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 {
 	NodeList* folder = NULL;
-	size_t wdirlen = wcslen(wdir);
-	WCHAR* wfindir = (WCHAR*)malloc( (wdirlen +3) *sizeof(WCHAR) );
+	WCHAR* wfindir = wcsjoin( wdir, L"\\*", 0,0,0 );
 	if( wfindir ){
-		HANDLE handle;
 		WIN32_FIND_DATAW wfd;
-		_snwprintf(wfindir,wdirlen+3,L"%s\\*",wdir);
-		handle = FindFirstFileW( wfindir, &wfd );
+		HANDLE handle = FindFirstFileW( wfindir, &wfd );
 		if( handle !=INVALID_HANDLE_VALUE ){
 			// フォルダノード
 			folder = NodeCreate( wcsrchr(wdir,L'\\')+1, NULL, NULL );
@@ -1305,11 +1456,9 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 				folder->isFolder = TRUE;
 				do{
 					if( wcscmp(wfd.cFileName,L"..") && wcscmp(wfd.cFileName,L".") ){
-						size_t wpathlen = wdirlen + wcslen(wfd.cFileName) + 2;
-						WCHAR *wpath = (WCHAR*)malloc( wpathlen *sizeof(WCHAR) );
+						WCHAR *wpath = wcsjoin( wdir, L"\\", wfd.cFileName, 0,0 );
 						if( wpath ){
 							NodeList* node = NULL;
-							_snwprintf(wpath,wpathlen,L"%s\\%s",wdir,wfd.cFileName);
 							if( wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ){
 								// ディレクトリ再帰
 								node = FolderFavoriteListCreate( wpath );
@@ -1319,10 +1468,10 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 								WCHAR* dot = wcsrchr( wfd.cFileName, L'.' );
 								if( dot && wcsicmp(dot+1,L"URL")==0 ){
 									// 拡張子url
-									u_char *url=NULL, *icon=NULL;
+									UCHAR *url=NULL, *icon=NULL;
 									FILE* fp = _wfopen( wpath, L"rb" );
 									if( fp ){
-										u_char line[1024];
+										UCHAR line[1024];
 										while( fgets( line, sizeof(line), fp ) ){
 											if( strnicmp(line,"URL=",4)==0 ){
 												url = strdup(chomp(line+4));
@@ -1374,27 +1523,43 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 // http://www.atmark.gr.jp/~s2000/r/memo.txt
 // http://www.codeproject.com/Articles/22267/Internet-Explorer-Favorites-deconstructed
 // http://deployment.xtremeconsulting.com/2010/09/24/windows-7-ie8-favorites-bar-organization-a-descent-into-binary-registry-storage/
+// http://veryie.googlecode.com/svn/trunk/src/Menuorder.cpp
 typedef struct {
-	DWORD		bytes;
+	DWORD		bytes;		// 構造体バイト数(longnameまで含む全体)
 	DWORD		sortIndex;
-	WORD		key1;
+	WORD		key1;		// ここから構造体終端までのバイト数(常にbytes-14)
 	WORD		key2;		// bit0不明, bit1=1(URL)0(フォルダ), bit2=1(UNICODE)0(非UNICODE)
-	DWORD		unknown0;
-	DWORD		unknown1;
+	DWORD		x0;
+	DWORD		x1;
 	WORD		key3;		// 0x0010はURL, 0x0020はフォルダ。key2と同じなので使わない。
 	BYTE		name[1];	// 可変長ファイル(フォルダ)名。非UNICODEの場合は8.3形式NULL終端文字列。UNICODEでフォルダの場合5文字までならそのまま、6文字以上は謎のゴミつき文字列。UNICODEでURLの場合は9文字までならそのまま、10文字以上は謎のゴミつき文字列。ゴミがついている場合でもいちおうNULL終端しているもよう。
 } RegFavoriteOrderItem;
 
 typedef struct {
-	DWORD					unknown0;
-	DWORD					unknown1;
+	DWORD					x0;
+	DWORD					x1;
 	DWORD					bytes;		// 全体バイト数
-	DWORD					unknown2;
+	DWORD					x2;
 	DWORD					itemCount;	// アイテム(レコード)数
 	RegFavoriteOrderItem	item[1];	// 先頭アイテム
 } RegFavoriteOrder;
 
-void FavoriteOrder( NodeList* folder, const WCHAR* subkey, DWORD ignoreBytes )
+// TODO:XPで並び順が少しだけ違う場合がある。特定のフォルダやお気に入りが違う場所にある。
+// UNICODEのlongnameが取得できるエントリとできないエントリがある。違いがわからん。
+// どうもshortnameが5文字まであるいは9文字までという条件は正しくなさそうで、shortnameの途中から
+// ゴミになっている場合はゴミを除いた長さを取得しないといけないのかな？wcslenではゴミまで含まれ
+// てしまう、つまりNULL終端していないのか？どうすればいいんだ。長さがわからないとlongname開始
+// 位置がわからないので、なにか目印があるはずだ。構造体メンバに長さ情報があるかまたは終端目印？
+// あるいはNULL終端していない目印があり、その場合は固定長とか。とにかく長さがわからないと…。
+// shortname と longname の間にある謎の20～42バイトが常に「xx 00 03 00 04」(16進)になる？
+// という非公式情報を元に実装したところ、XPはうまく動いた。
+// TODO:Win7 Home Premium SP1 日本語版 で並び順ぜんぜんダメ。
+// name(shortname)がUNICODEで長い名前の時にlongnameが取得できていないようだ。
+// XPと同じくゴミつき文字列をwcslenしてlongnameの開始位置を決めているのが正しくない？
+// しかしXP用の実装では動かない。謎の20～42バイトが「xx 00 08 00 04」になっているもよう。
+// Vistaではまた違うのか？Vistaが無いのでわからない。これを目印にするのは危険だろうか？
+// とりあえず「xx 00 xx 00 04」を目印にして手元のXP,7はどちらもうまく動いている。。
+void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 {
 	if( folder ){
 		HKEY key;
@@ -1409,45 +1574,86 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, DWORD ignoreBytes )
 					// データ取得
 					if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)order, &bytes )==ERROR_SUCCESS ){
 						RegFavoriteOrderItem* item = order->item;
-						//DWORD count=0;
-						//LogW(L"FavoriteOrder[%s]: %ubytes itemCount=%u %ubytes",wcsrchr(subkey,L'\\'),bytes,order->itemCount,order->bytes);
+						DWORD count=0;
+//#define DEBUGLOG
+#ifdef DEBUGLOG
+						LogW(L"FavoriteOrder[%s]: %ubytes itemCount=%u %ubytes",wcsrchr(subkey,L'\\'),bytes,order->itemCount,order->bytes);
+#endif
 						while( (BYTE*)item < limit ){
 							BOOL isURL = (item->key2 & 0x0002) ? TRUE : FALSE; // url or folder
 							BOOL isUnicode = (item->key2 & 0x0004) ? TRUE : FALSE; // unicode encoding or codepage encoding
-							//WCHAR* shortname;
 							BYTE* longname;
 							size_t len;
 							NodeList* node;
+#ifdef DEBUGLOG
+							WCHAR* shortname;
+#endif
 							// nameの次にさらに可変長のUNICODE長いファイル(フォルダ)名が格納されている。
 							// 可変長が2つ続いており構造体にできないためここで取り出す。
 							if( isUnicode ){
-								// nameがUNICODEの場合、URLなら9文字まで、フォルダなら5文字までは、謎の20～42
-								// バイトをはさんで長いファイル名が始まる。nameがそれより長い場合はすぐ次に
-								// 続けて長いファイル名が始まる。
+								// nameがUNICODEの場合、NULL終端している場合としてない場合があり、どちらも
+								// 謎の20～42バイトをはさんで長いファイル名が始まる。NULL終端していない場合
+								// でも、どうやら謎の20～42バイトの最後がNULL終端と同等のようで、wcslenでは
+								// ちょうど謎の20～42バイトの終わりまでが文字列と判定されるもよう。また謎の
+								// 20～42バイトは、XPでは常に16進「xx 00 03 00 04」になるらしい(非公式情報)。
+								// Win7では「xx 00 08 00 04」、Vistaは不明。
+								#define magicTag(p) ( (p)[0] && (p)[1]==0x00 && (p)[2] && (p)[3]==0x00 && (p)[4]==0x04 )
 								len = wcslen((WCHAR*)item->name);
-								//shortname = wcsdup( (WCHAR*)item->name );
-								longname = item->name + (len+1) * sizeof(WCHAR);
-								// pass dummy bytes
-								if( isURL ){
-									if( len <= 9 ) longname += ignoreBytes;
+								longname = (BYTE*)((WCHAR*)item->name + len + 1);
+								if( magicTag(longname) ){
+									// NULL終端している＝longnameは謎の20～42バイトの先頭。
+									longname += magicBytes;
 								}
 								else{
-									if( len <= 5 ) longname += ignoreBytes;
+									// NULL終端していない＝longnameは謎の20～42バイトの次。
+									// 謎の20～42バイトの先頭を探す。後から探すか前から探すかどっちがいいか？わからん。
+									BYTE* p;
+									//for( p=item->name; p<longname; p++ ){
+									for( p=longname-5;p>=item->name; p-- ){
+										if( magicTag(p) ) break;
+									}
+									//if( p < longname ){
+									if( p >= item->name ){
+										len = (p - item->name)/sizeof(WCHAR);
+										longname = p + magicBytes;
+									}
+									else{
+										LogW(L"不明Orderエントリ");
+									}
 								}
+#ifdef DEBUGLOG
+								shortname = wcsndup( (WCHAR*)item->name, len );
+#endif
 							}
 							else{
 								// nameが非UNICODEの場合、NULL文字含めたnameの長さを偶数にするためのパディング
 								// バイトと、さらに謎の20～42バイトをはさんで長いファイル名(NULL終端)が続く。
-								len = strlen((u_char*)item->name) + sizeof(u_char);
-								//shortname = UTF8toWideCharAlloc( item->name );
+								len = strlen(item->name) + 1;
 								// make sure to take into account that we are at an uneven position
 								longname = item->name + len + ((len%2)?1:0);
 								// pass dummy bytes
-								longname += ignoreBytes;
+								longname += magicBytes;
+#ifdef DEBUGLOG
+								shortname = MultiByteToWideCharAlloc( item->name, CP_UTF8 );
+#endif
 							}
-							//LogW(L"FavoriteOrderItem%u: %ubytes sortIndex=%u Url=%u Unicode=%u shortname(%u)=%s longname=%s"
-							//		,count++,item->bytes,item->sortIndex,isURL,isUnicode,len,shortname,(WCHAR*)longname);
-							//free( shortname );
+#ifdef DEBUGLOG
+							LogW(L"FavoriteOrderItem%u: %ubytes sortIndex=%u key1=%u Url=%u Unicode=%u ?=%u ?=%u shortname(%u)=%s [%02x %02x %02x %02x %02x - %02x %02x %02x %02x %02x] longname=%s"
+									,count++,item->bytes,item->sortIndex,item->key1,isURL,isUnicode,item->x0,item->x1,len,shortname
+									,*(longname-magicBytes+0)
+									,*(longname-magicBytes+1)
+									,*(longname-magicBytes+2)
+									,*(longname-magicBytes+3)
+									,*(longname-magicBytes+4)
+									,*(longname-5)
+									,*(longname-4)
+									,*(longname-3)
+									,*(longname-2)
+									,*(longname-1)
+									,(WCHAR*)longname
+							);
+							if( shortname ) free(shortname), shortname=NULL;
+#endif
 							// ノードリストの該当ノードにソートインデックスをセット
 							for( node=folder->child; node; node=node->next ){
 								if( wcsicmp(node->name,(WCHAR*)longname)==0 ){
@@ -1457,11 +1663,9 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, DWORD ignoreBytes )
 							}
 							// フォルダ
 							if( !isURL ){
-								size_t len = wcslen(subkey) + 1 + wcslen((WCHAR*)longname) + 1;
-								WCHAR* subkey2 = (WCHAR*)malloc( len * sizeof(WCHAR) );
+								WCHAR* subkey2 = wcsjoin( subkey, L"\\", (WCHAR*)longname, 0,0 );
 								if( subkey2 ){
-									_snwprintf(subkey2,len,L"%s\\%s",subkey,(WCHAR*)longname);
-									FavoriteOrder( node, subkey2, ignoreBytes );
+									FavoriteOrder( node, subkey2, magicBytes );
 									free( subkey2 );
 								}
 							}
@@ -1552,7 +1756,6 @@ int NodeTypeCompare( NodeList* p1, NodeList* p2 )
 	if( p1->sortIndex==p2->sortIndex && !p1->isFolder && p2->isFolder ) return 1;
 	return 0;
 }
-
 NodeList* FavoriteListCreate( void )
 {
 	NodeList* list = NULL;
@@ -1563,7 +1766,7 @@ NodeList* FavoriteListCreate( void )
 		free( favdir );
 	}
 	if( list ){
-		DWORD ignoreBytes=0;	// Windows種類により異なるレジストリOrderバイナリレコード謎の無視バイト数
+		size_t magicBytes=0;	// Windows種類により異なるレジストリOrderバイナリレコード謎の無視バイト数
 		OSVERSIONINFOA os;
 		// [WindowsのOS判定]
 		// http://cherrynoyakata.web.fc2.com/sprogram_1_3.htm
@@ -1573,12 +1776,12 @@ NodeList* FavoriteListCreate( void )
 		GetVersionExA( &os );
 		LogW(L"Windows%u.%u",os.dwMajorVersion,os.dwMinorVersion);
 		switch( os.dwMajorVersion ){
-		case 5: ignoreBytes = 20; break;	// XP,2003
+		case 5: magicBytes = 20; break;	// XP,2003
 		case 6: // Vista以降
 			switch( os.dwMinorVersion ){
-			case 0: ignoreBytes = 38; break;	// Vista,2008
-			case 1: ignoreBytes = 42; break;	// 7,2008R2
-			case 2: ignoreBytes = 42; break;	// 8,2012
+			case 0: magicBytes = 38; break;	// Vista,2008
+			case 1: magicBytes = 42; break;	// 7,2008R2
+			case 2: magicBytes = 42; break;	// 8,2012
 			}
 			break;
 		}
@@ -1586,7 +1789,7 @@ NodeList* FavoriteListCreate( void )
 		FavoriteOrder(
 				list
 				,L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MenuOrder\\Favorites"
-				,ignoreBytes
+				,magicBytes
 		);
 		// ソートインデックスで並べ替え
 		list = NodeListSort( list, NodeIndexCompare );
@@ -1598,7 +1801,7 @@ NodeList* FavoriteListCreate( void )
 	return list;
 }
 // ノードリストをJSONでファイル出力
-void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, u_char* view )
+void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, UCHAR* view )
 {
 	UINT count=0;
 	if( depth==0 ){
@@ -1614,8 +1817,8 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, u_char* v
 		if( view ) fputs("\r\n",fp);
 	}
 	while( node ){
-		u_char* title = WideCharToUTF8alloc( node->name );
-		u_char* dot = strrchr(title,'.');
+		UCHAR* title = WideCharToUTF8alloc( node->name );
+		UCHAR* dot = strrchr(title,'.');
 		if( dot ) *dot = '\0';
 		//LogW(L"%u:%s%s",node->sortIndex,node->isFolder?L"フォルダ：":L"",node->name);
 		if( node->isFolder ){
@@ -1681,12 +1884,22 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, u_char* v
 
 
 
+
+
+
+
+
+
+
+
 //---------------------------------------------------------------------------------------------------------------
+// 外部接続・HTTPクライアント関連
+//
 // ANSIとUnicodeとどううまく共通化すれば…
-u_char* FileContentTypeA( u_char* file )
+UCHAR* FileContentTypeA( UCHAR* file )
 {
 	if( file ){
-		u_char* ext = strrchr(file,'.');
+		UCHAR* ext = strrchr(file,'.');
 		if( ext ){
 			ext++;
 			if( stricmp(ext,"txt")==0 )  return "text/plain";
@@ -1711,7 +1924,7 @@ u_char* FileContentTypeA( u_char* file )
 	}
 	return "application/octet-stream";
 }
-u_char* FileContentTypeW( WCHAR* file )
+UCHAR* FileContentTypeW( WCHAR* file )
 {
 	if( file ){
 		WCHAR* ext = wcsrchr(file,L'.');
@@ -1740,78 +1953,6 @@ u_char* FileContentTypeW( WCHAR* file )
 	return "application/octet-stream";
 }
 
-// 文字数指定strdup
-// srcがnより短い場合は実行してはいけない
-u_char* strndup( const u_char* src, int n )
-{
-	if( src && n>0 ){
-		u_char* dup = (u_char*)malloc( n + 1 );
-		if( dup ){
-			memcpy( dup, src, n );
-			dup[n] = '\0';
-		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
-
-		return dup;
-	}
-	return NULL;
-}
-
-// " と \ をエスケープしてstrndup
-// srcがnより短い場合は実行してはいけない。
-// UTF-8なら2バイト目以降にASCII文字は出てこない(らしい)ので多バイト文字識別不要。
-u_char* strndupJSON( const u_char* src, int n )
-{
-	if( src && n>0 ){
-		u_char* dup = (u_char*)malloc( n * 2 + 1 );
-		if( dup ){
-			u_char* dst = dup;
-			int i;
-			for( i=n; i>0; i-- ){
-				if( *src=='"' || *src=='\\' ) *dst++ = '\\';
-				*dst++ = *src++;
-			}
-			*dst = '\0';
-		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
-		return dup;
-	}
-	return NULL;
-}
-
-// 大小文字区別しないstrstr()
-u_char* stristr( const u_char* buf, const u_char* word )
-{
-	if( buf && word ){
-		size_t len = strlen( word );
-		while( *buf ){
-			if( strnicmp( buf, word, len )==0 ) return buf;
-			buf++;
-		}
-	}
-	//else LogW(L"stristr引数不正");
-	return NULL;
-}
-
-// 文字列sにあるN個目の文字cの位置を返す
-// Nが負の場合は末尾から数えてN個目
-WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
-{
-	if( s && *s ){
-		int n=0;
-		if( N >0 ){
-			// 先頭から
-			for( ; *s; s++ ) if( *s==c && ++n==N ) return s;
-		}
-		else if( N <0 ){
-			// 末尾から
-			WCHAR* p = s +wcslen(s) -1;
-			for( N=-N; s<=p && *p; p-- ) if( *p==c && ++n==N ) return p;
-		}
-	}
-	return NULL;
-}
-
 BOOL readable( SOCKET sock, DWORD msec )
 {
 	fd_set fdset;
@@ -1826,10 +1967,10 @@ BOOL readable( SOCKET sock, DWORD msec )
 	return select( 0, &fdset, NULL, NULL, &wait );
 }
 
-u_char* strHeaderValue( const u_char* buf, const u_char* name )
+UCHAR* strHeaderValue( const UCHAR* buf, const UCHAR* name )
 {
 	if( buf && name ){
-		u_char* value = stristr( buf, name );
+		UCHAR* value = stristr( buf, name );
 		if( value ){
 			if( buf==value || (buf < value && *(value-1)=='\n') ){
 				value += strlen( name );
@@ -1845,16 +1986,7 @@ u_char* strHeaderValue( const u_char* buf, const u_char* name )
 	return NULL;
 }
 
-BOOL UnderDocumentRoot( const WCHAR* path )
-{
-	if( path && wcsnicmp(path,DocumentRoot,DocumentRootLen)==0 ){
-		if( path[DocumentRootLen]==L'\\' ) return TRUE;
-		if( path[DocumentRootLen]==L'\0' ) return TRUE;
-	}
-	return FALSE;
-}
-
-u_char* strWeekday( WORD wDayOfWeek )
+UCHAR* strWeekday( WORD wDayOfWeek )
 {
 	switch( wDayOfWeek ){
 	case 0: return "Sun";
@@ -1868,7 +2000,7 @@ u_char* strWeekday( WORD wDayOfWeek )
 	return "Unknown";
 }
 
-u_char* strMonth( WORD wMonth )
+UCHAR* strMonth( WORD wMonth )
 {
 	switch( wMonth ){
 	case 1: return "Jan";
@@ -1886,9 +2018,8 @@ u_char* strMonth( WORD wMonth )
 	}
 	return "Unknown";
 }
-
 // HTTP日付文字列をUINT64に変換
-UINT64 UINT64InetTime( u_char* intime )
+UINT64 UINT64InetTime( UCHAR* intime )
 {
 	SYSTEMTIME st;
 	FILETIME ft;
@@ -1896,7 +2027,6 @@ UINT64 UINT64InetTime( u_char* intime )
 	SystemTimeToFileTime( &st, &ft );
 	return *(UINT64*)&ft;
 }
-
 // タイムアウト指定connectラッパ
 // http://azskyetc.client.jp/program/timeout.html
 // http://tip.sakura.ne.jp/htm/netframe.htm
@@ -1953,18 +2083,25 @@ typedef struct {
 	size_t		bufsize;		// 受信バッファサイズ
 	size_t		bytes;			// 受信バッファ有効バイト
 	UINT		ContentLength;	// Content-Length値
-	u_char		ContentType;	// Content-Type識別
+	UCHAR		ContentType;	// Content-Type識別
 	#define		TEXT_HTML		0x01
-	u_char		charset;		// 文字コード識別
+	UCHAR		charset;		// 文字コード識別
 	#define		UTF8			0x01
 	#define		SJIS			0x02
 	#define		EUC				0x03
 	#define		JIS				0x04
-	u_char*		body;			// レスポンス本文開始
-	u_char		buf[1];			// 受信バッファ(可変長文字列)
+	UCHAR*		body;			// レスポンス本文開始
+	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
-HTTPGet* httpGET( const u_char* url, const u_char* ua )
+#pragma comment(lib,"libeay32.lib")
+#pragma comment(lib,"ssleay32.lib")
+#include "openssl/ssl.h"
+#include "openssl/rand.h"
+
+SSL_CTX*	ssl_ctx	= NULL;		// SSLコンテキスト
+
+HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 {
 	BOOL		ssl_enable		= FALSE;
 	SSL*		ssl_sock		= NULL;
@@ -1996,8 +2133,8 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 		goto fin;
 	}
 	if( *url ){
-		u_char* path = strchr(url,'/');
-		u_char* host;
+		UCHAR* path = strchr(url,'/');
+		UCHAR* host;
 		if( path ){
 			host = strndup( url, path - url );
 			path++;
@@ -2007,7 +2144,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 			path = "";
 		}
 		if( host ){
-			u_char* port = strrchr(host,':');
+			UCHAR* port = strrchr(host,':');
 			if( port ) *port++ = '\0'; else port = (ssl_enable)?"443":"80";
 			{
 				ADDRINFOA hint;
@@ -2105,7 +2242,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 								// ヘッダ
 								if( rsp->body ){
 									if( !rsp->ContentType ){
-										u_char* p = strHeaderValue(rsp->buf,"Content-Type");
+										UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
 										if( p ){
 											if( strnicmp(p,"text/html",9)==0 ){
 												rsp->ContentType = TEXT_HTML; //LogW(L"HTMLです");
@@ -2127,7 +2264,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 										}
 									}
 									if( !rsp->ContentLength ){
-										u_char* p = strHeaderValue(rsp->buf,"Content-Length");
+										UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
 										if( p ){
 											UINT n = 0;
 											while( isdigit(*p) ){
@@ -2157,7 +2294,7 @@ HTTPGet* httpGET( const u_char* url, const u_char* ua )
 										rsp = newrsp;
 										rsp->bufsize = newsize;
 										if( rsp->body ) rsp->body += distance;
-										LogW(L"HTTPクライアントバッファ拡大%ubytes",newsize);
+										LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
 									}
 									else{
 										LogW(L"L%u:mallocエラー",__LINE__);
@@ -2221,14 +2358,14 @@ struct {
 unsigned __stdcall analyze( void* p )
 {
 	TClient* cp = (TClient*)p;
-	u_char* url = cp->req.param;
+	UCHAR* url = cp->req.param;
 	HTTPGet* rsp;
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
 	// URL取得。req.paramは今のところURLのみ。
 	rsp = httpGET( url, cp->req.UserAgent );
 	if( rsp ){
-		u_char* title=NULL, *icon=NULL;
+		UCHAR* title=NULL, *icon=NULL;
 		if( cp->abort ) goto fin;
 		// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 		// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
@@ -2316,8 +2453,8 @@ unsigned __stdcall analyze( void* p )
 		// gzip未対応なのでとりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら
 		// どっちも大丈夫になった。gzipに対応するにはzlibを使えばいいのかな…後回し(；´Д｀)
 		{
-			u_char* begin = stristr(rsp->body,"<title");
-			u_char* end;
+			UCHAR* begin = stristr(rsp->body,"<title");
+			UCHAR* end;
 			if( begin ){
 				begin += 6;
 				end = stristr(begin,"</title>");
@@ -2338,30 +2475,30 @@ unsigned __stdcall analyze( void* p )
 		// favicon取得
 		{
 			// まず<link rel=icon href="xxx">をさがす
-			u_char* begin = rsp->body;
+			UCHAR* begin = rsp->body;
 			while( begin=stristr(begin,"<link") ){
-				u_char* end;
+				UCHAR* end;
 				begin += 5;
 				end = strchr(begin,'>');
 				if( end ){
-					u_char* rel = stristr(begin," rel=");
+					UCHAR* rel = stristr(begin," rel=");
 					if( rel ){
 						rel += 5;
 						if( rel < end ){
 							if( strnicmp(rel,"\"shortcut icon\"",15)==0
 								|| strnicmp(rel,"\"icon\"",6)==0
 								|| strnicmp(rel,"icon ",5)==0 ){
-								u_char* href = stristr(begin," href=");
+								UCHAR* href = stristr(begin," href=");
 								if( href ){
 									href += 6;
 									if( href < end ){
 										if( *href=='"' ){
-											u_char* endquote = strchr(++href,'"');
+											UCHAR* endquote = strchr(++href,'"');
 											if( endquote )
 												icon = strndup( href, endquote - href );
 										}
 										else{
-											u_char* space = strchr(href,' ');
+											UCHAR* space = strchr(href,' ');
 											if( space )
 												icon = strndup( href, space - href );
 										}
@@ -2376,26 +2513,22 @@ unsigned __stdcall analyze( void* p )
 			}
 			// 相対URLは完全URLになおす
 			if( icon && !strstr(icon,"://") ){
-				u_char* url = NULL;
-				u_char* host = strstr(cp->req.param,"://");
+				UCHAR* url = NULL;
+				UCHAR* host = strstr(cp->req.param,"://");
 				if( host ){
 					host += 3;
 					if( *icon=='/' ){
 						// href="/img/favicon.ico"
-						u_char* slash = strchr(host,'/');
+						UCHAR* slash = strchr(host,'/');
 						if( slash ) *slash = '\0';
-						url = (u_char*)malloc( strlen(cp->req.param) +strlen(icon) +1 );
-						if( url ) sprintf(url,"%s%s",cp->req.param,icon);
-						else LogW(L"L%u:mallocエラー",__LINE__);
+						url = strjoin( cp->req.param, icon, 0 );
 						if( slash ) *slash = '/';
 					}
 					else{
 						// href="img/favicon.ico"
-						u_char* slash = strrchr(host,'/');
+						UCHAR* slash = strrchr(host,'/');
 						if( slash ) *slash = '\0';
-						url = (u_char*)malloc( strlen(cp->req.param) +strlen(icon) +2 );
-						if( url ) sprintf(url,"%s/%s",cp->req.param,icon);
-						else LogW(L"L%u:mallocエラー",__LINE__);
+						url = strjoin( cp->req.param, "/", icon );
 						if( slash ) *slash = '/';
 					}
 				}
@@ -2416,22 +2549,20 @@ unsigned __stdcall analyze( void* p )
 			}
 			// <link>がなかったらhttp(s)://host/favicon.icoがあるか確認
 			if( !icon ){
-				u_char* host = strstr(cp->req.param,"://");
-				u_char* slash;
+				UCHAR* host = strstr(cp->req.param,"://");
+				UCHAR* slash;
 				if( host ){
 					host += 3;
 					slash = strchr(host,'/');
 					if( slash ) *slash = '\0';
-					icon = (u_char*)malloc( strlen(cp->req.param) +strlen("/favicon.ico") +1 );
+					icon = strjoin( cp->req.param, "/favicon.ico", 0 );
 					if( icon ){
-						HTTPGet* tmp;
-						BOOL success=FALSE;
-						sprintf(icon,"%s/favicon.ico",cp->req.param);
-						tmp = httpGET( icon, cp->req.UserAgent );
+						BOOL success = FALSE;
+						HTTPGet* tmp = httpGET( icon, cp->req.UserAgent );
 						if( tmp ){
 							if( strnicmp(tmp->buf+8," 200 ",5)==0 ) // HTTP/1.x 200 OK
 								if( tmp->ContentType !=TEXT_HTML ) // text/html 除外
-									success=TRUE;
+									success = TRUE;
 							free( tmp );
 						}
 						if( !success ) free(icon), icon=NULL;
@@ -2475,6 +2606,15 @@ unsigned __stdcall analyze( void* p )
 
 
 
+
+
+
+
+
+
+
+
+
 //---------------------------------------------------------------------------------------------------------------
 // Firefoxのplaces.sqliteパスを取得
 // 1. Profiles.ini の Path= を取得
@@ -2498,29 +2638,23 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 	#define PLACES_SQLITE L"places.sqlite"
 	WCHAR* places = NULL;
 	// 環境変数展開
-	DWORD length = ExpandEnvironmentStringsW( PROFILES_INI, NULL, 0 );
-	WCHAR* profiles = (WCHAR*)malloc( length *sizeof(WCHAR) );
+	WCHAR* profiles = ExpandEnvironmentStringsAlloc( PROFILES_INI );
 	if( profiles ){
 		WCHAR path[MAX_PATH+1];
-		ExpandEnvironmentStringsW( PROFILES_INI, profiles, length );
 		GetPrivateProfileStringW(L"Profile0",L"Path",L"",path,sizeof(path)/sizeof(WCHAR),profiles);
 		if( *path ){
 			WCHAR* sep = wcsrchr( profiles, L'\\' );
 			if( sep ){
-				size_t len = (sep-profiles) +wcslen(path) +wcslen(PLACES_SQLITE) +3;
 				// 末尾"\\profiles.ini"を削除
 				*sep = L'\0';
 				// profiles\path\places.sqlite
-				places = (WCHAR*)malloc( len *sizeof(WCHAR) );
-				if( places ) _snwprintf(places,len,L"%s\\%s\\%s",profiles,path,PLACES_SQLITE);
-				else LogW(L"L%u:mallocエラー",__LINE__);
+				places = wcsjoin( profiles, L"\\", path, L"\\", PLACES_SQLITE );
 			}
 			else LogW(L"不正パス？:%s",profiles);
 		}
 		else LogW(L"Firefoxプロファイルパスがわかりません");
 		free( profiles );
 	}
-	else LogW(L"L%u:mallocエラー",__LINE__);
 
 	return places;
 }
@@ -2615,10 +2749,10 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 //   「すべてのブックマーク」の中に、「ブックマークツールバー」「ブクマークメニュー」「未整理」の順に
 //   並んでいるが、places.sqliteの中身を見てもそんな順番には並んでいない。
 //
-UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, u_char* view )
+UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, UCHAR* view )
 {
 	sqlite3_stmt* bookmarks;
-	u_char* moz_bookmarks = "select id,type,fk,title,dateAdded from moz_bookmarks where parent=? order by position";
+	UCHAR* moz_bookmarks = "select id,type,fk,title,dateAdded from moz_bookmarks where parent=? order by position";
 	UINT count=0;
 	int rc;
 
@@ -2630,26 +2764,26 @@ sqlite3_step:
 	if( sqlite3_data_count( bookmarks ) ){
 		if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
 			int type = sqlite3_column_int( bookmarks, 1 );
-			const u_char* title = sqlite3_column_text( bookmarks, 3 );
-			const u_char* dateAdded = sqlite3_column_text( bookmarks, 4 );
+			const UCHAR* title = sqlite3_column_text( bookmarks, 3 );
+			const UCHAR* dateAdded = sqlite3_column_text( bookmarks, 4 );
 			UINT n;
 			if( !dateAdded ) dateAdded = "";
 			if( type==1 ){
 				// ブックマーク
 				int fk = sqlite3_column_int( bookmarks, 2 );
 				sqlite3_stmt* places;
-				u_char* moz_places = "select url,favicon_id from moz_places where id=?";
+				UCHAR* moz_places = "select url,favicon_id from moz_places where id=?";
 				int rc;
 				sqlite3_prepare( db, moz_places, -1, &places, 0 );
 				sqlite3_bind_int( places, 1, fk );
 				rc = sqlite3_step( places );
 				if( sqlite3_data_count( places ) ){
 					if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
-						const u_char* url="";
-						const u_char* favicon_url="";
+						const UCHAR* url="";
+						const UCHAR* favicon_url="";
 						// faviconURL取得
 						sqlite3_stmt* favicons;
-						u_char* moz_favicons = "select url from moz_favicons where id=?";
+						UCHAR* moz_favicons = "select url from moz_favicons where id=?";
 						int favicon_id = sqlite3_column_int( places, 1 );
 						int rc;
 						sqlite3_prepare( db, moz_favicons, -1, &favicons, 0 );
@@ -2664,7 +2798,7 @@ sqlite3_step:
 						url = sqlite3_column_text( places, 0 );
 						// place:ではじまるURLは無視
 						if( url && strnicmp(url,"place:",6) ){
-							u_char* titleJSON = NULL;
+							UCHAR* titleJSON = NULL;
 							if( title && *title )
 								titleJSON = strndupJSON( title, strlen(title) );
 							else
@@ -2702,7 +2836,7 @@ sqlite3_step:
 			else if( type==2 ){
 				// フォルダ
 				int id = sqlite3_column_int( bookmarks, 0 );
-				u_char* titleJSON = NULL;
+				UCHAR* titleJSON = NULL;
 				if( depth ){
 					if( title && *title )
 						titleJSON = strndupJSON( title, strlen(title) );
@@ -2774,6 +2908,14 @@ sqlite3_step:
 
 
 
+
+
+
+
+
+
+
+
 //--------------------------------------------------------------------------------------------------------------
 // Chromeブックマークファイルパス取得
 // [Google Chromeの同期について 先日パソコンを購入しました。]
@@ -2799,23 +2941,19 @@ WCHAR* ChromeBookmarksPathAlloc( void )
 {
 	OSVERSIONINFOA os;
 	WCHAR* path = L"%USERPROFILE%\\Local Settings\\Application Data\\Google\\Chrome\\User Data\\Default\\Bookmarks";
-	WCHAR* fullpath;
-	DWORD length;
 	// [WindowsのOS判定]
 	// http://cherrynoyakata.web.fc2.com/sprogram_1_3.htm
 	// http://www.westbrook.jp/Tips/Win/OSVersion.html
 	memset( &os, 0, sizeof(os) );
 	os.dwOSVersionInfoSize = sizeof(os);
 	GetVersionExA( &os );
-	if( os.dwMajorVersion>=6 ) // Vista以降
+	if( os.dwMajorVersion>=6 ){
+		// Vista以降
 		path = L"%USERPROFILE%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks";
-	length = ExpandEnvironmentStringsW( path, NULL, 0 );
-	fullpath = (WCHAR*)malloc( length *sizeof(WCHAR) );
-	if( fullpath ) ExpandEnvironmentStringsW( path, fullpath, length ); // 環境変数展開
-	else LogW(L"L%u:mallocエラー",__LINE__);
-	return fullpath;
+	}
+	// 環境変数展開
+	return ExpandEnvironmentStringsAlloc( path );
 }
-
 // Chrome Bookmarks と同じフォルダの Favicons ファイルパス
 WCHAR* ChromeFaviconsPathAlloc( void )
 {
@@ -2844,12 +2982,12 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 // 実装は、まずテーブル icon_mapping の url をぜんぶ取得して、１エントリずつ対応
 // するテーブル favicons の url を取得するのかな…。テーブル favicons を検索する
 // 回数が多いけど、もっと楽に対応づけを一気に取得する方法が…わからん。
-UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
+UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, UCHAR* view )
 {
 	sqlite3_stmt* icon_mapping;
 	sqlite3_stmt* favicons;
-	u_char* select_icon_mapping = "select page_url,icon_id from icon_mapping";
-	u_char* select_favicons = "select url from favicons where id=?";
+	UCHAR* select_icon_mapping = "select page_url,icon_id from icon_mapping";
+	UCHAR* select_favicons = "select url from favicons where id=?";
 	UINT count=0;
 	int rc;
 
@@ -2860,7 +2998,7 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 	rc = sqlite3_step( icon_mapping );
 	if( sqlite3_data_count( icon_mapping ) ){
 		if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
-			const u_char* page_url = sqlite3_column_text( icon_mapping, 0 );
+			const UCHAR* page_url = sqlite3_column_text( icon_mapping, 0 );
 			int icon_id = sqlite3_column_int( icon_mapping, 1 );
 			if( page_url && *page_url ){
 				int rc;
@@ -2868,7 +3006,7 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 				rc = sqlite3_step( favicons );
 				if( sqlite3_data_count( favicons ) ){
 					if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
-						const u_char* url = sqlite3_column_text( favicons, 0 );
+						const UCHAR* url = sqlite3_column_text( favicons, 0 );
 						if( url && *url ){
 							if( count ){
 								fputc(',',fp);
@@ -2897,23 +3035,546 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, u_char* view )
 
 
 
+
+
+
+
+
+
+
+
 //---------------------------------------------------------------------------------------------------------------
+// CAB圧縮・展開(キャビネットAPI)
+// http://eternalwindows.jp/installer/cabinet/cabinet00.html
+// http://msdn.microsoft.com/en-us/library/bb432265%28v=vs.85%29.aspx
+#pragma comment(lib,"cabinet.lib")
+#include <shlobj.h>
+#include <fci.h>
+#include <fdi.h>
+#include <io.h>
+#include <fcntl.h>
+// FNFCIFILEPLACED macro
+// http://msdn.microsoft.com/en-us/library/ff797934%28v=vs.85%29.aspx
+int DIAMONDAPI fciFilePlaced( PCCAB pccab, char* pszFile, long cbFile, BOOL fContinuation, void* pv )
+{
+	return 0;
+}
+// FNFCIALLOC macro
+// http://msdn.microsoft.com/en-us/library/ff797931%28v=vs.85%29.aspx
+void* DIAMONDAPI cabAlloc( ULONG cb )
+{
+	return malloc( cb );
+}
+// FNFCIFREE macro
+// http://msdn.microsoft.com/en-us/library/ff797935%28v=vs.85%29.aspx
+void DIAMONDAPI cabFree( void* memory )
+{
+	free( memory );
+}
+// FNFCIOPEN macro
+// http://msdn.microsoft.com/en-us/library/ff797939%28v=vs.85%29.aspx
+// FCI/FDIはUNICODE未対応らしいので、UTF-8で受け渡して無理やりUNICODE対応
+int DIAMONDAPI fciOpen( char* pszFile, int oflag, int pmode, int* err, void* pv )
+{
+	int fd = -1;
+	WCHAR* wpath = MultiByteToWideCharAlloc( pszFile, CP_UTF8 );
+	if( wpath ){
+		DWORD dwDesiredAccess=0;
+		DWORD dwCreationDisposition=0;
+		if( oflag & _O_RDWR ){
+			dwDesiredAccess = GENERIC_READ |GENERIC_WRITE;
+		}
+		else if( oflag & _O_WRONLY ){
+			dwDesiredAccess = GENERIC_WRITE;
+		}
+		else{
+			dwDesiredAccess = GENERIC_READ;
+		}
+		if( oflag & _O_CREAT ){
+			// 作成CABファイルが既に存在する場合はFCICreateがエラーになるようにしたいけど、
+			// CREATE_NEWを使うと一時ファイルが開けなくなり動かない。FCIは既に存在する
+			// ファイルを_O_TRUNCなし_O_CREATだけで開くことを期待しているのか？？？
+			// うーむ…FCICreateの前に自力確認するか…。
+			//if( oflag & _O_TRUNC )
+				dwCreationDisposition = CREATE_ALWAYS;
+			//else
+				//dwCreationDisposition = CREATE_NEW;
+		}
+		else{
+			dwCreationDisposition = OPEN_EXISTING;
+		}
+	retry:
+		fd = (int)CreateFileW(
+					wpath
+					,dwDesiredAccess
+					,FILE_SHARE_READ
+					,NULL
+					,dwCreationDisposition
+					,FILE_ATTRIBUTE_NORMAL
+					,NULL
+		);
+		if( (HANDLE)fd==INVALID_HANDLE_VALUE ){
+			fd = -1;
+			*err = GetLastError();
+			if( *err==ERROR_PATH_NOT_FOUND ){
+				WCHAR* bs = wcsrchr( wpath, L'\\' );
+				if( bs ){
+					*bs = L'\0';
+					SHCreateDirectory( NULL, wpath );
+					*bs = L'\\';
+				}
+				goto retry;
+			}
+			LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,wpath,*err);
+		}
+		free( wpath );
+	}
+	return fd;
+}
+// FNOPEN macro
+// http://msdn.microsoft.com/en-us/library/ff797946%28v=vs.85%29.aspx
+int DIAMONDAPI fdiOpen( char* pszFile, int oflag, int pmode )
+{
+	int err, pv;
+	return fciOpen( pszFile, oflag, pmode, &err, &pv );
+}
+// FNFCIREAD macro
+// http://msdn.microsoft.com/en-us/library/ff797940%28v=vs.85%29.aspx
+UINT DIAMONDAPI fciRead( int hf, void* memory, UINT cb, int* err, void* pv )
+{
+	DWORD readed=0;
+	if( ReadFile( (HANDLE)hf, memory, cb, &readed, NULL ) ) return readed;
+	*err = GetLastError();
+	LogW(L"L%u:ReadFile()エラー%u",__LINE__,*err);
+	return -1;
+}
+// FNREAD macro
+// http://msdn.microsoft.com/en-us/library/ff797947%28v=vs.85%29.aspx
+UINT DIAMONDAPI fdiRead( int hf, void* memory, UINT cb )
+{
+	int err, pv;
+	return fciRead( hf, memory, cb, &err, &pv );
+}
+// FNFCIWRITE macro
+// http://msdn.microsoft.com/en-us/library/ff797943%28v=vs.85%29.aspx
+UINT DIAMONDAPI fciWrite( int hf, void* memory, UINT cb, int* err, void* pv )
+{
+	DWORD written=0;
+	if( WriteFile( (HANDLE)hf, memory, cb, &written, NULL ) ) return written;
+	*err = GetLastError();
+	LogW(L"L%u:WriteFile()エラー%u",__LINE__,*err);
+	return -1;
+}
+// FNWRITE macro
+// http://msdn.microsoft.com/en-us/library/ff797949%28v=vs.85%29.aspx
+UINT DIAMONDAPI fdiWrite( int hf, void* memory, UINT cb )
+{
+	int err, pv;
+	return fciWrite( hf, memory, cb, &err, &pv );
+}
+// FNFCICLOSE macro
+// http://msdn.microsoft.com/en-us/library/ff797932%28v=vs.85%29.aspx
+int DIAMONDAPI fciClose( int hf, int* err, void* pv )
+{
+	if( CloseHandle( (HANDLE)hf ) ) return 0;
+	*err = GetLastError();
+	LogW(L"L%u:CloseHandle()エラー%u",__LINE__,*err);
+	return -1;
+}
+// FNCLOSE macro
+// http://msdn.microsoft.com/en-us/library/ff797930%28v=vs.85%29.aspx
+int DIAMONDAPI fdiClose( int hf )
+{
+	int err, pv;
+	return fciClose( hf, &err, &pv );
+}
+// FNFCISEEK macro
+// http://msdn.microsoft.com/en-us/library/ff797941%28v=vs.85%29.aspx
+long DIAMONDAPI fciSeek( int hf, long dist, int seektype, int* err, void* pv )
+{
+	DWORD rt = SetFilePointer( (HANDLE)hf, dist, NULL, seektype );
+	if( rt==INVALID_SET_FILE_POINTER ){
+		*err = GetLastError();
+		LogW(L"L%u:SetFilePointerエラー%u",__LINE__,*err);
+		return -1;
+	}
+	return rt;
+}
+// FNSEEK macro
+// http://msdn.microsoft.com/en-us/library/ff797948%28v=vs.85%29.aspx
+long DIAMONDAPI fdiSeek( int hf, long dist, int seektype )
+{
+	int err, pv;
+	return fciSeek( hf, dist, seektype, &err, &pv );
+}
+// FNFCIDELETE macro
+// http://msdn.microsoft.com/en-us/library/ff797933%28v=vs.85%29.aspx
+int DIAMONDAPI fciDelete( char* pszFile, int* err, void* pv )
+{
+	int rt = -1;
+	WCHAR* wpath = MultiByteToWideCharAlloc( pszFile, CP_UTF8 );
+	if( wpath ){
+		if( DeleteFileW( wpath ) ){
+			rt = 0;
+		}
+		else{
+			*err = GetLastError();
+			LogW(L"L%u:DeleteFile(%s)エラー%u",__LINE__,wpath,*err);
+		}
+		free( wpath );
+	}
+	return rt;
+}
+// FNFCIGETTEMPFILE macro
+// http://msdn.microsoft.com/en-us/library/ff797938%28v=vs.85%29.aspx
+BOOL DIAMONDAPI fciTempFile( char* pszTempName, int cbTempName, void* pv )
+{
+	BOOL success = FALSE;
+	if( pszTempName ){
+		char dir[MAX_PATH+1]="";
+		// システム一時フォルダ(C:\DOCUME~1\user\LOCALS~1\Temp)
+		if( GetTempPathA(MAX_PATH, dir) ){
+			// GetTempFileNameは実際にファイル作成までするもよう。
+			if( GetTempFileNameA(dir, "jcbkm", 0, pszTempName) ){
+			    success = TRUE;
+			}
+		}
+	}
+	return success;
+}
+long DIAMONDAPI cabStatus( UINT typeStatus, ULONG cb1, ULONG cb2, void* pv )
+{
+	return 0;
+}
+// FNFCIGETOPENINFO macro
+// http://msdn.microsoft.com/en-us/library/ff797937%28v=vs.85%29.aspx
+// TODO:ファイル更新日時か、作成日時か、どちらか１つしか日時をアーカイブできない？
+int DIAMONDAPI cabGetOpenInfo( char* pszName, USHORT* pdate, USHORT* ptime, USHORT* pattribs, int* err, void* pv )
+{
+	int fd = fciOpen( pszName, _O_RDONLY, 0, err, pv );
+	if( fd >0 ){
+		FILETIME fileTime;
+		BY_HANDLE_FILE_INFORMATION info;
+		if( GetFileInformationByHandle( (HANDLE)fd, &info )
+			//&& FileTimeToLocalFileTime( &info.ftCreationTime, &fileTime )
+			&& FileTimeToLocalFileTime( &info.ftLastWriteTime, &fileTime )
+			&& FileTimeToDosDateTime( &fileTime, pdate, ptime )
+		){
+			*pattribs = (USHORT)info.dwFileAttributes;
+			*pattribs &= ( _A_RDONLY |_A_HIDDEN |_A_SYSTEM |_A_ARCH );
+			*pattribs |= _A_NAME_IS_UTF;	// ファイル名をUTF-8で格納
+		}
+		else{
+			fciClose( fd, err, pv );
+			fd = -1;
+		}
+	}
+	return fd;
+}
+// FNFDINOTIFY macro
+// http://msdn.microsoft.com/en-us/library/ff797944%28v=vs.85%29.aspx
+int DIAMONDAPI fdiNotify( FDINOTIFICATIONTYPE type, PFDINOTIFICATION ntfy )
+{
+	switch( type ){
+	case fdintCOPY_FILE:
+		// 展開先ファイルを作成オープンする。
+		// ntfy->pvにフォルダパス、ntfy->psz1にファイル名が入っている。
+		// pvはUTF-8（FDICopyにUTF-8で渡しておりそのまま）。
+		// psz1は、ntfy->attribs の _A_NAME_IS_UTF がONなら UTF-8、OFFならSJIS(CP_ACP)。
+		// JCBookmarkスナップショットCABは必ず _A_NAME_IS_UTF なのでSJIS考慮はいらないが…。
+		// TODO:psz1はファイル名でなく相対パス・絶対パスの場合もある。FDIAddFileの指定により可変。
+		// 絶対パスを優先する場合は、フォルダパスを無視することになるか。でも絶対パスのドライブが
+		// 存在しない環境も考えられるが…それはエラーか？フォルダはぜんぶ作ってしまえばいいか。
+		// 指定フォルダに展開するか、絶対パスを復元するかを選べるような感じか。
+		{
+			HANDLE hFile = INVALID_HANDLE_VALUE;
+			WCHAR* wpath = NULL;
+			if( ntfy->attribs & _A_NAME_IS_UTF ){
+				// pv,psz1共にUTF-8
+				UCHAR* path = strjoin( ntfy->pv, "\\", ntfy->psz1 );
+				if( path ){
+					wpath = MultiByteToWideCharAlloc( path, CP_UTF8 );
+					free( path );
+				}
+			}
+			else{
+				// pvはUTF-8、psz1はSJIS(CP_ACP)
+				WCHAR* wdir = MultiByteToWideCharAlloc( ntfy->pv, CP_UTF8 );
+				if( wdir ){
+					WCHAR* wname = MultiByteToWideCharAlloc( ntfy->psz1, CP_ACP );
+					if( wname ){
+						wpath = wcsjoin( wdir, L"\\", wname, 0,0 );
+						free( wname );
+					}
+					free( wdir );
+				}
+			}
+			if( wpath ){
+				WCHAR* bs = wcsrchr( wpath, L'\\' );
+				if( bs ){
+					*bs = L'\0';
+					SHCreateDirectory( NULL, wpath );
+					*bs = L'\\';
+				}
+				hFile = CreateFileW(
+							wpath
+							,GENERIC_WRITE
+							,0, NULL
+							,CREATE_ALWAYS
+							,FILE_ATTRIBUTE_NORMAL
+							,NULL
+				);
+				if( hFile !=INVALID_HANDLE_VALUE ){
+					// 断片化抑制
+					SetFilePointer( hFile, ntfy->cb, NULL, FILE_BEGIN );
+					SetEndOfFile( hFile );
+					SetFilePointer( hFile, 0, NULL, FILE_BEGIN );
+				}
+				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,wpath,GetLastError());
+				free( wpath );
+			}
+			return (hFile==INVALID_HANDLE_VALUE)? -1 : (int)hFile;
+		}
+	case fdintCLOSE_FILE_INFO:
+		// 展開ファイルの属性をセットしてクローズする。
+		// TODO:日時情報が１つだけなので最終アクセス日時とかは復元はできない。
+		{
+			BOOL success = FALSE;
+			WCHAR* wpath = NULL;
+			FILETIME time, local;
+			DosDateTimeToFileTime( ntfy->date, ntfy->time, &time );
+			LocalFileTimeToFileTime( &time, &local );
+#if 0
+			// SetFileInformationByHandleはVistaからのAPIなのか？使えない。
+			FILE_BASIC_INFO fbi;
+			fbi.CreationTime.LowPart = local.dwLowDateTime;
+			fbi.CreationTime.HighPart = local.dwHighDateTime;
+			fbi.LastWriteTime = fbi.CreationTime;
+			fbi.ChangeTime.QuadPart = -1;
+			fbi.LastAccessTime.QuadPart = -1;
+			fbi.FileAttributes = ntfy->attribs;
+			fbi.FileAttributes &= ( _A_RDONLY |_A_HIDDEN |_A_SYSTEM |_A_ARCH );
+			SetFileInformationByHandle( (HANDLE)ntfy->hf, FileBasicInfo, &fbi, sizeof(fbi) );
+#endif
+			SetFileTime( (HANDLE)ntfy->hf, &local, NULL, &local );
+			CloseHandle( (HANDLE)ntfy->hf );
+			if( ntfy->attribs & _A_NAME_IS_UTF ){
+				UCHAR* path = strjoin( ntfy->pv, "\\", ntfy->psz1 );
+				if( path ){
+					wpath = MultiByteToWideCharAlloc( path, CP_UTF8 );
+					free( path );
+				}
+			}
+			else{
+				WCHAR* wdir = MultiByteToWideCharAlloc( ntfy->pv, CP_UTF8 );
+				if( wdir ){
+					WCHAR* wname = MultiByteToWideCharAlloc( ntfy->psz1, CP_ACP );
+					if( wname ){
+						wpath = wcsjoin( wdir, L"\\", wname, 0,0 );
+						free( wname );
+					}
+					free( wdir );
+				}
+			}
+			if( wpath ){
+				DWORD attr = ntfy->attribs;
+				attr &= ( _A_RDONLY |_A_HIDDEN |_A_SYSTEM |_A_ARCH );
+				attr &= ~_A_NAME_IS_UTF;
+				if( SetFileAttributesW( wpath, attr ) ){
+					LogW(L"[展開]%s",wpath);
+					success = TRUE;
+				}
+				else LogW(L"L%u:SetFileAttributes(%s)エラー%u",__LINE__,wpath,GetLastError());
+				free( wpath );
+			}
+			return success;
+		}
+	/* 分割CABファイルの時に使うもの
+	case fdintNEXT_CABINET: break;
+	case fdintPARTIAL_FILE: break;
+	case fdintCABINET_INFO: break;
+	case fdintENUMERATE: break;
+	*/
+	default: break;
+	}
+	return 0;
+}
+// CAB圧縮
+// wcab	: 作成CABファイルパス
+// count: 格納ファイル数
+// path	: 格納ファイルパスリスト(path[0]～path[count-1]まで)、NULLダメ
+// name	: 格納ファイル名リスト(name[0]～name[count-1]まで)、NULLでもよし
+BOOL cabCompress( const WCHAR* wcab, UINT count, const WCHAR** path, const WCHAR** name )
+{
+	BOOL err = FALSE;
+	UCHAR* u8cab = WideCharToUTF8alloc( wcab );
+	if( u8cab ){
+		UCHAR* cabname = strrchr( u8cab, '\\' );
+		if( cabname ){
+			HFCI	hfci;
+			CCAB	cab;
+			ERF		erf;
+			memset(&cab, 0, sizeof(cab));
+			strcpy(cab.szCab, cabname+1);	// 作成するCABファイル名
+			cabname[1] = '\0';				// フォルダ名末尾'\'(でないとダメ)
+			strcpy(cab.szCabPath, u8cab);	// 作成するフォルダ名
+			hfci = FCICreate(
+						&erf
+						,fciFilePlaced
+						,cabAlloc
+						,cabFree
+						,fciOpen
+						,fciRead
+						,fciWrite
+						,fciClose
+						,fciSeek
+						,fciDelete
+						,fciTempFile
+						,&cab
+						,NULL
+			);
+			if( hfci ){
+				UINT i;
+				for( i=0; i<count; i++ ){
+					// TODO:フォルダ対応
+					// http://eternalwindows.jp/installer/cabinet/cabinet04.html
+					// フォルダを再帰的にFCIAddFileしていく。
+					// 第3引数の格納ファイル名は、相対パス・絶対パスでも問題ないもよう。
+					// アーカイバなら相対パス格納か絶対パス格納か選択する話か？
+					// ただ、ドライブ名から異なる複数ファイル・フォルダを格納する時は、
+					// 絶対パスじゃないと展開する時に困るのかな？
+					UCHAR* u8path = WideCharToUTF8alloc( path[i] );
+					UCHAR* u8name = WideCharToUTF8alloc( name? name[i] : PathFindFileNameW(path[i]) );
+					if( u8path && u8name ){
+						if( FCIAddFile(
+								hfci
+								,u8path		// 追加ファイルパス
+								,u8name		// 格納ファイル名(UTF-8)GetOpenInfoの_A_NAME_IS_UTFと対応
+								,FALSE
+								,NULL
+								,cabStatus
+								,cabGetOpenInfo
+								//,tcompTYPE_NONE		// 圧縮なし
+								,tcompTYPE_MSZIP		// MSZIP
+								//,tcompTYPE_QUANTUM	// ？
+								//,tcompTYPE_LZX		// ？
+								)
+						){
+							//LogA("圧縮:%s",u8name);
+						}
+						else{
+							LogW(L"FCIAddFile(%s)エラー%d",path[i],erf.erfOper);
+							err = TRUE;
+						}
+					}
+					if( u8path ) free( u8path );
+					if( u8name ) free( u8name );
+				}
+				if( FCIFlushCabinet( hfci, FALSE, NULL, cabStatus ) ){
+					//LogW(L"圧縮完了=%s",wcab);
+				}
+				else{
+					LogW(L"FCIFlushCabinetエラー%d",erf.erfOper);
+					err = TRUE;
+				}
+				FCIDestroy( hfci );
+			}
+			else{
+				LogW(L"FCICreateエラー%d",erf.erfOper);
+				err = TRUE;
+			}
+		}
+		else{
+			LogW(L"不正パス=%s",wcab);
+			err = TRUE;
+		}
+		free( u8cab );
+	}
+	else err = TRUE;
+
+	if( err ) DeleteFileW( wcab );
+	return !err;
+}
+// CAB展開
+BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
+{
+	//LogW(L"%s を %s に展開します",wcab,wdir);
+	BOOL success = FALSE;
+	HFDI hfdi;
+	ERF erf;
+	hfdi = FDICreate(
+			cabAlloc
+			,cabFree
+			,fdiOpen
+			,fdiRead
+			,fdiWrite
+			,fdiClose
+			,fdiSeek
+			,cpu80386
+			,&erf
+	);
+	if( hfdi ){
+		UCHAR* cabdir = WideCharToUTF8alloc( wcab );
+		UCHAR* outdir = WideCharToUTF8alloc( wdir );
+		if( cabdir && outdir ){
+			UCHAR* bs = strrchr(cabdir,'\\');
+			if( bs ){
+				UCHAR* cabname = strdup( bs+1 );
+				if( cabname ){
+					bs[1] = '\0';
+					if( FDICopy(
+							hfdi
+							,cabname	// CABファイル名
+							,cabdir		// CABファイルフォルダパス
+							,0
+							,fdiNotify
+							,NULL
+							,outdir		// 出力フォルダパス
+						)
+					){
+						success=TRUE;
+						//LogW(L"[展開]%s",wcab);
+					}
+					else LogA("FDICopy(%s%s)エラー%d",cabdir,cabname,erf.erfOper);
+					free( cabname );
+				}
+			}
+		}
+		if( cabdir ) free( cabdir );
+		if( outdir ) free( outdir );
+		FDIDestroy( hfdi );
+	}
+	else LogW(L"FDICreateエラー%d",erf.erfOper);
+	return success;
+}
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// ソケット通信・HTTPプロトコル処理関連
+//
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
 BOOL FileBackup( const WCHAR* path )
 {
 	if( path && *path ){
-		HANDLE rFile = CreateFileW( path
-							,GENERIC_READ
-							,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
+		HANDLE rFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
 							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
 		);
 		if( rFile !=INVALID_HANDLE_VALUE ){
 			BOOL success = FALSE;
-			WCHAR* tmp = wcsjoin( path, L".$$$" );
-			WCHAR* bak = wcsjoin( path, L".bak" );
+			WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
+			WCHAR* bak = wcsjoin( path, L".bak", 0,0,0 );
 			if( tmp && bak ){
-				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, 0
+				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
 									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 				);
 				if( wFile !=INVALID_HANDLE_VALUE ){
@@ -2945,9 +3606,9 @@ BOOL FileBackup( const WCHAR* path )
 						LogW(L"バックアップ作成:%s",bak);
 						success = TRUE;
 					}
-					else LogW(L"L%u:MoveFileEx(%s)エラー",__LINE__,tmp);
+					else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
 				}
-				else LogW(L"L%u:CreateFile(%s)エラー",__LINE__,tmp);
+				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
 			}
 			if( tmp ) free( tmp );
 			if( bak ) free( bak );
@@ -2957,12 +3618,11 @@ BOOL FileBackup( const WCHAR* path )
 	}
 	return TRUE;
 }
-
 // ドキュメントルート配下のフルパスに変換する
-WCHAR* RealPath( const u_char* path, WCHAR* realpath, size_t size )
+WCHAR* RealPath( const UCHAR* path, WCHAR* realpath, size_t size )
 {
 	if( path && realpath ){
-		WCHAR* wpath = UTF8toWideCharAlloc( path );
+		WCHAR* wpath = MultiByteToWideCharAlloc( path, CP_UTF8 );
 		if( wpath ){
 			WCHAR* p;
 			_snwprintf(realpath,size,L"%s\\%s",DocumentRoot,wpath);
@@ -3008,10 +3668,10 @@ WCHAR* RealPath( const u_char* path, WCHAR* realpath, size_t size )
 	}
 	return realpath;
 }
-
 // ファイルを全部メモリに読み込む。CreateFileMappingのがはやい…？
-u_char* file2memory( const WCHAR* path )
+UCHAR* file2memory( const WCHAR* path, BOOL fOpenErrLog )
 {
+	UCHAR* memory = NULL;
 	if( path && *path ){
 		HANDLE hFile = CreateFileW( path
 							,GENERIC_READ
@@ -3020,32 +3680,32 @@ u_char* file2memory( const WCHAR* path )
 		);
 		if( hFile != INVALID_HANDLE_VALUE ){
 			DWORD size = GetFileSize( hFile,NULL );
-			u_char* memory = (u_char*)malloc( size +1 );
+			memory = (UCHAR*)malloc( size +1 );
 			if( memory ){
 				DWORD bRead=0;
 				if( ReadFile( hFile, memory, size, &bRead, NULL ) && bRead==size ){
-					CloseHandle( hFile );
 					memory[size] = '\0';
-					return memory;
 				}
-				LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-				CloseHandle( hFile );
-				free( memory );
-				return NULL;
+				else{
+					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+					free( memory ), memory=NULL;
+				}
 			}
-			LogW(L"L%u:malloc(%u)エラー",__LINE__,size+1);
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,size+1);
 			CloseHandle( hFile );
-			return NULL;
 		}
-		LogW(L"L%u:CreateFile(%s)エラー",__LINE__,path);
-		return NULL;
+		else if( fOpenErrLog ) LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
 	}
-	return NULL;
+	return memory;
 }
-
-
-
-//-----------------------------------------------------------------------------------------------------------------
+BOOL UnderDocumentRoot( const WCHAR* path )
+{
+	if( path && wcsnicmp(path,DocumentRoot,DocumentRootLen)==0 ){
+		if( path[DocumentRootLen]==L'\\' ) return TRUE;
+		if( path[DocumentRootLen]==L'\0' ) return TRUE;
+	}
+	return FALSE;
+}
 // multipart/form-dataのPOSTデータを処理する。いまのところHTMLインポート機能でのみ利用。
 // POSTデータ(リクエスト本文)は、この関数呼出前に一時ファイル(tmppath)にそのまま出力されている。
 // この関数から戻った後は、ファイルがクローズされてレスポンス送信処理(SEND_READY)に移るので、
@@ -3068,7 +3728,7 @@ u_char* file2memory( const WCHAR* path )
 //
 void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 {
-	u_char* path = cp->req.path;
+	UCHAR* path = cp->req.path;
 	if( *path=='/' ) path++;
 	if( stricmp(path,"import.html")==0 && cp->req.ContentLength <1024*1024*10 ){ // 10MB未満なんとなく
 		// HTMLインポート
@@ -3076,18 +3736,18 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 		// 1パートのみエンコードされていないプレーンテキスト前提。
 		// NETSCAPE-Bookmark-file-1 形式を JSON に変換する。
 		// 文字コードはUTF-8前提。チェックはしない。
-		u_char* data = file2memory( tmppath );
+		UCHAR* data = file2memory( tmppath, TRUE );
 		if( data ){
 			FILE* fp = _wfopen( tmppath, L"wb" );
 			if( fp ){
-				u_char* folderNameTop=NULL, *folderNameEnd=NULL;
-				u_char* folderDateTop=NULL, *folderDateEnd=NULL;
+				UCHAR* folderNameTop=NULL, *folderNameEnd=NULL;
+				UCHAR* folderDateTop=NULL, *folderDateEnd=NULL;
 				BYTE comment=0, doctype=0, topentry=0;
 				UINT nextid=3;
 				UINT count=0;
 				int depth=0;
-				u_char last='\0';
-				u_char* p;
+				UCHAR last='\0';
+				UCHAR* p;
 				for( p=data; *p; p++ ){
 					if( strncmp(p,"<!-",3)==0 ){
 						comment=1;
@@ -3112,7 +3772,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 						folderNameEnd = stristr(folderNameTop,"</H1>");
 						if( folderNameEnd ){
 							// ルートエントリ・トップエントリ
-							u_char* strJSON = strndupJSON( folderNameTop, folderNameEnd - folderNameTop );
+							UCHAR* strJSON = strndupJSON( folderNameTop, folderNameEnd - folderNameTop );
 							fputs("{\"id\":1,\"title\":\"root\",\"child\":[{\"id\":2,\"title\":\"", fp);
 							if( strJSON ){
 								fputs( strJSON, fp );
@@ -3141,7 +3801,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 								if( last=='}' ) fputc(',',fp);
 								fprintf(fp,"{\"id\":%u,\"title\":\"",nextid++);
 								if( folderNameTop && folderNameEnd ){
-									u_char* strJSON = strndupJSON( folderNameTop, folderNameEnd - folderNameTop );
+									UCHAR* strJSON = strndupJSON( folderNameTop, folderNameEnd - folderNameTop );
 									if( strJSON ){
 										fputs( strJSON, fp );
 										free( strJSON );
@@ -3194,15 +3854,15 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 						}
 						// <DT><A HREF="ブックマークURL" ADD_DATE=".." ICON_URI="..">タイトル</A>
 						if( strnicmp(p,"<DT><A ",7)==0 ){
-							u_char* titleTop = strchr(p+7,'>');
-							u_char* titleEnd = NULL;
+							UCHAR* titleTop = strchr(p+7,'>');
+							UCHAR* titleEnd = NULL;
 							if( titleTop ){
-								u_char* urlTop = stristr(p+6," HREF=\"");
-								u_char* dateTop = stristr(p+6," ADD_DATE=\"");
-								u_char* iconTop = stristr(p+6," ICON_URI=\"");
-								u_char* urlEnd = NULL;
-								u_char* dateEnd = NULL;
-								u_char* iconEnd = NULL;
+								UCHAR* urlTop = stristr(p+6," HREF=\"");
+								UCHAR* dateTop = stristr(p+6," ADD_DATE=\"");
+								UCHAR* iconTop = stristr(p+6," ICON_URI=\"");
+								UCHAR* urlEnd = NULL;
+								UCHAR* dateEnd = NULL;
+								UCHAR* iconEnd = NULL;
 								if( urlTop && urlTop < titleTop ){
 									urlTop += 7;
 									urlEnd = strchr(urlTop,'"');
@@ -3226,7 +3886,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 									fwrite( urlTop, 1, urlEnd - urlTop, fp );
 								fputs("\",\"title\":\"",fp);
 								if( titleTop && titleEnd ){
-									u_char* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
+									UCHAR* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
 									if( strJSON ){
 										fputs( strJSON, fp );
 										free( strJSON );
@@ -3260,7 +3920,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 				);
 				if( cp->rsp.readfh ){
 					SYSTEMTIME st;
-					u_char inetTime[INTERNET_RFC1123_BUFSIZE];
+					UCHAR inetTime[INTERNET_RFC1123_BUFSIZE];
 					GetSystemTime( &st );
 					InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
 					ClientSendf(cp,
@@ -3309,10 +3969,10 @@ void SocketAccept( SOCKET sock )
 		if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
 			TClient* cp = ClientOfSocket(INVALID_SOCKET);
 			if( cp ){
-				LogW(L"[%u]接続:%s",Num(cp),ip);
+				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
 				#define CLIENT_BUFSIZE 512	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
-				cp->req.buf = (u_char*)malloc( CLIENT_BUFSIZE );
-				cp->rsp.buf = (u_char*)malloc( CLIENT_BUFSIZE );
+				cp->req.buf = (UCHAR*)malloc( CLIENT_BUFSIZE );
+				cp->rsp.buf = (UCHAR*)malloc( CLIENT_BUFSIZE );
 				if( cp->req.buf && cp->rsp.buf ){
 					cp->req.bufsize = cp->rsp.bufsize = CLIENT_BUFSIZE;
 					cp->sock = sock_new;
@@ -3394,9 +4054,14 @@ void SocketWrite( SOCKET sock )
 		}
 	}
 	else{
-		LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
-		shutdown( sock, SD_BOTH );
-		closesocket( sock );
+		//LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
+		//shutdown( sock, SD_BOTH );
+		//closesocket( sock );
+		//どうもここで切断すると通信エラーを引き起こす場合がある風に見える。
+		//ソケット番号が重複するためか、FD_ACCEPT直前にFD_WRITEが来るようなタイミングがあり、
+		//これから通信するコネクションを切断してしまう挙動に見える。Win7で発生頻度が高い？
+		//なにもしない方が問題なく動くように感じる。
+		LogW(L"[:%u](FD_WRITE)",sock);
 	}
 }
 
@@ -3436,10 +4101,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					LogA("[%u]受信:%s",Num(cp),req->buf);
 					req->head = strchr(req->buf,'\n');
 					if( req->head ){
-						u_char* ct = strHeaderValue(++req->head,"Content-Type");
-						u_char* cl = strHeaderValue(  req->head,"Content-Length");
-						u_char* ua = strHeaderValue(  req->head,"User-Agent");
-						u_char* ims= strHeaderValue(  req->head,"If-Modified-Since");
+						UCHAR* ct = strHeaderValue(++req->head,"Content-Type");
+						UCHAR* cl = strHeaderValue(  req->head,"Content-Length");
+						UCHAR* ua = strHeaderValue(  req->head,"User-Agent");
+						UCHAR* ims= strHeaderValue(  req->head,"If-Modified-Since");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
 							UINT n = 0;
@@ -3464,15 +4129,15 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				}
 				if( req->method && req->path && req->ver ){
 					if( stricmp(req->method,"GET")==0 ){
-						u_char* file = cp->req.path;
+						UCHAR* file = cp->req.path;
 						if( *file=='/' ) file++;
 						// リクエストファイル開く
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析
 							// GET /:analyze?http://xxx/yyy HTTP/1.x
 							// "%23"を"#"に戻す(TwitterのURLの/#!/対策)
-							u_char* p = cp->req.param;
-							u_char* end = strchr(p,'\0');
+							UCHAR* p = cp->req.param;
+							UCHAR* end = strchr(p,'\0');
 							while( p = strstr(p,"%23") ){
 								*p++ = '#';
 								memmove( p, p+2, end-p-1 );
@@ -3501,19 +4166,214 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									ClientSends(cp,"\"ie\":1");
 								}
 								if( browser[BI_CHROME].hwnd ){
-									if( count++ ) ClientSends(cp,",");
+									if( count++ ) ClientSend(cp,",",1);
 									ClientSends(cp,"\"chrome\":1");
 								}
 								if( browser[BI_FIREFOX].hwnd ){
-									if( count++ ) ClientSends(cp,",");
+									if( count++ ) ClientSend(cp,",",1);
 									ClientSends(cp,"\"firefox\":1");
 								}
 								if( browser[BI_OPERA].hwnd ){
-									if( count++ ) ClientSends(cp,",");
+									if( count++ ) ClientSend(cp,",",1);
 									ClientSends(cp,"\"opera\":1");
 								}
 							}
-							ClientSends(cp,"}");
+							ClientSend(cp,"}",1);
+							goto send_ready;
+						}
+						else if( stricmp(file,":snapshot")==0 ){
+							// スナップショット作成
+							// ファイル名に年月日時分秒ミリ秒のタイムスタンプをつけて作成。
+							// 重複ファイル名はエラーすなわちGetLocalTimeが進まないほど短時間の
+							// リクエストがあった場合はエラーになる。
+							// ※重複排他はPathFileExistsで行なっている。その後のFCICreate内の
+							// CreateFileはCREATE_ALWAYSで上書きオープンのため、実はPathFileExists
+							// とCreateFileの間で別スレッド・プロセスがファイルを作った場合は
+							// エラーにならず既存ファイルを上書きする。すなわちスレッド・プロセス
+							// 並列動作での排他はできない程度の実装。シングルスレッド内の排他。
+							// FCICreateのCreateFileをCREATE_NEWで実行できればもうちょっとマシな
+							// 排他になるが、FCIの一時ファイルエラーの問題も発生するためひとまず
+							// PathFileExistsを使っておく軟弱仕様。
+							BOOL success = FALSE;
+							UINT count = 2;
+							WCHAR* path[2];
+							path[0] = wcsjoin( DocumentRoot, L"\\tree.json", 0,0,0 );
+							path[1] = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
+							if( path[0] && path[1] ){
+								WCHAR stamp[32];
+								WCHAR* wcab;
+								SYSTEMTIME st;
+								// index.jsonは存在しない場合
+								if( !PathFileExists( path[1] ) ){
+									free(path[1]), path[1]=NULL;
+									count = 1;
+								}
+								GetLocalTime( &st );
+								_snwprintf( stamp,sizeof(stamp)
+											,L"%04u%02u%02u-%02u%02u%02u-%03u"
+											,st.wYear, st.wMonth, st.wDay
+											,st.wHour, st.wMinute, st.wSecond, st.wMilliseconds
+								);
+								wcab = wcsjoin( DocumentRoot, L"\\snap\\shot", stamp, L".cab", 0 );
+								if( wcab ){
+									if( PathFileExists(wcab) ){
+										LogW(L"[%u]ファイル重複: %s",Num(cp),wcab);
+									}
+									else if( cabCompress( wcab, count, path, NULL ) ){
+										LogW(L"[%u]スナップショット作成: %s",Num(cp),wcab);
+										success = TRUE;
+									}
+									free( wcab );
+								}
+							}
+							if( path[0] ) free( path[0] );
+							if( path[1] ) free( path[1] );
+							if( success ) goto shotlist; // 成功→作成済みスナップショット一覧返却
+							LogW(L"[%u]スナップショット作成エラー",Num(cp));
+							ClientSendErr(cp,"500 Internal Server Error");
+							goto send_ready;
+						}
+						else if( stricmp(file,":shotlist")==0 ){
+							// 作成済みスナップショット一覧
+							BOOL err;
+							WCHAR* wfind;
+						shotlist:
+							err = FALSE;
+							wfind = wcsjoin( DocumentRoot, L"\\snap\\shot*.cab", 0,0,0 );
+							if( wfind ){
+								WIN32_FIND_DATAW wfd;
+								HANDLE hFind = FindFirstFileW( wfind, &wfd );
+								ClientSends(cp,
+										"HTTP/1.0 200 OK\r\n"
+										"Content-Type: application/json\r\n"
+										"Connection: close\r\n"
+										"\r\n"
+										"["
+								);
+								if( hFind !=INVALID_HANDLE_VALUE ){
+									UINT count=0;
+									do{
+										WCHAR* wtxt = wcsjoin( DocumentRoot, L"\\snap\\", wfd.cFileName, 0,0 );
+										UCHAR* u8name = WideCharToUTF8alloc( wfd.cFileName );
+										if( wtxt && u8name ){
+											// メモファイルは.cabと同名の拡張子.txtファイル
+											wcscpy( wtxt +wcslen(wtxt) -3, L"txt" );
+#if 0
+											UCHAR* memo;
+											memo = file2memory( wtxt, FALSE );	// メモ文字列メモリに全部読み込む
+											ClientSendf(cp
+													,"%s{"
+													"\"id\":\"%s\""
+													",\"date\":%I64u"
+													",\"memo\":\"%s\""
+													"}"
+													,count++? "," : ""
+													,u8name
+													,FileTimeToJSTime( &wfd.ftLastWriteTime )
+													,memo? memo : ""
+											);
+											if( memo ) free( memo );
+#endif
+											ClientSendf(cp
+													,"%s{"
+													"\"id\":\"%s\""
+													",\"date\":%I64u"
+													",\"memo\":\""
+													,count++? "," : ""
+													,u8name
+													,FileTimeToJSTime( &wfd.ftLastWriteTime )
+											);
+											if( PathFileExists(wtxt) ) ClientSendFile( cp, wtxt );
+											ClientSend(cp,"\"}",2);
+										}
+										else err = TRUE;
+										if( wtxt ) free( wtxt );
+										if( u8name ) free( u8name );
+										if( err ) break;
+									}
+									while( FindNextFileW( hFind, &wfd ) );
+									FindClose( hFind );
+								}
+								else LogW(L"[%u]FindFirstFileW(%s)エラー%u",Num(cp),wfind,GetLastError());
+								free( wfind );
+								ClientSend(cp,"]",1);
+							}
+							else ClientSendErr(cp,"500 Internal Server Error");
+							if( err ){
+								ClientSendEmpty(cp);
+								ClientSendErr(cp,"500 Internal Server Error");
+							}
+							goto send_ready;
+						}
+						else if( stricmp(file,":shotdel")==0 && cp->req.param ){
+							// スナップショット削除 /:shotdel?CABファイル名
+							// 一覧を返却するのでエラー応答は返さない。
+							WCHAR* wname = MultiByteToWideCharAlloc( cp->req.param, CP_UTF8 );
+							if( wname ){
+								WCHAR* wpath = wcsjoin( DocumentRoot, L"\\snap\\", wname, 0,0 );
+								if( wpath ){
+									WCHAR* bak;
+									// .cab削除
+									if( DeleteFileW( wpath ) ) LogW(L"[%u]削除 %s",Num(cp),wpath);
+									// .txt削除
+									wcscpy( wpath +wcslen(wpath) -3, L"txt" );
+									if( DeleteFileW( wpath ) ) LogW(L"[%u]削除 %s",Num(cp),wpath);
+									// .txt.bak削除
+									bak = wcsjoin( wpath, L".bak", 0,0,0 );
+									if( bak ){
+										if( DeleteFileW( bak ) ) LogW(L"[%u]削除 %s",Num(cp),bak);
+										free( bak );
+									}
+									free( wpath );
+								}
+								free( wname );
+							}
+							goto shotlist;
+						}
+						else if( stricmp(file,":shotget")==0 && cp->req.param ){
+							// スナップショット展開取得
+							BOOL success = FALSE;
+							WCHAR* wname = MultiByteToWideCharAlloc( cp->req.param, CP_UTF8 );
+							if( wname ){
+								WCHAR* wcab = wcsjoin( DocumentRoot, L"\\snap\\", wname, 0,0 );
+								WCHAR* wdir = wcsjoin( DocumentRoot, L"\\snap", 0,0,0 );
+								if( wcab && wdir ){
+									// TODO:展開処理だけでは展開ファイルパスがわからないので
+									// 無条件に index.json と tree.json を返却して削除しているが、
+									// 展開処理で作ったファイルを削除する実装にしないとなんか怖い。
+									WCHAR* index = wcsjoin( wdir, L"\\index.json", 0,0,0 );
+									WCHAR* tree = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
+									if( index && tree ){
+										if( cabDecomp( wcab, wdir ) ){
+											ClientSends(cp,
+												"HTTP/1.0 200 OK\r\n"
+												"Content-Type: application/json\r\n"
+												"Connection: close\r\n"
+												"\r\n"
+												"{\"tree.json\":"
+											);
+											ClientSendFile( cp, tree );
+											if( PathFileExists(index) ){
+												ClientSends(cp,",\"index.json\":");
+												ClientSendFile( cp, index );
+											}
+											ClientSend(cp,"}",1);
+											success = TRUE;
+										}
+										if( DeleteFileW(index) ) LogW(L"[%u]削除 %s",Num(cp),index);
+										if( DeleteFileW(tree) ) LogW(L"[%u]削除 %s",Num(cp),tree);
+									}
+									if( index ) free( index );
+									if( tree ) free( tree );
+								}
+								if( wcab ) free( wcab );
+								if( wdir ) free( wdir );
+								free( wname );
+							}
+							if( !success ){
+								ClientSendEmpty(cp);
+								ClientSendErr(cp,"500 Internal Server Error");
+							}
 							goto send_ready;
 						}
 						else if( stricmp(file,":favorites.json")==0 ){
@@ -3624,7 +4484,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						if( cp->rsp.readfh !=INVALID_HANDLE_VALUE ){
 							FILETIME ft;
 							SYSTEMTIME st;
-							u_char inetTime[INTERNET_RFC1123_BUFSIZE];
+							UCHAR inetTime[INTERNET_RFC1123_BUFSIZE];
 							GetFileTime( cp->rsp.readfh, NULL, NULL, &ft );
 							FileTimeToSystemTime( &ft, &st );
 							InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
@@ -3689,25 +4549,19 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// リクエスト本文を一時ファイルに書き出す
 							// TODO:PUTとおなじ処理になっとる
 							if( req->writefh==INVALID_HANDLE_VALUE ){
-								if( req->ContentType && strnicmp(req->ContentType,"multipart/form-data;",20)==0 ){
-									req->writefh = CreateFileW( tmppath
-														,GENERIC_WRITE, 0, NULL
-														,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
-									);
-									if( req->writefh !=INVALID_HANDLE_VALUE ){
-										// 連続領域確保（断片化抑制）
-										SetFilePointer( req->writefh, req->ContentLength, NULL, FILE_BEGIN );
-										SetEndOfFile( req->writefh );
-										SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
-									}
-									else{
-										LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
-										ClientSendErr(cp,"500 Internal Server Error");
-										goto send_ready;
-									}
+								req->writefh = CreateFileW( tmppath
+													,GENERIC_WRITE, FILE_SHARE_READ, NULL
+													,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+								);
+								if( req->writefh !=INVALID_HANDLE_VALUE ){
+									// 連続領域確保（断片化抑制）
+									SetFilePointer( req->writefh, req->ContentLength, NULL, FILE_BEGIN );
+									SetEndOfFile( req->writefh );
+									SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
 								}
 								else{
-									ClientSendErr(cp,"501 Not Implemented");
+									LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
+									ClientSendErr(cp,"500 Internal Server Error");
 									goto send_ready;
 								}
 							}
@@ -3728,7 +4582,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									SetEndOfFile( req->writefh );
 									CloseHandle( req->writefh );
 									req->writefh = INVALID_HANDLE_VALUE;
-									MultipartFormdataProc( cp, tmppath );
+									if( req->ContentType ){
+										if( strnicmp(req->ContentType,"multipart/form-data;",20)==0 )
+											MultipartFormdataProc( cp, tmppath );
+										else
+											ClientSendErr(cp,"501 Not Implemented");
+									}
+									else ClientSendErr(cp,"501 Not Implemented");
 									goto send_ready;
 								}
 								else{
@@ -3744,20 +4604,23 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					}
 					else if( stricmp(req->method,"PUT")==0 ){
 						if( req->ContentLength ){
-							u_char* file = req->path;
+							UCHAR* file = req->path;
 							if( *file=='/' ) file++;
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
 							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							// リクエスト本文を一時ファイルに書き出す
 							// TODO:POSTとおなじ処理になっとる
+							// TODO:保存を連打して異常系を試すとかなり稀に落ちる＋tree.json破損する場合がある原因不明
+							// デバッグトレースもVEC_memcpyとかfastcopy_IとかOS側で落ちているのを1度だけ補足できたのみ
 							if( req->writefh==INVALID_HANDLE_VALUE ){
-								u_char* ext = strrchr(file,'.');
-								// ドキュメントルート配下のJSONまたはexport.htmlのみ
+								UCHAR* ext = strrchr(file,'.');
+								// ドキュメントルート配下のJSONまたはexport.htmlまたはスナップショットメモのみ
 								if( (ext && stricmp(ext,".json")==0 && UnderDocumentRoot(realpath))
 									|| stricmp(file,"export.html")==0
+									|| (strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0 )
 								){
 									req->writefh = CreateFileW( tmppath
-														,GENERIC_WRITE, 0, NULL
+														,GENERIC_WRITE, FILE_SHARE_READ, NULL
 														,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 									);
 									if( req->writefh !=INVALID_HANDLE_VALUE ){
@@ -3816,10 +4679,25 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 						}
 						else{
+							// TODO:Content-Length:0もここでエラーになる。スナップショットメモで問題に
+							// なったが、とりあえずDELリクエストに変更した。しかし「空のファイルをPUT」
+							// 動作ができない仕様なのは後々また問題になることがあるか？
 							LogW(L"[%u]PUTでContent-Lengthなし未対応",Num(cp));
 							ClientSendErr(cp,"501 Not Implemented");
 							goto send_ready;
 						}
+					}
+					else if( stricmp(req->method,"DEL")==0 ){
+						UCHAR* file = req->path;
+						if( *file=='/' ) file++;
+						// スナップショットメモのみ
+						if( strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0 ){
+							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
+							DeleteFileW( realpath );
+							ClientSendErr(cp,"200 OK");
+						}
+						else ClientSendErr(cp,"400 Bad Request");
+						goto send_ready;
 					}
 					else{
 						ClientSendErr(cp,"400 Bad Request");
@@ -3834,7 +4712,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			else if( req->bytes >= req->bufsize-1 ){
 				// ヘッダ完了せずバッファいっぱい
 				size_t newsize = req->bufsize * 2;
-				u_char* newbuf = (u_char*)malloc( newsize );
+				UCHAR* newbuf = (UCHAR*)malloc( newsize );
 				if( newbuf ){
 					int distance = newbuf - req->buf;
 					memcpy( newbuf, req->buf, req->bufsize );
@@ -3875,13 +4753,19 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					LogW(L"[%u]不正ステータス受信データ破棄(%u)",Num(cp),recv(sock,buf,1024*8,0));
 					free( buf );
 				}
+				else LogW(L"L%u:malloc(%u)エラー",__LINE__,1024*8);
 			}
 		}
 	}
 	else{
-		LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
-		shutdown( sock, SD_BOTH );
-		closesocket( sock );
+		//LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
+		//shutdown( sock, SD_BOTH );
+		//closesocket( sock );
+		//どうもここで切断すると通信エラーを引き起こす場合がある風に見える。
+		//ソケット番号が重複するためか、FD_ACCEPT直前にFD_WRITEが来るようなタイミングがあり、
+		//これから通信するコネクションを切断してしまう挙動に見える。Win7で発生頻度が高い？
+		//なにもしない方が問題なく動くように感じる。
+		LogW(L"[:%u](FD_READ)",sock);
 	}
 }
 
@@ -3898,18 +4782,102 @@ void SocketClose( SOCKET sock )
 			PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
 			return;
 		}
-		LogW(L"[%u]切断(FD_CLOSE)",Num(cp));
+		LogW(L"[%u]切断",Num(cp));
 		ClientShutdown( cp );
 	}
 	else{
-		LogW(L"[%u]切断(FD_CLOSE)",sock);
+		LogW(L"[:%u]切断(FD_CLOSE)",sock);
 		shutdown( sock, SD_BOTH );
 		closesocket( sock );
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// Listenソケット・ポート
 //
-// 待ち受け開始
-//
+SOCKET		ListenSock			= INVALID_SOCKET;	// Listenソケット
+UCHAR		ListenPort[8]		= "10080";			// Listenポート
+WCHAR		wListenPort[8]		= L"10080";			// Listenポート
+// 待受ポートを設定ファイルからグローバル変数に読込
+void ListenPortGet( void )
+{
+	WCHAR* ini = ConfigFilePath();
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
+					strncpy( ListenPort, buf+11, sizeof(ListenPort) );
+					ListenPort[sizeof(ListenPort)-1]='\0';
+					MultiByteToWideChar( CP_UTF8, 0, ListenPort, -1, wListenPort, sizeof(wListenPort)/sizeof(WCHAR) );
+				}
+			}
+			fclose(fp);
+		}
+		free( ini );
+	}
+}
+void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
+{
+	WCHAR new[MAX_PATH+1]=L"";
+	WCHAR* p;
+	GetModuleFileNameW( NULL, new, sizeof(new)/sizeof(WCHAR) );
+	p = wcsrchr(new,L'\\');
+	if( p ){
+		// my.ini.new 作成
+		FILE* fp;
+		wcscpy( p+1, L"my.ini.new" );
+		fp = _wfopen(new,L"wb");
+		if( fp ){
+			UCHAR* listenPort = WideCharToUTF8alloc( wListenPort );
+			UCHAR* exe[BI_COUNT], *arg[BI_COUNT];
+			WCHAR ini[MAX_PATH+1]=L"";
+			UINT i;
+			for( i=0; i<BI_COUNT; i++ ){
+				exe[i] = WideCharToUTF8alloc( wExe[i] );
+				arg[i] = WideCharToUTF8alloc( wArg[i] );
+			}
+			fprintf(fp,"ListenPort=%s\r\n",	listenPort		?listenPort:"");
+			fprintf(fp,"IEArg=%s\r\n",		arg[BI_IE]		?arg[BI_IE]:"");
+			fprintf(fp,"IEHide=%s\r\n",		hide[BI_IE]		?"1":"");
+			fprintf(fp,"ChromeArg=%s\r\n",	arg[BI_CHROME]	?arg[BI_CHROME]:"");
+			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME]	?"1":"");
+			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX]	?arg[BI_FIREFOX]:"");
+			fprintf(fp,"FirefoxHide=%s\r\n",hide[BI_FIREFOX]?"1":"");
+			fprintf(fp,"OperaArg=%s\r\n",	arg[BI_OPERA]	?arg[BI_OPERA]:"");
+			fprintf(fp,"OperaHide=%s\r\n",	hide[BI_OPERA]	?"1":"");
+			for( i=BI_USER1; i<BI_COUNT; i++ ){
+				fprintf(fp,"Exe%u=%s\r\n",i-BI_USER1+1,exe[i]?exe[i]:"");
+				fprintf(fp,"Arg%u=%s\r\n",i-BI_USER1+1,arg[i]?arg[i]:"");
+				fprintf(fp,"Hide%u=%s\r\n",i-BI_USER1+1,hide[i]?"1":"");
+			}
+			if( listenPort ) free( listenPort );
+			for( i=0; i<BI_COUNT; i++ ){
+				if( exe[i] ) free( exe[i] );
+				if( arg[i] ) free( arg[i] );
+			}
+			fclose(fp);
+			// my.ini.new -> my.ini
+			wcscpy( ini, new );
+			ini[wcslen(ini)-4]=L'\0';
+			if( !MoveFileExW( new, ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
+				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
+		}
+		else LogW(L"fopen(%s)エラー",new);
+	}
+}
 BOOL ListenStart( void )
 {
 	BOOL		success	= FALSE;
@@ -3990,49 +4958,26 @@ retry:
 	}
 }
 
-// タスクトレイアイコン登録
-// http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
-BOOL TrayIconNotify( HWND hwnd, UINT msg )
-{
-	NOTIFYICONDATA data;
 
-	memset( &data, 0, sizeof(data) );
-	data.cbSize	= sizeof(data);
-	data.hWnd	= hwnd;
 
-	switch( msg ){
-	case NIM_ADD:
-		data.uFlags				= NIF_ICON |NIF_MESSAGE |NIF_TIP;
-		data.uCallbackMessage	= WM_TRAYICON;
-		data.hIcon				= TrayIcon;
-		goto tip_create;
-	case NIM_MODIFY:
-		data.uFlags				= NIF_TIP;
-	tip_create:
-		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
-		break;
-	}
-retry:
-	if( Shell_NotifyIcon( msg, &data ) ) return TRUE;
-	//if( msg!=NIM_DELETE ) ErrorBoxW(L"タスクトレイアイコンエラー(Shell_NotifyIcon)");
-	// トレイアイコン消える対策
-	// http://www.geocities.jp/midorinopage/Tips/tasktray.html
-	if( msg==NIM_ADD ){
-		Sleep(2000);
-		Shell_NotifyIcon( NIM_ADD, &data );
-		if( !Shell_NotifyIcon( NIM_MODIFY, &data ) ) goto retry;
-	}
-	return FALSE;
-}
 
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// 設定ダイアログ
+//
 WCHAR* WindowTextAllocW( HWND hwnd )
 {
 	int len = GetWindowTextLengthW( hwnd ) + 1;
 	WCHAR* text = (WCHAR*)malloc( len * sizeof(WCHAR) );
 	if( text ) GetWindowTextW( hwnd, text, len );
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,len*sizeof(WCHAR));
 	return text;
 }
-
 // タブアイテムのlParam(タブ識別IDを)が指定した値をもつタブインデックスを返却
 int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 {
@@ -4046,11 +4991,8 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 	}
 	return -1;
 }
-
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
-// TODO:いらないブラウザボタンを非表示にするチェックボックスが欲しいかも。
-// ボタンだけ非表示で設定画面のタブは存在する感じ。
 // ダイアログ用ID
 #define ID_DLG_UNKNOWN	0
 #define ID_DLG_OK		1
@@ -4411,6 +5353,19 @@ DWORD ConfigDialog( UINT tabid )
 	}
 	return dwRes;
 }
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// ブラウザ起動アイコンボタン
 void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 {
 	if( br ){
@@ -4426,6 +5381,7 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 // ブラウザアイコンボタン作成
 // ボタンにアイコンを表示する
 // http://keicode.com/windows/ui03.php
+#define BUTTON_WIDTH	36		// ボタン縦横ピクセル
 BrowserIcon* BrowserIconCreate( void )
 {
 	BrowserIcon* ico = (BrowserIcon*)malloc( sizeof(BrowserIcon)*BI_COUNT );
@@ -4479,7 +5435,7 @@ void BrowserIconClick( UINT ix )
 	BrowserInfo* br = BrowserInfoAlloc();
 	if( br ){
 		if( br[ix].exe ){
-			WCHAR* exe = PathResolve( br[ix].exe );
+			WCHAR* exe = myPathResolve( br[ix].exe );
 			if( exe ){
 				size_t cmdlen = wcslen(exe) + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
 				WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
@@ -4543,7 +5499,61 @@ void BrowserIconClick( UINT ix )
 		if( ConfigDialog(ix+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
 	}
 }
+// ツールチップ
+// http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
+// http://rarara.cafe.coocan.jp/cgi-bin/lng/vc/vclng.cgi?print+200310/03100084.txt
+// http://hpcgi1.nifty.com/MADIA/Vcbbs/wwwlng.cgi?print+201004/10040016.txt
+// TOOLINFOW構造体サイズ(がcomctl32.dllバージョンによって変わるので変数保持)
+size_t sizeofTOOLINFOW = sizeof(TOOLINFOW);
 
+HWND BrowserIconTipCreate( BrowserIcon* browser )
+{
+	HWND hToolTip = NULL;
+	if( browser ){
+		HINSTANCE hinst = GetModuleHandle(NULL);
+		hToolTip = CreateWindowW(
+						TOOLTIPS_CLASSW, NULL
+						,TTS_ALWAYSTIP |TTS_NOPREFIX |TTS_BALLOON
+						,CW_USEDEFAULT, CW_USEDEFAULT
+						,CW_USEDEFAULT, CW_USEDEFAULT
+						,MainForm, 0, hinst, NULL
+		);
+		if( hToolTip ){
+			TOOLINFOW ti;
+			UINT i;
+			SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
+			memset( &ti, 0, sizeofTOOLINFOW );
+			ti.cbSize = sizeofTOOLINFOW;
+			ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
+			ti.hinst = hinst;
+			for( i=0; i<BI_COUNT; i++ ){
+				if( browser[i].hwnd ){
+					ti.lpszText = browser[i].text;
+					ti.hwnd = browser[i].hwnd;
+					ti.uId = i;
+					GetClientRect( browser[i].hwnd, &ti.rect );
+					SendMessage( hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti );
+				}
+			}
+		}
+	}
+	return hToolTip;
+}
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// メインフォーム関連
+//
+// サーバログをファイル保存
 void LogSave( void )
 {
 	LONG count = SendMessageA( ListBox, LB_GETCOUNT, 0,0 );
@@ -4559,14 +5569,14 @@ void LogSave( void )
 		ofn.nMaxFile = sizeof(wpath)/sizeof(WCHAR);
 		ofn.Flags = OFN_OVERWRITEPROMPT |OFN_PATHMUSTEXIST;
 		if( GetSaveFileNameW( &ofn ) ){
-			HANDLE hFile = CreateFileW( wpath, GENERIC_WRITE, 0
+			HANDLE hFile = CreateFileW( wpath, GENERIC_WRITE, FILE_SHARE_READ
 								,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
 			);
 			if( hFile !=INVALID_HANDLE_VALUE ){
 				LONG i;
 				for( i=0; i<count; i++ ){
 					WCHAR wstr[ LOGMAX +1 ]=L"";
-					u_char utf8[ LOGMAX *2 +1 ]="";
+					UCHAR utf8[ LOGMAX *2 +1 ]="";
 					DWORD bWrite=0;
 					SendMessageW( ListBox, LB_GETTEXT, i, (LPARAM)wstr );
 					WideCharToMultiByte(CP_UTF8,0, wstr,-1, utf8,LOGMAX *2 +1, NULL,NULL);
@@ -4578,11 +5588,11 @@ void LogSave( void )
 				CloseHandle( hFile );
 				MessageBoxW( MainForm, L"保存しました。", L"情報", MB_ICONINFORMATION );
 			}
-			else LogW(L"L%u:CreateFile(%s)エラー",__LINE__,wpath);
+			else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,wpath,GetLastError());
 		}
 	}
 }
-
+// 1秒毎の処理
 void MainFormTimer1000( void )
 {
 	// ログキャッシュをListBoxに吐き出してメモリ解放。
@@ -4635,56 +5645,17 @@ void MainFormTimer1000( void )
 	// なく7-8MBで落ち着くのでリークしてるわけではないと思うんだが…。起動直後のメモリ使用量
 	// に戻す術はないのか？HeapCompact()実行してみたけど効果なさそう。
 	{
-		UINT i;
-		for( i=0; i<CLIENT_MAX; i++ ) if( Client[i].sock !=INVALID_SOCKET ) break;
-		if( i>=CLIENT_MAX ) HeapCompact( Heap, 0 );
+		//UINT i;
+		//for( i=0; i<CLIENT_MAX; i++ ) if( Client[i].sock !=INVALID_SOCKET ) break;
+		//if( i>=CLIENT_MAX ) HeapCompact( Heap, 0 );
 	}
 }
-
-// ツールチップ
-// http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
-// http://rarara.cafe.coocan.jp/cgi-bin/lng/vc/vclng.cgi?print+200310/03100084.txt
-// http://hpcgi1.nifty.com/MADIA/Vcbbs/wwwlng.cgi?print+201004/10040016.txt
-HWND BrowserIconTipCreate( BrowserIcon* browser )
-{
-	HWND hToolTip = NULL;
-	if( browser ){
-		HINSTANCE hinst = GetModuleHandle(NULL);
-		hToolTip = CreateWindowW(
-						TOOLTIPS_CLASSW, NULL
-						,TTS_ALWAYSTIP |TTS_NOPREFIX |TTS_BALLOON
-						,CW_USEDEFAULT, CW_USEDEFAULT
-						,CW_USEDEFAULT, CW_USEDEFAULT
-						,MainForm, 0, hinst, NULL
-		);
-		if( hToolTip ){
-			TOOLINFOW ti;
-			UINT i;
-			SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
-			memset( &ti, 0, sizeofTOOLINFOW );
-			ti.cbSize = sizeofTOOLINFOW;
-			ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
-			ti.hinst = hinst;
-			for( i=0; i<BI_COUNT; i++ ){
-				if( browser[i].hwnd ){
-					ti.lpszText = browser[i].text;
-					ti.hwnd = browser[i].hwnd;
-					ti.uId = i;
-					GetClientRect( browser[i].hwnd, &ti.rect );
-					SendMessage( hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti );
-				}
-			}
-		}
-	}
-	return hToolTip;
-}
-
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
 // スタック1KB以上使うので関数化。
 void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip )
 {
-	u_char path[MAX_PATH+1];
+	UCHAR path[MAX_PATH+1];
 	WCHAR wpath[MAX_PATH+1];
 	// OpenSSL
 	SSL_library_init();
@@ -4727,8 +5698,41 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	MainFormTimer1000();
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
 }
+// タスクトレイアイコン登録
+// http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
+BOOL TrayIconNotify( HWND hwnd, UINT msg )
+{
+	NOTIFYICONDATA data;
 
+	memset( &data, 0, sizeof(data) );
+	data.cbSize	= sizeof(data);
+	data.hWnd	= hwnd;
 
+	switch( msg ){
+	case NIM_ADD:
+		data.uFlags				= NIF_ICON |NIF_MESSAGE |NIF_TIP;
+		data.uCallbackMessage	= WM_TRAYICON;
+		data.hIcon				= TrayIcon;
+		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
+	retry:
+		// トレイアイコン消える対策
+		// http://www.geocities.jp/midorinopage/Tips/tasktray.html
+		Shell_NotifyIcon( NIM_ADD, &data );
+		if( !Shell_NotifyIcon( NIM_MODIFY, &data ) ){
+			LogW(L"タスクトレイアイコン登録エラー");
+			Sleep(2000);
+			goto retry;
+		}
+		return TRUE;
+	case NIM_MODIFY:
+		data.uFlags = NIF_TIP;
+		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
+	case NIM_DELETE:
+		return Shell_NotifyIcon( msg, &data );
+	}
+	return FALSE;
+}
+// メインフォームWindowProc
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	static BrowserIcon*	browser			=NULL;
@@ -4882,7 +5886,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_SETTING_OK: // 設定ダイアログOK
 		{
-			u_char oldPort[8];
+			UCHAR oldPort[8];
 			strcpy( oldPort, ListenPort );			// 現在ポート退避
 			ListenPortGet();
 			if( strcmp(oldPort,ListenPort) ){		// ポート番号変わった
@@ -4905,7 +5909,9 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		// wp = イベントが発生したソケット(SOCKET)
 		// WSAGETSELECTEVENT(lp) = ソケットイベント番号(WORD)
 		// WSAGETSELECTERROR(lp) = エラー番号(WORD)
-		if( WSAGETSELECTERROR(lp) ) LogW(L"[%u]ソケットイベントエラー(%u)",(SOCKET)wp,WSAGETSELECTERROR(lp));
+		// TODO:しばしばAccept後のソケットでエラー10053(WSAECONNABORTED)が発生してFD_CLOSEも来て切断され、
+		// おそらくそのせいでブラウザ側でエラーになってしまう。回避策はあるのか？
+		if( WSAGETSELECTERROR(lp) ) LogW(L"[:%u]ソケットイベントエラー(%u)",(SOCKET)wp,WSAGETSELECTERROR(lp));
 		switch( WSAGETSELECTEVENT(lp) ){
 		//	http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html
 		//case FD_CONNECT: break; // connect成功した
@@ -4913,7 +5919,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case FD_READ  : SocketRead( (SOCKET)wp, browser );	break; // recvできる
 		case FD_WRITE : SocketWrite( (SOCKET)wp );			break; // sendできる
 		case FD_CLOSE : SocketClose( (SOCKET)wp );			break; // 接続は閉じられた
-		default: LogW(L"[%u]不明なソケットイベント(%u)",(SOCKET)wp,WSAGETSELECTEVENT(lp));
+		default: LogW(L"[:%u]不明なソケットイベント(%u)",(SOCKET)wp,WSAGETSELECTEVENT(lp));
 		}
 		return 0;
 
@@ -4938,7 +5944,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	if( msg==taskbarRestart ) TrayIconNotify( hwnd, NIM_ADD );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
-
+// アプリ起動時
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
 	WSADATA	wsaData;
@@ -5055,6 +6061,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	}
 	return hwnd;
 }
+// アプリ終了時
 void Cleanup( void )
 {
 	LogCache* lc = LogCache0;
@@ -5070,9 +6077,7 @@ void Cleanup( void )
 	if( mlog ) fclose(mlog);
 #endif
 }
-//
-//	WinMain - Application entry point
-//
+
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};

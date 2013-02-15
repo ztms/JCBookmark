@@ -21,12 +21,16 @@ var $debug = $('<div></div>').css({
 		,'font-size':'12px'
 }).appendTo(document.body);
 */
-// キャッシュ
+// ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+$.ajaxSetup({
+	beforeSend:function(xhr){
+		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
+	}
+});
 var IE = window.ActiveXObject ? document.documentMode : 0;
 var $window = $(window);
 var $wall = $('#wall');
 var $sidebar = $('#sidebar');
-
 var tree = {
 	// ルートノード
 	root:null
@@ -114,15 +118,11 @@ var tree = {
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
-			url:tree.path
-			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
+			url		:tree.path
+			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
-			}
-			,beforeSend:function(xhr){
-				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 			}
 		});
 	}
@@ -130,16 +130,19 @@ var tree = {
 	// TODO:たまにChromeでPUTされない時がある。エラーは出ないし、PUTされないのに
 	// onSuccessは実行されてしまうし、かなりイヤな感じ。なにがきっかけか不明だが
 	// けっこう発生する。他のブラウザでは見たこと無い。
-	,save:function( onSuccess ){
+	,save:function( arg ){
 		$.ajax({
 		//ajax({
 			type	:'put'
 			,url	:tree.path
 			,data	:JSON.stringify( tree.root )
-			,error	:function(xhr,text){ Alert('保存できませんでした:'+text); }
+			,error	:function(xhr,text){
+				Alert('保存できませんでした:'+text);
+				if( 'error' in arg ) arg.error();
+			}
 			,success:function(){
 				tree.modified(false);
-				if( onSuccess ) onSuccess();
+				if( 'success' in arg ) arg.success();
 			}
 		});
 	}
@@ -168,6 +171,45 @@ var option = {
 			return option;
 		}
 		return option._modified;
+	}
+	,init:function( data ){
+		var od = option.data;
+		if( 'page' in data && 'title' in data.page ) od.page.title = data.page.title;
+		if( 'color' in data && 'css' in data.color ) od.color.css = data.color.css;
+		if( 'font' in data && 'size' in data.font ) od.font.size = data.font.size;
+		if( 'column' in data && 'count' in data.column ) od.column.count = data.column.count;
+		if( 'panel' in data ){
+			if( 'layout' in data.panel ) od.panel.layout = data.panel.layout;
+			if( 'status' in data.panel ) od.panel.status = data.panel.status;
+			if( 'margin' in data.panel ) od.panel.margin = data.panel.margin;
+			if( 'width' in data.panel ) od.panel.width = data.panel.width;
+		}
+		return option;
+	}
+	,merge:function( data ){
+		if( 'page' in data && 'title' in data.page ) option.page.title( data.page.title );
+		if( 'color' in data && 'css' in data.color ) option.color.css( data.color.css );
+		if( 'font' in data && 'size' in data.font ) option.font.size( data.font.size );
+		if( 'column' in data && 'count' in data.column ) option.column.count( data.column.count );
+		if( 'panel' in data ){
+			if( 'layout' in data.panel ) option.panel.layout( data.panel.layout );
+			if( 'status' in data.panel ) option.panel.status( data.panel.status );
+			if( 'margin' in data.panel ) option.panel.margin( data.panel.margin );
+			if( 'width' in data.panel ) option.panel.width( data.panel.width );
+		}
+		return option;
+	}
+	,clear:function(){
+		var od = option.data;
+		if( od.page.title !=null ) option.page.title(null);
+		if( od.color.css !='' ) option.color.css('');
+		if( od.font.size != -1 ) option.font.size(-1);
+		if( od.column.count != -1 ) option.column.count(-1);
+		if( od.panel.layout !={} ) option.panel.layout({});
+		if( od.panel.status !={} ) option.panel.status({});
+		if( od.panel.margin != -1 ) option.panel.margin(-1);
+		if( od.panel.width != -1 ) option.panel.width(-1);
+		return option;
 	}
 	,page:{
 		title:function( val ){
@@ -234,9 +276,14 @@ var option = {
 			if( arguments.length ){
 				option.data.panel.status = val;
 				// パネルの開閉でいちいち「保存しろ」メッセージが出るのは使いづらい？
-				// なにもメッセージ出さず自動保存してしまう方がいいかな？
 				//option.modified(true);
-				option.save();
+				// なにもメッセージ出さず自動保存してしまう方がいいかな？単純に常に保存
+				// するとインポートして「差し替え」した時にindex.jsonが更新されてしまう
+				// ので、保存リンクが出ていない時だけ勝手に保存する。
+				// TODO:開閉操作の実行順と、サーバ側のファイル更新実行順は同じになるよう
+				// 制御はしていないので、接続が不安定などの理由でひょっとしたら逆転して
+				// しまう場合がある？
+				if( !option.modified() ) option.save({ error:function(){option.modified(true);} });
 				return option;
 			}
 			return option.data.panel.status;
@@ -268,26 +315,25 @@ var option = {
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
 		$.ajax({
-			url:option.path
-			,success:function(data){ option.data = data; }
+			url		:option.path
+			,success:function(data){ option.init( data ); }
 			,complete:onComplete
-			,beforeSend:function(xhr){
-				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
-			}
 		});
 		return option;
 	}
 	// オプション保存
-	,save:function( onSuccess ){
+	,save:function( arg ){
 		$.ajax({
 			type	:'put'
 			,url	:option.path
 			,data	:JSON.stringify( option.data )
-			,error	:function(xhr,text){ Alert('設定を保存できません:'+text); }
+			,error	:function(xhr,text){
+				Alert('設定を保存できません:'+text);
+				if( 'error' in arg ) arg.error();
+			}
 			,success:function(){
 				option.modified(false);
-				if( onSuccess ) onSuccess();
+				if( 'success' in arg ) arg.success();
 			}
 		});
 		return option;
@@ -335,7 +381,6 @@ $(document).on({
 	// 並列通信して後に終わった方がpaneler()実行する
 	option.load(function(){
 		option_ok = true;
-		document.title = option.page.title();
 		if( tree_ok && !paneler_ok ){
 			paneler_ok = true;
 			paneler( tree.top() );
@@ -622,13 +667,32 @@ function paneler( nodeTop ){
 	//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
 }
 // ノードツリー変更保存リンク
-$('#modified').click(function(){
+$('#modified').click(function(){ modifySave(); } );
+function modifySave( arg ){
 	// 順番に保存
-	tree.modified()? tree.save( optionSave ) : optionSave();
-	function optionSave(){
-		option.modified()? option.save(function(){$('#modified').hide();}) : $('#modified').hide();
+	$('#modified').hide();
+	$('#progress').show();
+	if( tree.modified() ){
+		tree.save({
+			success:function(){ optionSave(); }
+			,error :function(){ $('#progress').hide(); $('#modified').show(); }
+		});
 	}
-});
+	else optionSave();
+
+	function optionSave(){
+		if( option.modified() ){
+			option.save({
+				success:function(){ $('#progress').hide(); if( 'success' in arg ) arg.success(); }
+				,error :function(){ $('#progress').hide(); $('#modified').show(); }
+			});
+		}
+		else{
+			$('#progress').hide();
+			if( 'success' in arg ) arg.success();
+		}
+	}
+}
 // パネル設定ダイアログ
 $('#optionico').click(function(){
 	// ページタイトル
@@ -636,7 +700,7 @@ $('#optionico').click(function(){
 	.off().on('input keyup paste',function(){
 		if( this.value != option.page.title() ){
 			option.page.title( this.value );
-			document.title = this.value;
+			document.title = option.page.title();
 		}
 	});
 	// 色テーマ
@@ -646,7 +710,7 @@ $('#optionico').click(function(){
 	})
 	.off().change(function(){
 		option.color.css( this.value );
-		$('#colorcss').attr('href',this.value);
+		$('#colorcss').attr('href',option.color.css());
 	});
 	// パネル幅
 	$('#panel_width').val( option.panel.width() )
@@ -746,12 +810,12 @@ $('#optionico').click(function(){
 	});
 	// ダイアログ表示
 	$('#option').dialog({
-		title		:'パネル設定'
-		,modal		:true
-		,width		:390
-		,height		:290
-		,close		:function(){ $(this).dialog('destroy'); }
-		,buttons	:{
+		title	:'パネル設定'
+		,modal	:true
+		,width	:390
+		,height	:290
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{
 			'パネル設定クリア':function(){
 				option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
 				$('#panel_width').val( option.panel.width() );
@@ -761,7 +825,7 @@ $('#optionico').click(function(){
 				playLocalParam();
 			}
 			,'パネル配置クリア':function(){
-				option.panel.layout({}).panel.status({});
+				option.panel.layout({})/*.panel.status({})*/;
 				paneler( tree.top() );
 			}
 		}
@@ -773,15 +837,9 @@ $('#filerico').click(function(){
 		gotoFiler();
 	}
 	else Confirm({
-		msg	:'変更が保存されていません。保存しますか？'
+		msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
 		,no	:function(){ gotoFiler(); }
-		,yes:function(){
-			// 順番に保存
-			tree.modified()? tree.save( optionSave ) : optionSave();
-			function optionSave(){
-				option.modified()? option.save( gotoFiler ) : gotoFiler();
-			}
-		}
+		,yes:function(){ modifySave({ success:gotoFiler }); }
 	});
 	// filer.htmlを単純に開いてもいいけど、index.htmlとfiler.htmlで同時ツリー変更できないので、
 	// 同じURLで動作させるためiframeで開く。
@@ -795,253 +853,260 @@ $('#filerico').click(function(){
 	}
 });
 // ブラウザ情報＋インポートイベント
-$.ajax({
-	url		:':browser.json'
-	,error	:function(xhr,text){ Alert("ブラウザ情報取得エラー:"+text); }
-	,success:function( browser ){
-		if( 'chrome' in browser ){
-			// Chromeブックマークインポート
-			// サーバから２つのJSONイメージを取得して、結合して独自形式JSONを生成する。
-			// GET :chrome.json で、Chromeの Bookmarks を取得(もともとJSON)、
-			// GET :chrome.icon.json で Favicons を取得(SQLite3からサーバ側でJSONをつくる)。
-			// ※サーバ側で１つに結合しないのは、C言語でJSONを操作したくないから。
-			// Bookmarks は、ブックマークのサイトURLを集めたJSONファイル。フォルダ構成を含む。
-			//{
-			//	version: 1
-			//	roots: {
-			//		bookmark_bar: {
-			//			type: folder
-			//			,name: 
-			//			,date_added:
-			//			,children: [
-			//				{ type:folder, name:"", date_added:"", children:[ ... ] }
-			//				,{ type:url, name:"", date_added:"", url:url }
-			//				,{ type:url, name:"", date_added:"", url:url }
-			//			]
-			//		}
-			//		other: {
-			//			type: folder
-			//			,name: 
-			//			,date_added:
-			//			,children: []
-			//		}
-			//		synced: {
-			//			type: folder
-			//			,name: 
-			//			,date_added:
-			//			,children: []
-			//		}
-			//	}
-			//}
-			// Favicons は、faviconURLとfavicon画像データを集めたSQLite3データファイル。
-			// をれをサーバで { "サイトURL":"faviconURL",... } のJSONに変換する。これは
-			// 取得エラーでも動作させる。(自力favicon取得の量が増えて時間がかかる)
-			// 独自形式JSONは、BookmarksのJSONにfaviconURLを加えたような感じ(いろいろ違うけど)。
-			$('#chromeico').click(function(){
-				Confirm({
-					msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
-					,ok:function(){
-						var work={
-							cancel	 :false
-							,ajax1	 :null
-							,ajax2	 :null
-							,analyze :[]
-							,progress:Progress(function(){
-								// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
-								// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
-								work.cancel = true;
-								if( work.ajax1 ) work.ajax1.abort();
-								if( work.ajax2 ) work.ajax2.abort();
-								var analyze = work.analyze;
-								for( var i=0; i<analyze.length; i++ ){
-									analyze[i].ajax.abort();
-									analyze[i].done = true;
-								}
-							})
-						};
-						work.ajax1 = $.ajax({
-							url		:':chrome.json'
-							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-							,success:function( bookmarks ){
-								var favicons={};
-								work.ajax2 = $.ajax({
-									url		 :':chrome.icon.json'
-									,success :function(data){ favicons=data; }
-									,complete:function(){
-										var analyze = work.analyze;
-										var now = (new Date()).getTime();
-										// ルートノード
-										var root ={
-											id			:1
-											,nextid		:2
-											,dateAdded	:now
-											,title		:'root'
-											,child		:[]
-										};
-										// トップノード
-										root.child[0] = {
-											id			:root.nextid++
-											,dateAdded	:now
-											,title		:'Chromeブックマーク'
-											,child		:[]
-										};
-										// ごみ箱
-										root.child[1] = {
-											id			:root.nextid++
-											,dateAdded	:now
-											,title		:tree.trash().title
-											,child		:[]
-										};
-										// Chromeノードから自ノード形式変換
-										var chrome2node = function( data ){
-											// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
-											// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
-											// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
-											// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
-											// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
-											// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
-											// 1347278204225 の13桁。ということで、以下サイトを参考に、
-											//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
-											//   http://support.microsoft.com/kb/167296/ja
-											// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
-											// 2. 1000で割る＝マイクロ秒からミリ秒に。
-											var jstime = function( date_added ){
-												var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
-												return ( t >0 )? parseInt(t) : 0;
-											};
-											var node = {
-												id			:root.nextid++				// 新規ID
-												,dateAdded	:jstime( data.date_added )	// 変換
-												,title		:data.name					// 移行
-											};
-											if( data.children ){
-												// フォルダ
-												node.child = [];
-												for( var i=0, n=data.children.length; i<n; i++ ){
-													node.child.push( arguments.callee( data.children[i] ) );
-												}
-											}else{
-												// ブックマーク
-												node.url = data.url;
-												node.icon = favicons[data.url];
-												if( !node.icon ){
-													// favicon解析
-													var index = analyze.length;
-													analyze[index] = {
-														done : false
-														,ajax: $.ajax({
-															url		 :':analyze?'+node.url.replace(/#/g,'%23')
-															,success :function(data){
-																if( data.icon.length ) node.icon = data.icon;
-															}
-															,complete:function(){
-																analyze[index].done = true;
-															}
-														})
-													};
-												}
-											}
-											return node;
-										};
-										// トップノードchildに登録('synced'は存在しない場合あり)
-										bookmarks = bookmarks.roots;
-										if( 'bookmark_bar' in bookmarks )
-											root.child[0].child.push( chrome2node(bookmarks.bookmark_bar) );
-										if( 'other' in bookmarks )
-											root.child[0].child.push( chrome2node(bookmarks.other) );
-										if( 'synced' in bookmarks )
-											root.child[0].child.push( chrome2node(bookmarks.synced) );
-										// プログレスバー
-										work.progress( 1, analyze.length +1 );
-										// favicon解析完了待ち
-										(function(){
-											var waiting=0;
-											for( var i=0, n=analyze.length; i<n; i++ ){
-												if( !analyze[i].done ) waiting++;
-											}
-											if( waiting ){
-												work.progress( 1 +analyze.length -waiting, analyze.length +1 );
-												setTimeout(arguments.callee,500);
-												return;
-											}
-											// 完了
-											if( !work.cancel ) importer( root );
-										})();
+(function(){
+	var browser = { ie:1, chrome:1, firefox:1 };
+	$.ajax({
+		url		:':browser.json'
+		// Win7のChromeでしばしばエラー発生してダイアログがうざいので、
+		// エラーダイアログは出さずに全ブラウザイベントを生成する。
+		//,error	:function(xhr,text){ Alert("ブラウザ情報取得エラー:"+text); }
+		,success:function( data ){ browser = data; }
+		,complete:function(){
+			if( 'chrome' in browser ){
+				// Chromeブックマークインポート
+				// サーバから２つのJSONイメージを取得して、結合して独自形式JSONを生成する。
+				// GET :chrome.json で、Chromeの Bookmarks を取得(もともとJSON)、
+				// GET :chrome.icon.json で Favicons を取得(SQLite3からサーバ側でJSONをつくる)。
+				// ※サーバ側で１つに結合しないのは、C言語でJSONを操作したくないから。
+				// Bookmarks は、ブックマークのサイトURLを集めたJSONファイル。フォルダ構成を含む。
+				//{
+				//	version: 1
+				//	roots: {
+				//		bookmark_bar: {
+				//			type: folder
+				//			,name: 
+				//			,date_added:
+				//			,children: [
+				//				{ type:folder, name:"", date_added:"", children:[ ... ] }
+				//				,{ type:url, name:"", date_added:"", url:url }
+				//				,{ type:url, name:"", date_added:"", url:url }
+				//			]
+				//		}
+				//		other: {
+				//			type: folder
+				//			,name: 
+				//			,date_added:
+				//			,children: []
+				//		}
+				//		synced: {
+				//			type: folder
+				//			,name: 
+				//			,date_added:
+				//			,children: []
+				//		}
+				//	}
+				//}
+				// Favicons は、faviconURLとfavicon画像データを集めたSQLite3データファイル。
+				// をれをサーバで { "サイトURL":"faviconURL",... } のJSONに変換する。これは
+				// 取得エラーでも動作させる。(自力favicon取得の量が増えて時間がかかる)
+				// 独自形式JSONは、BookmarksのJSONにfaviconURLを加えたような感じ(いろいろ違うけど)。
+				$('#chromeico').click(function(){
+					Confirm({
+						msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+						,ok:function(){
+							var work={
+								cancel	 :false
+								,ajax1	 :null
+								,ajax2	 :null
+								,analyze :[]
+								,progress:Progress(function(){
+									// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
+									// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
+									work.cancel = true;
+									if( work.ajax1 ) work.ajax1.abort();
+									if( work.ajax2 ) work.ajax2.abort();
+									var analyze = work.analyze;
+									for( var i=0; i<analyze.length; i++ ){
+										analyze[i].ajax.abort();
+										analyze[i].done = true;
 									}
-								});
-							}
-						});
-					}
-				});
-			});
-		}
-		else $('#chromeico').hide();
-
-		if( 'ie' in browser ){
-			// IEお気に入りインポート
-			$('#ieico').click(function(){
-				Confirm({
-					msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
-					,ok:function(){
-						var work={
-							ajax	 :null
-							,cancel	 :false
-							,analyze :[]
-							,progress:Progress(function(){
-								work.cancel = true;
-								if( work.ajax ) work.ajax.abort();
-								var analyze = work.analyze;
-								for( var i=0; i<analyze.length; i++ ){
-									analyze[i].ajax.abort();
-									analyze[i].done = true;
+								})
+							};
+							work.ajax1 = $.ajax({
+								url		:':chrome.json'
+								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+								,success:function( bookmarks ){
+									var favicons={};
+									work.ajax2 = $.ajax({
+										url		 :':chrome.icon.json'
+										,success :function(data){ favicons=data; }
+										,complete:function(){
+											var analyze = work.analyze;
+											var now = (new Date()).getTime();
+											// ルートノード
+											var root ={
+												id			:1
+												,nextid		:2
+												,dateAdded	:now
+												,title		:'root'
+												,child		:[]
+											};
+											// トップノード
+											root.child[0] = {
+												id			:root.nextid++
+												,dateAdded	:now
+												,title		:'Chromeブックマーク'
+												,child		:[]
+											};
+											// ごみ箱
+											root.child[1] = {
+												id			:root.nextid++
+												,dateAdded	:now
+												,title		:tree.trash().title
+												,child		:[]
+											};
+											// Chromeノードから自ノード形式変換
+											var chrome2node = function( data ){
+												// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
+												// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
+												// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
+												// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
+												// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
+												// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
+												// 1347278204225 の13桁。ということで、以下サイトを参考に、
+												//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
+												//   http://support.microsoft.com/kb/167296/ja
+												// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
+												// 2. 1000で割る＝マイクロ秒からミリ秒に。
+												var jstime = function( date_added ){
+													var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
+													return ( t >0 )? parseInt(t) : 0;
+												};
+												var node = {
+													id			:root.nextid++				// 新規ID
+													,dateAdded	:jstime( data.date_added )	// 変換
+													,title		:data.name					// 移行
+												};
+												if( data.children ){
+													// フォルダ
+													node.child = [];
+													for( var i=0, n=data.children.length; i<n; i++ ){
+														node.child.push( arguments.callee( data.children[i] ) );
+													}
+												}else{
+													// ブックマーク
+													node.url = data.url;
+													node.icon = favicons[data.url];
+													if( !node.icon ){
+														// favicon解析
+														var index = analyze.length;
+														analyze[index] = {
+															done : false
+															,ajax: $.ajax({
+																url		 :':analyze?'+node.url.replace(/#/g,'%23')
+																,success :function(data){
+																	if( data.icon.length ) node.icon = data.icon;
+																}
+																,complete:function(){
+																	analyze[index].done = true;
+																}
+															})
+														};
+													}
+												}
+												return node;
+											};
+											// トップノードchildに登録('synced'は存在しない場合あり)
+											bookmarks = bookmarks.roots;
+											if( 'bookmark_bar' in bookmarks )
+												root.child[0].child.push( chrome2node(bookmarks.bookmark_bar) );
+											if( 'other' in bookmarks )
+												root.child[0].child.push( chrome2node(bookmarks.other) );
+											if( 'synced' in bookmarks )
+												root.child[0].child.push( chrome2node(bookmarks.synced) );
+											// プログレスバー
+											work.progress( 1, analyze.length +1 );
+											// favicon解析完了待ち
+											(function(){
+												var waiting=0;
+												for( var i=0, n=analyze.length; i<n; i++ ){
+													if( !analyze[i].done ) waiting++;
+												}
+												if( waiting ){
+													work.progress( 1 +analyze.length -waiting, analyze.length +1 );
+													setTimeout(arguments.callee,500);
+													return;
+												}
+												// 完了
+												if( !work.cancel ) importer( root );
+											})();
+										}
+									});
 								}
-							})
-						};
-						work.ajax = $.ajax({
-							url		:':favorites.json'
-							//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-							,success:function(data){ analyzer( data, work ); }
-						});
-					}
+							});
+						}
+					});
 				});
-			});
-		}
-		else $('#ieico').hide();
+			}
+			else $('#chromeico').hide();
 
-		if( 'firefox' in browser ){
-			// Firefoxブックマークインポート
-			$('#firefoxico').click(function(){
-				Confirm({
-					msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
-					,ok:function(){
-						var work={
-							ajax	 :null
-							,cancel	 :false
-							,analyze :[]
-							,progress:Progress(function(){
-								work.cancel = true;
-								if( work.ajax ) work.ajax.abort();
-								var analyze = work.analyze;
-								for( var i=0; i<analyze.length; i++ ){
-									analyze[i].ajax.abort();
-									analyze[i].done = true;
-								}
-							})
-						};
-						work.ajax = $.ajax({
-							url		:':firefox.json'
-							//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-							,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-							,success:function(data){ analyzer( data, work ); }
-						});
-					}
+			if( 'ie' in browser ){
+				// IEお気に入りインポート
+				$('#ieico').click(function(){
+					Confirm({
+						msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
+						,width:385
+						,ok:function(){
+							var work={
+								ajax	 :null
+								,cancel	 :false
+								,analyze :[]
+								,progress:Progress(function(){
+									work.cancel = true;
+									if( work.ajax ) work.ajax.abort();
+									var analyze = work.analyze;
+									for( var i=0; i<analyze.length; i++ ){
+										analyze[i].ajax.abort();
+										analyze[i].done = true;
+									}
+								})
+							};
+							work.ajax = $.ajax({
+								url		:':favorites.json'
+								//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
+								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+								,success:function(data){ analyzer( data, work ); }
+							});
+						}
+					});
 				});
-			});
+			}
+			else $('#ieico').hide();
+
+			if( 'firefox' in browser ){
+				// Firefoxブックマークインポート
+				$('#firefoxico').click(function(){
+					Confirm({
+						msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+						,ok:function(){
+							var work={
+								ajax	 :null
+								,cancel	 :false
+								,analyze :[]
+								,progress:Progress(function(){
+									work.cancel = true;
+									if( work.ajax ) work.ajax.abort();
+									var analyze = work.analyze;
+									for( var i=0; i<analyze.length; i++ ){
+										analyze[i].ajax.abort();
+										analyze[i].done = true;
+									}
+								})
+							};
+							work.ajax = $.ajax({
+								url		:':firefox.json'
+								//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
+								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+								,success:function(data){ analyzer( data, work ); }
+							});
+						}
+					});
+				});
+			}
+			else $('#firefoxico').hide();
 		}
-		else $('#firefoxico').hide();
-	}
-});
+	});
+})();
 // * HTMLエクスポート
 //   クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
 //   クライアント側で生成する場合、それを単純にダウンロードできればよいが、
@@ -1180,12 +1245,243 @@ $('#impexpico').click(function(){
 	});
 	// ダイアログ表示
 	$('#impexp').dialog({
-		title		:'HTMLインポート・エクスポート'
-		,modal		:true
-		,width		:460
-		,height		:320
-		,close		:function(){ $(this).dialog('destroy'); }
+		title	:'HTMLインポート・エクスポート'
+		,modal	:true
+		,width	:460
+		,height	:320
+		,close	:function(){ $(this).dialog('destroy'); }
 	});
+});
+// 独自フォーマット時刻文字列
+Date.prototype.myFmt = function(){
+	return this.getFullYear() +'年' +(this.getMonth()+1) +'月' +this.getDate() +'日　'
+			+this.getHours() +'時' +this.getMinutes() +'分';// +this.getSeconds() +'秒';
+}
+// スナップショット
+$('#snapico').click(function(){
+	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
+	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
+	$('#shot a,#shotview,#shotdel').off().button().hover(
+		function(){ $(this).addClass('ui-state-hover'); },
+		function(){ $(this).removeClass('ui-state-hover'); }
+	);
+	var $shots = $('#shots').empty();
+	// 一覧取得表示
+	$.ajax({
+		url		:':shotlist'
+		,error	:function(xhr,text){ Alert('作成済みスナップショット一覧を取得できません'+text); }
+		,success:function(data){ shotlist( data ); }
+	});
+	// 作成ボタン
+	$('#shot a').click(function(){
+		var $btn = $(this).hide();	// ボタン隠して
+		$btn.next().show();			// 処理中画像(wait.gif)表示
+		// メモを編集した状態からいきなり作成ボタンを押すと、inputのblurイベント(メモ保存ajax)
+		// とこのクリックイベントのajaxが同時発生する。ブラウザではblurの方が先のようだが、
+		// サーバ側で逆転する場合があるのか、メモ保存前にsnapshotが実行されてしまい、メモが
+		// まだない状態の一覧が表示されて、メモが消えたような感じになる。再表示すればメモは
+		// 保存されているが、問題だ。どうしよう…setTimeoutでいいかな？サーバ側での実行順序
+		// を保証できるわけではないが、とりあえず…。
+		setTimeout(function(){
+			$.ajax({
+				url		:':snapshot'
+				,error	:function(xhr,text){
+					Alert('作成できません:'+text);
+					$btn.next().hide();
+					$btn.show();
+				}
+				,success:function(data){
+					$shots.empty();
+					shotlist( data );
+					$btn.next().hide();
+					$btn.show();
+				}
+			});
+		},100);
+	});
+	// 復元
+	$('#shotview').click(function(){
+		var $btn = $(this);
+		var item = null;
+		$shots.find('div').each(function(){
+			if( $(this).hasClass('select') ){ item=this; return false; }
+		});
+		if( item ){
+			if( !tree.modified() && !option.modified() ){
+				shotView();
+			}
+			else Confirm({
+				msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+				,no	:function(){ shotView(); }
+				// TODO:"はい"で保存してからshotViewが実行されるまでのわずかな間、復元ボタンが
+				// wait.gifにならずダイアログも閉じているのでまたクリックできてしまう。
+				,yes:function(){ modifySave({ success:shotView }); }
+			});
+		}
+		function shotView(){
+			$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
+			$.ajax({
+				url		:':shotget?'+item.id
+				,error	:function(xhr,text){
+					Alert('データ取得できません:'+text);
+					$btn.next().hide();
+					$btn.show();
+				}
+				,success:function(data){
+					option.clear();
+					if( 'index.json' in data ) option.merge( data['index.json'] );
+					paneler( tree.replace(data['tree.json']).top() );
+					$btn.next().hide();
+					$btn.show();
+				}
+			});
+		}
+	});
+	// 消去
+	$('#shotdel').click(function(){
+		var $btn = $(this);
+		var item = null;
+		$shots.find('div').each(function(){
+			if( $(this).hasClass('select') ){ item=this; return false; }
+		});
+		if( item ){
+			Confirm({
+				msg:$(item).find('.date').text()+'　のスナップショットを#BR#ディスクから完全に消去します。'
+				,ok:function(){
+					$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
+					$.ajax({
+						url		:':shotdel?'+item.id
+						,error	:function(xhr,text){
+							Alert('消去できません:'+text);
+							$btn.next().hide();
+							$btn.show();
+						}
+						,success:function(data){
+							// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
+							// 成功しても毎回一覧を更新することで削除できなかったことを判断
+							$shots.empty();
+							shotlist( data );
+							$btn.next().hide();
+							$btn.show();
+						}
+					});
+				}
+			});
+		}
+	});
+	// ダイアログ表示
+	$('#snap').dialog({
+		title	:'スナップショット'
+		,modal	:true
+		,width	:480
+		,height	:420
+		,close	:function(){
+			// メモを保存
+			$shots.find('div').each(function(){
+				if( $(this).hasClass('select') ){
+					$(this).find('.memo').blur();
+					return false;
+				}
+			});
+			$(this).dialog('destroy');
+		}
+	});
+	// スナップショット一覧(再)表示
+	// パネル生成と同様$.clone()で高速化できるけど…そんな遅くないしまあいいか…
+	function shotlist( list ){
+		var date = new Date();
+		for( var i=0; i<list.length; i++ ){
+			date.setTime( list[i].date||0 );
+			var $item = $('<div id="' + list[i].id + '"></div>');
+			var $date = $('<span class=date>' + date.myFmt() + '</span>');
+			var $memo = $('<input class=memo value="' + (list[i].memo||'') + '">');
+			// アイテムクリック選択
+			$item.click(function(ev){
+				$shots.find('div').removeClass('select');
+				$(this).addClass('select');
+			});
+			// メモ欄イベント
+			$memo.on({
+				// フォーカス失う時、変更があればサーバに保存
+				// TODO:.cabファイルはサーバ側で管理しておりブラウザはファイルパスを認識しなくてもよいが
+				// メモファイルはブラウザがサーバ側のパス(snapフォルダ内とか)を意識してPUTしているので、
+				// ちょっと仕様が汚い。でもサーバ側のPOST実装対応が面倒でPUTのが楽だったので…(；´Д｀)
+				blur:function(){
+					var id = $(this).parent()[0].id;
+					var text = $(this).val();
+					var item = null;
+					for( var i=0; i<list.length; i++ ){
+						if( list[i].id==id && list[i].memo!=text ){
+							// 変更あり
+							item = list[i];
+							break;
+						}
+					}
+					if( item ){
+						var opt = {
+							type	:text.length? 'put' : 'del'
+							,url	:'/snap/'+id.replace(/cab$/,'txt')
+							,error	:function(xhr,text){ Alert('メモを保存できません'+text); }
+							,success:function(){ item.memo=text; memoWidthSetter(); }
+						};
+						if( text.length ) opt.data = text;
+						$.ajax(opt);
+					}
+				}
+				// メモ欄Enterで次アイテム選択
+				,keypress:function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 13:
+						$(this).parent().next().click().find('.memo').focus();
+						return false;
+					}
+				}
+				// メモ欄↑↓キーでアイテム選択移動
+				,keydown:function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 38: // ↑
+						$(this).parent().prev().click().find('.memo').focus();
+						return false;
+					case 40: // ↓
+						$(this).parent().next().click().find('.memo').focus();
+						return false;
+					}
+				}
+			});
+			// 新しいアイテムほど上に。新しいとは、タイムスタンプ比較ではなく
+			// 単に配列の後の方が新しい(サーバからそう返却されるはず…)。
+			$shots.prepend( $item.append($date).append($memo) );
+		}
+		memoWidthSetter();
+
+		// メモ欄の横幅を計算してセットする。<span>を使って文字列描画幅を算出。
+		// http://qiita.com/items/1b3802db80eadf864633
+		function memoWidthSetter(){
+			var maxWidth = 0;
+			var $span = $('<span></span>').css({
+					visibility		:'hidden'
+					,position		:'absolute'
+					,'white-space'	:'nowrap'
+					,'font-weight'	:'bold'
+				}).appendTo(document.body);
+			for( var i=0; i<list.length; i++ ){
+				var width = $span.text(list[i].memo||'').width();
+				if( width > maxWidth ) maxWidth = width;
+			}
+			$span.remove();
+			maxWidth *= 1.25;	// 余白適当
+			// 横幅小さすぎ修正
+			var dateWidth = $shots.find('.memo').position().left;
+			var minWidth = $('#shotbox').width() - dateWidth -17;	// -17pxスクロールバー
+			if( minWidth > maxWidth ) maxWidth = minWidth;
+			// メモ欄INPUTを最大幅にセット
+			$shots.find('.memo').width( maxWidth -5 );	// なぜかはみ出るので適当調節
+			// 全体幅セット
+			maxWidth += dateWidth;
+			$('#shothead').width( maxWidth );
+			$shots.find('div').width( maxWidth );
+		}
+	}
 });
 // サイドバーボタンキー入力
 $('.barico').on({
@@ -1247,12 +1543,12 @@ function analyzer( data, work ){
 function importer( data ){
 	$('#dialog').html('現在のデータを破棄して、新しいデータに差し替えますか？<br>それとも追加登録しますか？')
 	.dialog({
-		title		:'データ取り込み方法の確認'
-		,modal		:true
-		,width		:410
-		,height		:180
-		,close		:function(){ $(this).dialog('destroy'); }
-		,buttons	:{
+		title	:'データ取り込み方法の確認'
+		,modal	:true
+		,width	:410
+		,height	:180
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{
 			"差し替える":function(){
 				$(this).dialog('destroy');
 				option.panel.layout({}).panel.status({});
@@ -1319,6 +1615,8 @@ function changeStatus(){
 }
 // パラメータ変更反映
 function playLocalParam(){
+	document.title = option.page.title();
+	$('#colorcss').attr('href',option.color.css());
 	var font_size = option.font.size();
 	var panel_width = option.panel.width();
 	var panel_margin = option.panel.margin();
@@ -1373,12 +1671,12 @@ function changeColumnCount( count ){
 function Confirm( arg ){
 	if( arguments.length ){
 		var opt ={
-			title		:arg.title ||'確認'
-			,modal		:true
-			,width		:365
-			,height		:185
-			,close		:function(){ $(this).dialog('destroy'); }
-			,buttons	:{}
+			title	:arg.title ||'確認'
+			,modal	:true
+			,width	:365
+			,height	:185
+			,close	:function(){ $(this).dialog('destroy'); }
+			,buttons:{}
 		};
 		if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
 		if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
@@ -1405,12 +1703,12 @@ function Confirm( arg ){
 function Alert( msg ){
 	if( arguments.length ){
 		var opt ={
-			title		:'通知'
-			,modal		:true
-			,width		:360
-			,height		:160
-			,close		:function(){ $(this).dialog('destroy'); }
-			,buttons	:{ 'O K':function(){ $(this).dialog('destroy'); } }
+			title	:'通知'
+			,modal	:true
+			,width	:360
+			,height	:160
+			,close	:function(){ $(this).dialog('destroy'); }
+			,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
 		};
 		$('#dialog').html( HTMLtext( ''+msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 	}
@@ -1422,12 +1720,12 @@ function Progress( cancel ){
 		var $count = $('<span></span>');
 		$('#dialog').empty().text('処理中です...').append($count).append('<br>').append($pgbar)
 		.dialog({
-			title		:'情報'
-			,modal		:true
-			,width		:400
-			,height		:190
-			,close		:function(){ cancel(); $(this).dialog('destroy'); }
-			,buttons	:{
+			title	:'情報'
+			,modal	:true
+			,width	:400
+			,height	:190
+			,close	:function(){ cancel(); $(this).dialog('destroy'); }
+			,buttons:{
 				"キャンセル":function(){ cancel(); $(this).dialog('destroy'); }
 			}
 		});

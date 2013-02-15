@@ -11,6 +11,12 @@ var $debug = $('<div></div>').css({
 	,padding:'0'
 }).appendTo(document.body);
 */
+// ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+$.ajaxSetup({
+	beforeSend:function(xhr){
+		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
+	}
+});
 var IE = window.ActiveXObject ? document.documentMode :0; //$debug.text('IE='+IE);
 var select = null;				// 選択フォルダorアイテム
 var selectFolder = null;		// 選択フォルダ
@@ -142,10 +148,6 @@ var tree = {
 	,load:function( onSuccess ){
 		$.ajax({
 			url:tree.path
-			,beforeSend:function(xhr){
-				// IEキャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-				xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
-			}
 			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
@@ -154,15 +156,18 @@ var tree = {
 		});
 	}
 	// ノードツリー保存
-	,save:function( onSuccess ){
+	,save:function( arg ){
 		$.ajax({
 			type	:'put'
 			,url	:tree.path
 			,data	:JSON.stringify(tree.root)
-			,error	:function(xhr,text){ Alert('保存できませんでした:'+text); }
+			,error	:function(xhr,text){
+				Alert('保存できませんでした:'+text);
+				if( 'error' in arg ) arg.error();
+			}
 			,success:function(){
 				tree.modified(false);
-				if( onSuccess ) onSuccess();
+				if( 'success' in arg ) arg.success();
 			}
 		});
 	}
@@ -384,7 +389,7 @@ $(window).on('resize',function(){
 		.find('.title').width( title_width ).end()
 		.find('.url').width( url_width ).end()
 		.find('.iconurl').width( icon_width ).end()
-		.find('.date').width( date_width -38 );					// -38px適当float対策
+		.find('.date').width( date_width -38 );			// -38px適当float対策
 	$('#items')
 		.width( items_width )
 		.find('.title').width( title_width -18 ).end()				// アイコンのぶん-18px
@@ -408,7 +413,7 @@ $(document).on({
 		return false;
 	}
 	// キーボードショートカット
-	,keydown:function( ev ){
+	,keydown:function(ev){
 		switch( ev.which || ev.keyCode || ev.charCode ){
 		case 27: // Esc
 			$('#exit').click(); return false;
@@ -443,8 +448,8 @@ tree.load(function(){
 $('#exit').click(function(){
 	if( tree.modified() ){
 		Confirm({
-			msg :'変更が保存されていません。保存しますか？'
-			,yes:function(){ tree.save( reload ); }
+			msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+			,yes:function(){ treeSave({ success:reload }); }
 			,no :function(){ reload(); }
 		});
 	}
@@ -453,7 +458,23 @@ $('#exit').click(function(){
 	function reload(){ location.href ='http://'+location.host; }
 });
 // 保存
-$('#save').click(function(){ tree.save(function(){$('#modified').hide();}); });
+$('#save').click(function(){ treeSave(); });
+function treeSave( arg ){
+	$('#save').hide();
+	$('#wait').show();
+	tree.save({
+		success:function(){
+			$('#wait').hide();
+			$('#save').show();
+			$('#modified').hide();
+			if( 'success' in arg ) arg.success();
+		}
+		,error :function(){
+			$('#wait').hide();
+			$('#save').show();
+		}
+	});
+}
 // 新規フォルダ
 $('#newfolder').click(function(){
 	var fid = selectFolder.id;
@@ -557,7 +578,7 @@ $('#delete').click(function(){
 				Confirm({
 					msg		:((count>1)?count+'個の':'') +'アイテム#BR#' +titles +'を完全に消去します。'
 					,width	:400
-					,height	:count *19 +180
+					,height	:count *21 +200
 					,ok:function(){
 						// ノードツリー変更
 						tree.eraseNodes( ids );
@@ -584,7 +605,7 @@ $('#delete').click(function(){
 				Confirm({
 					msg		:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
 					,width	:400
-					,height	:180
+					,height	:200
 					,ok:function(){
 						tree.eraseNode( fid );
 						$( folderTree()[0].childNodes[0] ).click();
@@ -677,6 +698,7 @@ $('.itemborder').mousedown(function(ev){
 	});
 });
 // アイテム欄でマウス矩形選択
+// TODO:下の余白からしか選択できないのでアイテム蘭の左隅に余白を作ってそこから矩形選択可能にしたい。
 $('#itembox').mousedown(function(ev){
 	var downX = ev.pageX;
 	var downY = ev.pageY;
@@ -1461,7 +1483,7 @@ function edit( element ){
 						$(this).off().hide();
 					}
 					// TAB,Enterで反映
-					,keydown:function( ev ){
+					,keydown:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
 						case 9: $(this).trigger('decide'); return false; // TAB
 						}
@@ -1493,7 +1515,7 @@ function edit( element ){
 						$(this).off().hide();
 					}
 					// TAB
-					,keydown:function( ev ){
+					,keydown:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
 						case 9: $(this).trigger('decide'); return false;
 						}

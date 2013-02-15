@@ -1,5 +1,5 @@
 #
-# memory.log を読み込んでリークチェック
+# (旧)memory.log を読み込んでリークチェック
 # >perl memory.pl < memory.log
 #
 # memory.log の例
@@ -10,28 +10,30 @@
 #
 # TODO:realloc未考慮。
 #
+# memory.js に移行
+#
 use strict;
 use warnings;
 my @alloc=(); # allocアドレス配列
 my $free=0;   # freeアドレス数
 while(<>){
-    if(/^\+/){
-	# allocアドレス
-	push @alloc,$_;
-    }
-    elsif(/^\-([0-9a-fA-F]+)/){
-	# freeアドレス
-	my $adr=$1;
-	# allocアドレス配列の一致アドレスを
-	# 最初の1つだけ削除(解放成功)
-	for(my $i=0; $i<=$#alloc; $i++){
-	    if($alloc[$i]=~/^\+$adr:/){
-		splice @alloc,$i,1;
-		$free++;
-		last;
-	    }
+	if(/^\+/){
+		# allocアドレス
+		push @alloc,$_;
 	}
-    }
+	elsif(/^\-([0-9a-fA-F]+)/){
+		# freeアドレス
+		my $adr=$1;
+		# allocアドレス配列の一致アドレスを
+		# 最初の1つだけ削除(解放成功)
+		for(my $i=0; $i<=$#alloc; $i++){
+			if($alloc[$i]=~/^\+$adr:/){
+				splice @alloc,$i,1;
+				$free++;
+				last;
+			}
+		}
+	}
 }
 print "$free addresses ok, freed.\n";
 # 残ったalloc配列は解放漏れ

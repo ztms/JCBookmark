@@ -27,6 +27,9 @@ body {
 	border:1px solid #999;
 	background:#fff;
 }
+#wait {
+	display:none;
+}
 #toolbar input {
 	float:left;
 	width:144px;
@@ -236,6 +239,7 @@ body {
 	display:none;
 	line-height:1.5;
 	padding:20px;
+	white-space:normal;
 }
 /* jQuery UI Dialog */
 .ui-dialog {
@@ -243,7 +247,7 @@ body {
 }
 .ui-button-text {
 	font-weight:bold;
-	color:#666;
+	color:#555;
 }
 /* ドラッグ中アイテム */
 .draggie {

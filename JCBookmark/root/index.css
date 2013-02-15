@@ -3,13 +3,21 @@
 	margin:0;
 	padding:0;
 }
+#progress {
+	display:none;
+	padding:2px 0 0 0;
+	text-align:center;
+	height:17px;
+}
+#proress img {
+	border:0;
+}
 #modified {
 	display:none;
 	font-family:"MS PGothic",sans-serif;
 	font-weight:bold;
 	font-size:14px;
-	margin:3px 0 0 0;
-	padding:1px 0;
+	padding:4px 0 1px 0;
 	cursor:pointer;
 	text-align:center;
 }
@@ -50,7 +58,6 @@
 .plusminus {
 	display:none;
 	float:right;
-	border:0;
 	width:13px;
 	height:13px;
 	margin:0 2px 0 0;
@@ -193,13 +200,90 @@
 	padding:2px;
 }
 /* HTMLインポート・エクスポート・いろいろダイアログ */
-#impexp, #dialog {
+#impexp, #snap, #dialog {
 	display:none;
 	line-height:1.5;
 	padding:20px;
 }
 #impexp input {
 	width:400px;
+}
+#shot {
+	height:50px;
+}
+#shot img {
+	display:none;
+	margin-left:55px;
+}
+#shotbox {
+	width:100%;
+	height:180px;
+	border:1px solid #777;
+	margin-bottom:10px;
+	overflow-x:auto;
+	overflow-y:scroll;
+}
+/* スナップショットアイテム行(div)はrelative */
+#shothead {
+	position:relative;
+	left:0; top:0;
+	height:18px;
+	color:#777;
+	background:#eee;
+	font-size:90%;
+	font-weight:bold;
+	border-bottom:1px solid #aaa;
+	padding-top:1px;
+}
+#shots div {
+	position:relative;
+	left:0; top:0;
+	height:20px;
+	cursor:pointer;
+}
+#shots div:hover {
+	background:#def;
+}
+#shots div.select {
+	color:#fff;
+	background:#337;
+	font-weight:bold;
+}
+#shots div.select input {
+	color:#fff;
+	font-weight:bold;
+}
+/* スナップショットアイテム項目(span,input)はabsoluteで位置決め */
+#shotbox .date, #shotbox .memo {
+	height:20px;
+	display:block;
+	position:absolute;
+	white-space:nowrap;
+	padding-left:5px;
+}
+#shotbox .date {
+	width:220px;
+	left:0; top:0;
+	border-right:1px solid #ccc;
+}
+#shotbox .memo {
+	left:228px; top:0;
+	border:0;
+	background:transparent;
+	line-height:20px;
+}
+#shotitem {
+	text-align:right;
+}
+#shotitem div {
+	display:inline-block;
+	vertical-align:top;
+	padding-top:5px;
+}
+#shotitem img {
+	vertical-align:top;
+	display:none;
+	margin:0 50px 0 46px;
 }
 /* jQuery UI Dialog */
 .ui-dialog {
