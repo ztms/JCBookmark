@@ -23,17 +23,17 @@ body {
 .title {
 	color:#fff;
 	background:#332;
-	background:-o-linear-gradient(#444433,#333322);
-	background:-moz-linear-gradient(#444433,#333322);
-	background:-webkit-linear-gradient(#444433,#333322);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#444433,endcolorstr=#333322)";
+	background:-o-linear-gradient(#414130,#393928);
+	background:-moz-linear-gradient(#414130,#393928);
+	background:-webkit-linear-gradient(#414130,#393928);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#414130,endcolorstr=#393928)";
 }
 /* パネルマウスオーバーでタイトルグラデを少し強調 */
 .panel:hover .title {
-	background:-o-linear-gradient(#555544,#333322);
-	background:-moz-linear-gradient(#555544,#333322);
-	background:-webkit-linear-gradient(#555544,#333322);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#555544,endcolorstr=#333322)";
+	background:-o-linear-gradient(#555544,#2e2e1d);
+	background:-moz-linear-gradient(#555544,#2e2e1d);
+	background:-webkit-linear-gradient(#555544,#2e2e1d);
+	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#555544,endcolorstr=#2e2e1d)";
 }
 /* パネル開閉ボタン */
 .plusminus:hover {

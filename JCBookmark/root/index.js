@@ -1275,11 +1275,11 @@ $('#snapico').click(function(){
 		function(){ $(this).addClass('ui-state-hover'); },
 		function(){ $(this).removeClass('ui-state-hover'); }
 	);
-	var $shots = $('#shots').empty();
 	// 一覧取得表示
+	var $shots = $('#shots').text('...取得中...');
 	$.ajax({
 		url		:':shotlist'
-		,error	:function(xhr,text){ Alert('作成済みスナップショット一覧を取得できません'+text); }
+		,error	:function(xhr,text){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+text); }
 		,success:function(data){ shotlist( data ); }
 	});
 	// 作成ボタン
@@ -1301,7 +1301,6 @@ $('#snapico').click(function(){
 					$btn.show();
 				}
 				,success:function(data){
-					$shots.empty();
 					shotlist( data );
 					$btn.next().hide();
 					$btn.show();
@@ -1369,7 +1368,6 @@ $('#snapico').click(function(){
 						,success:function(data){
 							// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
 							// 成功しても毎回一覧を更新することで削除できなかったことを判断
-							$shots.empty();
 							shotlist( data );
 							$btn.next().hide();
 							$btn.show();
@@ -1399,6 +1397,7 @@ $('#snapico').click(function(){
 	// スナップショット一覧(再)表示
 	// パネル生成と同様$.clone()で高速化できるけど…そんな遅くないしまあいいか…
 	function shotlist( list ){
+		$shots.empty();
 		var date = new Date();
 		for( var i=0; i<list.length; i++ ){
 			date.setTime( list[i].date||0 );
@@ -1432,7 +1431,7 @@ $('#snapico').click(function(){
 							type	:text.length? 'put' : 'del'
 							,url	:'/snap/'+id.replace(/cab$/,'txt')
 							,error	:function(xhr,text){ Alert('メモを保存できません'+text); }
-							,success:function(){ item.memo=text; memoWidthSetter(); }
+							,success:function(){ item.memo=text; widthAdjust(); }
 						};
 						if( text.length ) opt.data = text;
 						$.ajax(opt);
@@ -1458,15 +1457,16 @@ $('#snapico').click(function(){
 					}
 				}
 			});
-			// 新しいアイテムほど上に。新しいとは、タイムスタンプ比較ではなく
+			// 新しいアイテムほど上に。新しいとはタイムスタンプ比較ではなく
 			// 単に配列の後の方が新しい(サーバからそう返却されるはず…)。
 			$shots.prepend( $item.append($date).append($memo) );
 		}
-		memoWidthSetter();
+		widthAdjust();
 
-		// メモ欄の横幅を計算してセットする。<span>を使って文字列描画幅を算出。
+		// 一欄の横幅を計算してセットする。<span>を使って文字列描画幅を算出。
 		// http://qiita.com/items/1b3802db80eadf864633
-		function memoWidthSetter(){
+		function widthAdjust(){
+			// メモ欄の文字列横幅最大を算出
 			var maxWidth = 0;
 			var $span = $('<span></span>').css({
 					visibility		:'hidden'
