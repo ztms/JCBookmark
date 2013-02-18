@@ -489,7 +489,7 @@ function paneler( nodeTop ){
 				.attr('id',node.id)
 				.find('span').text( node.title ).end()
 				.find('.plusminus').attr('id','btn'+node.id).end()
-				.find('.itembox').attr('id','box'+node.id).end();
+				/*.find('.itembox').attr('id','box'+node.id).end()*/;
 		};
 	}();
 	var $item = function(){
@@ -646,11 +646,8 @@ function paneler( nodeTop ){
 	(function(){
 		var status = option.panel.status();
 		for( var btnID in status ){
-			// 開=1,閉=0
-			if( status[btnID]==1 ){
-				//ボタンID=btnXXXならパネルID=XXX
-				panelOpenClose( btnID.slice(3) );
-			}
+			// 開=1,閉=0、ボタンID=btnXXXならパネルID=XXX
+			if( status[btnID]==1 ) panelOpenClose( btnID.slice(3) );
 		}
 	})();
 	// スタイル
@@ -659,48 +656,6 @@ function paneler( nodeTop ){
 	setSortable();
 	// 測定
 	//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
-
-	//パネル開閉切り替え
-	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
-	function panelOpenClose( panelID, itemShow ){
-		var $panel = $('#'+panelID);
-		var $box = $panel.find('.itembox');
-		var $btn = $panel.find('.plusminus');
-		if( $btn.attr('src')=='plus.png' ){
-			// 開く
-			$panel.off('mouseenter.itempop mouseleave.itempop');
-			$box.off().css({position:'',width:''}).removeClass('itempop').show();
-			$btn.attr('src','minus.png');
-		}else{
-			// 閉じる、hoverでアイテムを右側にポップアップする
-			$box.hide().css('position','absolute');
-			$panel.on({
-				'mouseenter.itempop':function(){
-					var left = this.offsetLeft + this.offsetWidth -2;	// ちょい左
-					// 右端にはみ出る場合は左側に出す
-					if( left + this.offsetWidth > $(window).scrollLeft() + $(window).width() )
-						left = this.offsetLeft - this.offsetWidth +20;
-					$box.css({
-						left	:left
-						,top	:this.offsetTop -1		// ちょい上
-						,width	:this.offsetWidth -24	// 適当に幅狭く
-					})
-					.mouseleave(function(){ $(this).hide(); })
-					.addClass('itempop')
-					.show();
-				}
-				,'mouseleave.itempop':function(ev){
-					var box = $box[0];
-					if( ev.pageX < box.offsetLeft || ev.pageY < box.offsetTop
-						|| ev.pageX > box.offsetLeft + box.offsetWidth
-						|| ev.pageY > box.offsetTop + box.offsetHeight
-					) $box.hide();
-				}
-			});
-			$btn.attr('src','plus.png');
-			if( itemShow ) $panel.trigger('mouseenter.itempop');
-		}
-	}
 }
 // ノードツリー変更保存リンク
 $('#modified').click(function(){ modifySave(); } );
@@ -1603,9 +1558,33 @@ function setSortable(){
 	// パネル
 	$('.column').sortable({
 		connectWith	:['.column']	// Drag&Dropできる範囲=columnクラス要素の中(の第一要素)を並べ替える
-		,stop		:changeLayout	// 並べ替え終了直後に実行される関数
 		,opacity	:0.4
 		,distance	:9
+		,start		:function(ev,ui){	// 並べ替えが開始されたとき
+			// 閉パネルの場合はアイテムポップアップ機能を一時的に止める
+			// (そうしないとおかしな場所にポップアップして幽霊のようになる)
+			if( ui.item.find('.plusminus').attr('src')=='plus.png' ){
+				ui.item.off().find('.itembox').hide();
+			}
+		}
+		,stop		:function(ev,ui){	// 並べ替え終了したとき
+			// 閉パネルの場合はアイテムポップアップ機能を再開
+			if( ui.item.find('.plusminus').attr('src')=='plus.png' ){
+				ui.item.find('.plusminus').attr('src','minus.png');
+				panelOpenClose( ui.item[0].id );
+			}
+			// パネルレイアウト(どのカラム=段にどのパネルが入っているか)保存
+			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
+			// 例) { "co0": ["1","22","120","45"], "co1": ["3","5","89"], ... }
+			var layout = {};
+			$('.panel').each(function(){
+				var id = { column:this.parentNode.id, panel:this.id };
+				if( !(id.column in layout) ) layout[id.column] = [];
+				layout[id.column].push( id.panel );
+			});
+			if( JSON.stringify(option.panel.layout()) !=JSON.stringify(layout) )
+				option.panel.layout( layout );
+		}
 	})
 	.disableSelection();			// 必要なのか謎
 	// アイテム
@@ -1625,18 +1604,46 @@ function setSortable(){
 	.disableSelection();
 	*/
 }
-// パネルレイアウト(どのカラム=段にどのパネルが入っているか)保存
-// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
-//       { "co0": ["1","22","120","45"], "co1": ["3","5","89"], ... }
-function changeLayout(){
-	var layout = {};
-	$('.panel').each(function(){
-		var id = { column:this.parentNode.id, panel:this.id };
-		if( !(id.column in layout) ) layout[id.column] = [];
-		layout[id.column].push( id.panel );
-	});
-	if( JSON.stringify(option.panel.layout()) !=JSON.stringify(layout) )
-		option.panel.layout( layout );
+// パネル開閉(開いてたら閉じ、閉じてたら開く)
+// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
+function panelOpenClose( panelID, itemShow ){
+	var $panel = $('#'+panelID);
+	var $box = $panel.find('.itembox');
+	var $btn = $panel.find('.plusminus');
+	if( $btn.attr('src')=='plus.png' ){
+		// 開く
+		$panel.off('mouseenter.itempop mouseleave.itempop');
+		$box.off().css({position:'',width:''}).removeClass('itempop').show();
+		$btn.attr('src','minus.png');
+	}else{
+		// 閉じる、hoverでアイテムを右側にポップアップする
+		$box.hide().css('position','absolute');
+		$panel.on({
+			'mouseenter.itempop':function(){
+				var left = this.offsetLeft + this.offsetWidth -2;	// ちょい左
+				// 右端にはみ出る場合は左側に出す
+				if( left + this.offsetWidth > $(window).scrollLeft() + $(window).width() )
+					left = this.offsetLeft - this.offsetWidth +20;
+				$box.css({
+					left	:left
+					,top	:this.offsetTop -1		// ちょい上
+					,width	:this.offsetWidth -24	// 適当に幅狭く
+				})
+				.mouseleave(function(){ $(this).hide(); })
+				.addClass('itempop')
+				.show();
+			}
+			,'mouseleave.itempop':function(ev){
+				var box = $box[0];
+				if( ev.pageX < box.offsetLeft || ev.pageY < box.offsetTop
+					|| ev.pageX > box.offsetLeft + box.offsetWidth
+					|| ev.pageY > box.offsetTop + box.offsetHeight
+				) $box.hide();
+			}
+		});
+		$btn.attr('src','plus.png');
+		if( itemShow ) $panel.trigger('mouseenter.itempop');
+	}
 }
 // パラメータ変更反映
 function playLocalParam(){
