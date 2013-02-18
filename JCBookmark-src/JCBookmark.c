@@ -3808,8 +3808,10 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 									}
 								}
 								fputs("\",\"dateAdded\":\"",fp);
-								if( folderDateTop && folderDateEnd )
-									fwrite( folderDateTop, 1, folderDateEnd - folderDateTop, fp );
+								if( folderDateTop && folderDateEnd ){
+									fwrite( folderDateTop, folderDateEnd - folderDateTop, 1, fp );
+									fwrite( "000", 3, 1, fp );
+								}
 								fputs("\",\"child\":[",fp);
 								last='[';
 								count=0;
@@ -3883,7 +3885,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 								if( last=='}' ) fputc(',',fp);
 								fprintf(fp,"{\"id\":%u,\"url\":\"",nextid++);
 								if( urlTop && urlEnd )
-									fwrite( urlTop, 1, urlEnd - urlTop, fp );
+									fwrite( urlTop, urlEnd - urlTop, 1, fp );
 								fputs("\",\"title\":\"",fp);
 								if( titleTop && titleEnd ){
 									UCHAR* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
@@ -3893,14 +3895,16 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 									}
 								}
 								fputs("\",\"dateAdded\":\"",fp);
-								if( dateTop && dateEnd )
-									fwrite( dateTop, 1, dateEnd - dateTop, fp );
+								if( dateTop && dateEnd ){
+									fwrite( dateTop, dateEnd - dateTop, 1, fp );
+									fwrite( "000", 3, 1, fp );
+								}
 								fputs("\",\"icon\":\"",fp);
 								if( iconTop && iconEnd ){
 									*iconEnd = '\0';
 									if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
 										; // Mozilla仮URL無視
-									else fwrite( iconTop, 1, iconEnd - iconTop, fp );
+									else fwrite( iconTop, iconEnd - iconTop, 1, fp );
 									*iconEnd = '"';
 								}
 								fputs("\"}",fp);
