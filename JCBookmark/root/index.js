@@ -1608,7 +1608,7 @@ function setSortable(){
 // TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
 function panelOpenClose( $panel, itemShow ){
 	// 引数$panelはjQueryオブジェクトまたはパネルID文字列
-	if( isString($panel) ) $panel = $('#'+$panel);
+	if( !($panel instanceof jQuery) ) $panel = $('#'+$panel);
 	var $box = $panel.find('.itembox');
 	var $btn = $panel.find('.plusminus');
 	if( $btn.attr('src')=='plus.png' ){
@@ -1780,10 +1780,6 @@ function HTMLtext( s ){
 			return { '<':'&lt;', '>':'&gt;' }[m];
 		})
 	).text();
-}
-// 引数が文字列かどうか判定
-function isString( s ){
-	return (Object.prototype.toString.call(s)==='[object String]');
 }
 /*
 // ChromeでPUTが動かないことがあったので調査のための$.ajax({})ラッパ。しかし詳細判明せず…。
