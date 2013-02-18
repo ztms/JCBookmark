@@ -67,6 +67,10 @@ body {
 	background:-webkit-linear-gradient(#fcfcfe,#f5f5f7);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fcfcfe,endcolorstr=#f5f5f7)";
 }
+.itempop {
+	border:1px solid #aac;
+	box-shadow:0 0 5px 2px #aac;
+}
 /* ブックマークアイテム */
 .item {
 	color:#14d;

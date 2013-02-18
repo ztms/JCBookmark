@@ -4,6 +4,8 @@
 // mount()では配列の最後に登録しているようなので、パネル並べ処理側の修正か…？
 // TODO:パネルの開閉は、タイトルバーのシングルクリックでいいかな？右端の小さいボタンまたはダブル
 // クリックは、たくさん開閉する操作が面倒だ。じっさいシングルクリックはなにもイベントがないし…。
+// いや、コンテキストメニューを消すという役割があった。閉じパネルはhoverで右が左に中身をポップ
+// するのがいいかもしれない。そうすればシングルクリック案はいらなくなるよな。
 // TODO:大量エントリで「スクリプトが時間かかってる」ダイアログが出るのを解消する方法はあるのか。
 // jquery.min.jsで時間がかかってると通知されるが、まずは実際どこで時間食ってるか詳しく調べないと…。
 // TODO:大量エントリでの使い方として、ほとんどのパネルを閉じたくなる。その場合中身を見るのに、
@@ -424,19 +426,17 @@ function paneler( nodeTop ){
 				$('<div class=title><img class=icon src="folder.png"><span></span></div>')
 				.on({
 					// ダブルクリックでパネル開閉
-					// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
 					dblclick:function(){
-						// 自分(.title)の親つまりパネルID=XXならボックスID=boxXXでボタンID=btnXX
-						var $box = $('#box'+this.parentNode.id);
-						var $btn = $('#btn'+this.parentNode.id);
-						if( $box.css('display')=='none' ){
-							$box.show();
-							$btn.attr('src','minus.png');
-						}else{
-							$box.hide();
-							$btn.attr('src','plus.png');
-						}
-						changeStatus();
+						// パネルIDは自分(.title)の親ID
+						panelOpenClose( this.parentNode.id, true );
+						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
+						// 例) { "btn1":1, "btn9":0, "btn45":0, ... }
+						var status = {};
+						$('.plusminus').each(function(){
+							//srcはURL('http://localhost:XXX/plus.png'など)文字列
+							status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+						});
+						option.panel.status( status );
 					}
 					// 右クリックメニュー
 					,contextmenu:function(ev){
@@ -480,20 +480,8 @@ function paneler( nodeTop ){
 				})
 				.prepend(
 					$('<img class=plusminus src="minus.png">')
-					// パネル開閉
-					// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
-					.click(function(){
-						// 自身のID=btnXXならボックスID=boxXX
-						var $box = $('#box'+this.id.slice(3));
-						if( $box.css('display')=='none' ){
-							$box.show();
-							this.src = 'minus.png';
-						}else{
-							$box.hide();
-							this.src = 'plus.png';
-						}
-						changeStatus();
-					})
+					// クリックでパネル開閉
+					.click(function(){ $(this.parentNode).dblclick(); })
 				)
 			);
 		return function( node ){
@@ -657,15 +645,11 @@ function paneler( nodeTop ){
 	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
 	(function(){
 		var status = option.panel.status();
-		for( var btnN in status ){
-			var $btn = $('#'+btnN);				// 開閉ボタンエレメント
-			var $box = $('#box'+btnN.slice(3));	// ボックスIDは、ボタンID=btnXXならボックスID=boxXX
-			if( status[btnN]==0 ){
-				$btn.attr('src','minus.png');
-				$box.show();
-			}else{
-				$btn.attr('src','plus.png');
-				$box.hide();
+		for( var btnID in status ){
+			// 開=1,閉=0
+			if( status[btnID]==1 ){
+				//ボタンID=btnXXXならパネルID=XXX
+				panelOpenClose( btnID.slice(3) );
 			}
 		}
 	})();
@@ -675,6 +659,48 @@ function paneler( nodeTop ){
 	setSortable();
 	// 測定
 	//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
+
+	//パネル開閉切り替え
+	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
+	function panelOpenClose( panelID, itemShow ){
+		var $panel = $('#'+panelID);
+		var $box = $panel.find('.itembox');
+		var $btn = $panel.find('.plusminus');
+		if( $btn.attr('src')=='plus.png' ){
+			// 開く
+			$panel.off('mouseenter.itempop mouseleave.itempop');
+			$box.off().css({position:'',width:''}).removeClass('itempop').show();
+			$btn.attr('src','minus.png');
+		}else{
+			// 閉じる、hoverでアイテムを右側にポップアップする
+			$box.hide().css('position','absolute');
+			$panel.on({
+				'mouseenter.itempop':function(){
+					var left = this.offsetLeft + this.offsetWidth -2;	// ちょい左
+					// 右端にはみ出る場合は左側に出す
+					if( left + this.offsetWidth > $(window).scrollLeft() + $(window).width() )
+						left = this.offsetLeft - this.offsetWidth +20;
+					$box.css({
+						left	:left
+						,top	:this.offsetTop -1		// ちょい上
+						,width	:this.offsetWidth -24	// 適当に幅狭く
+					})
+					.mouseleave(function(){ $(this).hide(); })
+					.addClass('itempop')
+					.show();
+				}
+				,'mouseleave.itempop':function(ev){
+					var box = $box[0];
+					if( ev.pageX < box.offsetLeft || ev.pageY < box.offsetTop
+						|| ev.pageX > box.offsetLeft + box.offsetWidth
+						|| ev.pageY > box.offsetTop + box.offsetHeight
+					) $box.hide();
+				}
+			});
+			$btn.attr('src','plus.png');
+			if( itemShow ) $panel.trigger('mouseenter.itempop');
+		}
+	}
 }
 // ノードツリー変更保存リンク
 $('#modified').click(function(){ modifySave(); } );
@@ -1416,7 +1442,7 @@ $('#snapico').click(function(){
 				// メモファイルはブラウザがサーバ側のパス(snapフォルダ内とか)を意識してPUTしているので、
 				// ちょっと仕様が汚い。でもサーバ側のPOST実装対応が面倒でPUTのが楽だったので…(；´Д｀)
 				blur:function(){
-					var id = $(this).parent()[0].id;
+					var id = this.parentNode.id;
 					var text = $(this).val();
 					var item = null;
 					for( var i=0; i<list.length; i++ ){
@@ -1441,7 +1467,7 @@ $('#snapico').click(function(){
 				,keypress:function(ev){
 					switch( ev.which || ev.keyCode || ev.charCode ){
 					case 13:
-						$(this).parent().next().click().find('.memo').focus();
+						$(this.parentNode).next().click().find('.memo').focus();
 						return false;
 					}
 				}
@@ -1449,10 +1475,10 @@ $('#snapico').click(function(){
 				,keydown:function(ev){
 					switch( ev.which || ev.keyCode || ev.charCode ){
 					case 38: // ↑
-						$(this).parent().prev().click().find('.memo').focus();
+						$(this.parentNode).prev().click().find('.memo').focus();
 						return false;
 					case 40: // ↓
-						$(this).parent().next().click().find('.memo').focus();
+						$(this.parentNode).next().click().find('.memo').focus();
 						return false;
 					}
 				}
@@ -1611,17 +1637,6 @@ function changeLayout(){
 	});
 	if( JSON.stringify(option.panel.layout()) !=JSON.stringify(layout) )
 		option.panel.layout( layout );
-}
-// パネル開閉状態の保存と復活
-// 形式: JSON形式で、キーがボタンID、値が 0(開) または 1(閉)
-//       { "btn1":1, "btn9":0, "btn45":0, ... }
-function changeStatus(){
-	var status = {};
-	$('.plusminus').each(function(){
-		//srcはURL('http://localhost:XXX/plus.png'など)文字列
-		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
-	});
-	option.panel.status( status );
 }
 // パラメータ変更反映
 function playLocalParam(){
