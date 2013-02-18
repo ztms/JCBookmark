@@ -93,50 +93,7 @@ body {
 .item-placeholder {
 	border:2px solid #f88;
 }
-/* サイドバー */
-#sidebar {
-	border-top:1px solid #aaa;
-	border-right:1px solid #aaa;
-	border-bottom:1px solid #aaa;
-	background:#eee;
-}
-.barico {
-	border:1px solid #eee;
-	background:#eee;
-}
-.barico:hover {
-	border-color:#aaa;
-	background:#fff;
-}
-/* パネル設定ダイアログ */
-#page_title, #panel_width, #panel_margin, #column_count, #font_size {
-	border:1px solid gray;
-}
 /* コンテキストメニュー */
 #contextmenu {
-	border:1px solid #999;
-	background:#e7e7e7;
 	box-shadow:3px 3px 4px #000;
-}
-#contextmenu div {
-	border-top:1px solid #fff;
-	border-left:1px solid #fff;
-	border-right:1px solid #999;
-	border-bottom:1px solid #999;
-}
-#contextmenu a:hover {
-	color:#fff;
-	background:#337;
-}
-#contextmenu hr {
-	border-top:1px solid #999;
-	border-bottom:1px solid #fff;
-}
-/* アイテムをテキストで取得 */
-#itemtext textarea {
-	border:1px solid #888;
-}
-/* jQuery UI Dialog Button Style */
-.ui-button-text {
-	color:#555;
 }
