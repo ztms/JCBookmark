@@ -430,7 +430,7 @@ function paneler( nodeTop ){
 						// パネルIDは自分(.title)の親ID
 						panelOpenClose( this.parentNode.id, true );
 						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
-						// 例) { "btn1":1, "btn9":0, "btn45":0, ... }
+						// 例) { btn1:1, btn9:0, btn45:0, ... }
 						var status = {};
 						$('.plusminus').each(function(){
 							//srcはURL('http://localhost:XXX/plus.png'など)文字列
@@ -519,6 +519,15 @@ function paneler( nodeTop ){
 				$box.append( $item(node.child[i]) );
 		}
 	})( nodeTop );
+	// パネル開閉状態反映
+	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
+	(function(){
+		var status = option.panel.status();
+		for( var btnID in status ){
+			// 開=1,閉=0、ボタンID=btnXXXならパネルID=XXX
+			if( status[btnID]==1 ) panelOpenClose( idpanel[btnID.slice(3)] );
+		}
+	})();
 	// パネル並べ段組みBOX
 	(function(){
 		var max = option.column.count();
@@ -531,6 +540,24 @@ function paneler( nodeTop ){
 		}
 		// float解除
 		$wall.append('<br class=clear>');
+		// 配置が完了したパネルリスト: キーがパネルID、値はtrue
+		var finpanel = {};
+		// レイアウト保存データのパネル配置
+		// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
+		// 例) { co0: [ 1,22,120,45 ], co1: [3,5,89], ... }
+		var layout = option.panel.layout();
+		for( var coN in layout ){
+			if( coN in column ){
+				var ids = layout[coN];
+				for( var i=0; i<ids.length; i++ ){
+					if( ids[i] in idpanel ){
+						column[coN].$e.append( idpanel[ids[i]] );
+						column[coN].height += idpanel[ids[i]].height();
+						finpanel[ids[i]] = true;
+					}
+				}
+			}
+		}
 		// 高さがいちばん低いカラムオブジェクトを返す
 		var lowestColumn = function(){
 			var target = null;
@@ -542,31 +569,13 @@ function paneler( nodeTop ){
 			}
 			return target;
 		};
-		// 自動並べ
+		// 残りのパネル配置
 		for( var i=0; i<panels.length; i++ ){
+			if( panels[i][0].id in finpanel ) continue;
 			// 一番低い段に振り分けていく
 			var col = lowestColumn();
 			col.$e.append( panels[i] );
 			col.height += panels[i].height();
-		}
-		// レイアウト保存データ反映
-		// キーがカラム(段)ID、値がパネルIDの配列の連想配列
-		// { co0: [ 1,22,120,45 ], co1: [3,5,89], ... }
-		var layout = option.panel.layout();
-		for( var target in layout ){
-			var ids = layout[target];
-			if( target in column ){
-				// カラムあり
-				var col = column[target].$e;
-				for( var i=0; i<ids.length; i++ ){
-					col.append( idpanel[ids[i]] );
-				}
-			}else{
-				// カラムないので適当に分配
-				for( var i=0; i<ids.length; i++ ){
-					column['co'+(i%max)].$e.append( idpanel[ids[i]] );
-				}
-			}
 		}
 	})();
 	// 新規URL投入BOX
@@ -641,15 +650,6 @@ function paneler( nodeTop ){
 			},10);
 		})
 	);
-	// パネル開閉状態反映
-	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
-	(function(){
-		var status = option.panel.status();
-		for( var btnID in status ){
-			// 開=1,閉=0、ボタンID=btnXXXならパネルID=XXX
-			if( status[btnID]==1 ) panelOpenClose( btnID.slice(3) );
-		}
-	})();
 	// スタイル
 	playLocalParam();
 	// Drag&Drop並べ替え開始
@@ -1575,7 +1575,7 @@ function setSortable(){
 			}
 			// パネルレイアウト(どのカラム=段にどのパネルが入っているか)保存
 			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
-			// 例) { "co0": ["1","22","120","45"], "co1": ["3","5","89"], ... }
+			// 例) { co0: [1,22,120,45], co1: [3,5,89], ... }
 			var layout = {};
 			$('.panel').each(function(){
 				var id = { column:this.parentNode.id, panel:this.id };
@@ -1606,8 +1606,9 @@ function setSortable(){
 }
 // パネル開閉(開いてたら閉じ、閉じてたら開く)
 // TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
-function panelOpenClose( panelID, itemShow ){
-	var $panel = $('#'+panelID);
+function panelOpenClose( $panel, itemShow ){
+	// 引数$panelはjQueryオブジェクトまたはパネルID文字列
+	if( isString($panel) ) $panel = $('#'+$panel);
 	var $box = $panel.find('.itembox');
 	var $btn = $panel.find('.plusminus');
 	if( $btn.attr('src')=='plus.png' ){
@@ -1779,6 +1780,10 @@ function HTMLtext( s ){
 			return { '<':'&lt;', '>':'&gt;' }[m];
 		})
 	).text();
+}
+// 引数が文字列かどうか判定
+function isString( s ){
+	return (Object.prototype.toString.call(s)==='[object String]');
 }
 /*
 // ChromeでPUTが動かないことがあったので調査のための$.ajax({})ラッパ。しかし詳細判明せず…。
