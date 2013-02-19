@@ -10,7 +10,6 @@ body {
 }
 /* ツールバー */
 #toolbar {
-	display:none;
 	width:1024px;
 	background:#eee;
 	border-bottom:1px solid #777;
@@ -60,7 +59,6 @@ body {
 }
 /* フォルダ欄、アイテム欄 */
 #folderbox, #border, #itembox {
-	display:none;
 	float:left;
 }
 #folderbox, #itembox {

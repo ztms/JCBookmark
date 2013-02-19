@@ -441,7 +441,7 @@ if( IE && IE<9 ){
 // ブックマークデータ取得
 tree.load(function(){
 	$(window).resize();
-	$('#toolbar,#folderbox,#border,#itembox').show();
+	$('body').css('visibility','visible');
 	$( folderTree()[0].childNodes[0] ).click();
 });
 // 終了

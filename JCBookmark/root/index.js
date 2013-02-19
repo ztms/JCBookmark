@@ -654,6 +654,7 @@ function paneler( nodeTop ){
 	);
 	// 可変パラメータ
 	playLocalParam();
+	$('body').css('visibility','visible');
 	// Drag&Drop並べ替え開始
 	setSortable();
 	// 測定
@@ -834,16 +835,7 @@ $('#filerico').click(function(){
 		,no	:function(){ gotoFiler(); }
 		,yes:function(){ modifySave({ success:gotoFiler }); }
 	});
-	// filer.htmlを単純に開いてもいいけど、index.htmlとfiler.htmlで同時ツリー変更できないので、
-	// 同じURLで動作させるためiframeで開く。
-	function gotoFiler(){
-		//$debug.remove();
-		$('#modified,#wall,#sidebar,#option,#contextmenu,#itemtext,#dialog').remove();
-		$('#filer').width($window.width()).height($window.height()).show().attr('src','filer.html');
-		$window.on('resize',function(){
-			$('#filer').width($window.width()).height($window.height());
-		});
-	}
+	function gotoFiler(){ location.href = 'filer.html'; }
 });
 // ブラウザ情報＋インポートイベント
 (function(){
@@ -1620,6 +1612,9 @@ function panelOpenClose( $panel, itemShow ){
 		$btn.attr('src','minus.png');
 	}else{
 		// 閉じる、hoverでアイテムを右側にポップアップする
+		// TODO:大量エントリで閉じパネルが多くなると、パネルタイトルは幅狭くていいから
+		// 中身のポップアップの幅をもっと広くしたくなる。どうするか。設定で持つか？
+		// TODO:吹き出しみたいにしたい。三角つけるくらいでいいかな。
 		$box.hide().css('position','absolute');
 		$panel.on({
 			'mouseenter.itempop':function(){

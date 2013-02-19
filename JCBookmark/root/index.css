@@ -176,13 +176,6 @@
 #page_title, #panel_width, #panel_margin, #column_count, #font_size {
 	border:1px solid gray;
 }
-/* ファイラ */
-#filer {
-	display:none;
-	position:absolute;
-	left:0; top:0;
-	border:0;
-}
 /* コンテキストメニュー */
 #contextmenu {
 	display:none;
