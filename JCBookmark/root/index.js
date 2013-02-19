@@ -419,6 +419,8 @@ $(document).on({
 // |---+------------------+---+------------------+   |
 function paneler( nodeTop ){
 	$wall.empty();
+	document.title = option.page.title();
+	$('#colorcss').attr('href',option.color.css());
 	// パネル生成
 	var $panel = function(){
 		var $e = $('<div class=panel><div class=itembox></div></div>')
@@ -650,7 +652,7 @@ function paneler( nodeTop ){
 			},10);
 		})
 	);
-	// スタイル
+	// 可変パラメータ
 	playLocalParam();
 	// Drag&Drop並べ替え開始
 	setSortable();
@@ -1648,8 +1650,6 @@ function panelOpenClose( $panel, itemShow ){
 }
 // パラメータ変更反映
 function playLocalParam(){
-	document.title = option.page.title();
-	$('#colorcss').attr('href',option.color.css());
 	var font_size = option.font.size();
 	var panel_width = option.panel.width();
 	var panel_margin = option.panel.margin();
