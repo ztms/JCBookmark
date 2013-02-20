@@ -1,23 +1,15 @@
 // vim:set ts=4:vim modeline
-// TODO:HTMLインポートで追加登録したパネルが上方に並ぶため、大量にあると新規ブックマーク入力欄が
-// 画面下に消えてどこにいったかわからない問題。追加登録パネル群は下方に並んだ方がよい。
-// mount()では配列の最後に登録しているようなので、パネル並べ処理側の修正か…？
-// TODO:パネルの開閉は、タイトルバーのシングルクリックでいいかな？右端の小さいボタンまたはダブル
-// クリックは、たくさん開閉する操作が面倒だ。じっさいシングルクリックはなにもイベントがないし…。
-// いや、コンテキストメニューを消すという役割があった。閉じパネルはhoverで右が左に中身をポップ
-// するのがいいかもしれない。そうすればシングルクリック案はいらなくなるよな。
+// TODO:インポート時の「処理中です...」は「ファビコンURLを取得しています...」に変更して、ダイアログ
+// のキャンセルは、ファビコン取得をキャンセルしてインポートに進む処理に変更したい。
 // TODO:大量エントリで「スクリプトが時間かかってる」ダイアログが出るのを解消する方法はあるのか。
 // jquery.min.jsで時間がかかってると通知されるが、まずは実際どこで時間食ってるか詳しく調べないと…。
-// TODO:大量エントリでの使い方として、ほとんどのパネルを閉じたくなる。その場合中身を見るのに、
-// パネルタイトル(フォルダ名)欄のhoverで、右側(か左側)に中身ボックスが表示されるのがいいんじゃないか？
-// 全部のパネルを閉じても１画面に収まらないほど大量の時は、下に中身が出るより使いやすそうな気がする。
 // TODO:jQueryUIのsortableをやめて独自実装にして、ブックマークも並べ替えやフォルダ移動できるように。
 // TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
-// TODO:パネル色分け。既定のセットがいくつか選べて、さらに自由にRGBかHSVで決められる感じかな。
+// TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉。閉パネルはDOM要素を(非表示でなく)削除してメモリ節約。
-// TODO:ブックマークのコンテキストメニューで名前変更。そうするとURLコピーができないのが難点だが、
-// テキスト表示メニューがあればいいかな？あと削除もできるように。
+// TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
+// 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
 /*
 var start = new Date(); // 測定
@@ -418,12 +410,30 @@ $(document).on({
 // |   |                  |   |                  |   |
 // |---+------------------+---+------------------+   |
 function paneler( nodeTop ){
-	$wall.empty();
+	var fontSize = option.font.size();
+	var panelWidth = option.panel.width();
+	var panelMargin = option.panel.margin();
+	var columnCount = option.column.count();
+	var columnWidth = panelWidth + panelMargin +2;	// +2 適当たぶんボーダーぶん
+	$wall.empty().width( columnWidth * columnCount ).css({
+		'padding-right': panelMargin +'px'
+	});
 	document.title = option.page.title();
 	$('#colorcss').attr('href',option.color.css());
-	// パネル生成
+	// カラム要素生成関数
+	var $column = function(){
+		var $e = $('<div class=column></div>').width( columnWidth );
+		return function( id ){
+			return $e.clone().attr('id',id).appendTo( $wall );
+		};
+	}();
+	// パネル要素生成関数
 	var $panel = function(){
-		var $e = $('<div class=panel><div class=itembox></div></div>')
+		var $e = $('<div class=panel><div class=itembox></div></div>').width( panelWidth )
+			.css({
+				'font-size': fontSize +'px'
+				,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+			})
 			.prepend(
 				$('<div class=title><img class=icon src="folder.png"><span></span></div>')
 				.on({
@@ -487,13 +497,12 @@ function paneler( nodeTop ){
 				)
 			);
 		return function( node ){
-			return $e.clone(true)
-				.attr('id',node.id)
+			return $e.clone(true).attr('id',node.id)
 				.find('span').text( node.title ).end()
-				.find('.plusminus').attr('id','btn'+node.id).end()
-				/*.find('.itembox').attr('id','box'+node.id).end()*/;
+				.find('.plusminus').attr('id','btn'+node.id).end();
 		};
 	}();
+	// アイテム要素生成関数
 	var $item = function(){
 		var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 		return function( node ){
@@ -507,158 +516,177 @@ function paneler( nodeTop ){
 				.find('span').text( node.title ).end();
 		};
 	}();
-	var panels = [];
-	var idpanel = {};
-	(function( node ){
-		var $p = $panel( node );
-		var $box = $p.find('.itembox');
-		panels.push( $p );
-		idpanel[node.id] = $p;
-		for( var i=0, n=node.child.length; i<n; i++ ){
-			if( node.child[i].child )
-				arguments.callee( node.child[i] );
-			else
-				$box.append( $item(node.child[i]) );
-		}
-	})( nodeTop );
-	// パネル開閉状態反映
-	// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
+	// カラム(段)生成
+	var columnList = {};
+	for( var i=0; i<columnCount; i++ ){
+		columnList['co'+i] = {
+			$e: $column( 'co'+i )
+			,height: 0
+		};
+	}
+	// float解除
+	$wall.append('<br class=clear>');
+	// 表示(チラツキ低減)
+	$('body').css('visibility','visible');
+	// レイアウト保存データのパネル配置
+	// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
+	// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
+	var panelLayout = option.panel.layout();
+	var panelStatus = option.panel.status();
+	var panelList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
+	var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
 	(function(){
-		var status = option.panel.status();
-		for( var btnID in status ){
-			// 開=1,閉=0、ボタンID=btnXXXならパネルID=XXX
-			if( status[btnID]==1 ) panelOpenClose( idpanel[btnID.slice(3)] );
+		var layoutSeek = false;
+		for( var coID in panelLayout ){
+			if( index < panelLayout[coID].length ){
+				panelCreate( tree.node( panelLayout[coID][index] ), coID );
+				layoutSeek = true;
+			}
 		}
-	})();
-	// パネル並べ段組みBOX
-	(function(){
-		var max = option.column.count();
-		var column = {};
-		for( var i=0; i<max; i++ ){
-			column['co'+i] = {
-				$e: $('<div id=co'+i+' class=column></div>').appendTo( $wall )
-				,height: 0
-			};
+		if( layoutSeek ){
+			index++;
+			setTimeout(arguments.callee,1);
 		}
-		// float解除
-		$wall.append('<br class=clear>');
-		// 配置が完了したパネルリスト: キーがパネルID、値はtrue
-		var finpanel = {};
-		// レイアウト保存データのパネル配置
-		// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
-		// 例) { co0: [ 1,22,120,45 ], co1: [3,5,89], ... }
-		var layout = option.panel.layout();
-		for( var coN in layout ){
-			if( coN in column ){
-				var ids = layout[coN];
-				for( var i=0; i<ids.length; i++ ){
-					if( ids[i] in idpanel ){
-						column[coN].$e.append( idpanel[ids[i]] );
-						column[coN].height += idpanel[ids[i]].height();
-						finpanel[ids[i]] = true;
+		else{
+			// レイアウト完了、残りのパネル配置
+			var nodeList = [];	// 未配置ノードリスト
+			(function( node ){
+				if( !(node.id in panelList) ){
+					nodeList.push( node );
+				}
+				for( var i=0, n=node.child.length; i<n; i++ ){
+					if( node.child[i].child ){
+						arguments.callee( node.child[i] );
 					}
 				}
-			}
-		}
-		// 高さがいちばん低いカラムオブジェクトを返す
-		var lowestColumn = function(){
-			var target = null;
-			for( var id in column ){
-				if( !target )
-					target = column[id];
-				else if( target.height > column[id].height )
-					target = column[id];
-			}
-			return target;
-		};
-		// 残りのパネル配置
-		for( var i=0; i<panels.length; i++ ){
-			if( panels[i][0].id in finpanel ) continue;
-			// 一番低い段に振り分けていく
-			var col = lowestColumn();
-			col.$e.append( panels[i] );
-			col.height += panels[i].height();
+			})( nodeTop );
+			setTimeout(function(){
+				if( nodeList.length ){
+					panelCreate( nodeList.shift() );
+					setTimeout(arguments.callee,1);
+				}
+				else{
+					// 全パネル配置完了
+					newUrlBoxCreate();
+					// パネル並べ替えドラッグ先領域
+					// TODO:毎回追加するだけして消してないけどいいかな・・おそらくブラウザの保持データが増えていく
+					// ので注意が必要だが、パネル設定を変更した時だけだからだいじょうぶかな・・
+					$.css.add('.ui-sortable-placeholder{margin:' +panelMargin +'px 0 0 ' +panelMargin +'px;}');
+					// パネル並べ替え開始
+					setSortable();
+					// 測定
+					//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
+				}
+			},1);
 		}
 	})();
-	// 新規URL投入BOX
+	// パネル１つ生成配置
+	function panelCreate( node, coID ){
+		var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
+		var $p = $panel( node ).appendTo( column.$e );
+		// アイテム追加
+		var $box = $p.find('.itembox');
+		for( var i=0, n=node.child.length; i<n; i++ ){
+			if( !node.child[i].child )
+				$box.append( $item(node.child[i]) );
+		}
+		// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
+		// 例) { btn1:1, btn9:0, btn45:0, ... }
+		// パネルID=XXX は、ボタンID=btnXXX に対応
+		var btnID = 'btn'+node.id;
+		if( btnID in panelStatus ){
+			if( panelStatus[btnID]==1 ) panelOpenClose( $p );
+		}
+		// カラム高さ
+		column.height += $p.height();
+		// 完了
+		panelList[node.id] = true;
+		// 高さがいちばん低いカラムオブジェクトを返す
+		function lowestColumn(){
+			var target = null;
+			for( var id in columnList ){
+				if( !target )
+					target = columnList[id];
+				else if( target.height > columnList[id].height )
+					target = columnList[id];
+			}
+			return target;
+		}
+	}
+	// 新規URL投入BOX作成
 	// TODO:IE8/Firefoxで文字列をマウスでドラッグ選択できない。あれ？前からだっけ？
 	// jQuery:sortable()をやめたらできるようになった…うーむ…。
 	// TODO:Operaで右クリックメニューからの貼り付けができない(Ctrl+Vはできる)
 	// jQuery.sortable()をやめたら選択できるようだ…jQueryとの相性か…
-	panels[0].find('.itembox').before(
-		$('<input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">').on({
-			// 新規登録
-			commit:function(){
-				var node = tree.newURL( this.value );
-				if( node ){
-					// DOM要素追加
-					$(this.parentNode).find('.itembox').prepend( $item( node ) );
-					// URLタイトル、favicon取得
-					// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
-					// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
-					// て消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'にエンコード
-					// できるが、他にもいっぱいエンコードされてサーバ側のデコード処理がたいへん。'#'
-					// 以外は$.get()が自動でエンコードしてくれる内容で問題なさそうなのでそうしたい。
-					// とりあえず'#'だけ'%23'に置換して送信する。Twitterサーバは'#'が'%23'になって
-					// ると404を返すので、サーバ側で'#'に戻してリクエストを送る。が、Twitterはいま
-					// は/#!/の応答では200を返すけどタイトルは単なる「Twitter」で、結局/#!/無しURL
-					// にリダイレクトされるようだ。他のサイトで悪影響が出ないといいけど・・
-					// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
-					// まあいいかとりあえず動いてるし…。
-					// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
-					$.get(':analyze?'+this.value.replace(/#/g,'%23'),function(data){
-						if( data.title.length ){
-							data.title = HTMLtext( data.title );
-							if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-								$('#'+node.id).attr('title',data.title).find('span').text(data.title);
-						}
-						if( data.icon.length )
-							if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-								$('#'+node.id).find('img').attr('src',data.icon);
-					});
-					$('#commit').remove();
-					this.value = '';
+	function newUrlBoxCreate(){
+		$('#'+nodeTop.id).find('.itembox').before(
+			$('<input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">').on({
+				// 新規登録
+				commit:function(){
+					var node = tree.newURL( this.value );
+					if( node ){
+						// DOM要素追加
+						$(this.parentNode).find('.itembox').prepend( $item( node ) );
+						// URLタイトル、favicon取得
+						// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
+						// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
+						// て消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'にエンコード
+						// できるが、他にもいっぱいエンコードされてサーバ側のデコード処理がたいへん。'#'
+						// 以外は$.get()が自動でエンコードしてくれる内容で問題なさそうなのでそうしたい。
+						// とりあえず'#'だけ'%23'に置換して送信する。Twitterサーバは'#'が'%23'になって
+						// ると404を返すので、サーバ側で'#'に戻してリクエストを送る。が、Twitterはいま
+						// は/#!/の応答では200を返すけどタイトルは単なる「Twitter」で、結局/#!/無しURL
+						// にリダイレクトされるようだ。他のサイトで悪影響が出ないといいけど・・
+						// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
+						// まあいいかとりあえず動いてるし…。
+						// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
+						$.get(':analyze?'+this.value.replace(/#/g,'%23'),function(data){
+							if( data.title.length ){
+								data.title = HTMLtext( data.title );
+								if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+									$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+							}
+							if( data.icon.length )
+								if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+									$('#'+node.id).find('img').attr('src',data.icon);
+						});
+						$('#commit').remove();
+						this.value = '';
+					}
 				}
-			}
-			// Enterで反映
-			,keypress:function(ev){
-				switch( ev.which || ev.keyCode || ev.charCode ){
-				case 13: $(this).trigger('commit'); return false;
+				// Enterで反映
+				,keypress:function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 13: $(this).trigger('commit'); return false;
+					}
 				}
-			}
-			// マウスダウンでフォーカス与えないとOperaで入力できない対策
-			// Operaで右クリックメニューからの貼り付けができない問題=jQuery:sortable相性問題と同じかな？
-			,mousedown:function(){ this.focus(); }
-		})
-		.on('input keyup paste',function(){
-			// 文字列がある時だけ登録ボタン生成
-			// なぜかsetTimeout()しないと動かない…この時点ではvalueに値が入ってないからかな？
-			setTimeout(function(){
-				var $newurl = $('#newurl');
-				if( $newurl.val().length ){
-					if( $newurl.next().attr('id')!='commit' )
-						$newurl.after(
-							$('<div id=commit tabindex=0>↓↓↓新規登録↓↓↓</div>').on({
-								click:function(){ $newurl.trigger('commit'); }
-								,keypress:function(ev){
-									switch( ev.which || ev.keyCode || ev.charCode ){
-									case 13: $newurl.trigger('commit'); return false;
+				// マウスダウンでフォーカス与えないとOperaで入力できない対策
+				// Operaで右クリックメニューからの貼り付けができない問題=jQuery:sortable相性問題と同じかな？
+				,mousedown:function(){ this.focus(); }
+			})
+			.on('input keyup paste',function(){
+				// 文字列がある時だけ登録ボタン生成
+				// なぜかsetTimeout()しないと動かない…この時点ではvalueに値が入ってないからかな？
+				setTimeout(function(){
+					var $newurl = $('#newurl');
+					if( $newurl.val().length ){
+						if( $newurl.next().attr('id')!='commit' )
+							$newurl.after(
+								$('<div id=commit tabindex=0>↓↓↓新規登録↓↓↓</div>').on({
+									click:function(){ $newurl.trigger('commit'); }
+									,keypress:function(ev){
+										switch( ev.which || ev.keyCode || ev.charCode ){
+										case 13: $newurl.trigger('commit'); return false;
+										}
 									}
-								}
-							})
-						);
-				}
-				else $('#commit').remove();
-			},10);
-		})
-	);
-	// 可変パラメータ
-	playLocalParam();
-	$('body').css('visibility','visible');
-	// Drag&Drop並べ替え開始
-	setSortable();
-	// 測定
-	//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
+								})
+							);
+					}
+					else $('#commit').remove();
+				},10);
+			})
+		)
+	}
 }
 // ノードツリー変更保存リンク
 $('#modified').click(function(){ modifySave(); } );
@@ -1569,7 +1597,7 @@ function setSortable(){
 			}
 			// パネルレイアウト(どのカラム=段にどのパネルが入っているか)保存
 			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
-			// 例) { co0: [1,22,120,45], co1: [3,5,89], ... }
+			// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
 			var layout = {};
 			$('.panel').each(function(){
 				var id = { column:this.parentNode.id, panel:this.id };
