@@ -1,8 +1,6 @@
 // vim:set ts=4:vim modeline
 // TODO:インポート時の「処理中です...」は「ファビコンURLを取得しています...」に変更して、ダイアログ
 // のキャンセルは、ファビコン取得をキャンセルしてインポートに進む処理に変更したい。
-// TODO:大量エントリで「スクリプトが時間かかってる」ダイアログが出るのを解消する方法はあるのか。
-// jquery.min.jsで時間がかかってると通知されるが、まずは実際どこで時間食ってるか詳しく調べないと…。
 // TODO:jQueryUIのsortableをやめて独自実装にして、ブックマークも並べ替えやフォルダ移動できるように。
 // TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
@@ -11,7 +9,7 @@
 // TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
 // 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
-//
+/*
 var start = new Date(); // 測定
 var $debug = $('<div></div>').css({
 		id:'debug'
@@ -24,7 +22,7 @@ var $debug = $('<div></div>').css({
 		,padding:'2px'
 		,'font-size':'12px'
 }).appendTo(document.body);
-//
+*/
 // ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 $.ajaxSetup({
 	beforeSend:function(xhr){
@@ -353,30 +351,6 @@ if( $.css.add==null ){
 	$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
 	$.css.remove=function(a){var b=$.css.sheet;b&&b[$.browser.msie?"removeRule":"deleteRule"](a)};
 }
-// ドキュメント全体
-$(document).on({
-	mousedown:function(ev){
-		// 右クリックメニュー隠す
-		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide().find('a').off();
-		}
-	}
-	// サイドバーにマウスカーソル近づいたらスライド出現させる。
-	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	,mousemove:(function(){
-		var animate = null;
-		return function(ev){
-			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
-				if( !animate )
-					animate = $sidebar.animate({width:65});
-			}
-			else if( animate ){							// サイドバーから離れてるとき隠す
-				$sidebar.stop(true).width(34);
-				animate = null;
-			}
-		};
-	})()
-});
 // ブックマークデータ取得
 (function(){
 	var option_ok = false;
@@ -410,16 +384,17 @@ $(document).on({
 // |   |                  |   |                  |   |
 // |---+------------------+---+------------------+   |
 function paneler( nodeTop ){
+	document.title = option.page.title();
+	$('#colorcss').attr('href',option.color.css());
 	var fontSize = option.font.size();
 	var panelWidth = option.panel.width();
 	var panelMargin = option.panel.margin();
 	var columnCount = option.column.count();
 	var columnWidth = panelWidth + panelMargin +2;	// +2 適当たぶんボーダーぶん
-	$wall.empty().width( columnWidth * columnCount ).css({
+	$wall.empty().width( columnWidth * columnCount )
+	.css({
 		'padding-right': panelMargin +'px'
 	});
-	document.title = option.page.title();
-	$('#colorcss').attr('href',option.color.css());
 	// カラム要素生成関数
 	var $column = function(){
 		var $e = $('<div class=column></div>').width( columnWidth );
@@ -530,7 +505,7 @@ function paneler( nodeTop ){
 	// 表示(チラツキ低減)
 	$('body').css('visibility','visible');
 	// キーがノードID、値がフォルダ(パネル)ノードオブジェクトの連想配列
-	// tree.node()はfor()で探すのでそれより速いかと思ったが、32秒が29秒になるくらいかな…
+	// tree.node()はfor()で探すのでそれより速いかと思ったが、32秒が29秒になるくらい…
 	var treePanelNode = {};
 	(function( node ){
 		treePanelNode[node.id] = node;
@@ -619,7 +594,7 @@ function paneler( nodeTop ){
 				// 全パネル処理完了
 				//window.onmessage = null;
 				// 測定
-				$debug.text('paneler='+((new Date()).getTime() -start.getTime())+'ms');
+				//$debug.text('paneler='+((new Date()).getTime() -start.getTime())+'ms');
 			}
 		})();
 		//};window.postMessage('*','*');
@@ -1563,6 +1538,30 @@ $('.barico').on({
 	// #sidebarは同期必要。
 	,focus:function(){ $sidebar.width(65); }
 	,blur:function(){ $sidebar.width(34); }
+});
+// ドキュメント全体
+$(document).on({
+	mousedown:function(ev){
+		// 右クリックメニュー隠す
+		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
+			$('#contextmenu').hide().find('a').off();
+		}
+	}
+	// サイドバーにマウスカーソル近づいたらスライド出現させる。
+	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
+	,mousemove:(function(){
+		var animate = null;
+		return function(ev){
+			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
+				if( !animate )
+					animate = $sidebar.animate({width:65});
+			}
+			else if( animate ){							// サイドバーから離れてるとき隠す
+				$sidebar.stop(true).width(34);
+				animate = null;
+			}
+		};
+	})()
 });
 // favicon解析してから移行データ取り込み
 function analyzer( data, work ){
