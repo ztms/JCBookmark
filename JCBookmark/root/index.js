@@ -11,7 +11,7 @@
 // TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
 // 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
-/*
+//
 var start = new Date(); // 測定
 var $debug = $('<div></div>').css({
 		id:'debug'
@@ -24,7 +24,7 @@ var $debug = $('<div></div>').css({
 		,padding:'2px'
 		,'font-size':'12px'
 }).appendTo(document.body);
-*/
+//
 // ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 $.ajaxSetup({
 	beforeSend:function(xhr){
@@ -491,6 +491,7 @@ function paneler( nodeTop ){
 					}
 				})
 				.prepend(
+					// 開き状態
 					$('<img class=plusminus src="minus.png">')
 					// クリックでパネル開閉
 					.click(function(){ $(this.parentNode).dblclick(); })
@@ -528,79 +529,127 @@ function paneler( nodeTop ){
 	$wall.append('<br class=clear>');
 	// 表示(チラツキ低減)
 	$('body').css('visibility','visible');
+	// キーがノードID、値がフォルダ(パネル)ノードオブジェクトの連想配列
+	// tree.node()はfor()で探すのでそれより速いかと思ったが、32秒が29秒になるくらいかな…
+	var treePanelNode = {};
+	(function( node ){
+		treePanelNode[node.id] = node;
+		for( var i=0, n=node.child.length; i<n; i++ ){
+			if( node.child[i].child ){
+				arguments.callee( node.child[i] );
+			}
+		}
+	})( nodeTop );
 	// レイアウト保存データのパネル配置
 	// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
 	// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
 	var panelLayout = option.panel.layout();
 	var panelStatus = option.panel.status();
-	var panelList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
+	var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
+	var closeList = []; // 閉じパネルjQueryオブジェクト配列
 	var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
 	(function(){
+	// setTimeoutよりpostMessageの方が速いけど、IE8で「stack overflow」ダイアログが出る…
+	//window.onmessage = function(){
 		var layoutSeek = false;
 		for( var coID in panelLayout ){
 			if( index < panelLayout[coID].length ){
-				panelCreate( tree.node( panelLayout[coID][index] ), coID );
+				//panelCreate( tree.node( panelLayout[coID][index] ), coID );
+				panelCreate( treePanelNode[ panelLayout[coID][index] ], coID );
 				layoutSeek = true;
 			}
 		}
 		if( layoutSeek ){
 			index++;
 			setTimeout(arguments.callee,1);
+			//window.postMessage('*','*');
 		}
-		else{
-			// レイアウト完了、残りのパネル配置
-			var nodeList = [];	// 未配置ノードリスト
-			(function( node ){
-				if( !(node.id in panelList) ){
-					nodeList.push( node );
-				}
-				for( var i=0, n=node.child.length; i<n; i++ ){
-					if( node.child[i].child ){
-						arguments.callee( node.child[i] );
-					}
-				}
-			})( nodeTop );
-			setTimeout(function(){
-				if( nodeList.length ){
-					panelCreate( nodeList.shift() );
-					setTimeout(arguments.callee,1);
-				}
-				else{
-					// 全パネル配置完了
-					newUrlBoxCreate();
-					// パネル並べ替えドラッグ先領域
-					// TODO:毎回追加するだけして消してないけどいいかな・・おそらくブラウザの保持データが増えていく
-					// ので注意が必要だが、パネル設定を変更した時だけだからだいじょうぶかな・・
-					$.css.add('.ui-sortable-placeholder{margin:' +panelMargin +'px 0 0 ' +panelMargin +'px;}');
-					// パネル並べ替え開始
-					setSortable();
-					// 測定
-					//$debug[0].innerHTML +=',paneler='+((new Date()).getTime() -start.getTime())+'ms';
-				}
-			},1);
-		}
+		else setTimeout(afterLayout,1);
 	})();
+	//};window.postMessage('*','*');
+	// レイアウト反映後、残りのパネル配置
+	function afterLayout(){
+		var nodeList = [];	// 未配置ノードオブジェクト配列
+		(function( node ){
+			if( !(node.id in placeList) ){
+				nodeList.push( node );
+			}
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( node.child[i].child ){
+					arguments.callee( node.child[i] );
+				}
+			}
+		})( nodeTop );
+		var index=0, length=nodeList.length;
+		(function(){
+		//window.onmessage = function(){
+			if( index < length ){
+				panelCreate( nodeList[index++] );
+				setTimeout(arguments.callee,1);
+				//window.postMessage('*','*');
+			}
+			else setTimeout(afterPlaced,1);
+		})();
+		//};window.postMessage('*','*');
+	}
+	// 全パネル配置後
+	function afterPlaced(){
+		newUrlBoxCreate();
+		// パネル並べ替えドラッグ先領域
+		// TODO:毎回追加するだけして消してない。おそらくブラウザの保持データが増えていく？
+		// ので注意が必要だが、パネル設定を変更した時だけだからだいじょうぶかな・・
+		$.css.add('.ui-sortable-placeholder{margin:' +panelMargin +'px 0 0 ' +panelMargin +'px;}');
+		// パネル並べ替え開始
+		setSortable();
+		// 閉パネルのアイテム追加
+		var index=0, length=closeList.length;
+		(function(){
+		//window.onmessage = function(){
+			if( index < length ){
+				var node = closeList[index++];
+				var $box = $('#'+node.id).find('.itembox');
+				for( var i=0, n=node.child.length; i<n; i++ ){
+					if( !node.child[i].child )
+						$box.append( $item(node.child[i]) );
+				}
+				setTimeout(arguments.callee,1);
+				//window.postMessage('*','*');
+			}
+			else{
+				// 全パネル処理完了
+				//window.onmessage = null;
+				// 測定
+				$debug.text('paneler='+((new Date()).getTime() -start.getTime())+'ms');
+			}
+		})();
+		//};window.postMessage('*','*');
+	}
 	// パネル１つ生成配置
 	function panelCreate( node, coID ){
 		var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
 		var $p = $panel( node ).appendTo( column.$e );
-		// アイテム追加
-		var $box = $p.find('.itembox');
-		for( var i=0, n=node.child.length; i<n; i++ ){
-			if( !node.child[i].child )
-				$box.append( $item(node.child[i]) );
-		}
 		// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
 		// 例) { btn1:1, btn9:0, btn45:0, ... }
 		// パネルID=XXX は、ボタンID=btnXXX に対応
 		var btnID = 'btn'+node.id;
-		if( btnID in panelStatus ){
-			if( panelStatus[btnID]==1 ) panelOpenClose( $p );
+		if( btnID in panelStatus && panelStatus[btnID]==1 ){
+			// 閉パネル閉じ
+			panelOpenClose( $p );
+			// アイテム追加後まわし
+			closeList.push( node );
+		}
+		else{
+			// 開パネルアイテム追加
+			var $box = $p.find('.itembox');
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( !node.child[i].child )
+					$box.append( $item(node.child[i]) );
+			}
 		}
 		// カラム高さ
 		column.height += $p.height();
 		// 完了
-		panelList[node.id] = true;
+		placeList[node.id] = true;
 		// 高さがいちばん低いカラムオブジェクトを返す
 		function lowestColumn(){
 			var target = null;
@@ -620,7 +669,12 @@ function paneler( nodeTop ){
 	// jQuery.sortable()をやめたら選択できるようだ…jQueryとの相性か…
 	function newUrlBoxCreate(){
 		$('#'+nodeTop.id).find('.itembox').before(
-			$('<input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">').on({
+			$('<input>').attr({
+				id:'newurl'
+				,title:'新規ブックマークURL'
+				,placeholder:'新規ブックマークURL'
+			})
+			.on({
 				// 新規登録
 				commit:function(){
 					var node = tree.newURL( this.value );
@@ -685,7 +739,7 @@ function paneler( nodeTop ){
 					else $('#commit').remove();
 				},10);
 			})
-		)
+		);
 	}
 }
 // ノードツリー変更保存リンク
@@ -929,7 +983,7 @@ $('#filerico').click(function(){
 									if( work.ajax1 ) work.ajax1.abort();
 									if( work.ajax2 ) work.ajax2.abort();
 									var analyze = work.analyze;
-									for( var i=0; i<analyze.length; i++ ){
+									for( var i=0, n=analyze.length; i<n; i++ ){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
@@ -1068,7 +1122,7 @@ $('#filerico').click(function(){
 									work.cancel = true;
 									if( work.ajax ) work.ajax.abort();
 									var analyze = work.analyze;
-									for( var i=0; i<analyze.length; i++ ){
+									for( var i=0, n=analyze.length; i<n; i++ ){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
@@ -1100,7 +1154,7 @@ $('#filerico').click(function(){
 									work.cancel = true;
 									if( work.ajax ) work.ajax.abort();
 									var analyze = work.analyze;
-									for( var i=0; i<analyze.length; i++ ){
+									for( var i=0, n=analyze.length; i<n; i++ ){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
@@ -1170,7 +1224,7 @@ $('#impexpico').click(function(){
 					,progress:Progress(function(){
 						work.cancel = true;
 						var analyze = work.analyze;
-						for( var i=0; i<analyze.length; i++ ){
+						for( var i=0, n=analyze.length; i<n; i++ ){
 							analyze[i].ajax.abort();
 							analyze[i].done = true;
 						}
@@ -1402,7 +1456,7 @@ $('#snapico').click(function(){
 	function shotlist( list ){
 		$shots.empty();
 		var date = new Date();
-		for( var i=0; i<list.length; i++ ){
+		for( var i=0, n=list.length; i<n; i++ ){
 			date.setTime( list[i].date||0 );
 			var $item = $('<div id="' + list[i].id + '"></div>');
 			var $date = $('<span class=date>' + date.myFmt() + '</span>');
@@ -1422,7 +1476,7 @@ $('#snapico').click(function(){
 					var id = this.parentNode.id;
 					var text = $(this).val();
 					var item = null;
-					for( var i=0; i<list.length; i++ ){
+					for( var i=0, n=list.length; i<n; i++ ){
 						if( list[i].id==id && list[i].memo!=text ){
 							// 変更あり
 							item = list[i];
@@ -1477,7 +1531,7 @@ $('#snapico').click(function(){
 					,'white-space'	:'nowrap'
 					,'font-weight'	:'bold'
 				}).appendTo(document.body);
-			for( var i=0; i<list.length; i++ ){
+			for( var i=0, n=list.length; i<n; i++ ){
 				var width = $span.text(list[i].memo||'').width();
 				if( width > maxWidth ) maxWidth = width;
 			}
@@ -1697,7 +1751,7 @@ function changeColumnCount( count ){
 		// カラム増える
 		var width = $('#co0').width();		// 1列目(co0)と同じ幅
 		var $br = $wall.children('br');		// 最後の<br class=clear>
-		for( var i=count.prev; i<count.next; i++ ){
+		for( var i=count.prev, n=count.next; i<n; i++ ){
 			$br.before( $('<div id=co'+i+' class=column></div>').width( width ) );
 		}
 		setSortable();
@@ -1705,12 +1759,12 @@ function changeColumnCount( count ){
 	else if( count.prev > count.next ){
 		// カラム減る
 		var $column = [];						// カラムオブジェクト配列
-		for( var i=0; i<count.prev; i++ ){
+		for( var i=0, n=count.prev; i<n; i++ ){
 			$column[i] = $('#co'+i);
 		}
 		// 消えるカラムにあるパネルを残るカラムに分配
 		var distination=0;
-		for( var i=count.next; i<count.prev; i++ ){
+		for( var i=count.next, n=count.prev; i<n; i++ ){
 			$column[i].find('.panel').each(function(){
 				$(this).appendTo( $column[distination%count.next] );
 				distination++;
