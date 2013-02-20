@@ -433,7 +433,8 @@ function paneler( nodeTop ){
 							if( !panel.parentNode ) break;
 							panel = panel.parentNode;
 						}
-						var $menu = $('#contextmenu').find('a').off().end();
+						var $menu = $('#contextmenu');
+						$menu.find('a').off();
 						// アイテムすべて開く
 						// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
 						$('#allopen').click(function(){
@@ -473,23 +474,24 @@ function paneler( nodeTop ){
 				)
 			);
 		return function( node ){
-			return $e.clone(true).attr('id',node.id)
-				.find('span').text( node.title ).end()
-				.find('.plusminus').attr('id','btn'+node.id).end();
+			var $p = $e.clone(true).attr('id',node.id);
+			$p.find('span').text( node.title );
+			$p.find('.plusminus').attr('id','btn'+node.id);
+			return $p;
 		};
 	}();
 	// アイテム要素生成関数
 	var $item = function(){
 		var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 		return function( node ){
-			return $e.clone()
-				.attr({
-					id		: node.id
-					,href	: node.url
-					,title	: node.title
-				})
-				.find('img').attr('src', node.icon ||'item.png').end()
-				.find('span').text( node.title ).end();
+			var $i = $e.clone().attr({
+						id		: node.id
+						,href	: node.url
+						,title	: node.title
+			});
+			$i.find('img').attr('src', node.icon ||'item.png');
+			$i.find('span').text( node.title );
+			return $i;
 		};
 	}();
 	// カラム(段)生成

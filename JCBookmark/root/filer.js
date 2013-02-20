@@ -758,11 +758,10 @@ function folderTree(){
 				,contextmenu:folderContextMenu
 			});
 		return function( id, title, icon, depth ){
-			return $e.clone(true)
-				.attr('id', 'folder' +id)
-				.css('padding-left', depth *16 +'px')
-				.find('img').attr('src', icon).end()
-				.find('span').text( title ).end();
+			var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
+			$f.find('img').attr('src',icon);
+			$f.find('span').text( title );
+			return $f;
 		};
 	}();
 	(function( node, depth ){
@@ -791,8 +790,8 @@ function folderTree(){
 	$folders.find('.title').each(function(){
 		var width = this.offsetLeft + ~~($(this).width() *1.3);
 		if( width > maxWidth ) maxWidth = width;
-	}).end()
-	.width( maxWidth );
+	});
+	$folders.width( maxWidth );
 	return $folders;
 }
 
@@ -853,11 +852,11 @@ function folderClick(ev){
 				var $br = $('<br class=clear>');
 				var $fol = $e.clone(true)
 					.addClass('folder')
-					.find('img').attr('src','folder.png').end()
 					.append( $title.clone() )
 					.append( $smry )
 					.append( $date.clone() )
 					.append( $br.clone() );
+				$fol.find('img').attr('src','folder.png');
 				var $url = $e
 					.append( $title )
 					.append( $url )
@@ -867,23 +866,23 @@ function folderClick(ev){
 				var date = new Date();
 				return function( node ){
 					date.setTime( node.dateAdded||0 );
-					if( node.child )
-						return $fol.clone(true)
-							.attr('id', 'item' +node.id)
-							.find('.title').text( node.title ).end()
-							.find('.summary').text(function(){
-								for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
-								return smry;
-							}()).end()
-							.find('.date').text( date.myFmt() ).end();
-					else
-						return $url.clone(true)
-							.attr('id', 'item' +node.id)
-							.find('img').attr('src', node.icon ||'item.png').end()
-							.find('.title').text( node.title ).attr('title', node.title).end()
-							.find('.url').text( node.url ).end()
-							.find('.iconurl').text( node.icon ).end()
-							.find('.date').text( date.myFmt() ).end();
+					if( node.child ){
+						var $f = $fol.clone(true).attr('id','item'+node.id);
+						$f.find('.title').text( node.title );
+						$f.find('.summary').text(function(){
+							for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
+							return smry;
+						}());
+						$f.find('.date').text( date.myFmt() );
+						return $f;
+					}
+					var $u = $url.clone(true).attr('id','item'+node.id);
+					$u.find('img').attr('src', node.icon ||'item.png');
+					$u.find('.title').text( node.title ).attr('title', node.title);
+					$u.find('.url').text( node.url );
+					$u.find('.iconurl').text( node.icon );
+					$u.find('.date').text( date.myFmt() );
+					return $u;
 				};
 			}();
 			var $items = $('#items').empty();
@@ -1311,7 +1310,8 @@ function itemContextMenu(ev){
 		if( !item.parentNode ) break;
 		item = item.parentNode;
 	}
-	var $menu = $('#contextmenu').find('a').off().end();
+	var $menu = $('#contextmenu');
+	$menu.find('a').off();
 	// 開く
 	if( $(item).find('.summary').length ){
 		// フォルダ
@@ -1339,9 +1339,9 @@ function itemContextMenu(ev){
 	$menu.find('#itemdelete').addClass('enable').on('click',function(){
 		$menu.hide();
 		$('#delete').click();
-	}).end()
+	});
 	// 表示
-	.css({
+	$menu.css({
 		left: (($(window).width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
 		,top: (($(window).height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 	}).show();
