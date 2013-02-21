@@ -1,11 +1,14 @@
 // vim:set ts=4:vim modeline
-// TODO:インポート時の「処理中です...」は「ファビコンURLを取得しています...」に変更して、ダイアログ
-// のキャンセルは、ファビコン取得をキャンセルしてインポートに進む処理に変更したい。
+// TODO:インポート時の「処理中です...」は「ブックマーク数◯◯件中、△△件のファビコンがありません。
+// ファビコンURLを取得しています...(□□/△△)」に変更して、キャンセルボタンは「スキップして次に進む」
+// ボタンに変更したい。
 // TODO:jQueryUIのsortableをやめて独自実装にして、ブックマークも並べ替えやフォルダ移動できるように。
 // TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉。閉パネルはDOM要素を(非表示でなく)削除してメモリ節約。
+// TODO:インポート時にも、例えばウィンドウ高さの数倍を超えたら「フォルダ（パネル）を閉じた状態に
+// するか？」ダイアログを出して確認する手もあるか？でも差し替えと追加登録との違いをどうするか…。
 // TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
 // 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
@@ -404,7 +407,8 @@ function paneler( nodeTop ){
 	}();
 	// パネル要素生成関数
 	var $panel = function(){
-		var $e = $('<div class=panel><div class=itembox></div></div>').width( panelWidth )
+		var $e = $('<div class=panel><div class=itembox><small>取得中...</small></div></div>')
+			.width( panelWidth )
 			.css({
 				'font-size': fontSize +'px'
 				,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
@@ -584,7 +588,7 @@ function paneler( nodeTop ){
 		//window.onmessage = function(){
 			if( index < length ){
 				var node = closeList[index++];
-				var $box = $('#'+node.id).find('.itembox');
+				var $box = $('#'+node.id).find('.itembox').empty();
 				for( var i=0, n=node.child.length; i<n; i++ ){
 					if( !node.child[i].child )
 						$box.append( $item(node.child[i]) );
@@ -617,7 +621,7 @@ function paneler( nodeTop ){
 		}
 		else{
 			// 開パネルアイテム追加
-			var $box = $p.find('.itembox');
+			var $box = $p.find('.itembox').empty();
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( !node.child[i].child )
 					$box.append( $item(node.child[i]) );

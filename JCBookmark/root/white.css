@@ -61,6 +61,7 @@ body {
 }
 /* アイテムボックス */
 .itembox {
+	color:#000;
 	background:#fafafc;
 	background:-o-linear-gradient(#fcfcfe,#f5f5f7);
 	background:-moz-linear-gradient(#fcfcfe,#f5f5f7);
