@@ -81,7 +81,7 @@
 #define		WM_TABSELECT		(WM_APP+4)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.4"
+#define		APPNAME				L"JCBookmark v1.5"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -127,7 +127,7 @@ HANDLE		Heap				= NULL;				// GetProcessHeap()
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -4262,22 +4262,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										if( wtxt && u8name ){
 											// メモファイルは.cabと同名の拡張子.txtファイル
 											wcscpy( wtxt +wcslen(wtxt) -3, L"txt" );
-#if 0
-											UCHAR* memo;
-											memo = file2memory( wtxt, FALSE );	// メモ文字列メモリに全部読み込む
-											ClientSendf(cp
-													,"%s{"
-													"\"id\":\"%s\""
-													",\"date\":%I64u"
-													",\"memo\":\"%s\""
-													"}"
-													,count++? "," : ""
-													,u8name
-													,FileTimeToJSTime( &wfd.ftLastWriteTime )
-													,memo? memo : ""
-											);
-											if( memo ) free( memo );
-#endif
 											ClientSendf(cp
 													,"%s{"
 													"\"id\":\"%s\""
