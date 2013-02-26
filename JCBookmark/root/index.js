@@ -939,7 +939,9 @@ $('#filerico').click(function(){
 								,ajax1	 :null
 								,ajax2	 :null
 								,analyze :[]
-								,progress:Progress(function(){
+							};
+							work.progress = Progress({
+								cancel:function(){
 									// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
 									// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
 									work.cancel = true;
@@ -950,8 +952,8 @@ $('#filerico').click(function(){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
-								})
-							};
+								}
+							});
 							work.ajax1 = $.ajax({
 								url		:':chrome.json'
 								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
@@ -1081,7 +1083,9 @@ $('#filerico').click(function(){
 								ajax	 :null
 								,cancel	 :false
 								,analyze :[]
-								,progress:Progress(function(){
+							};
+							work.progress = Progress({
+								cancel:function(){
 									work.cancel = true;
 									if( work.ajax ) work.ajax.abort();
 									var analyze = work.analyze;
@@ -1089,8 +1093,8 @@ $('#filerico').click(function(){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
-								})
-							};
+								}
+							});
 							work.ajax = $.ajax({
 								url		:':favorites.json'
 								//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
@@ -1113,7 +1117,9 @@ $('#filerico').click(function(){
 								ajax	 :null
 								,cancel	 :false
 								,analyze :[]
-								,progress:Progress(function(){
+							};
+							work.progress = Progress({
+								cancel:function(){
 									work.cancel = true;
 									if( work.ajax ) work.ajax.abort();
 									var analyze = work.analyze;
@@ -1121,8 +1127,8 @@ $('#filerico').click(function(){
 										analyze[i].ajax.abort();
 										analyze[i].done = true;
 									}
-								})
-							};
+								}
+							});
 							work.ajax = $.ajax({
 								url		:':firefox.json'
 								//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
@@ -1184,15 +1190,17 @@ $('#impexpico').click(function(){
 				var work={
 					cancel	 :false
 					,analyze :[]
-					,progress:Progress(function(){
+				};
+				work.progress = Progress({
+					cancel:function(){
 						work.cancel = true;
 						var analyze = work.analyze;
 						for( var i=0, n=analyze.length; i<n; i++ ){
 							analyze[i].ajax.abort();
 							analyze[i].done = true;
 						}
-					})
-				};
+					}
+				});
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
@@ -1685,6 +1693,7 @@ function panelOpenClose( $panel, itemShow ){
 		$panel.off('mouseenter.itempop mouseleave.itempop');
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr('src','minus.png');
+		// アイテム追加
 		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
 			if( !child[i].child )
 				$box.append( $panelItem( child[i] ) );
@@ -1706,7 +1715,16 @@ function panelOpenClose( $panel, itemShow ){
 					,top	:this.offsetTop -1		// ちょい上
 					,width	:this.offsetWidth -24	// 適当に幅狭く
 				})
-				.mouseleave(function(){ $(this).hide(); })
+				.mouseleave(function(ev){
+					var panel = $panel[0];
+					// パネル上でない場合はポップアップ消す
+					if( ev.pageX < panel.offsetLeft || ev.pageY < panel.offsetTop
+						|| ev.pageX > panel.offsetLeft + panel.offsetWidth
+						|| ev.pageY > panel.offsetTop + panel.offsetHeight
+					){
+						$(this).hide().empty();
+					}
+				})
 				.addClass('itempop').empty().show();
 				// アイテム追加
 				var child = tree.node( nodeID ).child;
@@ -1723,6 +1741,7 @@ function panelOpenClose( $panel, itemShow ){
 			}
 			,'mouseleave.itempop':function(ev){
 				var box = $box[0];
+				// アイテム上でない場合はポップアップ消す
 				if( ev.pageX < box.offsetLeft || ev.pageY < box.offsetTop
 					|| ev.pageX > box.offsetLeft + box.offsetWidth
 					|| ev.pageY > box.offsetTop + box.offsetHeight
@@ -1834,7 +1853,7 @@ function Alert( msg ){
 	}
 }
 // 進捗ダイアログ
-function Progress( cancel ){
+function Progress( arg ){
 	if( arguments.length ){
 		var $pgbar = $('<div></div>');
 		var $count = $('<span></span>');
@@ -1844,9 +1863,9 @@ function Progress( cancel ){
 			,modal	:true
 			,width	:400
 			,height	:190
-			,close	:function(){ cancel(); $(this).dialog('destroy'); }
+			,close	:function(){ if( arg.cancel ) arg.cancel(); $(this).dialog('destroy'); }
 			,buttons:{
-				"キャンセル":function(){ cancel(); $(this).dialog('destroy'); }
+				"キャンセル":function(){ if( arg.cancel ) arg.cancel(); $(this).dialog('destroy'); }
 			}
 		});
 		$pgbar.progressbar();

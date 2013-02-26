@@ -1452,8 +1452,9 @@ function edit( element ){
 								if( value.length ){
 									// 新品アイテムかファビコン無しの場合はURLを取得解析する
 									// TODO:CococはURLにアクセスせずに登録したいができない…
+									// →ファビコン無しは解析しないことにしてみる
 									var node = tree.node( nodeid );
-									if( node.title=='新規ブックマーク' || !node.icon || !node.icon.length ){
+									if( node.title=='新規ブックマーク' /*|| !node.icon || !node.icon.length*/){
 										$.get(':analyze?'+value.replace(/#/g,'%23'),function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLtext( data.title );

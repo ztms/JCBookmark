@@ -17,7 +17,7 @@ body {
 }
 /* パネルマウスオーバーで枠を少し強調 */
 .panel:hover {
-	border-color:#666;
+	border-color:#775;
 }
 /* パネルタイトル(フォルダ名) */
 .title {
