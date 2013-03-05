@@ -5178,17 +5178,17 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// パーツ移動
 			MoveWindow( hTxtListenPort,	40,  rc.top+30+3,  110, 22, TRUE );
 			MoveWindow( hListenPort,	160, rc.top+30,    80, 22, TRUE );
-			MoveWindow( hBootMinimal,	40,  rc.top+70,    300, 22, TRUE );
+			MoveWindow( hBootMinimal,	40,  rc.top+70,    320, 22, TRUE );
 			MoveWindow( hTxtBtn,		40,  rc.top+26,    70, 22, TRUE );
 			MoveWindow( hTxtExe,		20,  rc.top+60+3,  90, 22, TRUE );
 			MoveWindow( hTxtArg,		50,  rc.top+100+3, 60, 22, TRUE );
 			for( i=0; i<BI_USER1; i++ ){
-				MoveWindow( hHide[i],	100, rc.top+24,  LOWORD(lp)-120, 22, TRUE );
+				MoveWindow( hHide[i],	100, rc.top+24,  120, 22, TRUE );
 				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120, 22, TRUE );
 				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120, 22, TRUE );
 			}
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				MoveWindow( hHide[i],	100, rc.top+24,  LOWORD(lp)-120,    22, TRUE );
+				MoveWindow( hHide[i],	100, rc.top+24,  120, 22, TRUE );
 				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120-24, 22, TRUE );
 				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120,    22, TRUE );
 			}
