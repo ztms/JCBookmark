@@ -59,6 +59,10 @@
 #pragma execution_character_set("utf-8")
 // うざいC4996警告無視
 #pragma warning(disable:4996)
+// _WIN32_WINNTを0x050x台に定義しないとタスクトレイアイコンのバルーンが出ない。
+// 0x0600だとなぜかバルーン出ない謎。0x0500や0x0501だと関数未定義エラーになる。
+// 0x0502ならバルーン出た。
+#define _WIN32_WINNT 0x0502
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -76,9 +80,10 @@
 
 #define		WM_SOCKET			WM_APP			// ソケットイベントメッセージ
 #define		WM_TRAYICON			(WM_APP+1)		// タスクトレイクリックメッセージ
-#define		WM_CREATE_AFTER		(WM_APP+2)		// WM_CREATE後に1回実行するメッセージ
-#define		WM_SETTING_OK		(WM_APP+3)		// 設定ダイアログOK後の処理
-#define		WM_TABSELECT		(WM_APP+4)		// 設定ダイアログ初期表示タブのためのメッセージ
+#define		WM_TRAYICON_ADD		(WM_APP+2)		// タスクトレイアイコン登録用メッセージ
+#define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
+#define		WM_SETTING_OK		(WM_APP+4)		// 設定ダイアログOK後の処理
+#define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
 #define		APPNAME				L"JCBookmark v1.5"
@@ -87,8 +92,8 @@ HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
 HDC			ListBoxDC			= NULL;				// リストボックスデバイスコンテキスト
 LONG		ListBoxWidth		= 0;				// リストボックス横幅
-HICON		TrayIcon			= NULL;				// タスクトレイアイコン
-#define		TIMER1000			1000				// タイマーイベントID
+#define		TIMER1000			1					// 1秒間隔タイマーID
+#define		TIMER_BALOON		2					// タスクトレイバルーン消去タイマーID
 HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
 HANDLE		Heap				= NULL;				// GetProcessHeap()
 
@@ -5029,7 +5034,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// HTTPサーバタブ(ID=0)
 			item.mask = TCIF_TEXT |TCIF_IMAGE |TCIF_PARAM;
 			item.pszText = L"HTTPサーバ";
-			item.iImage = ImageList_AddIcon( hImage, TrayIcon );
+			item.iImage = ImageList_AddIcon( hImage, LoadIconA(hinst,"0") );
 			item.lParam = (LPARAM)0;					// タブ識別ID
 			TabCtrl_InsertItem( hTabc, 0, &item );		// タブインデックス
 			hTxtListenPort = CreateWindowW(
@@ -5136,9 +5141,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_SIZE:
 		{
-			RECT rc = { 0, 0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
+			RECT rc = { 0,0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
 			UINT i;
-			MoveWindow( hTabc, 0, 0, LOWORD(lp), HIWORD(lp), TRUE );
+			MoveWindow( hTabc, 0,0, LOWORD(lp), HIWORD(lp), TRUE );
 			// タブを除いた表示領域を取得(rc.topがタブの高さになる)
 			TabCtrl_AdjustRect( hTabc, FALSE, &rc );
 			// パーツ移動
@@ -5305,7 +5310,7 @@ DWORD ConfigDialog( UINT tabid )
 {
 	DWORD dwRes=ID_DLG_UNKNOWN;
 	// ダイアログウィンドウプロシージャに結果変数のアドレスを渡す
-	if( ConfigDialogProc( NULL, (UINT)(&dwRes), 0, 0 )==0 ){
+	if( ConfigDialogProc( NULL, (UINT)(&dwRes), 0,0 )==0 ){
 		// ダイアログウィンドウ作成
 		HWND hwnd = CreateWindowW(
 						CONFIGDIALOGNAME
@@ -5688,35 +5693,41 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 }
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
+// http://kara.ifdef.jp/program/c/c03.html
+// http://homepage1.nifty.com/MADIA/vc/vc_bbs/200801/200801_08010015.html
+// http://blog.livedoor.jp/blackwingcat/archives/1528756.html
 BOOL TrayIconNotify( HWND hwnd, UINT msg )
 {
-	NOTIFYICONDATA data;
+	NOTIFYICONDATAW ni;
 
-	memset( &data, 0, sizeof(data) );
-	data.cbSize	= sizeof(data);
-	data.hWnd	= hwnd;
+	memset( &ni, 0, sizeof(ni) );
+	ni.cbSize = sizeof(ni);
+	ni.hWnd = hwnd;
 
 	switch( msg ){
 	case NIM_ADD:
-		data.uFlags				= NIF_ICON |NIF_MESSAGE |NIF_TIP;
-		data.uCallbackMessage	= WM_TRAYICON;
-		data.hIcon				= TrayIcon;
-		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
-	retry:
-		// トレイアイコン消える対策
-		// http://www.geocities.jp/midorinopage/Tips/tasktray.html
-		Shell_NotifyIcon( NIM_ADD, &data );
-		if( !Shell_NotifyIcon( NIM_MODIFY, &data ) ){
-			LogW(L"タスクトレイアイコン登録エラー");
-			Sleep(2000);
-			goto retry;
+		ni.uFlags			= NIF_ICON |NIF_MESSAGE |NIF_TIP |NIF_INFO;
+		ni.hIcon			= LoadIconA( GetModuleHandle(NULL), "0" );
+		ni.uCallbackMessage	= WM_TRAYICON;
+		GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+		wcscpy( ni.szInfoTitle, APPNAME );				// バルーンタイトル
+		wcscpy( ni.szInfo, L"アイコン化しています" );	// バルーンメッセージ
+		Shell_NotifyIconW( NIM_ADD, &ni );
+		// 登録結果はNIM_MODIFYで確認
+		ni.uFlags = NIF_TIP;
+		if( Shell_NotifyIconW( NIM_MODIFY, &ni ) ){
+			// 数秒でバルーン消す
+			SetTimer( hwnd, TIMER_BALOON, 1500, NULL );
+			return TRUE;
 		}
-		return TRUE;
+		return FALSE;
+
 	case NIM_MODIFY:
-		data.uFlags = NIF_TIP;
-		GetWindowText( hwnd, data.szTip, sizeof(data.szTip) );
+		ni.uFlags = NIF_TIP |NIF_INFO;
+		GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+
 	case NIM_DELETE:
-		return Shell_NotifyIcon( msg, &data );
+		return Shell_NotifyIconW( msg, &ni );
 	}
 	return FALSE;
 }
@@ -5732,11 +5743,6 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_CREATE:
 		// 起動中止するレベルの致命的エラーを含む一次初期化
 		MainForm = hwnd;
-		// タスクトレイアイコン
-		TrayIcon = LoadIconA( GetModuleHandle(NULL), "0" );
-		if( !TrayIcon ) return -1;
-		// TODO:システム起動時にエラーでないのにタスクトレイにアイコンが無い時がある
-		if( !TrayIconNotify( hwnd, NIM_ADD ) ) return -1;
 		// タスクトレイアイコン消える対策
 		taskbarRestart = RegisterWindowMessageW(L"TaskbarCreated");
 		// リストボックス
@@ -5767,6 +5773,17 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		MainFormCreateAfter( (HINSTANCE)wp, &browser, &hToolTip );
 		return 0;
 
+	case WM_TRAYICON_ADD:
+		// 起動時のタスクトレイ収納およびタスクバークラッシュ時のアイコン登録。
+		// Windowsログイン時スタートアップフォルダから起動するとアイコン登録できない場合
+		// がある(1分間くらいエラーになり続けて成功した例あり)対策のため無限ループ。
+		// http://www.geocities.jp/midorinopage/Tips/tasktray.html
+		if( !TrayIconNotify( hwnd, NIM_ADD ) ){
+			Sleep(2000);
+			PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
+		}
+		return 0;
+
 	case WM_SIZE:
 		// なぜか下に隙間ができる。Listboxの縦方向が1行単位でしか大きさが変わらないようだ。
 		MoveWindow( ListBox, 0, BUTTON_WIDTH, LOWORD(lp), HIWORD(lp)-BUTTON_WIDTH, TRUE );
@@ -5775,22 +5792,12 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_SYSCOMMAND:
 		switch( LOWORD(wp) ){
 		case SC_MINIMIZE:	// 最小化
-			// TODO:最前面の時はタスクトレイに収納し、そうでない時は最前面にする、うまく動かない。
-			// クリックした瞬間に最前面ではなくなってしまうからかな？
-			//if( IsWindowVisible(hwnd) && (GetWindowLong(hwnd,GWL_EXSTYLE) & WS_EX_TOPMOST) ){
-			//if( IsWindowVisible(hwnd) && IsChild(hwnd,GetTopWindow(GetDesktopWindow())) ){
-			if( IsWindowVisible(hwnd) && GetForegroundWindow()==hwnd ){
-				// タスクトレイに収納
-				ShowWindow( hwnd, SW_MINIMIZE );	// 最小化するとワーキングセットが減る
+			// タスクトレイに収納
+			if( TrayIconNotify( hwnd, NIM_ADD ) ){
+				ShowWindow( hwnd, SW_MINIMIZE );	// 最小化するとワーキングセット減る
 				ShowWindow( hwnd, SW_HIDE );		// 非表示
 			}
-			else{
-				// 最前面に
-				SetForegroundWindow( hwnd );
-				BringWindowToTop( hwnd );
-				SetActiveWindow( hwnd );
-				SetFocus( hwnd );
-			}
+			else ErrorBoxW(L"タスクトレイ(通知領域)に登録できません");
 			return 0;
 		case SC_CLOSE:		// 閉じる
 			DestroyWindow( hwnd );
@@ -5802,29 +5809,11 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		switch( lp ){
 		case WM_LBUTTONDOWN:
 		case WM_RBUTTONDOWN:
-			if( IsWindowVisible(hwnd) ){
-				// TODO:最前面の時はタスクトレイに収納し、そうでない時は最前面にする、うまく動かない。
-				// クリックした瞬間に最前面ではなくなってしまうからかな？
-				//if( GetWindowLong(hwnd,GWL_EXSTYLE) & WS_EX_TOPMOST ){
-				//if( IsChild(hwnd,GetTopWindow(GetDesktopWindow())) ){
-				if( GetForegroundWindow()==hwnd ){
-					// タスクトレイに収納
-					ShowWindow( hwnd, SW_MINIMIZE );
-					ShowWindow( hwnd, SW_HIDE );
-				}
-				else{
-					// 最前面に
-					SetForegroundWindow( hwnd );
-					BringWindowToTop( hwnd );
-					SetActiveWindow( hwnd );
-					SetFocus( hwnd );
-				}
-			}
-			else{
-				// タスクトレイから復帰
-				ShowWindow( hwnd, SW_SHOW );
-				ShowWindow( hwnd, SW_RESTORE );
-			}
+			// タスクトレイから復帰
+			ShowWindow( hwnd, SW_SHOW );
+			ShowWindow( hwnd, SW_RESTORE );
+			SetForegroundWindow( hwnd );
+			TrayIconNotify( hwnd, NIM_DELETE );
 		}
 		return 0;
 
@@ -5840,7 +5829,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			AppendMenuW( menu, MF_STRING, CMD_EXIT, L"終了" );
 			SetForegroundWindow( hwnd );
 			TrackPopupMenu( menu, 0, LOWORD(lp), HIWORD(lp), 0, hwnd, NULL );
-			PostMessage( hwnd, WM_NULL, 0, 0 );
+			PostMessage( hwnd, WM_NULL, 0,0 );
 			DestroyMenu( menu );
 		}
 		return 0;
@@ -5855,7 +5844,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			break;
 		case CMD_LOGCLEAR:	// ログ消去(メモリ解放になる)
 			SendMessageA( ListBox, LB_RESETCONTENT, 0,0 );
-			SendMessageA( ListBox, LB_SETHORIZONTALEXTENT, 0, 0 );
+			SendMessageA( ListBox, LB_SETHORIZONTALEXTENT, 0,0 );
 			ListBoxWidth = 0;
 			break;
 		case CMD_SETTING:	// 設定
@@ -5881,7 +5870,6 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				BOOL success;
 				SocketShutdown();					// コネクション切断
 				success = ListenStart();			// 待ち受け開始
-				TrayIconNotify( hwnd, NIM_MODIFY );	// トレイアイコン
 				MainFormTimer1000();				// タイトルバー
 				// Listen失敗時は再び設定ダイアログ
 				if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
@@ -5912,7 +5900,15 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_TIMER:
-		if( wp==TIMER1000 ) MainFormTimer1000();
+		switch( wp ){
+		case TIMER1000:
+			MainFormTimer1000();
+			break;
+		case TIMER_BALOON: // タスクトレイバルーン消去
+			TrayIconNotify( hwnd, NIM_MODIFY );
+			KillTimer( hwnd, TIMER_BALOON );
+			break;
+		}
 		return 0;
 
 	case WM_DESTROY:
@@ -5929,7 +5925,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	}
 	// タスクトレイアイコン消える対策
 	// http://www.geocities.jp/midorinopage/Tips/tasktray.html
-	if( msg==taskbarRestart ) TrayIconNotify( hwnd, NIM_ADD );
+	if( msg==taskbarRestart && !IsWindowVisible(hwnd) ) PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
 // アプリ起動時
@@ -6044,8 +6040,16 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 				,NULL, NULL, hinst, NULL
 	);
 	if( hwnd ){
-		ShowWindow( hwnd, nCmdShow );
-		UpdateWindow( hwnd );
+		//if( BootTrayIcon ){
+		if( 0 ){
+			// 起動時にタスクトレイに収納する
+			// TODO:設定に持つ
+			PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
+		}
+		else{
+			ShowWindow( hwnd, nCmdShow );
+			UpdateWindow( hwnd );
+		}
 	}
 	return hwnd;
 }
@@ -6071,7 +6075,7 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 	MSG msg = {0};
 
 	if( Startup( hinst, nCmdShow ) ){
-		while( GetMessage( &msg, NULL, 0, 0 ) >0 ){
+		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
 			if( !IsDialogMessage( MainForm, &msg ) ){
 				TranslateMessage( &msg );
 				DispatchMessage( &msg );
