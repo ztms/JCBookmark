@@ -4822,7 +4822,29 @@ void ListenPortGet( void )
 		free( ini );
 	}
 }
-void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
+// 起動時に最小化する設定ON/OFFを返却
+// TODO:設定ファイル読み込みが無駄に多くないか…？
+BOOL BootMinimal( void )
+{
+	BOOL ret = FALSE;
+	WCHAR* ini = ConfigFilePath();
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"BootMinimal=",12)==0 && *(buf+12) ){
+					ret = TRUE;
+				}
+			}
+			fclose(fp);
+		}
+		free( ini );
+	}
+	return ret;
+}
+void ConfigSave( WCHAR* wListenPort, BOOL bootMinimal, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
 {
 	WCHAR new[MAX_PATH+1]=L"";
 	WCHAR* p;
@@ -4843,11 +4865,12 @@ void ConfigSave( WCHAR* wListenPort, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT
 				arg[i] = WideCharToUTF8alloc( wArg[i] );
 			}
 			fprintf(fp,"ListenPort=%s\r\n",	listenPort		?listenPort:"");
+			fprintf(fp,"BootMinimal=%s\r\n",bootMinimal		?"1":"");
 			fprintf(fp,"IEArg=%s\r\n",		arg[BI_IE]		?arg[BI_IE]:"");
 			fprintf(fp,"IEHide=%s\r\n",		hide[BI_IE]		?"1":"");
 			fprintf(fp,"ChromeArg=%s\r\n",	arg[BI_CHROME]	?arg[BI_CHROME]:"");
-			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME]	?"1":"");
-			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX]	?arg[BI_FIREFOX]:"");
+			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME] ?"1":"");
+			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX] ?arg[BI_FIREFOX]:"");
 			fprintf(fp,"FirefoxHide=%s\r\n",hide[BI_FIREFOX]?"1":"");
 			fprintf(fp,"OperaArg=%s\r\n",	arg[BI_OPERA]	?arg[BI_OPERA]:"");
 			fprintf(fp,"OperaHide=%s\r\n",	hide[BI_OPERA]	?"1":"");
@@ -4995,7 +5018,7 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	static LPDWORD		lpRes;
-	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort
+	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort, hBootMinimal
 						,hTxtBtn=NULL, hTxtExe=NULL, hTxtArg=NULL, hFOpen=NULL
 						,hHide[BI_COUNT]={0}, hExe[BI_COUNT]={0}, hArg[BI_COUNT]={0};
 	static HICON		hIcon[BI_COUNT]={0};
@@ -5047,8 +5070,14 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
+			hBootMinimal = CreateWindowW(
+						L"button",L"起動時から最小化（タスクトレイ収納）"
+						,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_CHECKBOX |BS_AUTOCHECKBOX
+						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+			);
 			SendMessageA( hTxtListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
+			if( BootMinimal() ) SendMessageA( hBootMinimal, BM_SETCHECK, BST_CHECKED, 0 );
 			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 			br = BrowserInfoAlloc();
 			if( br ){
@@ -5149,6 +5178,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// パーツ移動
 			MoveWindow( hTxtListenPort,	40,  rc.top+30+3,  110, 22, TRUE );
 			MoveWindow( hListenPort,	160, rc.top+30,    80, 22, TRUE );
+			MoveWindow( hBootMinimal,	40,  rc.top+70,    300, 22, TRUE );
 			MoveWindow( hTxtBtn,		40,  rc.top+26,    70, 22, TRUE );
 			MoveWindow( hTxtExe,		20,  rc.top+60+3,  90, 22, TRUE );
 			MoveWindow( hTxtArg,		50,  rc.top+100+3, 60, 22, TRUE );
@@ -5192,6 +5222,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			ShowWindow( hTxtExe, SW_HIDE );
 			ShowWindow( hTxtArg, SW_HIDE );
 			ShowWindow( hListenPort, SW_HIDE );
+			ShowWindow( hBootMinimal, SW_HIDE );
 			ShowWindow( hFOpen, SW_HIDE );
 			for( i=0; i<BI_COUNT; i++ ){
 				ShowWindow( hHide[i], SW_HIDE );
@@ -5203,6 +5234,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			case 0: // HTTPサーバ
 				ShowWindow( hTxtListenPort, SW_SHOW );
 				ShowWindow( hListenPort, SW_SHOW );
+				ShowWindow( hBootMinimal, SW_SHOW );
 				SetFocus( hListenPort );
 				break;
 			case 5: case 6: case 7: case 8: // ユーザ指定ブラウザ
@@ -5227,7 +5259,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			{
 				// 設定ファイル保存
 				WCHAR	wPort[8], *wExe[BI_COUNT], *wArg[BI_COUNT];
-				BOOL	hide[BI_COUNT];
+				BOOL	bootMinimal, hide[BI_COUNT];
 				int		iPort;
 				UINT	i;
 				GetWindowTextW( hListenPort, wPort, sizeof(wPort)/sizeof(WCHAR) );
@@ -5236,12 +5268,13 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ErrorBoxW(L"そのポート番号はおかしい");
 					return 0;
 				}
+				bootMinimal = (BST_CHECKED==SendMessage( hBootMinimal, BM_GETCHECK, 0,0 ))? TRUE:FALSE;
 				for( i=0; i<BI_COUNT; i++ ){
 					wExe[i] = WindowTextAllocW( hExe[i] );
 					wArg[i] = WindowTextAllocW( hArg[i] );
 					hide[i] = (BST_CHECKED==SendMessage( hHide[i], BM_GETCHECK, 0,0 ))? TRUE:FALSE;
 				}
-				ConfigSave( wPort, wExe, wArg, hide );
+				ConfigSave( wPort, bootMinimal, wExe, wArg, hide );
 				for( i=0; i<BI_COUNT; i++ ){
 					if( wExe[i] ) free( wExe[i] );
 					if( wArg[i] ) free( wArg[i] );
@@ -5717,7 +5750,7 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		ni.uFlags = NIF_TIP;
 		if( Shell_NotifyIconW( NIM_MODIFY, &ni ) ){
 			// 数秒でバルーン消す
-			SetTimer( hwnd, TIMER_BALOON, 1500, NULL );
+			SetTimer( hwnd, TIMER_BALOON, 1000, NULL );
 			return TRUE;
 		}
 		return FALSE;
@@ -6040,10 +6073,8 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 				,NULL, NULL, hinst, NULL
 	);
 	if( hwnd ){
-		//if( BootTrayIcon ){
-		if( 0 ){
+		if( BootMinimal() ){
 			// 起動時にタスクトレイに収納する
-			// TODO:設定に持つ
 			PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 		}
 		else{
