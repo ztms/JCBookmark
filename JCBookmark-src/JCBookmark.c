@@ -59,9 +59,9 @@
 #pragma execution_character_set("utf-8")
 // うざいC4996警告無視
 #pragma warning(disable:4996)
-// _WIN32_WINNTを0x050x台に定義しないとタスクトレイアイコンのバルーンが出ない。
-// 0x0600だとなぜかバルーン出ない謎。0x0500や0x0501だと関数未定義エラーになる。
-// 0x0502ならバルーン出た。
+// タスクトレイアイコンのバルーンチップが、_WIN32_WINNT=0x0600(既定)だと出ない。
+// なぜ？上位互換ではないの？0x0500台に定義すれば出るが、0x0500や0x0501だと関数
+// 未定義エラーが発生する。0x0502ならバルーン出たので採用。
 #define _WIN32_WINNT 0x0502
 
 #include <winsock2.h>
@@ -5750,6 +5750,7 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		ni.uFlags = NIF_TIP;
 		if( Shell_NotifyIconW( NIM_MODIFY, &ni ) ){
 			// 数秒でバルーン消す
+			// timeSetEvent(TIME_ONESHOT)で指定時間後に一発だけ実行できるようだが、まあいいか…。
 			SetTimer( hwnd, TIMER_BALOON, 1000, NULL );
 			return TRUE;
 		}
@@ -5840,8 +5841,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_TRAYICON: // タスクトレイアイコンクリック
 		switch( lp ){
-		case WM_LBUTTONDOWN:
-		case WM_RBUTTONDOWN:
+		case WM_LBUTTONUP:
+		case WM_RBUTTONUP:
 			// タスクトレイから復帰
 			ShowWindow( hwnd, SW_SHOW );
 			ShowWindow( hwnd, SW_RESTORE );
