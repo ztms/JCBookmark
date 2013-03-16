@@ -437,7 +437,7 @@ function paneler( nodeTop ){
 						// ＋－ボタン上の場合は何もしない
 						if( $(ev.target).is('.plusminus') ) return;
 						// パネルIDは自分(.title)の親ID
-						panelOpenClose( this.parentNode.id, true );
+						panelOpenClose( this.parentNode.id, true, ev.pageX, ev.pageY );
 						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
 						// 例) { btn1:1, btn9:0, btn45:0, ... }
 						var status = {};
@@ -657,7 +657,10 @@ function paneler( nodeTop ){
 						// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
 						// まあいいかとりあえず動いてるし…。
 						// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
-						$.get(':analyze?'+this.value.replace(/#/g,'%23'),function(data){
+						// と思ったが、http://homepage1.nifty.com/herumi/diary/1303.html#15 がエラーに
+						// なってしまうので、#! を %23! に置換することにした。これで通常のページ内リンク
+						// は削除されたURLがリクエストされることに。だいじょぶかな？
+						$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
 							if( data.title.length ){
 								data.title = HTMLtext( data.title );
 								if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1545,7 +1548,7 @@ $(document).on({
 	}
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	,mousemove:(function(){
+	,mousemove:function(){
 		var animate = null;
 		return function(ev){
 			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
@@ -1557,7 +1560,7 @@ $(document).on({
 				animate = null;
 			}
 		};
-	})()
+	}()
 });
 // favicon解析してから移行データ取り込み
 function analyzer( data, work ){
@@ -1675,9 +1678,101 @@ function setSortable(){
 	.disableSelection();
 	*/
 }
+// 閉パネル(アイテム)ポップアップ処理
+var panelPopper = function(){
+	var $box = null;		// ポップアップ中のアイテムボックス
+	var nextPanel = null;	// 次のポップアップパネル
+	var timer = null;		// setTimeoutID
+	return function( panel, prevX, prevY ){
+		if( panel==false ){
+			// ポップアップ解除
+			clearTimeout(timer);
+			$(document).off('mousemove.itempop');
+			$box.hide().off().empty();
+			$box=null;
+		}
+		else if( $box ){
+			// ポップアップ中のため保留
+			nextPanel = panel;
+		}
+		else{
+			// ポップアップ実行
+			clearTimeout(timer);
+			$box = $(panel).find('.itembox');
+			var left = panel.offsetLeft + panel.offsetWidth -2;	// -2ちょい左
+			// 右端にはみ出る場合は左側に出す
+			if( left + panel.offsetWidth > $window.scrollLeft() + $window.width() )
+				left = panel.offsetLeft - panel.offsetWidth +20;
+			$box.css({
+				left	:left
+				,top	:panel.offsetTop -1		// ちょい上
+				,width	:panel.offsetWidth -24	// 適当に幅狭く
+			})
+			.mouseleave(function(ev){
+				var panel = this.parentNode;
+				if( !elementOnXY( panel, ev.pageX, ev.pageY ) ){
+					panelPopper(false);
+				}
+			})
+			.addClass('itempop').empty().show();
+			// アイテム追加
+			var child = tree.node( panel.id ).child;
+			var length = child.length;
+			var index = 0;
+			(function(){
+			// setTimeoutよりpostMessageの方が速いけど、IE8で「stack overflow」ダイアログが出る…
+			//window.onmessage = function(){
+				if( $box && panel==$box[0].parentNode && index < length
+					&& $box.css('position')=='absolute' && $box.css('display')=='block'
+				){
+					if( !child[index].child )
+						$box.append( $panelItem( child[index] ) );
+					index++;
+					timer = setTimeout(arguments.callee,1);
+					//window.postMessage('*','*');
+				}
+			})();
+			//};window.postMessage('*','*');
+			// カーソル移動方向を加味してポップアップ消す
+			$(document).on('mousemove.itempop',function(ev){
+				var box = $box[0];
+				if( elementOnXY( box, ev.pageX, ev.pageY ) ) return;
+				if( prevX != ev.pageX || prevY != ev.pageY ){
+					var dx = ev.pageX - prevX;
+					var dy = ev.pageY - prevY;
+					if( Math.abs(dx) + Math.abs(dy) >4 ){	// 適当に溜めないとdx=0が頻発して問題
+						// TODO:ここで移動量を溜めているためか、パネルにカーソルが入ってもすぐに
+						// ポップアップしないことがしばしば。ゆっくり動かすとよくわかる。うーむ…。
+						var destX = box.offsetLeft;
+						if( destX < ev.pageX ) destX += box.offsetWidth;
+						var destY = (dx==0)?-1:(destX - ev.pageX) * dy / dx + ev.pageY;
+						if( dx==0							// 垂直移動
+							|| (dx>0 && destX < ev.pageX)	// 逆方向
+							|| (dx<0 && ev.pageX < destX)	// 逆方向
+							|| destY < box.offsetTop		// box範囲外方向
+							|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
+						){
+							var panel = box.parentNode;
+							if( !elementOnXY( box.parentNode, ev.pageX, ev.pageY ) ){
+								panelPopper(false);
+								if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
+									panelPopper( nextPanel, ev.pageX, ev.pageY );
+								}
+							}
+						}
+						prevX = ev.pageX;
+						prevY = ev.pageY;
+					}
+				}
+			});
+		}
+	};
+	function elementOnXY( e, x, y ){
+		return ( x >= e.offsetLeft && y >= e.offsetTop && x <= e.offsetLeft + e.offsetWidth && y <= e.offsetTop + e.offsetHeight );
+	}
+}();
 // パネル開閉(開いてたら閉じ、閉じてたら開く)
-// TODO:表示/非表示切り替えでなく要素の追加/削除にすれば、非表示のときメモリ節約になるか
-function panelOpenClose( $panel, itemShow ){
+function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	// 引数$panelはjQueryオブジェクトまたはパネルID(ノードID)文字列
 	if( $panel instanceof jQuery ){
 		var nodeID = $panel[0].id;
@@ -1690,6 +1785,7 @@ function panelOpenClose( $panel, itemShow ){
 	var $btn = $panel.find('.plusminus');
 	if( $btn.attr('src')=='plus.png' ){
 		// 開く
+		panelPopper(false);
 		$panel.off('mouseenter.itempop mouseleave.itempop');
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr('src','minus.png');
@@ -1699,59 +1795,14 @@ function panelOpenClose( $panel, itemShow ){
 				$box.append( $panelItem( child[i] ) );
 		}
 	}else{
-		// 閉じる→hoverでアイテムをポップアップ
+		// 閉じる(hoverでアイテムをポップアップ)
 		// TODO:大量エントリで閉じパネルが多くなると、パネルタイトルは幅狭くていいから
 		// 中身のポップアップの幅をもっと広くしたくなる。どうするか。設定で持つか？
-		// TODO:吹き出しみたいにしたい。三角つけるくらいでいいかな。
+		// TODO:吹き出しみたいな三角形あるといいかな？いらんかな。
 		$box.hide().css('position','absolute').empty();
-		$panel.on({
-			'mouseenter.itempop':function(){
-				var left = this.offsetLeft + this.offsetWidth -2;	// ちょい左
-				// 右端にはみ出る場合は左側に出す
-				if( left + this.offsetWidth > $(window).scrollLeft() + $(window).width() )
-					left = this.offsetLeft - this.offsetWidth +20;
-				$box.css({
-					left	:left
-					,top	:this.offsetTop -1		// ちょい上
-					,width	:this.offsetWidth -24	// 適当に幅狭く
-				})
-				.mouseleave(function(ev){
-					var panel = $panel[0];
-					// パネル上でない場合はポップアップ消す
-					if( ev.pageX < panel.offsetLeft || ev.pageY < panel.offsetTop
-						|| ev.pageX > panel.offsetLeft + panel.offsetWidth
-						|| ev.pageY > panel.offsetTop + panel.offsetHeight
-					){
-						$(this).hide().empty();
-					}
-				})
-				.addClass('itempop').empty().show();
-				// アイテム追加
-				var child = tree.node( nodeID ).child;
-				var length = child.length;
-				var index = 0;
-				(function(){
-					if( index < length && $box.css('position')=='absolute' && $box.css('display')=='block' ){
-						if( !child[index].child )
-							$box.append( $panelItem( child[index] ) );
-						index++;
-						setTimeout(arguments.callee,1);
-					}
-				})();
-			}
-			,'mouseleave.itempop':function(ev){
-				var box = $box[0];
-				// アイテム上でない場合はポップアップ消す
-				if( ev.pageX < box.offsetLeft || ev.pageY < box.offsetTop
-					|| ev.pageX > box.offsetLeft + box.offsetWidth
-					|| ev.pageY > box.offsetTop + box.offsetHeight
-				){
-					$box.hide().empty();
-				}
-			}
-		});
+		$panel.on('mouseenter.itempop',function(ev){ panelPopper( this, ev.pageX, ev.pageY ); });
 		$btn.attr('src','plus.png');
-		if( itemShow ) $panel.trigger('mouseenter.itempop');
+		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
 	}
 }
 // パラメータ変更反映
