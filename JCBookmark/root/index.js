@@ -1104,21 +1104,16 @@ $('#impexpico').click(function(){
 		var $impexp = $('#impexp');
 		if( $impexp.find('input').val().length ){
 			$impexp.find('form').off().submit(function(){
+				$impexp.dialog('destroy');
+				MsgBox('処理中です...');
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
 						//alert(jsonText);
-						try{
-							analyzer( $.parseJSON(jsonText) );
-						}
-						catch( e ){
-							Alert(e);
-						}
+						try{ analyzer( $.parseJSON(jsonText) ); }
+						catch( e ){ Alert(e); }
 					}
 					$(this).empty();
-					// 終わったらダイアログ閉じないとなぜか連続インポート＋差し替えが
-					// 効かないとかファイル変更しても効かないとか挙動がおかしくなる。
-					$impexp.dialog('destroy');
 				});
 			}).submit();
 		}
