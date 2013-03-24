@@ -1,12 +1,9 @@
 // vim:set ts=4:vim modeline
-// TODO:インポート時の「処理中です...」は「ブックマーク数◯◯件中、△△件のファビコンがありません。
-// ファビコンURLを取得しています...(□□/△△)」に変更して、キャンセルボタンは「スキップして次に進む」
-// ボタンに変更したい。
 // TODO:jQueryUIのsortableをやめて独自実装にして、ブックマークも並べ替えやフォルダ移動できるように。
 // TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
-// TODO:一括でパネル開閉。閉パネルはDOM要素を(非表示でなく)削除してメモリ節約。
+// TODO:一括でパネル開閉
 // TODO:インポート時にも、例えばウィンドウ高さの数倍を超えたら「フォルダ（パネル）を閉じた状態に
 // するか？」ダイアログを出して確認する手もあるか？でも差し替えと追加登録との違いをどうするか…。
 // TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
@@ -867,7 +864,7 @@ $('#optionico').click(function(){
 				playLocalParam();
 			}
 			,'パネル配置クリア':function(){
-				option.panel.layout({})/*.panel.status({})*/;
+				option.panel.layout({});
 				paneler( tree.top() );
 			}
 		}
@@ -890,9 +887,6 @@ $('#filerico').click(function(){
 	var browser = { ie:1, chrome:1, firefox:1 };
 	$.ajax({
 		url		:':browser.json'
-		// Win7のChromeでしばしばエラー発生してダイアログがうざいので、
-		// エラーダイアログは出さずに全ブラウザイベントを生成する。
-		//,error	:function(xhr,text){ Alert("ブラウザ情報取得エラー:"+text); }
 		,success:function( data ){ browser = data; }
 		,complete:function(){
 			if( 'chrome' in browser ){
@@ -937,36 +931,16 @@ $('#filerico').click(function(){
 					Confirm({
 						msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
 						,ok:function(){
-							var work={
-								cancel	 :false
-								,ajax1	 :null
-								,ajax2	 :null
-								,analyze :[]
-							};
-							work.progress = Progress({
-								cancel:function(){
-									// キャンセルクリック：ダイアログはすぐ消えるがバックエンドは
-									// すぐには終わらないようで、5～6秒は処理が続いてしまう感じ。
-									work.cancel = true;
-									if( work.ajax1 ) work.ajax1.abort();
-									if( work.ajax2 ) work.ajax2.abort();
-									var analyze = work.analyze;
-									for( var i=0, n=analyze.length; i<n; i++ ){
-										analyze[i].ajax.abort();
-										analyze[i].done = true;
-									}
-								}
-							});
-							work.ajax1 = $.ajax({
+							MsgBox('処理中です...');
+							$.ajax({
 								url		:':chrome.json'
-								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
+								,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
 								,success:function( bookmarks ){
 									var favicons={};
-									work.ajax2 = $.ajax({
+									$.ajax({
 										url		 :':chrome.icon.json'
 										,success :function(data){ favicons=data; }
 										,complete:function(){
-											var analyze = work.analyze;
 											var now = (new Date()).getTime();
 											// ルートノード
 											var root ={
@@ -1021,23 +995,7 @@ $('#filerico').click(function(){
 												}else{
 													// ブックマーク
 													node.url = data.url;
-													node.icon = favicons[data.url];
-													if( !node.icon ){
-														// favicon解析
-														var index = analyze.length;
-														analyze[index] = {
-															done : false
-															,ajax: $.ajax({
-																url		 :':analyze?'+node.url.replace(/#/g,'%23')
-																,success :function(data){
-																	if( data.icon.length ) node.icon = data.icon;
-																}
-																,complete:function(){
-																	analyze[index].done = true;
-																}
-															})
-														};
-													}
+													node.icon = favicons[data.url] || '';
 												}
 												return node;
 											};
@@ -1049,22 +1007,8 @@ $('#filerico').click(function(){
 												root.child[0].child.push( chrome2node(bookmarks.other) );
 											if( 'synced' in bookmarks )
 												root.child[0].child.push( chrome2node(bookmarks.synced) );
-											// プログレスバー
-											work.progress( 1, analyze.length +1 );
-											// favicon解析完了待ち
-											(function(){
-												var waiting=0;
-												for( var i=0, n=analyze.length; i<n; i++ ){
-													if( !analyze[i].done ) waiting++;
-												}
-												if( waiting ){
-													work.progress( 1 +analyze.length -waiting, analyze.length +1 );
-													setTimeout(arguments.callee,500);
-													return;
-												}
-												// 完了
-												if( !work.cancel ) importer( root );
-											})();
+											// 完了
+											analyzer( root );
 										}
 									});
 								}
@@ -1082,27 +1026,12 @@ $('#filerico').click(function(){
 						msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
 						,width:385
 						,ok:function(){
-							var work={
-								ajax	 :null
-								,cancel	 :false
-								,analyze :[]
-							};
-							work.progress = Progress({
-								cancel:function(){
-									work.cancel = true;
-									if( work.ajax ) work.ajax.abort();
-									var analyze = work.analyze;
-									for( var i=0, n=analyze.length; i<n; i++ ){
-										analyze[i].ajax.abort();
-										analyze[i].done = true;
-									}
-								}
-							});
-							work.ajax = $.ajax({
+							MsgBox('処理中です...');
+							$.ajax({
 								url		:':favorites.json'
 								//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-								,success:function(data){ analyzer( data, work ); }
+								,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
+								,success:function(data){ analyzer( data ); }
 							});
 						}
 					});
@@ -1116,27 +1045,12 @@ $('#filerico').click(function(){
 					Confirm({
 						msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
 						,ok:function(){
-							var work={
-								ajax	 :null
-								,cancel	 :false
-								,analyze :[]
-							};
-							work.progress = Progress({
-								cancel:function(){
-									work.cancel = true;
-									if( work.ajax ) work.ajax.abort();
-									var analyze = work.analyze;
-									for( var i=0, n=analyze.length; i<n; i++ ){
-										analyze[i].ajax.abort();
-										analyze[i].done = true;
-									}
-								}
-							});
-							work.ajax = $.ajax({
+							MsgBox('処理中です...');
+							$.ajax({
 								url		:':firefox.json'
 								//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-								,error	:function(xhr,text){ Alert("データ取得エラー:"+text); }
-								,success:function(data){ analyzer( data, work ); }
+								,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
+								,success:function(data){ analyzer( data ); }
 							});
 						}
 					});
@@ -1190,26 +1104,12 @@ $('#impexpico').click(function(){
 		var $impexp = $('#impexp');
 		if( $impexp.find('input').val().length ){
 			$impexp.find('form').off().submit(function(){
-				var work={
-					cancel	 :false
-					,analyze :[]
-				};
-				work.progress = Progress({
-					cancel:function(){
-						work.cancel = true;
-						var analyze = work.analyze;
-						for( var i=0, n=analyze.length; i<n; i++ ){
-							analyze[i].ajax.abort();
-							analyze[i].done = true;
-						}
-					}
-				});
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
 						//alert(jsonText);
 						try{
-							analyzer( $.parseJSON(jsonText), work );
+							analyzer( $.parseJSON(jsonText) );
 						}
 						catch( e ){
 							Alert(e);
@@ -1563,49 +1463,86 @@ $(document).on({
 	}()
 });
 // favicon解析してから移行データ取り込み
-function analyzer( data, work ){
-	var analyze = work.analyze;
+function analyzer( nodeTop ){
+	var total = 0;			// URL総数
+	var analyze = [];		// URL解析中配列
+	var skipped = false;	// スキップフラグ
+	function skip(){
+		skipped = true;
+		for( var i=0, n=analyze.length; i<n; i++ ){
+			analyze[i].ajax.abort();
+			analyze[i].done = true;
+		}
+	}
+	// プログレスバーつき進捗ダイアログ
+	var $msg = $('<span></span>').text('ブックマークを解析しています...');
+	var $pgbar = $('<div></div>').progressbar();
+	var $count = $('<span></span>');
+	$('#dialog').dialog('destroy').empty().append($msg).append($count).append('<br>').append($pgbar)
+	.dialog({
+		title	:'情報'
+		,modal	:true
+		,width	:400
+		,height	:210
+		,close	:function(){ skip(); $(this).dialog('destroy'); }
+		,buttons:{
+			'スキップして次に進む':function(){ skip(); $(this).dialog('destroy'); }
+		}
+	});
+	// ファビコン解析
 	(function( node ){
 		if( node.child ){
 			for( var i=0, child=node.child, n=child.length; i<n; i++ )
 				arguments.callee( child[i] );
 		}
-		else if( node.url.length && !node.icon.length ){
-			// favicon解析
-			var index = analyze.length;
-			analyze[index] = {
-				done : false
-				,ajax: $.ajax({
-					url		 :':analyze?'+node.url.replace(/#/g,'%23')
-					,success :function(data){
-						if( data.icon.length ) node.icon = data.icon;
-					}
-					,complete:function(){
-						analyze[index].done = true;
-					}
-				})
-			};
+		else{
+			total++;
+			if( node.url.length && !node.icon.length ){
+				var index = analyze.length;
+				analyze[index] = {
+					done : false
+					,ajax: $.ajax({
+						url		 :':analyze?'+node.url.replace(/#/g,'%23')
+						,success :function(data){
+							if( data.icon.length ) node.icon = data.icon;
+						}
+						,complete:function(){
+							analyze[index].done = true;
+						}
+					})
+				};
+			}
 		}
-	})( data );
-	// プログレスバー
-	work.progress( 1, analyze.length +1 );
-	// favicon解析完了待ち
+	})( nodeTop );
+	// 進捗表示
+	$msg.text('ブックマーク'+total+'個のうち、'+analyze.length+'個のファビコンがありません。ファビコンを取得しています...' );
+	$count.text('(0/'+analyze.length+')');
+	$pgbar.progressbar('value',0);
+	// 解析完了待ちループ
 	(function(){
-		var waiting=0;
-		for( var i=0, n=analyze.length; i<n; i++ ){
-			if( !analyze[i].done ) waiting++;
+		if( skipped ){
+			importer( nodeTop );
 		}
-		if( waiting ){
-			work.progress( 1 +analyze.length -waiting, analyze.length +1 );
-			setTimeout(arguments.callee,500);
-			return;
+		else{
+			var waiting=0;
+			for( var i=0, n=analyze.length; i<n; i++ ){
+				if( !analyze[i].done ) waiting++;
+			}
+			if( waiting ){
+				// 進捗表示
+				var count = analyze.length - waiting;
+				$count.text('('+count+'/'+analyze.length+')');
+				$pgbar.progressbar('value',count*100/analyze.length);
+				setTimeout(arguments.callee,500);
+				return;
+			}
+			// 完了
+			importer( nodeTop );
 		}
-		// 完了
-		if( !work.cancel ) importer( data );
 	})();
 }
 // 移行データ取り込み
-function importer( data ){
+function importer( nodeTop ){
 	$('#dialog').html('現在のデータを破棄して、新しいデータに差し替えますか？<br>それとも追加登録しますか？')
 	.dialog({
 		title	:'データ取り込み方法の確認'
@@ -1617,11 +1554,11 @@ function importer( data ){
 			"差し替える":function(){
 				$(this).dialog('destroy');
 				option.panel.layout({}).panel.status({});
-				paneler( tree.replace(data).top() );
+				paneler( tree.replace(nodeTop).top() );
 			}
 			,"追加登録する":function(){
 				$(this).dialog('destroy');
-				paneler( tree.mount(data.child[0]).top() );
+				paneler( tree.mount(nodeTop.child[0]).top() );
 			}
 			,"キャンセル":function(){ $(this).dialog('destroy'); }
 		}
@@ -1740,12 +1677,12 @@ var panelPopper = function(){
 				if( prevX != ev.pageX || prevY != ev.pageY ){
 					var dx = ev.pageX - prevX;
 					var dy = ev.pageY - prevY;
-					if( Math.abs(dx) + Math.abs(dy) >4 ){	// 適当に溜めないとdx=0が頻発して問題
-						// TODO:ここで移動量を溜めているためか、パネルにカーソルが入ってもすぐに
-						// ポップアップしないことがしばしば。ゆっくり動かすとよくわかる。うーむ…。
+					if( Math.abs(dx) + Math.abs(dy) >3 ){	// 適当に溜めないとdx=0が頻発して問題
+						// TODO:ここで移動量を溜めているためか、パネルにカーソルが入ってhover状態に
+						// なってもポップアップしないことがしばしば。ゆっくり動かすとよくわかる…。
 						var destX = box.offsetLeft;
 						if( destX < ev.pageX ) destX += box.offsetWidth;
-						var destY = (dx==0)?-1:(destX - ev.pageX) * dy / dx + ev.pageY;
+						var destY = (dx==0)?-999:(destX - ev.pageX) * dy / dx + ev.pageY;
 						if( dx==0							// 垂直移動
 							|| (dx>0 && destX < ev.pageX)	// 逆方向
 							|| (dx<0 && ev.pageX < destX)	// 逆方向
@@ -1886,45 +1823,28 @@ function Confirm( arg ){
 			opt.height = arg.height;
 		}
 
-		$('#dialog').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+		$('#dialog').dialog('destroy').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 	}
 }
 // 警告ダイアログ
 function Alert( msg ){
-	if( arguments.length ){
-		var opt ={
-			title	:'通知'
-			,modal	:true
-			,width	:360
-			,height	:160
-			,close	:function(){ $(this).dialog('destroy'); }
-			,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
-		};
-		$('#dialog').html( HTMLtext( ''+msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
-	}
+	$('#dialog').dialog('destroy').html( HTMLtext( ''+msg ).replace(/#BR#/g,'<br>') ).dialog({
+		title	:'通知'
+		,modal	:true
+		,width	:360
+		,height	:160
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
+	});
 }
-// 進捗ダイアログ
-function Progress( arg ){
-	if( arguments.length ){
-		var $pgbar = $('<div></div>');
-		var $count = $('<span></span>');
-		$('#dialog').empty().text('処理中です...').append($count).append('<br>').append($pgbar)
-		.dialog({
-			title	:'情報'
-			,modal	:true
-			,width	:400
-			,height	:190
-			,close	:function(){ if( arg.cancel ) arg.cancel(); $(this).dialog('destroy'); }
-			,buttons:{
-				"キャンセル":function(){ if( arg.cancel ) arg.cancel(); $(this).dialog('destroy'); }
-			}
-		});
-		$pgbar.progressbar();
-		return function( count, max ){
-			$count.text('('+count+'/'+max+')');
-			$pgbar.progressbar('value',count*100/max);
-		}
-	}
+// メッセージボックス
+function MsgBox( msg ){
+	$('#dialog').dialog('destroy').empty().text(msg).dialog({
+		title	:'情報'
+		,modal	:true
+		,width	:300
+		,height	:100
+	});
 }
 // サイトのタイトルに含まれる文字参照(&#39;とか)をデコードする。
 // 通常はないがもしタイトルにタグや<script>が含まれている場合、そのまま
