@@ -1104,8 +1104,6 @@ $('#impexpico').click(function(){
 		var $impexp = $('#impexp');
 		if( $impexp.find('input').val().length ){
 			$impexp.find('form').off().submit(function(){
-				$impexp.dialog('destroy');
-				MsgBox('処理中です...');
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
@@ -1115,6 +1113,8 @@ $('#impexpico').click(function(){
 					}
 					$(this).empty();
 				});
+				$impexp.dialog('destroy');
+				MsgBox('処理中です...');
 			}).submit();
 		}
 	});
