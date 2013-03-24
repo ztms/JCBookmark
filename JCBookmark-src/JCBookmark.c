@@ -4435,6 +4435,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						else if( stricmp(file,":chrome.icon.json")==0 ){
 							// Chrome FaviconsをJSONに変換
+							// TODO:Chromeでブックマーク整理した後はDB開けないもよう。Chrome終了で開けるようになた。
 							WCHAR* favicons = ChromeFaviconsPathAlloc();
 							if( favicons ){
 								sqlite3* db = NULL;
@@ -5742,7 +5743,8 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		ni.uFlags			= NIF_ICON |NIF_MESSAGE |NIF_TIP |NIF_INFO;
 		ni.hIcon			= LoadIconA( GetModuleHandle(NULL), "0" );
 		ni.uCallbackMessage	= WM_TRAYICON;
-		GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+		//GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+		wcscpy( ni.szTip, APPNAME );
 		wcscpy( ni.szInfoTitle, APPNAME );				// バルーンタイトル
 		wcscpy( ni.szInfo, L"アイコン化しています" );	// バルーンメッセージ
 		Shell_NotifyIconW( NIM_ADD, &ni );
@@ -5758,7 +5760,8 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 
 	case NIM_MODIFY:
 		ni.uFlags = NIF_TIP |NIF_INFO;
-		GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+		//GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
+		wcscpy( ni.szTip, APPNAME );
 
 	case NIM_DELETE:
 		return Shell_NotifyIconW( msg, &ni );
