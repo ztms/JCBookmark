@@ -3,6 +3,9 @@
 	margin:0;
 	padding:0;
 }
+#wall {
+	margin:auto;
+}
 #progress {
 	display:none;
 	padding:2px 0 0 0;
@@ -21,8 +24,10 @@
 	cursor:pointer;
 	text-align:center;
 }
-#wall {
-	margin:auto;
+#progress, #modified {
+	position:fixed;
+	left:0; top:0;
+	width:100%;
 }
 /* カラム(列) */
 /* floatをやめてinline-blockにすると、Chromeでhoverの追従性が悪化する。IEはそれほど変わらないようだが。*/

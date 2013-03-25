@@ -4,8 +4,9 @@ body {
 	background:#171300;
 }
 /* ïœçXí ím */
-#modified {
+#progress, #modified {
 	color:#f44;
+	background:#171300;
 }
 #modified:hover {
 	background:#444;

@@ -41,7 +41,10 @@ var tree = {
 	,modified:function( on ){
 		if( arguments.length ){
 			tree._modified = on;
-			if( on ) $('#modified').show();
+			if( on ){
+				$('#modified').show();
+				$wall.css('padding-top','22px');
+			}
 			return tree;
 		}
 		return tree._modified;
@@ -169,7 +172,10 @@ var option = {
 	,modified:function( on ){
 		if( arguments.length ){
 			option._modified = on;
-			if( on ) $('#modified').show();
+			if( on ){
+				$('#modified').show();
+				$wall.css('padding-top','22px');
+			}
 			return option;
 		}
 		return option._modified;
@@ -705,25 +711,23 @@ function modifySave( arg ){
 	// 順番に保存
 	$('#modified').hide();
 	$('#progress').show();
-	if( tree.modified() ){
-		tree.save({
-			success:function(){ optionSave(); }
-			,error :function(){ $('#progress').hide(); $('#modified').show(); }
-		});
-	}
+	if( tree.modified() ) tree.save({ 'success':optionSave, 'error':error });
 	else optionSave();
 
 	function optionSave(){
 		if( option.modified() ){
-			option.save({
-				success:function(){ $('#progress').hide(); if( 'success' in arg ) arg.success(); }
-				,error :function(){ $('#progress').hide(); $('#modified').show(); }
-			});
+			option.save({ 'success':success, 'error':error });
 		}
-		else{
-			$('#progress').hide();
-			if( 'success' in arg ) arg.success();
-		}
+		else success();
+	}
+	function success(){
+		$('#progress').hide();
+		$wall.css('padding-top','0');
+		if( 'success' in arg ) arg.success();
+	}
+	function error(){
+		$('#progress').hide();
+		$('#modified').show();
 	}
 }
 // パネル設定ダイアログ
