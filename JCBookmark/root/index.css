@@ -3,14 +3,10 @@
 	margin:0;
 	padding:0;
 }
-#wall {
-	margin:auto;
-}
 #progress {
 	display:none;
-	padding:2px 0 0 0;
 	text-align:center;
-	height:17px;
+	padding-top:2px;
 }
 #proress img {
 	border:0;
@@ -20,14 +16,17 @@
 	font-family:"MS PGothic",sans-serif;
 	font-weight:bold;
 	font-size:14px;
-	padding:4px 0 1px 0;
 	cursor:pointer;
 	text-align:center;
+	line-height:1.5;
 }
 #progress, #modified {
 	position:fixed;
 	left:0; top:0;
 	width:100%;
+}
+#wall {
+	margin:auto;
 }
 /* カラム(列) */
 /* floatをやめてinline-blockにすると、Chromeでhoverの追従性が悪化する。IEはそれほど変わらないようだが。*/
