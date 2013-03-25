@@ -592,28 +592,30 @@ function paneler( nodeTop ){
 	}
 	// パネル１つ生成配置
 	function panelCreate( node, coID ){
-		var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
-		var $p = $panel( node ).appendTo( column.$e );
-		// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
-		// 例) { btn1:1, btn9:0, btn45:0, ... }
-		// パネルID=XXX は、ボタンID=btnXXX に対応
-		var btnID = 'btn'+node.id;
-		if( btnID in panelStatus && panelStatus[btnID]==1 ){
-			// 閉パネル閉じ
-			panelOpenClose( $p );
-		}
-		else{
-			// 開パネルアイテム追加
-			var $box = $p.find('.itembox').empty();
-			for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-				if( !child[i].child )
-					$box.append( $panelItem( child[i] ) );
+		if( node ){
+			var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
+			var $p = $panel( node ).appendTo( column.$e );
+			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
+			// 例) { btn1:1, btn9:0, btn45:0, ... }
+			// パネルID=XXX は、ボタンID=btnXXX に対応
+			var btnID = 'btn'+node.id;
+			if( btnID in panelStatus && panelStatus[btnID]==1 ){
+				// 閉パネル閉じ
+				panelOpenClose( $p );
 			}
+			else{
+				// 開パネルアイテム追加
+				var $box = $p.find('.itembox').empty();
+				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
+					if( !child[i].child )
+						$box.append( $panelItem( child[i] ) );
+				}
+			}
+			// カラム高さ
+			column.height += $p.height();
+			// 完了
+			placeList[node.id] = true;
 		}
-		// カラム高さ
-		column.height += $p.height();
-		// 完了
-		placeList[node.id] = true;
 		// 高さがいちばん低いカラムオブジェクトを返す
 		function lowestColumn(){
 			var target = null;
