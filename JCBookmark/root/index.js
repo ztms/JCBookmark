@@ -515,17 +515,6 @@ function paneler( nodeTop ){
 	$wall.append('<br class=clear>');
 	// 表示(チラツキ低減)
 	$('body').css('visibility','visible');
-	// キーがノードID、値がフォルダ(パネル)ノードオブジェクトの連想配列
-	// tree.node()はfor()で探すのでそれより速いかと思ったが、32秒が29秒になるくらい…
-	var treePanelNode = {};
-	(function( node ){
-		treePanelNode[node.id] = node;
-		for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-			if( child[i].child ){
-				arguments.callee( child[i] );
-			}
-		}
-	})( nodeTop );
 	// レイアウト保存データのパネル配置
 	// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
 	// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
@@ -538,9 +527,10 @@ function paneler( nodeTop ){
 	//window.onmessage = function(){
 		var layoutSeek = false;
 		for( var coID in panelLayout ){
-			if( index < panelLayout[coID].length ){
-				//panelCreate( tree.node( panelLayout[coID][index] ), coID );
-				panelCreate( treePanelNode[ panelLayout[coID][index] ], coID );
+			var coN = panelLayout[coID];
+			if( index < coN.length ){
+				var node = tree.node( coN[index] );
+				if( node ) panelCreate( node, coID );
 				layoutSeek = true;
 			}
 		}
@@ -592,30 +582,28 @@ function paneler( nodeTop ){
 	}
 	// パネル１つ生成配置
 	function panelCreate( node, coID ){
-		if( node ){
-			var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
-			var $p = $panel( node ).appendTo( column.$e );
-			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
-			// 例) { btn1:1, btn9:0, btn45:0, ... }
-			// パネルID=XXX は、ボタンID=btnXXX に対応
-			var btnID = 'btn'+node.id;
-			if( btnID in panelStatus && panelStatus[btnID]==1 ){
-				// 閉パネル閉じ
-				panelOpenClose( $p );
-			}
-			else{
-				// 開パネルアイテム追加
-				var $box = $p.find('.itembox').empty();
-				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-					if( !child[i].child )
-						$box.append( $panelItem( child[i] ) );
-				}
-			}
-			// カラム高さ
-			column.height += $p.height();
-			// 完了
-			placeList[node.id] = true;
+		var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
+		var $p = $panel( node ).appendTo( column.$e );
+		// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
+		// 例) { btn1:1, btn9:0, btn45:0, ... }
+		// パネルID=XXX は、ボタンID=btnXXX に対応
+		var btnID = 'btn'+node.id;
+		if( btnID in panelStatus && panelStatus[btnID]==1 ){
+			// 閉パネル閉じ
+			panelOpenClose( $p );
 		}
+		else{
+			// 開パネルアイテム追加
+			var $box = $p.find('.itembox').empty();
+			for( var i=0, child=node.child, n=child.length; i<n; i++ ){
+				if( !child[i].child )
+					$box.append( $panelItem( child[i] ) );
+			}
+		}
+		// カラム高さ
+		column.height += $p.height();
+		// 完了
+		placeList[node.id] = true;
 		// 高さがいちばん低いカラムオブジェクトを返す
 		function lowestColumn(){
 			var target = null;
