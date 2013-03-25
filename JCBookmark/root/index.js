@@ -433,16 +433,7 @@ function paneler( nodeTop ){
 					dblclick:function(ev){
 						// ＋－ボタン上の場合は何もしない
 						if( $(ev.target).is('.plusminus') ) return;
-						// パネルIDは自分(.title)の親ID
-						panelOpenClose( this.parentNode.id, true, ev.pageX, ev.pageY );
-						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
-						// 例) { btn1:1, btn9:0, btn45:0, ... }
-						var status = {};
-						$('.plusminus').each(function(){
-							//srcはURL('http://localhost:XXX/plus.png'など)文字列
-							status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
-						});
-						option.panel.status( status );
+						$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
 					}
 					// 右クリックメニュー
 					,contextmenu:function(ev){
@@ -489,7 +480,20 @@ function paneler( nodeTop ){
 					// 開き状態
 					$('<img class=plusminus src="minus.png">')
 					// クリックでパネル開閉
-					.click(function(){ $(this.parentNode).dblclick(); })
+					.click(function( ev, pageX, pageY ){
+						pageX = pageX || ev.pageX;
+						pageY = pageY || ev.pageY;
+						// パネルID＝親(.title)の親(.panel)のID
+						panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
+						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
+						// 例) { btn1:1, btn9:0, btn45:0, ... }
+						var status = {};
+						$('.plusminus').each(function(){
+							//srcはURL('http://localhost:XXX/plus.png'など)文字列
+							status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+						});
+						option.panel.status( status );
+					})
 				)
 			);
 		return function( node ){
@@ -964,23 +968,23 @@ $('#filerico').click(function(){
 												,title		:tree.trash().title
 												,child		:[]
 											};
+											// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
+											// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
+											// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
+											// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
+											// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
+											// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
+											// 1347278204225 の13桁。ということで、以下サイトを参考に、
+											//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
+											//   http://support.microsoft.com/kb/167296/ja
+											// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
+											// 2. 1000で割る＝マイクロ秒からミリ秒に。
+											function jstime( date_added ){
+												var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
+												return ( t >0 )? parseInt(t) : 0;
+											}
 											// Chromeノードから自ノード形式変換
-											var chrome2node = function( data ){
-												// Chromeブックマークのdate_addedをJavaScript.Date.getTime値に変換する。
-												// Chromeのdate_addedは、例えば12814387151252000の17桁で、Win32:FILETIME
-												// (1601/1/1からの100ナノ秒単位)値に近いもよう。FILETIMEは書式%I64uで出力
-												// すると例えば 129917516702250000 の18桁。date_addedはFILETIMEの最後の
-												// 1桁を切った(10分の1の)値かな…？そういうことにしておこう。。
-												// JavaScriptの(new Date()).getTime()は、1970/1/1からのミリ秒で、例えば
-												// 1347278204225 の13桁。ということで、以下サイトを参考に、
-												//   [UNIX の time_t を Win32 FILETIME または SYSTEMTIME に変換するには]
-												//   http://support.microsoft.com/kb/167296/ja
-												// 1. 11644473600000000(たぶん1601-1970のマイクロ秒)を引く。
-												// 2. 1000で割る＝マイクロ秒からミリ秒に。
-												var jstime = function( date_added ){
-													var t = (parseFloat(date_added||0) -11644473600000000.0) /1000.0;
-													return ( t >0 )? parseInt(t) : 0;
-												};
+											function chrome2node( data ){
 												var node = {
 													id			:root.nextid++				// 新規ID
 													,dateAdded	:jstime( data.date_added )	// 変換
@@ -998,7 +1002,7 @@ $('#filerico').click(function(){
 													node.icon = favicons[data.url] || '';
 												}
 												return node;
-											};
+											}
 											// トップノードchildに登録('synced'は存在しない場合あり)
 											bookmarks = bookmarks.roots;
 											if( 'bookmark_bar' in bookmarks )
@@ -1008,7 +1012,7 @@ $('#filerico').click(function(){
 											if( 'synced' in bookmarks )
 												root.child[0].child.push( chrome2node(bookmarks.synced) );
 											// 完了
-											analyzer( root );
+											setTimeout(function(){ analyzer( root ); },1);
 										}
 									});
 								}
@@ -1112,8 +1116,8 @@ $('#impexpico').click(function(){
 						catch( e ){ Alert(e); }
 					}
 					$(this).empty();
+					$impexp.dialog('destroy');
 				});
-				$impexp.dialog('destroy');
 				MsgBox('処理中です...');
 			}).submit();
 		}
@@ -1458,15 +1462,21 @@ $(document).on({
 	}()
 });
 // favicon解析してから移行データ取り込み
+// TODO:IE8はブックマーク数が1万くらいになると「スクリプトに時間がかかっています」ダイアログや、
+// 謎のスクリプトエラーが発生してまともに動かない。Chrome直接インポートでは8千程度でも発生する。
+// IE8以外は1万件でも動くし、IE8も3千程度なら動くので、IE8の問題でおｋ？回避できる実装があれば
+// いいけど…面倒くさい。
+// TODO:Chromeで解析件数が多いとスキップしてもajax通信がいつまでたっても終わらず続いてしまう。
+// abort()がぜんぜん効いていないかのよう…Chrome以外はわりとすぐ終わってくれるのに…
 function analyzer( nodeTop ){
 	var total = 0;			// URL総数
-	var analyze = [];		// URL解析中配列
+	var ajaxs = [];			// URL解析中配列
 	var skipped = false;	// スキップフラグ
 	function skip(){
 		skipped = true;
-		for( var i=0, n=analyze.length; i<n; i++ ){
-			analyze[i].ajax.abort();
-			analyze[i].done = true;
+		for( var i=0, n=ajaxs.length; i<n; i++ ){
+			ajaxs[i].xhr.abort();
+			ajaxs[i].done = true;
 		}
 	}
 	// プログレスバーつき進捗ダイアログ
@@ -1493,16 +1503,16 @@ function analyzer( nodeTop ){
 		else{
 			total++;
 			if( node.url.length && !node.icon.length ){
-				var index = analyze.length;
-				analyze[index] = {
-					done : false
-					,ajax: $.ajax({
-						url		 :':analyze?'+node.url.replace(/#/g,'%23')
+				var index = ajaxs.length;
+				ajaxs[index] = {
+					done: false
+					,xhr: $.ajax({
+						url		 :':analyze?'+node.url.replace(/#!/g,'%23!')
 						,success :function(data){
 							if( data.icon.length ) node.icon = data.icon;
 						}
 						,complete:function(){
-							analyze[index].done = true;
+							ajaxs[index].done = true;
 						}
 					})
 				};
@@ -1510,8 +1520,8 @@ function analyzer( nodeTop ){
 		}
 	})( nodeTop );
 	// 進捗表示
-	$msg.text('ブックマーク'+total+'個のうち、'+analyze.length+'個のファビコンがありません。ファビコンを取得しています...' );
-	$count.text('(0/'+analyze.length+')');
+	$msg.text('ブックマーク'+total+'個のうち、'+ajaxs.length+'個のファビコンがありません。ファビコンを取得しています...' );
+	$count.text('(0/'+ajaxs.length+')');
 	$pgbar.progressbar('value',0);
 	// 解析完了待ちループ
 	(function(){
@@ -1520,14 +1530,14 @@ function analyzer( nodeTop ){
 		}
 		else{
 			var waiting=0;
-			for( var i=0, n=analyze.length; i<n; i++ ){
-				if( !analyze[i].done ) waiting++;
+			for( var i=0, n=ajaxs.length; i<n; i++ ){
+				if( !ajaxs[i].done ) waiting++;
 			}
 			if( waiting ){
 				// 進捗表示
-				var count = analyze.length - waiting;
-				$count.text('('+count+'/'+analyze.length+')');
-				$pgbar.progressbar('value',count*100/analyze.length);
+				var count = ajaxs.length - waiting;
+				$count.text('('+count+'/'+ajaxs.length+')');
+				$pgbar.progressbar('value',count*100/ajaxs.length);
 				setTimeout(arguments.callee,500);
 				return;
 			}

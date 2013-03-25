@@ -525,7 +525,7 @@ $('#newitem').click(function(){
 	setTimeout(function(){
 		$item.mouseup();
 		if( url.length ){
-			$.get(':analyze?'+url.replace(/#/g,'%23'),function(data){
+			$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
 				if( data.title.length ){
 					data.title = HTMLtext( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1455,7 +1455,7 @@ function edit( element ){
 									// →ファビコン無しは解析しないことにしてみる
 									var node = tree.node( nodeid );
 									if( node.title=='新規ブックマーク' /*|| !node.icon || !node.icon.length*/){
-										$.get(':analyze?'+value.replace(/#/g,'%23'),function(data){
+										$.get(':analyze?'+value.replace(/#!/g,'%23!'),function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLtext( data.title );
 												if( tree.nodeAttr( nodeid, 'title', data.title ) >1 )
