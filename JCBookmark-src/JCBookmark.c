@@ -607,7 +607,17 @@ UCHAR* stristr( const UCHAR* buf, const UCHAR* word )
 			buf++;
 		}
 	}
-	//else LogW(L"stristr引数不正");
+	return NULL;
+}
+UCHAR* stristrL( const UCHAR* buf, const UCHAR* word, const UCHAR* limit )
+{
+	if( buf && word ){
+		size_t len = strlen( word );
+		while( buf < limit && *buf ){
+			if( strnicmp( buf, word, len )==0 ) return buf;
+			buf++;
+		}
+	}
 	return NULL;
 }
 // 文字列sにあるN個目の文字cの位置を返す
@@ -2138,8 +2148,8 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 		goto fin;
 	}
 	if( *url ){
-		UCHAR* path = strchr(url,'/');
 		UCHAR* host;
+		UCHAR* path = strchr(url,'/');
 		if( path ){
 			host = strndup( url, path - url );
 			path++;
@@ -3866,7 +3876,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 							if( titleTop ){
 								UCHAR* urlTop = stristr(p+6," HREF=\"");
 								UCHAR* dateTop = stristr(p+6," ADD_DATE=\"");
-								UCHAR* iconTop = stristr(p+6," ICON_URI=\"");
+								UCHAR* iconTop = stristrL(p+6," ICON_URI=\"",titleTop);//ICON_URI=は存在しない場合があるので無駄に検索しないよう上限つき
 								UCHAR* urlEnd = NULL;
 								UCHAR* dateEnd = NULL;
 								UCHAR* iconEnd = NULL;
@@ -3878,7 +3888,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 									dateTop += 11;
 									dateEnd = strchr(dateTop,'"');
 								}
-								if( iconTop && iconTop < titleTop ){
+								if( iconTop ){
 									iconTop += 11;
 									iconEnd = strchr(iconTop,'"');
 								}
@@ -4436,6 +4446,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						else if( stricmp(file,":chrome.icon.json")==0 ){
 							// Chrome FaviconsをJSONに変換
 							// TODO:Chromeでブックマーク整理した後はDB開けないもよう。Chrome終了で開けるようになた。
+							// sqlite3_open_v2()のREADONLY指定で開けるかどうか…しかしパス名がUTF-8じゃないとダメ。
+							// sqlite3_open16_v2()はなぜ存在しないのか？
 							WCHAR* favicons = ChromeFaviconsPathAlloc();
 							if( favicons ){
 								sqlite3* db = NULL;
