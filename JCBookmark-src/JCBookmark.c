@@ -132,7 +132,7 @@ HANDLE		Heap				= NULL;				// GetProcessHeap()
 //   -00F56B20
 //   -00F58C10
 // 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
