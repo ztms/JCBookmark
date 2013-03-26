@@ -6,11 +6,11 @@ body {
 /* 変更通知 */
 #progress, #modified {
 	color:#aaf7f7;
-	background:#335;
+	background:#334;
 }
 #modified:hover {
 	color:#0ff;
-	background:#337;
+	background:#247;
 }
 /* パネル */
 .panel {
