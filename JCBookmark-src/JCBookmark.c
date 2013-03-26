@@ -5090,6 +5090,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			);
 			SendMessageA( hTxtListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
+			SendMessageA( hBootMinimal, WM_SETFONT, (WPARAM)hFont, 0 );
 			if( BootMinimal() ) SendMessageA( hBootMinimal, BM_SETCHECK, BST_CHECKED, 0 );
 			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 			br = BrowserInfoAlloc();
