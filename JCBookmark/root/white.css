@@ -5,12 +5,12 @@ body {
 }
 /* 変更通知 */
 #progress, #modified {
-	color:#ee3;
-	background:#457;
+	color:#aaf7f7;
+	background:#335;
 }
 #modified:hover {
-	color:#ff0;
-	background:#147;
+	color:#0ff;
+	background:#337;
 }
 /* パネル */
 .panel {
