@@ -86,7 +86,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.5"
+#define		APPNAME				L"JCBookmark v1.6b"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -132,7 +132,7 @@ HANDLE		Heap				= NULL;				// GetProcessHeap()
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
