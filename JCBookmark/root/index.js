@@ -434,73 +434,7 @@ function paneler( nodeTop ){
 			})
 			.prepend(
 				$('<div class=title><img class=icon src="folder.png"><span></span></div>')
-				.on({
-					// ダブルクリックでパネル開閉
-					dblclick:function(ev){
-						// ＋－ボタン上の場合は何もしない
-						if( $(ev.target).is('.plusminus') ) return;
-						$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
-					}
-					// 右クリックメニュー
-					,contextmenu:function(ev){
-						// ev.targetはクリックした場所にあるDOMエレメント
-						var panel = ev.target.parentNode;
-						while( panel.className !='panel' ){
-							if( !panel.parentNode ) break;
-							panel = panel.parentNode;
-						}
-						var $menu = $('#contextmenu');
-						$menu.find('a').off();
-						// アイテムすべて開く
-						// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
-						$('#allopen').click(function(){
-							$menu.hide();
-							$(panel).find('.item').each(function(){
-								window.open( this.getAttribute('href') );
-							});
-						});
-						// アイテムテキストで取得
-						$('#showtext').click(function(){
-							$menu.hide();
-							var text='';
-							$(panel).find('.item').each(function(){
-								text += $(this).text() + '\r' + this.getAttribute('href') + '\r';
-							});
-							$('#itemtext').find('textarea').text(text).end().dialog({
-								title	:'アイテムをテキストで取得'
-								,modal	:true
-								,width	:480
-								,height	:360
-								,close	:function(){ $(this).dialog('destroy'); }
-							});
-						});
-						// 表示
-						$menu.css({
-							left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-							,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
-						}).show();
-						return false;	// 既定右クリックメニュー出さない
-					}
-				})
-				.prepend(
-					// 開き状態
-					$('<img class=plusminus src="minus.png">')
-					// クリックでパネル開閉
-					.click(function( ev, pageX, pageY ){
-						pageX = pageX || ev.pageX;
-						pageY = pageY || ev.pageY;
-						// パネルID＝親(.title)の親(.panel)のID
-						panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
-						// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
-						// 例) { btn1:1, btn9:0, btn45:0, ... }
-						var status = {};
-						$('.plusminus').each(function(){
-							//srcはURL('http://localhost:XXX/plus.png'など)文字列
-							status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
-						});
-						option.panel.status( status );
-					})
-				)
+				.prepend( $('<img class=plusminus src="minus.png">') ) // [－]ボタン(開き状態)
 			);
 		return function( node ){
 			var $p = $e.clone(true).attr('id',node.id);
@@ -1455,6 +1389,67 @@ $(document).on({
 		};
 	}()
 });
+// パネルタイトルダブルクリックで開閉
+$wall.on('dblclick','.panel',function(ev){
+	// ＋－ボタン上の場合は何もしない
+	if( $(ev.target).is('.plusminus') ) return;
+	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
+});
+// パネル右クリックメニュー
+$wall.on('contextmenu','.panel',function(ev){
+	// ev.targetはクリックした場所にあるDOMエレメント
+	var panel = ev.target.parentNode;
+	while( panel.className !='panel' ){
+		if( !panel.parentNode ) break;
+		panel = panel.parentNode;
+	}
+	var $menu = $('#contextmenu');
+	$menu.find('a').off();
+	// アイテムすべて開く
+	// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
+	$('#allopen').click(function(){
+		$menu.hide();
+		$(panel).find('.item').each(function(){
+			window.open( this.getAttribute('href') );
+		});
+	});
+	// アイテムテキストで取得
+	$('#showtext').click(function(){
+		$menu.hide();
+		var text='';
+		$(panel).find('.item').each(function(){
+			text += $(this).text() + '\r' + this.getAttribute('href') + '\r';
+		});
+		$('#itemtext').find('textarea').text(text).end().dialog({
+			title	:'アイテムをテキストで取得'
+			,modal	:true
+			,width	:480
+			,height	:360
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
+	});
+	// 表示
+	$menu.css({
+		left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+		,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+	}).show();
+	return false;	// 既定右クリックメニュー出さない
+});
+// ＋－ボタンクリックでパネル開閉
+$wall.on('click','.plusminus',function( ev, pageX, pageY ){
+	pageX = pageX || ev.pageX;
+	pageY = pageY || ev.pageY;
+	// パネルID＝親(.title)の親(.panel)のID
+	panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
+	// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
+	// 例) { btn1:1, btn9:0, btn45:0, ... }
+	var status = {};
+	$('.plusminus').each(function(){
+		//srcはURL('http://localhost:XXX/plus.png'など)文字列
+		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+	});
+	option.panel.status( status );
+});
 // favicon解析してから移行データ取り込み
 // TODO:IE8はブックマーク数が1万くらいになると「スクリプトに時間がかかっています」ダイアログや、
 // 謎のスクリプトエラーが発生してまともに動かない。Chrome直接インポートでは8千程度でも発生する。
@@ -1722,7 +1717,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	if( $btn.attr('src')=='plus.png' ){
 		// 開く
 		panelPopper(false);
-		$panel.off('mouseenter.itempop mouseleave.itempop');
+		$panel.off('mouseenter.itempop');
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr('src','minus.png');
 		// アイテム追加
