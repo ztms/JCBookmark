@@ -739,6 +739,29 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
+// フォルダイベント
+$('#folders')
+.on('click','.folder',folderClick)
+.on('selfclick','.folder',itemSelfClick)
+.on('mousedown','.folder',folderMouseDown)
+.on('mousemove','.folder',itemMouseMove)
+.on('mouseup','.folder',itemMouseUp)
+.on('keydown','.folder',folderKeyDown)
+.on('contextmenu','.folder',folderContextMenu);
+// アイテムイベント
+(function(){
+	var data = { itemID:'', itemNotify:'' };
+	$('#items')
+	.on('mousedown','.item',data,itemMouseDown)
+	.on('mousemove','.item',itemMouseMove)
+	.on('mouseup','.item',itemMouseUp)
+	.on('click','.item',data,itemClick)
+	.on('dblclick','.item',itemDblClick)
+	.on('selfclick','.item',itemSelfClick)
+	.on('keydown','.item',itemKeyDown)
+	.on('keypress','.item',itemKeyPress)
+	.on('contextmenu','.item',itemContextMenu);
+})();
 
 function folderTree(){
 	// フォルダツリー生成
@@ -747,16 +770,7 @@ function folderTree(){
 	var $folders = $('#folders').empty();
 	var $folder = function(){
 		var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
-			.on({
-				click		:folderClick
-				,selfclick	:itemSelfClick
-				,mousedown	:folderMouseDown
-				,mousemove	:itemMouseMove
-				,mouseup	:itemMouseUp
-				,mouseleave	:itemMouseLeave
-				,keydown	:folderKeyDown
-				,contextmenu:folderContextMenu
-			});
+			.on('mouseleave',itemMouseLeave);
 		return function( id, title, icon, depth ){
 			var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
 			$f.find('img').attr('src',icon);
@@ -826,21 +840,8 @@ function folderClick(ev){
 			$(select=selectFolder=this).addClass('select').focus();
 			// コンテンツにアイテム(child配列)登録
 			var $item = function(){
-				var $e = $('<div class=item tabindex=0><img class=icon></div>').on({
-					mousedown	:itemMouseDown
-					,mousemove	:itemMouseMove
-					,mouseup	:itemMouseUp
-					,mouseleave	:itemMouseLeave
-					,click		:itemClick
-					,dblclick	:itemDblClick
-					,selfclick	:itemSelfClick
-					,keydown	:itemKeyDown
-					,keypress	:itemKeyPress
-					,contextmenu:itemContextMenu
-				},{
-					itemID		:''
-					,itemNotify	:''
-				});
+				var $e = $('<div class=item tabindex=0><img class=icon></div>')
+					.on('mouseleave',itemMouseLeave);
 				var $head = $('#itemhead');
 				var url_width = $head.find('.url').width() +4;
 				var icon_width = $head.find('.iconurl').width() +4;
