@@ -1390,13 +1390,13 @@ $(document).on({
 	}()
 });
 // パネルタイトルダブルクリックで開閉
-$wall.on('dblclick','.panel',function(ev){
+$wall.on('dblclick','.title',function(ev){
 	// ＋－ボタン上の場合は何もしない
 	if( $(ev.target).is('.plusminus') ) return;
 	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
 });
 // パネル右クリックメニュー
-$wall.on('contextmenu','.panel',function(ev){
+$wall.on('contextmenu','.title',function(ev){
 	// ev.targetはクリックした場所にあるDOMエレメント
 	var panel = ev.target.parentNode;
 	while( panel.className !='panel' ){
