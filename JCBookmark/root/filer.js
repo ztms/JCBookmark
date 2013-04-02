@@ -1574,7 +1574,7 @@ function Confirm( arg ){
 			,modal		:true
 			,resizable	:false
 			,width		:365
-			,height		:180
+			,height		:190
 			,close		:function(){ $(this).dialog('destroy'); }
 			,buttons	:{}
 		};

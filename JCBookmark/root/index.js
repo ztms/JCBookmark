@@ -1795,7 +1795,7 @@ function Confirm( arg ){
 			title	:arg.title ||'確認'
 			,modal	:true
 			,width	:365
-			,height	:185
+			,height	:190
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{}
 		};
