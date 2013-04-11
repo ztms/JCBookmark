@@ -1041,7 +1041,6 @@ $('#impexpico').click(function(){
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
-						//alert(jsonText);
 						try{ analyzer( $.parseJSON(jsonText) ); }
 						catch( e ){ Alert(e); }
 					}
@@ -1101,16 +1100,13 @@ $('#impexpico').click(function(){
 			}
 		})( tree.top().child, 1 );
 		html += '</DL><p>\n';
-		// アップロード
+		// アップロード＆ダウンロード
 		$.ajax({
 			type	:'put'
 			,url	:'export.html'
 			,data	:html
-			,error	:function(xhr,text){ Alert('データを保存できません:'+text); }
-			,success:function(){
-				// ダウンロード
-				location.href ='http://'+location.host+'/export.html';
-			}
+			,error	:function(xhr,text){ Alert('データ保存できません:'+text); }
+			,success:function(){ location.href = 'export.html'; }
 		});
 	});
 	// ダイアログ表示
@@ -1289,8 +1285,8 @@ $('#snapico').click(function(){
 					if( item ){
 						var opt = {
 							type	:text.length? 'put' : 'del'
-							,url	:'/snap/'+id.replace(/cab$/,'txt')
-							,error	:function(xhr,text){ Alert('メモを保存できません'+text); }
+							,url	:'snap/'+id.replace(/cab$/,'txt')
+							,error	:function(xhr,text){ Alert('メモを保存できません:'+text); }
 							,success:function(){ item.memo=text; widthAdjust(); }
 						};
 						if( text.length ) opt.data = text;
