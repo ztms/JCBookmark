@@ -101,10 +101,6 @@
 	white-space:nowrap;
 	overflow:hidden;
 }
-.item:hover {
-	/* TODO:Firefoxでどうもhover処理が重くて追従性が悪い…改善策はあるのだろうか… */
-	/*padding:0 0 0 1px;*/
-}
 /* パネルドラッグ先領域 */
 .ui-sortable-placeholder {
 	visibility:visible !important;
@@ -141,6 +137,10 @@
 .barico:hover {
 	border-color:#aaa;
 	background:#fff;
+}
+.barico:active {
+	border-color:#da7;
+	background:#fff5f0;
 }
 .clear {
 	clear:both;
@@ -206,6 +206,10 @@
 #contextmenu a:hover {
 	color:#fff;
 	background:#337;
+}
+#contextmenu a:active {
+	position:relative;
+	left:1px; top:1px;
 }
 #contextmenu hr {
 	margin:3px 0 3px 0;

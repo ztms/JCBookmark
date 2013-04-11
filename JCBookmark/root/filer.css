@@ -23,8 +23,12 @@ body {
 	border:1px solid transparent;
 }
 .barbtn:hover {
-	border:1px solid #999;
+	border-color:#999;
 	background:#fff;
+}
+.barbtn:active {
+	border-color:#da7;
+	background:#fff5f0;
 }
 #wait {
 	display:none;
@@ -88,6 +92,9 @@ body {
 }
 .folder:hover, .item:hover {
 	background:#ebf9ff;
+}
+.folder:active {
+	background:#dbe9ff;
 }
 /* アイテム色つき行 */
 .bgcolor {
@@ -226,6 +233,10 @@ body {
 #contextmenu .enable:hover {
 	color:#fff;
 	background:#337;
+}
+#contextmenu .enable:active {
+	position:relative;
+	left:1px; top:1px;
 }
 #contextmenu hr {
 	border-top:1px solid #999;
