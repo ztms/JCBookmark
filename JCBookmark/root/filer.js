@@ -147,8 +147,9 @@ var tree = {
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
-			url:tree.path
-			,error:function(xhr,text){ Alert('データ取得できません:'+text); }
+			dataType:'json'
+			,url	:tree.path
+			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
@@ -160,14 +161,14 @@ var tree = {
 		$.ajax({
 			type	:'put'
 			,url	:tree.path
-			,data	:JSON.stringify(tree.root)
+			,data	:JSON.stringify( tree.root )
 			,error	:function(xhr,text){
 				Alert('保存できませんでした:'+text);
-				if( 'error' in arg ) arg.error();
+				if( arg.error ) arg.error();
 			}
 			,success:function(){
 				tree.modified(false);
-				if( 'success' in arg ) arg.success();
+				if( arg.success ) arg.success();
 			}
 		});
 	}
@@ -455,7 +456,7 @@ $('#exit').click(function(){
 	}
 	else reload();
 
-	function reload(){ location.href ='http://'+location.host; }
+	function reload(){ location.href = 'index.html'; }
 });
 // 保存
 $('#save').click(function(){ treeSave(); });
@@ -467,9 +468,9 @@ function treeSave( arg ){
 			$('#wait').hide();
 			$('#save').show();
 			$('#modified').hide();
-			if( 'success' in arg ) arg.success();
+			if( arg && arg.success ) arg.success();
 		}
-		,error :function(){
+		,error:function(){
 			$('#wait').hide();
 			$('#save').show();
 		}

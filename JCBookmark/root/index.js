@@ -123,7 +123,8 @@ var tree = {
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
-			url		:tree.path
+			dataType:'json'
+			,url	:tree.path
 			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
 			,success:function(data){
 				tree.replace( data );
@@ -143,11 +144,11 @@ var tree = {
 			,data	:JSON.stringify( tree.root )
 			,error	:function(xhr,text){
 				Alert('保存できませんでした:'+text);
-				if( 'error' in arg ) arg.error();
+				if( arg.error ) arg.error();
 			}
 			,success:function(){
 				tree.modified(false);
-				if( 'success' in arg ) arg.success();
+				if( arg.success ) arg.success();
 			}
 		});
 	}
@@ -338,12 +339,12 @@ var option = {
 			,url	:option.path
 			,data	:JSON.stringify( option.data )
 			,error	:function(xhr,text){
-				Alert('設定を保存できません:'+text);
-				if( 'error' in arg ) arg.error();
+				Alert('保存できませんでした:'+text);
+				if( arg.error ) arg.error();
 			}
 			,success:function(){
 				option.modified(false);
-				if( 'success' in arg ) arg.success();
+				if( arg.success ) arg.success();
 			}
 		});
 		return option;
@@ -657,7 +658,7 @@ function modifySave( arg ){
 	function success(){
 		$('#progress').hide();
 		$wall.css('padding-top','0');
-		if( 'success' in arg ) arg.success();
+		if( arg && arg.success ) arg.success();
 	}
 	function error(){
 		$('#progress').hide();
