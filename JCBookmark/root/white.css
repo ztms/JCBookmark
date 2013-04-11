@@ -38,12 +38,12 @@ body {
 }
 /* パネル開閉ボタン */
 .plusminus:hover {
-	border:1px solid #aaa;
-	background:#f7f7f7;
+	border-color:#bbb;
+	background:#fff;
 }
 .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
-	border:1px solid #999;
+	border-color:#aaa;
 	background:#eee;
 }
 /* 新規ブックマークURL投入INPUTボックス */
