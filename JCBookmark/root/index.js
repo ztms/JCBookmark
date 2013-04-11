@@ -326,7 +326,8 @@ var option = {
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
 		$.ajax({
-			url		:option.path
+			dataType:'json'
+			,url	:option.path
 			,success:function(data){ option.init( data ); }
 			,complete:onComplete
 		});
