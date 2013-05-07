@@ -1611,14 +1611,15 @@ function setSortable(){
 var panelPopper = function(){
 	var $box = null;		// ポップアップ中のアイテムボックス
 	var nextPanel = null;	// 次のポップアップパネル
-	var timer = null;		// setTimeoutID
+	var itemTimer = null;	// アイテム追加setTimeout
+	var mouseTimer = null;	// マウス監視setTimeout
 	return function( panel, prevX, prevY ){
 		if( panel==false ){
 			// ポップアップ解除
-			clearTimeout(timer);
+			clearTimeout( itemTimer );
 			$(document).off('mousemove.itempop');
 			$box.hide().off().empty();
-			$box=null;
+			$box = null;
 		}
 		else if( $box ){
 			// ポップアップ中のため保留
@@ -1626,7 +1627,7 @@ var panelPopper = function(){
 		}
 		else{
 			// ポップアップ実行
-			clearTimeout(timer);
+			clearTimeout( itemTimer );
 			$box = $(panel).find('.itembox');
 			var left = panel.offsetLeft + panel.offsetWidth -2;	// -2ちょい左
 			// 右端にはみ出る場合は左側に出す
@@ -1657,41 +1658,51 @@ var panelPopper = function(){
 					if( !child[index].child )
 						$box.append( $panelItem( child[index] ) );
 					index++;
-					timer = setTimeout(arguments.callee,1);
+					itemTimer = setTimeout(arguments.callee,1);
 					//window.postMessage('*','*');
 				}
 			})();
 			//};window.postMessage('*','*');
-			// カーソル移動方向を加味してポップアップ消す
+			// カーソル移動方向と時間を加味してポップアップ消す
 			$(document).on('mousemove.itempop',function(ev){
+				// 範囲外で一定時間カーソルが止まっていたら消す
+				clearTimeout( mouseTimer );
+				mouseTimer = setTimeout(function(){
+					if( $box ){
+						var box = $box[0];
+						if( elementOnXY( box, ev.pageX, ev.pageY ) ) return;
+						if( elementOnXY( box.parentNode, ev.pageX, ev.pageY ) ) return;
+						panelPopper(false);
+						if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
+							panelPopper( nextPanel, ev.pageX, ev.pageY );
+						}
+					}
+				},200);
+				// カーソル移動方向が範囲外なら消す
 				var box = $box[0];
-				if( elementOnXY( box, ev.pageX, ev.pageY ) ) return;
-				if( prevX != ev.pageX || prevY != ev.pageY ){
-					var dx = ev.pageX - prevX;
-					var dy = ev.pageY - prevY;
-					if( Math.abs(dx) + Math.abs(dy) >3 ){	// 適当に溜めないとdx=0が頻発して問題
-						// TODO:ここで移動量を溜めているためか、パネルにカーソルが入ってhover状態に
-						// なってもポップアップしないことがしばしば。ゆっくり動かすとよくわかる…。
-						var destX = box.offsetLeft;
-						if( destX < ev.pageX ) destX += box.offsetWidth;
-						var destY = (dx==0)?-999:(destX - ev.pageX) * dy / dx + ev.pageY;
-						if( dx==0							// 垂直移動
-							|| (dx>0 && destX < ev.pageX)	// 逆方向
-							|| (dx<0 && ev.pageX < destX)	// 逆方向
-							|| destY < box.offsetTop		// box範囲外方向
-							|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
+				var dx = ev.pageX - prevX;
+				var dy = ev.pageY - prevY;
+				if( Math.abs(dx) + Math.abs(dy) >3 ){	// 適当に溜めないとdx=0が頻発して問題
+					var destX = box.offsetLeft;
+					if( destX < ev.pageX ) destX += box.offsetWidth;
+					var destY = (dx==0)?-999:(destX - ev.pageX) * dy / dx + ev.pageY;
+					if( dx==0							// 垂直移動
+						|| (dx>0 && destX < ev.pageX)	// 逆方向
+						|| (dx<0 && ev.pageX < destX)	// 逆方向
+						|| destY < box.offsetTop		// box範囲外方向
+						|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
+					){
+						if( !elementOnXY( box, ev.pageX, ev.pageY ) &&
+							!elementOnXY( box.parentNode, ev.pageX, ev.pageY )
 						){
-							var panel = box.parentNode;
-							if( !elementOnXY( box.parentNode, ev.pageX, ev.pageY ) ){
-								panelPopper(false);
-								if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
-									panelPopper( nextPanel, ev.pageX, ev.pageY );
-								}
+							panelPopper(false);
+							if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
+								panelPopper( nextPanel, ev.pageX, ev.pageY );
 							}
 						}
-						prevX = ev.pageX;
-						prevY = ev.pageY;
 					}
+					prevX = ev.pageX;
+					prevY = ev.pageY;
 				}
 			});
 		}
