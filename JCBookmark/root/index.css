@@ -208,8 +208,8 @@
 	background:#337;
 }
 #contextmenu a:active {
-	position:relative;
-	left:1px; top:1px;
+	color:#fff;
+	background:#449;
 }
 #contextmenu hr {
 	margin:3px 0 3px 0;

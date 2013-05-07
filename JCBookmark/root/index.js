@@ -1368,7 +1368,7 @@ $(document).on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
 		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide().find('a').off();
+			$('#contextmenu').hide();
 		}
 	}
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。

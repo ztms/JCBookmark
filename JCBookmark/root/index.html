@@ -5,22 +5,22 @@
 <title>ブックマーク</title>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/jquery-ui.min.js"></script>
-<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/themes/base/jquery-ui.css">
-<link rel="stylesheet" href="index.css">
-<link rel="stylesheet" id=colorcss>
+<link rel=stylesheet href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.18/themes/base/jquery-ui.css">
+<link rel=stylesheet href=index.css>
+<link rel=stylesheet id=colorcss>
 </head>
 <body style="visibility:hidden;">
 <div id=wall></div>
-<div id=progress><img src="progress.gif"></div>
+<div id=progress><img src=progress.gif></div>
 <div id=modified>★ 変更を保存するにはここをクリックしてください ★</div>
 <div id=sidebar>
-  <img class=barico id=optionico src="option.png" title="パネル設定" tabindex=0>
-  <img class=barico id=filerico src="filer.png" title="ブックマークの整理" tabindex=0>
-  <img class=barico id=chromeico src="chrome.png" title="Google Chrome ブックマークのインポート" tabindex=0>
-  <img class=barico id=ieico src="ie.png" title="Internet Explorer お気に入りのインポート" tabindex=0>
-  <img class=barico id=firefoxico src="firefox.png" title="Firefox ブックマークのインポート" tabindex=0>
-  <img class=barico id=impexpico src="impexp.png" title="HTMLインポート・エクスポート" tabindex=0>
-  <img class=barico id=snapico src="camera.png" title="スナップショット" tabindex=0>
+  <img class=barico id=optionico src=option.png title="パネル設定" tabindex=0>
+  <img class=barico id=filerico src=filer.png title="ブックマークの整理" tabindex=0>
+  <img class=barico id=chromeico src=chrome.png title="Google Chrome ブックマークのインポート" tabindex=0>
+  <img class=barico id=ieico src=ie.png title="Internet Explorer お気に入りのインポート" tabindex=0>
+  <img class=barico id=firefoxico src=firefox.png title="Firefox ブックマークのインポート" tabindex=0>
+  <img class=barico id=impexpico src=impexp.png title="HTMLインポート・エクスポート" tabindex=0>
+  <img class=barico id=snapico src=camera.png title="スナップショット" tabindex=0>
   <br class=clear>
 </div>
 <div id=option>
@@ -32,8 +32,8 @@
   <tr>
     <th>色テーマ</th>
     <td>
-      <input type=radio name=colorcss value="white.css" id=white><label for=white>&nbsp;白&nbsp;</label>&nbsp;&nbsp;
-      <input type=radio name=colorcss value="black.css" id=black><label for=black>&nbsp;黒&nbsp;</label>
+      <input type=radio name=colorcss value=white.css id=white><label for=white>&nbsp;白&nbsp;</label>&nbsp;&nbsp;
+      <input type=radio name=colorcss value=black.css id=black><label for=black>&nbsp;黒&nbsp;</label>
     </td>
   </tr>
   <tr>
@@ -70,7 +70,7 @@
 <div id=itemtext><textarea></textarea></div>
 <div id=impexp>
   ブックマーク形式HTMLファイル(NETSCAPE-Bookmark-file-1)からインポートします。ファイルを選択して、インポートをクリックしてください。<br>データ量が多いと時間がかかります。
-  <form target=uploader method=post action="import.html" enctype="multipart/form-data">
+  <form target=uploader method=post action=import.html enctype="multipart/form-data">
     <input type=file name=file size=50>
   </form>
   <a id=import>インポート</a><br>
@@ -81,17 +81,17 @@
 </div>
 <div id=snap>
   現在の保存済みブックマークのスナップショット（バックアップ）を作成します。作成後は下の一覧から復元できます。
-  <div id=shot><a>スナップショット作成</a><img src="wait.gif"></div>
+  <div id=shot><a>スナップショット作成</a><img src=wait.gif></div>
   作成済みスナップショット一覧
   <div id=shotbox>
     <div id=shothead><span class=date>日 時</span><span class=memo>メ モ</span></div>
     <div id=shots></div>
   </div>
   <div id=shotitem>
-    <div>選択したスナップショットを</div> <a id=shotview>画面上に復元する</a><img src="wait.gif"> <a id=shotdel>ディスクから消去</a><img src="wait.gif">
+    <div>選択したスナップショットを</div> <a id=shotview>画面上に復元する</a><img src=wait.gif> <a id=shotdel>ディスクから消去</a><img src=wait.gif>
   </div>
 </div>
 <div id=dialog></div>
-<script src="index.js"></script>
+<script src=index.js></script>
 </body>
 </html>

@@ -87,7 +87,7 @@ body {
 }
 .item:hover {
 	color:#600020;
-	border:2px solid #dcb9b9;
+	border-color:#dcb9b9;
 	background:#f7f0f5;
 	background:linear-gradient(#fffafc,#f3e5ec);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fffafc,endcolorstr=#f3e5ec)";
@@ -95,7 +95,7 @@ body {
 .item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#a00020;
-	border:2px solid #eca9a9;
+	border-color:#eca9a9;
 	background:#e7e0e5;
 	background:linear-gradient(#fff8fa,#f3e0e7);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fff8fa,endcolorstr=#ff3e0e7)";

@@ -83,19 +83,19 @@ body {
 }
 /* ブックマークアイテム */
 .item {
-	color:#ec2;
+	color:#ec4;
 }
 .item:hover {
-	color:#9fffdf;
-	border:2px solid #366;
+	color:#afd;
+	border-color:#366;
 	background:#010705;
 	background:linear-gradient(#17271f,#011a05);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#17271f,endcolorstr=#011a05)";
 }
 .item:active {
 	/* Firefox19,20で効かないなぜ */
-	color:#8fffcf;
-	border:2px solid #588;
+	color:#9fd;
+	border-color:#477;
 	background:#111715;
 	background:linear-gradient(#27372f,#112a15);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#27372f,endcolorstr=#112a15)";
