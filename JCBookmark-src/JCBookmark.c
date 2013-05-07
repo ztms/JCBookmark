@@ -95,7 +95,6 @@ LONG		ListBoxWidth		= 0;				// リストボックス横幅
 #define		TIMER1000			1					// 1秒間隔タイマーID
 #define		TIMER_BALOON		2					// タスクトレイバルーン消去タイマーID
 HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
-HANDLE		Heap				= NULL;				// GetProcessHeap()
 
 // WM_COMMANDのLOWORD(wp)に入るID
 #define CMD_EXIT		1		// ポップアップメニュー終了
@@ -158,28 +157,28 @@ SIZE_T PF( void )
 }
 void* mymalloc( size_t size, UINT line )
 {
-	void* p = HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
+	void* p = malloc( size );
 	if( !mlog ) mlogopen();
 	if( mlog && p ) fprintf(mlog,"+%p:L%u:malloc(%u) (%ukb)\r\n",p,line,size,PF());
 	return p;
 }
 void myfree( void* p, UINT line )
 {
-	HeapFree( Heap, 0, p );
+	free( p );
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",p,line,PF());
 }
 char* mystrdup( LPCSTR str, UINT line )
 {
 	size_t size = strlen(str)+1;
-	char* p = (char*)mymalloc( size, line );
+	char* p = mymalloc( size, line );
 	memcpy( p, str, size );
 	return p;
 }
 WCHAR* mywcsdup( LPCWSTR wstr, UINT line )
 {
 	size_t size = (wcslen(wstr)+1)*sizeof(WCHAR);
-	WCHAR* p = (WCHAR*)mymalloc( size, line );
+	WCHAR* p = mymalloc( size, line );
 	memcpy( p, wstr, size );
 	return p;
 }
@@ -284,25 +283,6 @@ int myCloseSocket( SOCKET sock, UINT line )
 #define socket(a,b,c) mySocket(a,b,c,__LINE__)
 #define accept(a,b,c) myAccept(a,b,c,__LINE__)
 #define closesocket(a) myCloseSocket(a,__LINE__)
-#else // MEMLOG
-char* mystrdup( LPCSTR str )
-{
-	size_t size = strlen(str)+1;
-	char* p = (char*)HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
-	if( p ) memcpy( p, str, size );
-	return p;
-}
-WCHAR* mywcsdup( LPCWSTR wstr )
-{
-	size_t size = (wcslen(wstr)+1) *sizeof(WCHAR);
-	WCHAR* p = (WCHAR*)HeapAlloc( Heap, HEAP_ZERO_MEMORY, size );
-	if( p ) memcpy( p, wstr, size );
-	return p;
-}
-#define malloc(a) HeapAlloc(Heap,HEAP_ZERO_MEMORY,a)
-#define strdup(a) mystrdup(a)
-#define wcsdup(a) mywcsdup(a)
-#define free(a) HeapFree(Heap,0,a)
 #endif // MEMLOG
 
 
@@ -412,8 +392,8 @@ CRITICAL_SECTION	LogCacheCS	={0};		// スレッド間排他
 void LogCacheAdd( const WCHAR* text )
 {
 	size_t len = wcslen( text );
-	size_t bytes = len *sizeof(WCHAR);
-	LogCache* lc = (LogCache*)malloc( sizeof(LogCache) +bytes );
+	size_t bytes = len * sizeof(WCHAR);
+	LogCache* lc = malloc( sizeof(LogCache) + bytes );
 	if( lc ){
 		memcpy( lc->text, text, bytes );
 		lc->text[len] = L'\0';
@@ -473,7 +453,7 @@ UCHAR* WideCharToUTF8alloc( const WCHAR* wstr )
 {
 	if( wstr ){
 		int bytes = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
-		UCHAR* utf8 = (UCHAR*)malloc(bytes);
+		UCHAR* utf8 = malloc( bytes );
 		if( utf8 ){
 			if( WideCharToMultiByte(CP_UTF8, 0, wstr, -1, utf8, bytes, NULL, NULL) !=0 ){
 				// 成功
@@ -490,7 +470,7 @@ WCHAR* MultiByteToWideCharAlloc( const UCHAR* utf8, UINT cp )
 {
 	if( utf8 ){
 		int count = MultiByteToWideChar( cp, 0, utf8, -1, NULL, 0 );
-		WCHAR* wstr = (WCHAR*)malloc( (count+1) *sizeof(WCHAR) );
+		WCHAR* wstr = malloc( (count+1) * sizeof(WCHAR) );
 		if( wstr ){
 			if( MultiByteToWideChar( cp, 0, utf8, -1, wstr, count ) !=0 ){
 				// 成功
@@ -512,7 +492,7 @@ UCHAR* strjoin( const UCHAR* s1, const UCHAR* s2, const UCHAR* s3 )
 		size_t len1 = strlen( s1 );
 		size_t len2 = strlen( s2 );
 		size_t len3 = s3? strlen( s3 ) : 0;
-		UCHAR* ss = (UCHAR*)malloc( len1 +len2 +len3 +1 );
+		UCHAR* ss = malloc( len1 +len2 +len3 +1 );
 		if( ss ){
 			memcpy( ss, s1, len1 );
 			memcpy( ss +len1, s2, len2 );
@@ -532,7 +512,7 @@ WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2, const WCHAR* s3, const WCHAR* 
 		size_t len3 = s3? wcslen( s3 ) : 0;
 		size_t len4 = s4? wcslen( s4 ) : 0;
 		size_t len5 = s5? wcslen( s5 ) : 0;
-		WCHAR* ss = (WCHAR*)malloc( (len1 +len2 +len3 +len4 +len5 +1) *sizeof(WCHAR) );
+		WCHAR* ss = malloc( (len1 +len2 +len3 +len4 +len5 +1) *sizeof(WCHAR) );
 		if( ss ){
 			memcpy( ss, s1, len1 *sizeof(WCHAR) );
 			memcpy( ss +len1, s2, len2 *sizeof(WCHAR) );
@@ -551,7 +531,7 @@ WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2, const WCHAR* s3, const WCHAR* 
 UCHAR* strndup( const UCHAR* src, int n )
 {
 	if( src && n>0 ){
-		UCHAR* dup = (UCHAR*)malloc( n + 1 );
+		UCHAR* dup = malloc( n + 1 );
 		if( dup ){
 			memcpy( dup, src, n );
 			dup[n] = '\0';
@@ -566,7 +546,7 @@ UCHAR* strndup( const UCHAR* src, int n )
 WCHAR* wcsndup( const WCHAR* src, int n )
 {
 	if( src && n>0 ){
-		WCHAR* dup = (WCHAR*)malloc( (n + 1) * sizeof(WCHAR) );
+		WCHAR* dup = malloc( (n + 1) * sizeof(WCHAR) );
 		if( dup ){
 			memcpy( dup, src, n * sizeof(WCHAR) );
 			dup[n] = L'\0';
@@ -582,7 +562,7 @@ WCHAR* wcsndup( const WCHAR* src, int n )
 UCHAR* strndupJSON( const UCHAR* src, int n )
 {
 	if( src && n>0 ){
-		UCHAR* dup = (UCHAR*)malloc( n * 2 + 1 );
+		UCHAR* dup = malloc( n * 2 + 1 );
 		if( dup ){
 			UCHAR* dst = dup;
 			int i;
@@ -688,7 +668,7 @@ WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
 		// データバイト数取得(終端NULL含む)
 		if( RegQueryValueExW( key, name, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
 			// バッファ確保
-			value = (WCHAR*)malloc( bytes );
+			value = malloc( bytes );
 			if( value ){
 				DWORD realbytes = bytes;
 				// データ取得
@@ -741,7 +721,7 @@ WCHAR* RegAppPathAlloc( HKEY topkey, WCHAR* subkey )
 // 設定ファイル(my.ini)パス取得
 WCHAR* ConfigFilePath( void )
 {
-	WCHAR* path = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+	WCHAR* path = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 	if( path ){
 		WCHAR* p;
 		GetModuleFileNameW( NULL, path, MAX_PATH );
@@ -758,7 +738,7 @@ WCHAR* ConfigFilePath( void )
 // ブラウザ情報をレジストリや設定ファイルからまとめて取得
 BrowserInfo* BrowserInfoAlloc( void )
 {
-	BrowserInfo* br = (BrowserInfo*)malloc( sizeof(BrowserInfo)*BI_COUNT );
+	BrowserInfo* br = malloc( sizeof(BrowserInfo)*BI_COUNT );
 	if( br ){
 		WCHAR* ini;
 		memset( br, 0, sizeof(BrowserInfo)*BI_COUNT );
@@ -939,7 +919,7 @@ BOOL SetCurrentDirectorySelf( void )
 WCHAR* ExpandEnvironmentStringsAlloc( const WCHAR* path )
 {
 	DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
-	WCHAR* path2 = (WCHAR*)malloc( length * sizeof(WCHAR) );
+	WCHAR* path2 = malloc( length * sizeof(WCHAR) );
 	if( path2 ){
 		ExpandEnvironmentStringsW( path, path2, length );
 	}
@@ -960,7 +940,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 				GetCurrentDirectoryW( sizeof(dir)/sizeof(WCHAR), dir );
 				if( SetCurrentDirectorySelf() ){
 					// 自身のディレクトリおよび環境変数PATHから検索
-					realpath = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+					realpath = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 					if( realpath ){
 						*realpath = L'\0';
 						if( !ext ) FindExecutableW( path2, NULL, realpath );
@@ -1029,7 +1009,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 					if( !realpath ) LogW(L"L%u:wcsdupエラー",__LINE__);
 				}
 				else{
-					realpath = (WCHAR*)malloc( (MAX_PATH+1)*sizeof(WCHAR) );
+					realpath = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 					if( realpath ){
 						*realpath = L'\0';
 						FindExecutableW( path2, NULL, realpath );
@@ -1209,8 +1189,9 @@ BOOL ClientSendBytes( TClient* cp, size_t bytes )
 		UCHAR* newbuf;
 		size_t newsize = rsp->bufsize * 2;
 		while( need > newsize ){ newsize *= 2; }
-		newbuf = (UCHAR*)malloc( newsize );
+		newbuf = malloc( newsize );
 		if( newbuf ){
+			memset( newbuf, 0, newsize );
 			memcpy( newbuf, rsp->buf, rsp->bytes );
 			free( rsp->buf );
 			rsp->buf = newbuf;
@@ -1266,7 +1247,7 @@ void ClientSendf( TClient* cp, UCHAR* fmt, ... )
 	else{
 		// バッファ不足ヒープ使う
 		size_t bufsiz = 512;
-		UCHAR* buf = (UCHAR*)malloc( bufsiz );
+		UCHAR* buf = malloc( bufsiz );
 		if( buf ){
 		retry:
 			buf[bufsiz-1]='\0';
@@ -1283,7 +1264,7 @@ void ClientSendf( TClient* cp, UCHAR* fmt, ... )
 			else{
 				free( buf );
 				bufsiz += bufsiz;	// 2倍
-				buf = (UCHAR*)malloc( bufsiz );
+				buf = malloc( bufsiz );
 				if( buf ){
 					goto retry;
 				}
@@ -1372,7 +1353,7 @@ WCHAR* FavoritesPathAlloc( void )
 		DWORD type, bytes;
 		// データサイズ取得(終端NULL含む)
 		if( RegQueryValueExW( key, name, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
-			WCHAR* value = (WCHAR*)malloc( bytes );
+			WCHAR* value = malloc( bytes );
 			if( value ){
 				// データ取得
 				if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)value, &bytes )==ERROR_SUCCESS ){
@@ -1432,9 +1413,10 @@ NodeList* NodeCreate( const WCHAR* name, UCHAR* url, UCHAR* icon )
 		iconsize = strlen(icon) + 1;
 		bytes += iconsize;
 	}
-	node = (NodeList*)malloc( bytes );
+	node = malloc( bytes );
 	if( node ){
 		BYTE* p = (BYTE*)(node+1);
+		memset( node, 0, bytes );
 		node->sortIndex = UINT_MAX;
 		if( name ){
 			memcpy(p,name,namesize);
@@ -1583,7 +1565,7 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 			DWORD type, bytes;
 			// データサイズ取得(終端NULL含む)
 			if( RegQueryValueExW( key, name, NULL, &type, NULL, &bytes )==ERROR_SUCCESS ){
-				RegFavoriteOrder* order = (RegFavoriteOrder*)malloc( bytes );
+				RegFavoriteOrder* order = malloc( bytes );
 				if( order ){
 					BYTE* limit = (BYTE*)order + bytes;
 					// データ取得
@@ -2127,11 +2109,11 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	if( !url || !*url ){
 		LogW(L"URLが空です"); return NULL;
 	}
-	rsp = (HTTPGet*)malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+	rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 	if( !rsp ){
 		LogW(L"L%u:mallocエラー",__LINE__); return NULL;
 	}
-	memset( rsp, 0, sizeof(HTTPGet) );
+	memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 	rsp->bufsize = HTTPGET_BUFSIZE;
 	if( strnicmp(url,"http://",7)==0 ){
 		url += 7;
@@ -2301,9 +2283,10 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 								// バッファいっぱい
 								if( rsp->bytes >= rsp->bufsize ){
 									size_t newsize = rsp->bufsize * 2;
-									HTTPGet* newrsp = (HTTPGet*)malloc( sizeof(HTTPGet) + newsize );
+									HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
 									if( newrsp ){
 										int distance = (BYTE*)newrsp - (BYTE*)rsp;
+										memset( newrsp, 0, sizeof(HTTPGet) + newsize );
 										memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
 										free( rsp );
 										rsp = newrsp;
@@ -2436,10 +2419,11 @@ unsigned __stdcall analyze( void* p )
 				}
 				if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
 					int tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
-					BYTE* tmp = (BYTE*)malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
+					BYTE* tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
 					if( tmp ){
 						DWORD mode=0;
 						HRESULT res;
+						memset( tmp, 0, tmpbytes );
 						// まずSJIS(932)に変換
 						res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
 						if( res==S_OK ){
@@ -3078,7 +3062,10 @@ int DIAMONDAPI fciFilePlaced( PCCAB pccab, char* pszFile, long cbFile, BOOL fCon
 // http://msdn.microsoft.com/en-us/library/ff797931%28v=vs.85%29.aspx
 void* DIAMONDAPI cabAlloc( ULONG cb )
 {
-	return malloc( cb );
+	void* p = malloc( cb );
+	if( p ) memset( p, 0, cb );
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,cb);
+	return p;
 }
 // FNFCIFREE macro
 // http://msdn.microsoft.com/en-us/library/ff797935%28v=vs.85%29.aspx
@@ -3695,7 +3682,7 @@ UCHAR* file2memory( const WCHAR* path, BOOL fOpenErrLog )
 		);
 		if( hFile != INVALID_HANDLE_VALUE ){
 			DWORD size = GetFileSize( hFile,NULL );
-			memory = (UCHAR*)malloc( size +1 );
+			memory = malloc( size +1 );
 			if( memory ){
 				DWORD bRead=0;
 				if( ReadFile( hFile, memory, size, &bRead, NULL ) && bRead==size ){
@@ -3989,11 +3976,15 @@ void SocketAccept( SOCKET sock )
 			TClient* cp = ClientOfSocket(INVALID_SOCKET);
 			if( cp ){
 				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
-				#define CLIENT_BUFSIZE 512	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
-				cp->req.buf = (UCHAR*)malloc( CLIENT_BUFSIZE );
-				cp->rsp.buf = (UCHAR*)malloc( CLIENT_BUFSIZE );
+				#define CLIENT_REQ_BUFSIZE 1024	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
+				#define CLIENT_RSP_BUFSIZE 512	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
+				cp->req.buf = malloc( CLIENT_REQ_BUFSIZE );
+				cp->rsp.buf = malloc( CLIENT_RSP_BUFSIZE );
 				if( cp->req.buf && cp->rsp.buf ){
-					cp->req.bufsize = cp->rsp.bufsize = CLIENT_BUFSIZE;
+					memset( cp->req.buf, 0, CLIENT_REQ_BUFSIZE );
+					memset( cp->rsp.buf, 0, CLIENT_RSP_BUFSIZE );
+					cp->req.bufsize = CLIENT_REQ_BUFSIZE;
+					cp->rsp.bufsize = CLIENT_RSP_BUFSIZE;
 					cp->sock = sock_new;
 					cp->status = CLIENT_ACCEPT_OK;
 					success = TRUE;
@@ -4718,9 +4709,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			else if( req->bytes >= req->bufsize-1 ){
 				// ヘッダ完了せずバッファいっぱい
 				size_t newsize = req->bufsize * 2;
-				UCHAR* newbuf = (UCHAR*)malloc( newsize );
+				UCHAR* newbuf = malloc( newsize );
 				if( newbuf ){
 					int distance = newbuf - req->buf;
+					memset( newbuf, 0, newsize );
 					memcpy( newbuf, req->buf, req->bufsize );
 					if( req->method ) req->method += distance;
 					if( req->path ) req->path += distance;
@@ -4754,12 +4746,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 
 		default:
 			{
-				char* buf = (char*)malloc(1024*8);
+				#define BUFBYTES (1024*8)
+				char* buf = malloc( BUFBYTES );
 				if( buf ){
-					LogW(L"[%u]不正ステータス受信データ破棄(%u)",Num(cp),recv(sock,buf,1024*8,0));
+					memset( buf, 0, BUFBYTES );
+					LogW(L"[%u]不正ステータス受信データ破棄(%u)",Num(cp),recv(sock,buf,BUFBYTES,0));
 					free( buf );
 				}
-				else LogW(L"L%u:malloc(%u)エラー",__LINE__,1024*8);
+				else LogW(L"L%u:malloc(%u)エラー",__LINE__,BUFBYTES);
 			}
 		}
 	}
@@ -5002,7 +4996,7 @@ retry:
 WCHAR* WindowTextAllocW( HWND hwnd )
 {
 	int len = GetWindowTextLengthW( hwnd ) + 1;
-	WCHAR* text = (WCHAR*)malloc( len * sizeof(WCHAR) );
+	WCHAR* text = malloc( len * sizeof(WCHAR) );
 	if( text ) GetWindowTextW( hwnd, text, len );
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,len*sizeof(WCHAR));
 	return text;
@@ -5424,7 +5418,7 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 #define BUTTON_WIDTH	36		// ボタン縦横ピクセル
 BrowserIcon* BrowserIconCreate( void )
 {
-	BrowserIcon* ico = (BrowserIcon*)malloc( sizeof(BrowserIcon)*BI_COUNT );
+	BrowserIcon* ico = malloc( sizeof(BrowserIcon)*BI_COUNT );
 	if( ico ){
 		BrowserInfo* br;
 		memset( ico, 0, sizeof(BrowserIcon)*BI_COUNT );
@@ -5478,13 +5472,14 @@ void BrowserIconClick( UINT ix )
 			WCHAR* exe = myPathResolve( br[ix].exe );
 			if( exe ){
 				size_t cmdlen = wcslen(exe) + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
-				WCHAR* cmd = (WCHAR*)malloc( cmdlen * sizeof(WCHAR) );
+				WCHAR* cmd = malloc( cmdlen * sizeof(WCHAR) );
 				WCHAR* dir = wcsdup( exe );
 				if( cmd && dir ){
 					STARTUPINFOW si;
 					PROCESS_INFORMATION pi;
 					DWORD err=0;
 					WCHAR* p;
+					memset( cmd, 0, cmdlen * sizeof(WCHAR) );
 					memset( &si, 0, sizeof(si) );
 					memset( &pi, 0, sizeof(pi) );
 					si.cb = sizeof(si);
@@ -5679,15 +5674,6 @@ void MainFormTimer1000( void )
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - http://localhost:%s/%s",APPNAME,wListenPort,mem);
 
 		SetWindowTextW( MainForm, text );
-	}
-	// TODO:なぜか起動直後は3.5MBくらいの仮想メモリ使用量だが、使っていると10MBくらいになり
-	// ログ消去すると7-8MBにはなるが、起動直後の状態には戻らないなんで？？増え続けるわけでは
-	// なく7-8MBで落ち着くのでリークしてるわけではないと思うんだが…。起動直後のメモリ使用量
-	// に戻す術はないのか？HeapCompact()実行してみたけど効果なさそう。
-	{
-		//UINT i;
-		//for( i=0; i<CLIENT_MAX; i++ ) if( Client[i].sock !=INVALID_SOCKET ) break;
-		//if( i>=CLIENT_MAX ) HeapCompact( Heap, 0 );
 	}
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
@@ -5987,7 +5973,6 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
 	InitCommonControls();
-	Heap = GetProcessHeap();
 	// comctl32.dllバージョン確認、TOOLINFOW構造体サイズ決定
 	{
 		// ツールチップがぜんぜん動かないので調べた結果、ツールチップ表示で使うTOOLINFOW構造体は
@@ -6033,7 +6018,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		size_t length = 32;
 		WCHAR* wpath = NULL;
 		while( !wpath ){
-			wpath = (WCHAR*)malloc( length *sizeof(WCHAR) );
+			wpath = malloc( length * sizeof(WCHAR) );
 			if( wpath ){
 				DWORD len = GetModuleFileNameW( NULL, wpath, length );
 				if( len && len < length-1 ){
