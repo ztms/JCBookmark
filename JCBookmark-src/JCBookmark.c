@@ -1257,7 +1257,7 @@ void ClientSendf( TClient* cp, UCHAR* fmt, ... )
 			va_end( arg );
 
 			if( buf[bufsiz-1]=='\0' ){
-				LogW(L"L%u:スタック不足ヒープ確保%ubytes",__LINE__,bufsiz);
+				LogW(L"[%u]送信一時バッファ確保%ubytes",Num(cp),bufsiz);
 				ClientSends( cp, buf );
 				free( buf );
 			}
@@ -3976,15 +3976,13 @@ void SocketAccept( SOCKET sock )
 			TClient* cp = ClientOfSocket(INVALID_SOCKET);
 			if( cp ){
 				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
-				#define CLIENT_REQ_BUFSIZE 1024	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
-				#define CLIENT_RSP_BUFSIZE 512	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
-				cp->req.buf = malloc( CLIENT_REQ_BUFSIZE );
-				cp->rsp.buf = malloc( CLIENT_RSP_BUFSIZE );
+				#define CLIENT_BUFSIZE 1024	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
+				cp->req.buf = malloc( CLIENT_BUFSIZE );
+				cp->rsp.buf = malloc( CLIENT_BUFSIZE );
 				if( cp->req.buf && cp->rsp.buf ){
-					memset( cp->req.buf, 0, CLIENT_REQ_BUFSIZE );
-					memset( cp->rsp.buf, 0, CLIENT_RSP_BUFSIZE );
-					cp->req.bufsize = CLIENT_REQ_BUFSIZE;
-					cp->rsp.bufsize = CLIENT_RSP_BUFSIZE;
+					memset( cp->req.buf, 0, CLIENT_BUFSIZE );
+					memset( cp->rsp.buf, 0, CLIENT_BUFSIZE );
+					cp->req.bufsize = cp->rsp.bufsize = CLIENT_BUFSIZE;
 					cp->sock = sock_new;
 					cp->status = CLIENT_ACCEPT_OK;
 					success = TRUE;
