@@ -155,54 +155,54 @@ SIZE_T PF( void )
 	}
 	return 0;
 }
-void* mymalloc( size_t size, UINT line )
+void* malloc_( size_t size, UINT line )
 {
 	void* p = malloc( size );
 	if( !mlog ) mlogopen();
 	if( mlog && p ) fprintf(mlog,"+%p:L%u:malloc(%u) (%ukb)\r\n",p,line,size,PF());
 	return p;
 }
-void myfree( void* p, UINT line )
+void free_( void* p, UINT line )
 {
 	free( p );
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",p,line,PF());
 }
-char* mystrdup( LPCSTR str, UINT line )
+char* strdup_( LPCSTR str, UINT line )
 {
 	size_t size = strlen(str)+1;
-	char* p = mymalloc( size, line );
-	memcpy( p, str, size );
+	char* p = malloc_( size, line );
+	if( p ) memcpy( p, str, size );
 	return p;
 }
-WCHAR* mywcsdup( LPCWSTR wstr, UINT line )
+WCHAR* wcsdup_( LPCWSTR wstr, UINT line )
 {
 	size_t size = (wcslen(wstr)+1)*sizeof(WCHAR);
-	WCHAR* p = mymalloc( size, line );
-	memcpy( p, wstr, size );
+	WCHAR* p = malloc_( size, line );
+	if( p ) memcpy( p, wstr, size );
 	return p;
 }
-FILE* myfopen( LPCSTR path, LPCSTR mode, UINT line )
+FILE* fopen_( LPCSTR path, LPCSTR mode, UINT line )
 {
 	FILE* fp = fopen( path, mode );
 	if( !mlog ) mlogopen();
 	if( mlog && fp ) fprintf(mlog,"+%p:L%u:fopen(%s) (%ukb)\r\n",fp,line,path,PF());
 	return fp;
 }
-FILE* mywfopen( LPCWSTR path, const WCHAR* mode, UINT line )
+FILE* wfopen_( LPCWSTR path, const WCHAR* mode, UINT line )
 {
 	FILE* fp = _wfopen( path, mode );
 	if( !mlog ) mlogopen();
 	if( mlog && fp ) fprintf(mlog,"+%p:L%u:_wfopen(?) (%ukb)\r\n",fp,line,PF());
 	return fp;
 }
-int myfclose( FILE* fp, UINT line )
+int fclose_( FILE* fp, UINT line )
 {
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",fp,line,PF());
 	return fclose( fp );
 }
-HANDLE myCreateFileW( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, UINT line )
+HANDLE CreateFileW_( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, UINT line )
 {
 	HANDLE handle = CreateFileW( path, access, mode, sec, disp, attr, templete );
 	if( !mlog ) mlogopen();
@@ -210,13 +210,13 @@ HANDLE myCreateFileW( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBU
 		fprintf(mlog,"+%p:L%u:CreateFileW(?) (%ukb)\r\n",handle,line,PF());
 	return handle;
 }
-BOOL myCloseHandle( HANDLE handle, UINT line )
+BOOL CloseHandle_( HANDLE handle, UINT line )
 {
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",handle,line,PF());
 	return CloseHandle( handle );
 }
-UINT myExtractIconExW( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT n, UINT line )
+UINT ExtractIconExW_( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT n, UINT line )
 {
 	UINT ret = ExtractIconExW( path, index, iconL, iconS, n );
 	if( !mlog ) mlogopen();
@@ -226,14 +226,14 @@ UINT myExtractIconExW( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT
 	}
 	return ret;
 }
-HICON myExtractAssociatedIconW( HINSTANCE hinst, LPWSTR path, LPWORD index, UINT line )
+HICON ExtractAssociatedIconW_( HINSTANCE hinst, LPWSTR path, LPWORD index, UINT line )
 {
 	HICON icon = ExtractAssociatedIconW( hinst, path, index );
 	if( !mlog ) mlogopen();
 	if( mlog && icon ) fprintf(mlog,"+%p:L%u:ExtractAssociatedIconW(?) (%ukb)\r\n",icon,line,PF());
 	return icon;
 }
-DWORD_PTR mySHGetFileInfoW( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byte, UINT flag, UINT line )
+DWORD_PTR SHGetFileInfoW_( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byte, UINT flag, UINT line )
 {
 	DWORD_PTR ret = SHGetFileInfoW( path, attr, info, byte, flag );
 	if( !mlog ) mlogopen();
@@ -241,48 +241,48 @@ DWORD_PTR mySHGetFileInfoW( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT by
 		fprintf(mlog,"+%p:L%u:SHGetFileInfoW(?) (%ukb)\r\n",info->hIcon,line,PF());
 	return ret;
 }
-BOOL myDestroyIcon( HICON icon, UINT line )
+BOOL DestroyIcon_( HICON icon, UINT line )
 {
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",icon,line,PF());
 	return DestroyIcon( icon );
 }
-SOCKET WSAAPI mySocket( int af, int type, int proto, UINT line )
+SOCKET WSAAPI socket_( int af, int type, int proto, UINT line )
 {
 	SOCKET sock = socket( af, type, proto );
 	if( !mlog ) mlogopen();
 	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:socket() (%ukb)\r\n",sock,line,PF());
 	return sock;
 }
-SOCKET myAccept( SOCKET lsock, struct sockaddr* addr, int* addrlen, UINT line )
+SOCKET accept_( SOCKET lsock, struct sockaddr* addr, int* addrlen, UINT line )
 {
 	SOCKET sock = accept( lsock, addr, addrlen );
 	if( !mlog ) mlogopen();
 	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:accept() (%ukb)\r\n",sock,line,PF());
 	return sock;
 }
-int myCloseSocket( SOCKET sock, UINT line )
+int closesocket_( SOCKET sock, UINT line )
 {
 	if( !mlog ) mlogopen();
 	if( mlog ) fprintf(mlog,"-SOCK%u:L%u (%ukb)\r\n",sock,line,PF());
 	return closesocket( sock );
 }
-#define malloc(a) mymalloc(a,__LINE__)
-#define strdup(a) mystrdup(a,__LINE__)
-#define wcsdup(a) mywcsdup(a,__LINE__)
-#define free(a) myfree(a,__LINE__)
-#define fopen(a,b) myfopen(a,b,__LINE__)
-#define _wfopen(a,b) mywfopen(a,b,__LINE__)
-#define fclose(a) myfclose(a,__LINE__)
-#define CreateFileW(a,b,c,d,e,f,g) myCreateFileW(a,b,c,d,e,f,g,__LINE__)
-#define CloseHandle(a) myCloseHandle(a,__LINE__)
-#define ExtractIconExW(a,b,c,d,e) myExtractIconExW(a,b,c,d,e,__LINE__)
-#define ExtractAssociatedIconW(a,b,c) myExtractAssociatedIconW(a,b,c,__LINE__)
-#define SHGetFileInfoW(a,b,c,d,e) mySHGetFileInfoW(a,b,c,d,e,__LINE__)
-#define DestroyIcon(a) myDestroyIcon(a,__LINE__)
-#define socket(a,b,c) mySocket(a,b,c,__LINE__)
-#define accept(a,b,c) myAccept(a,b,c,__LINE__)
-#define closesocket(a) myCloseSocket(a,__LINE__)
+#define malloc(a)						malloc_(a,__LINE__)
+#define strdup(a)						strdup_(a,__LINE__)
+#define wcsdup(a)						wcsdup_(a,__LINE__)
+#define free(a)							free_(a,__LINE__)
+#define fopen(a,b)						fopen_(a,b,__LINE__)
+#define _wfopen(a,b)					wfopen_(a,b,__LINE__)
+#define fclose(a)						fclose_(a,__LINE__)
+#define CreateFileW(a,b,c,d,e,f,g)		CreateFileW_(a,b,c,d,e,f,g,__LINE__)
+#define CloseHandle(a)					CloseHandle_(a,__LINE__)
+#define ExtractIconExW(a,b,c,d,e)		ExtractIconExW_(a,b,c,d,e,__LINE__)
+#define ExtractAssociatedIconW(a,b,c)	ExtractAssociatedIconW_(a,b,c,__LINE__)
+#define SHGetFileInfoW(a,b,c,d,e)		SHGetFileInfoW_(a,b,c,d,e,__LINE__)
+#define DestroyIcon(a)					DestroyIcon_(a,__LINE__)
+#define socket(a,b,c)					socket_(a,b,c,__LINE__)
+#define accept(a,b,c)					accept_(a,b,c,__LINE__)
+#define closesocket(a)					closesocket_(a,__LINE__)
 #endif // MEMLOG
 
 
