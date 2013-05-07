@@ -101,12 +101,12 @@ body {
 	background:#f0f2ff;
 }
 /* 選択行 */
-.select, .select:hover {
+#folders .select, #folders .select:hover,
+#items .select, #items .select:hover {
 	color:#fff;
 	background:#337;
 	font-weight:bold;
 }
-/* TODO:この#itemsを削除すると効かなくなる(選択行のフォント色)なんで？ */
 #items .select .url,
 #items .select .iconurl,
 #items .select .summary,
@@ -221,22 +221,19 @@ body {
 }
 #contextmenu a {
 	display:block;
-	color:#aaa;
+	color:#000;
 	padding:3px 0 3px 15px;
 	cursor:default;
 	font-size:13px;
 	font-family:"MS PGothic",sans-serif;
 }
-#contextmenu .enable {
-	color:#000;
-}
-#contextmenu .enable:hover {
+#contextmenu a:hover {
 	color:#fff;
 	background:#337;
 }
-#contextmenu .enable:active {
-	position:relative;
-	left:1px; top:1px;
+#contextmenu a:active {
+	color:#fff;
+	background:#449;
 }
 #contextmenu hr {
 	border-top:1px solid #999;
@@ -249,6 +246,29 @@ body {
 	line-height:1.5;
 	padding:20px;
 	white-space:normal;
+}
+/* タイトル/アイコン取得ダイアログ */
+#analybox {
+	width:100%;
+}
+#analybox th {
+	width:64px;
+	line-height:1;
+}
+#antitle {
+	border:1px solid #888;
+	padding:1px;
+	width:96%;
+	margin-left:5px;
+}
+#anicon {
+	border:0;
+	padding:1px;
+	width:91%;
+}
+#anmove {
+	text-align:center;
+	padding-top:40px;
 }
 /* jQuery UI Dialog */
 .ui-dialog {

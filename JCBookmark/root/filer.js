@@ -149,7 +149,7 @@ var tree = {
 		$.ajax({
 			dataType:'json'
 			,url	:tree.path
-			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
+			,error	:function(xhr){ Alert('データ取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
@@ -162,8 +162,8 @@ var tree = {
 			type	:'put'
 			,url	:tree.path
 			,data	:JSON.stringify( tree.root )
-			,error	:function(xhr,text){
-				Alert('保存できませんでした:'+text);
+			,error	:function(xhr){
+				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
 				if( arg.error ) arg.error();
 			}
 			,success:function(){
@@ -404,7 +404,7 @@ $(document).on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
 		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide().find('a').off();
+			$('#contextmenu').hide();
 		}
 		// inputタグはフォーカスするためtrue返す
 		if( $(ev.target).is('input, .barbtn') ){
@@ -492,7 +492,7 @@ $('#newfolder').click(function(){
 	// IE8はmousedown()でエラー発生する仕様なのが影響してか、
 	// mouseup()およびその先の処理も実行されないもよう。
 	// 仕方がないのでsetTimeoutを使う。
-	setTimeout(function(){ $item.mousedown(); }, 0 );
+	setTimeout(function(){ $item.mousedown(); },0);
 	setTimeout(function(){
 		$item.mouseup();
 		if( !name.length ){
@@ -501,7 +501,7 @@ $('#newfolder').click(function(){
 			// テキスト全選択
 			$('#editbox').select();
 		}
-	}, 1 );
+	},1);
 	$('#newname').val('');
 });
 $('#newname').keypress(function(ev){
@@ -522,7 +522,7 @@ $('#newitem').click(function(){
 	// IE8はmousedown()でエラー発生する仕様なのが影響してか、
 	// mouseup()およびその先の処理も実行されないもよう。
 	// 仕方がないのでsetTimeoutを使う。
-	setTimeout(function(){ $item.mousedown(); }, 0 );
+	setTimeout(function(){ $item.mousedown(); },0);
 	setTimeout(function(){
 		$item.mouseup();
 		if( url.length ){
@@ -543,7 +543,7 @@ $('#newitem').click(function(){
 			// テキスト全選択
 			$('#editbox').select();
 		}
-	}, 1 );
+	},1);
 	$('#newurl').val('');
 });
 $('#newurl').keypress(function(ev){
@@ -801,6 +801,7 @@ function folderTree(){
 	})( tree.trash().child, 1 );
 	// #foldersの幅を設定する。
 	// しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる。
+	// TODO:初期状態で新規フォルダ作ると幅が足りない感じで表示崩れる。
 	var maxWidth = 0;
 	$folders.find('.title').each(function(){
 		var width = this.offsetLeft + ~~($(this).width() *1.3);
@@ -1313,39 +1314,122 @@ function itemContextMenu(ev){
 		item = item.parentNode;
 	}
 	var $menu = $('#contextmenu');
-	$menu.find('a').off();
+	var $box = $menu.children('div').empty();
 	// 開く
-	if( $(item).find('.summary').length ){
+	if( $(item).hasClass('folder') ){
 		// フォルダ
-		$menu.find('#itemopen').addClass('enable')
-		.text('フォルダを開く')
-		.on('click',function(){
+		$box.append($('<a>フォルダを開く</a><hr>').click(function(){
 			$menu.hide();
 			$(item).dblclick();
-		});
+		}));
 	}
 	else{
 		// ブックマーク
-		var url = $(item).find('.url').text();
-		if( url.length ){
-			$menu.find('#itemopen').addClass('enable')
-			.text('URLを開く')
-			.on('click',function(){
-				$menu.hide();
-				window.open( url );
+		$box.append($('<a>URLを開く</a><hr>').click(function(){
+			$menu.hide();
+			var url = $(item).find('.url').text();
+			if( url.length ) window.open( url );
+		}));
+		$box.append($('<a>タイトル/アイコンを取得</a><hr>').click(function(){
+			$menu.hide();
+			var $title = $('<input id=antitle>');
+			var $icon = $('<img src=wait.gif class=icon>');
+			var $iconurl = $('<input id=anicon readonly>');
+			$('#dialog').empty().append(
+				$('<table id=analybox></table>').append(
+					$('<tr><th>タイトル</th></tr>').append(
+						$('<td></td>').append( $title )
+					).append(
+						$('<th></th>').append(
+							$('<a>反映</a>').button().click(function(){
+								if( tree.nodeAttr( item.id.slice(4), 'title', $title.val() ) >1 )
+									$(item).find('.title').text( $title.val() );
+							})
+						)
+					)
+				).append(
+					$('<tr><th>アイコン</th></tr>').append(
+						$('<td></td>').append( $icon ).append( $iconurl )
+					).append(
+						$('<th></th>').append(
+							$('<a>反映</a>').button().click(function(){
+								if( tree.nodeAttr( item.id.slice(4), 'icon', $iconurl.val() ) >1 )
+									$(item).find('img').attr('src',$icon.attr('src')).end().find('.iconurl').text($iconurl.val());
+							})
+						)
+					)
+				).append(
+					$('<tr></tr>').append(
+						$('<td id=anmove colspan=3></td>').append(
+							$('<a title="前のアイテム">&nbsp;&nbsp;▲&nbsp;&nbsp;</a>').button().click(function(){
+								var $prev = $(item).prev();
+								while( $prev.hasClass('folder') ) $prev = $prev.prev();
+								if( $prev.hasClass('item') ){
+									item = $prev[0];
+									itemmove();
+								}
+							})
+						).append(
+							$('<a title="次のアイテム">&nbsp;&nbsp;▼&nbsp;&nbsp;</a>').button().click(function(){
+								var $next = $(item).next();
+								while( $next.hasClass('folder') ) $next = $next.next();
+								if( $next.hasClass('item') ){
+									item = $next[0];
+									itemmove();
+								}
+							})
+						)
+					)
+				)
+			).dialog({
+				title	:'タイトル/アイコンを取得'
+				,modal	:true
+				,width	:560
+				,height	:220
+				,close	:function(){ $(this).dialog('destroy'); }
 			});
-		}
-		else $menu.find('#itemopen').removeClass('enable');
+			analyze();
+			function analyze(){
+				var url = $(item).find('.url').text();
+				$.ajax({
+					url:':analyze?'+url.replace(/#!/g,'%23!')
+					,error:function(){
+						if( url==$(item).find('.url').text() ){
+							$title.val('');
+							$icon.attr('src','item.png');
+							$iconurl.val('');
+						}
+					}
+					,success:function(data){
+						if( url==$(item).find('.url').text() ){
+							$title.val( HTMLtext( data.title ||'' ) );
+							$icon.attr('src',data.icon ||'item.png');
+							$iconurl.val( data.icon ||'' );
+						}
+					}
+				});
+			}
+			function itemmove(){
+				setTimeout(function(){ $(item).mousedown(); },0);
+				setTimeout(function(){
+					$(item).mouseup();
+					$title.val('');
+					$icon.attr('src','wait.gif');
+					$iconurl.val('');
+					analyze(item);
+				},1);
+			}
+		}));
 	}
 	// 削除
-	$menu.find('#itemdelete').addClass('enable').on('click',function(){
+	$box.append($('<a>削除</a>').click(function(){
 		$menu.hide();
 		$('#delete').click();
-	});
+	}));
 	// 表示
 	$menu.css({
-		left: (($(window).width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-		,top: (($(window).height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+		left: (($(window).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
+		,top: (($(window).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
 	}).show();
 	return false;	// 既定右クリックメニュー出さない
 }
@@ -1456,7 +1540,7 @@ function edit( element ){
 									// TODO:CococはURLにアクセスせずに登録したいができない…
 									// →ファビコン無しは解析しないことにしてみる
 									var node = tree.node( nodeid );
-									if( node.title=='新規ブックマーク' /*|| !node.icon || !node.icon.length*/){
+									if( node.title=='新規ブックマーク' ){
 										$.get(':analyze?'+value.replace(/#!/g,'%23!'),function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLtext( data.title );
