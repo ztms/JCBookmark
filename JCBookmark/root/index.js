@@ -1607,7 +1607,7 @@ function setSortable(){
 	.disableSelection();
 	*/
 }
-// 閉パネル(アイテム)ポップアップ処理
+// 閉パネルのアイテムポップアップ処理
 var panelPopper = function(){
 	var $box = null;		// ポップアップ中のアイテムボックス
 	var nextPanel = null;	// 次のポップアップパネル
@@ -1663,9 +1663,9 @@ var panelPopper = function(){
 				}
 			})();
 			//};window.postMessage('*','*');
-			// カーソル移動方向と時間を加味してポップアップ消す
+			// カーソル移動方向と時間を監視
 			$(document).on('mousemove.itempop',function(ev){
-				// 範囲外で一定時間カーソルが止まっていたら消す
+				// 範囲外で一定時間カーソルが止まったら消す
 				clearTimeout( mouseTimer );
 				mouseTimer = setTimeout(function(){
 					if( $box ){
