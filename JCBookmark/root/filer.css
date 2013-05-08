@@ -262,9 +262,9 @@ body {
 	margin-left:5px;
 }
 #anicon {
-	border:0;
+	border:1px solid #ddd;
 	padding:1px;
-	width:91%;
+	width:90%;
 }
 #anmove {
 	text-align:center;
