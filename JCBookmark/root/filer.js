@@ -439,11 +439,91 @@ if( IE && IE<9 ){
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
 
+// フォルダツリー生成
+// folderTree({
+//   click0		: true/false 最初のフォルダをクリックするかどうか
+//   clickID	: クリックするフォルダノードID文字列
+//   clickAfter	: クリック完了後に実行するfunction
+// });
+// TODO:フォルダの左側にプラスマイナスボタンほしい
+// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
+// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
+var folderTree = function(){
+	var timer = null;	// setTimeoutID
+	return function( opt ){
+		clearTimeout( timer ); // 古いのキャンセル
+		var $folders = $('#folders').empty();
+		var $folder = function(){
+			var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
+					.on('mouseleave',itemMouseLeave);
+			return function( id, title, icon, depth ){
+				var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
+				$f.find('img').attr('src',icon);
+				$f.find('span').text( title );
+				return $f;
+			};
+		}();
+		// setTimeoutで１ノードずつDOM生成するためまずフォルダ情報の配列をつくり、
+		var folderList = [];
+		(function( node, depth ){
+			folderList.push({ id:node.id, title:node.title, icon:'folder.png', depth:depth });
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( node.child[i].child )
+					arguments.callee( node.child[i], depth +1 );
+			}
+		})( tree.top(), 0 );
+		folderList.push({ id:tree.trash().id, title:tree.trash().title, icon:'trash.png', depth:0 });
+		(function( child, depth ){
+			for( var i=0, n=child.length; i<n; i++ ){
+				if( child[i].child ){
+					folderList.push({ id:child[i].id, title:child[i].title, icon:'folder.png', depth:depth });
+					arguments.callee( child[i].child, depth +1 );
+				}
+			}
+		})( tree.trash().child, 1 );
+		// 次に配列をつかって順次DOM生成する
+		var index = 0;
+		var length = folderList.length;
+		var maxWidth = 0;
+		(function(){
+			if( index < length ){
+				// DOM生成
+				var node = folderList[index];
+				var $node = $folder( node.id, node.title, node.icon, node.depth );
+				$folders.append( $node );
+				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
+				// TODO:v1.5初期状態で新規フォルダ作ると幅が足りない感じで表示崩れる
+				var $title = $node.find('.title');
+				var width = $title[0].offsetLeft + ~~($title.width() *1.3);
+				if( width > maxWidth ){
+					$folders.width( width );
+					maxWidth = width;
+				}
+				if( opt ){
+					if( opt.click0 ){
+						if( index==0 ) $node.click();
+					}
+					else if( opt.clickID ){
+						if( node.id==opt.clickID ) $node.click();
+					}
+				}
+				// 次フォルダ
+				index++;
+				timer = setTimeout(arguments.callee,1);
+			}
+			else{
+				// 全フォルダ完了
+				if( opt && opt.clickAfter ) opt.clickAfter();
+			}
+		})();
+	};
+}();
+
 // ブックマークデータ取得
 tree.load(function(){
 	$(window).resize();
 	$('body').css('visibility','visible');
-	$( folderTree()[0].childNodes[0] ).click();
+	folderTree({ click0:true });
 });
 // 終了
 $('#exit').click(function(){
@@ -478,30 +558,32 @@ function treeSave( arg ){
 }
 // 新規フォルダ
 $('#newfolder').click(function(){
-	var fid = selectFolder.id;
-	var name = $('#newname').val();
 	// 選択フォルダID=folderXXならノードID=XX
-	var node = tree.newFolder( fid.slice(6), name );
+	var nid = selectFolder.id.slice(6);
+	var name = $('#newname').val();
+	var node = tree.newFolder( nid, name );
 	// フォルダツリー生成
-	folderTree();
-	// フォルダ選択
-	$('#'+fid).click();
-	// アイテム選択ノードID=XXXならアイテムボックスID=itemXXX
-	var $item = $('#item'+node.id);
-	// $item.mousedown().mouseup();と書きたいところだが、
-	// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-	// mouseup()およびその先の処理も実行されないもよう。
-	// 仕方がないのでsetTimeoutを使う。
-	setTimeout(function(){ $item.mousedown(); },0);
-	setTimeout(function(){
-		$item.mouseup();
-		if( !name.length ){
-			// 名前変更
-			edit( $item.children('.title')[0] );
-			// テキスト全選択
-			$('#editbox').select();
+	folderTree({
+		clickID:nid
+		,clickAfter:function(){
+			// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
+			var $item = $('#item'+node.id);
+			// $item.mousedown().mouseup();と書きたいところだが、
+			// IE8はmousedown()でエラー発生する仕様なのが影響してか、
+			// mouseup()およびその先の処理も実行されないもよう。
+			// 仕方がないのでsetTimeoutを使う。
+			setTimeout(function(){ $item.mousedown(); },0);
+			setTimeout(function(){
+				$item.mouseup();
+				if( !name.length ){
+					// 名前変更
+					edit( $item.children('.title')[0] );
+					// テキスト全選択
+					$('#editbox').select();
+				}
+			},1);
 		}
-	},1);
+	});
 	$('#newname').val('');
 });
 $('#newname').keypress(function(ev){
@@ -584,38 +666,36 @@ $('#delete').click(function(){
 						// ノードツリー変更
 						tree.eraseNodes( ids );
 						// 表示更新
-						var fid = selectFolder.id;
-						folderTree();
-						$('#'+fid).click();
+						// TODO:削除対象にフォルダが含まれていない場合はフォルダツリー更新不要？
+						folderTree({ clickID:selectFolder.id.slice(6) });
 					}
 				});
 			}
 			else{
 				tree.moveChild( ids, tree.trash() );
-				var fid = selectFolder.id;
-				folderTree();
-				$('#'+fid).click();
+				// TODO:削除対象にフォルダが含まれていない場合はフォルダツリー更新不要？
+				folderTree({ clickID:selectFolder.id.slice(6) });
 			}
 		}
 	}
 	else{
 		// フォルダツリー
-		var fid = select.id.slice(6);
-		if( tree.movable(fid) ){
-			if( tree.trashHas(fid) ){
+		var nid = select.id.slice(6);
+		if( tree.movable(nid) ){
+			if( tree.trashHas(nid) ){
 				Confirm({
 					msg		:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
 					,width	:400
 					,height	:200
 					,ok:function(){
-						tree.eraseNode( fid );
-						$( folderTree()[0].childNodes[0] ).click();
+						tree.eraseNode( nid );
+						folderTree({ click0:true });
 					}
 				});
 			}
 			else{
-				tree.moveChild( [fid], tree.trash() );
-				$( folderTree()[0].childNodes[0] ).click();
+				tree.moveChild( [nid], tree.trash() );
+				folderTree({ click0:true });
 			}
 		}
 	}
@@ -742,7 +822,7 @@ $('#itembox').mousedown(function(ev){
 });
 // フォルダイベント
 $('#folders')
-.on('click','.folder',folderClick)
+.on('click','.folder',folderClick())
 .on('selfclick','.folder',itemSelfClick)
 .on('mousedown','.folder',folderMouseDown)
 .on('mousemove','.folder',itemMouseMove)
@@ -764,140 +844,104 @@ $('#folders')
 	.on('contextmenu','.item',itemContextMenu);
 })();
 
-function folderTree(){
-	// フォルダツリー生成
-	// TODO:フォルダの左側にプラスマイナスボタンほしい
-	// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
-	var $folders = $('#folders').empty();
-	var $folder = function(){
-		var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
-			.on('mouseleave',itemMouseLeave);
-		return function( id, title, icon, depth ){
-			var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
-			$f.find('img').attr('src',icon);
-			$f.find('span').text( title );
-			return $f;
-		};
-	}();
-	(function( node, depth ){
-		$folders.append( $folder(node.id, node.title, 'folder.png', depth) );
-		// 子フォルダ
-		for( var i=0, n=node.child.length; i<n; i++ ){
-			if( node.child[i].child )
-				arguments.callee( node.child[i], depth +1 );
+function folderClick(){
+	var timer = null;	// setTimeoutID
+	return function(ev){
+		clearTimeout( timer ); // 古いのキャンセル
+		if( $(this).hasClass('select') ){
+			// 選択済みの場合アクティブに
+			$(select=this).removeClass('inactive').focus();
+			// 選択アイテムを非アクティブに
+			$('#items').children().each(function(){
+				if( $(this).hasClass('select') ) $(this).addClass('inactive');
+			});
+			// 名前編集
+			//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
+			// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
+			// inline-blockにしたら文字上クリックでしか編集できなくなった
+			// ので、自力判定でblock要素のように文字上じゃなくても編集で
+			// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
+			// らしい。
+			//var elm = $(this).find('.title')[0];
+			//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
+			// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
+			// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
+			var $e = $(this).find('.title');
+			if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
 		}
-	})( tree.top(), 0 );
-	// ごみ箱
-	// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていい
-	// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
-	$folders.append( $folder(tree.trash().id, tree.trash().title, 'trash.png', 0) );
-	(function( child, depth ){
-		for( var i=0, n=child.length; i<n; i++ ){
-			if( child[i].child ){
-				$folders.append( $folder(child[i].id, child[i].title, 'folder.png', depth) );
-				arguments.callee( child[i].child, depth +1 );
-			}
-		}
-	})( tree.trash().child, 1 );
-	// #foldersの幅を設定する。
-	// しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる。
-	// TODO:初期状態で新規フォルダ作ると幅が足りない感じで表示崩れる。
-	var maxWidth = 0;
-	$folders.find('.title').each(function(){
-		var width = this.offsetLeft + ~~($(this).width() *1.3);
-		if( width > maxWidth ) maxWidth = width;
-	});
-	$folders.width( maxWidth );
-	return $folders;
-}
-
-function folderClick(ev){
-	if( $(this).hasClass('select') ){
-		// 選択済みの場合アクティブに
-		$(select=this).removeClass('inactive').focus();
-		// 選択アイテムを非アクティブに
-		$('#items').children().each(function(){
-			if( $(this).hasClass('select') ) $(this).addClass('inactive');
-		});
-		// 名前編集
-		//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
-		// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
-		// inline-blockにしたら文字上クリックでしか編集できなくなった
-		// ので、自力判定でblock要素のように文字上じゃなくても編集で
-		// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
-		// らしい。
-		//var elm = $(this).find('.title')[0];
-		//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
-		// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
-		// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
-		var $e = $(this).find('.title');
-		if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
-	}
-	else{
-		// ノード取得:自身ID=folderXXならノードID=XX
-		var node = tree.node( this.id.slice(6) );
-		if( node ){
-			// クリックフォルダ選択状態にする
-			$(selectFolder).removeClass('select inactive');
-			$(select=selectFolder=this).addClass('select').focus();
-			// コンテンツにアイテム(child配列)登録
-			var $item = function(){
-				var $e = $('<div class=item tabindex=0><img class=icon></div>')
-					.on('mouseleave',itemMouseLeave);
-				var $head = $('#itemhead');
-				var url_width = $head.find('.url').width() +4;
-				var icon_width = $head.find('.iconurl').width() +4;
-				var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
-				var $url = $('<span class=url></span>').width( url_width );
-				var $icon = $('<span class=iconurl></span>').width( icon_width );
-				var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
-				var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
-				var $br = $('<br class=clear>');
-				var $fol = $e.clone(true)
-					.addClass('folder')
-					.append( $title.clone() )
-					.append( $smry )
-					.append( $date.clone() )
-					.append( $br.clone() );
-				$fol.find('img').attr('src','folder.png');
-				var $url = $e
-					.append( $title )
-					.append( $url )
-					.append( $icon )
-					.append( $date )
-					.append( $br );
-				var date = new Date();
-				return function( node ){
-					date.setTime( node.dateAdded||0 );
-					if( node.child ){
-						var $f = $fol.clone(true).attr('id','item'+node.id);
-						$f.find('.title').text( node.title );
-						$f.find('.summary').text(function(){
-							for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
-							return smry;
-						}());
-						$f.find('.date').text( date.myFmt() );
-						return $f;
+		else{
+			// ノード取得:自身ID=folderXXならノードID=XX
+			var node = tree.node( this.id.slice(6) );
+			if( node ){
+				// クリックフォルダ選択状態にする
+				$(selectFolder).removeClass('select inactive');
+				$(select=selectFolder=this).addClass('select').focus();
+				// コンテンツにアイテム(child配列)登録
+				var $item = function(){
+					var $e = $('<div class=item tabindex=0><img class=icon></div>')
+						.on('mouseleave',itemMouseLeave);
+					var $head = $('#itemhead');
+					var url_width = $head.find('.url').width() +4;
+					var icon_width = $head.find('.iconurl').width() +4;
+					var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
+					var $url = $('<span class=url></span>').width( url_width );
+					var $icon = $('<span class=iconurl></span>').width( icon_width );
+					var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
+					var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
+					var $br = $('<br class=clear>');
+					var $fol = $e.clone(true)
+						.addClass('folder')
+						.append( $title.clone() )
+						.append( $smry )
+						.append( $date.clone() )
+						.append( $br.clone() );
+					$fol.find('img').attr('src','folder.png');
+					var $url = $e
+						.append( $title )
+						.append( $url )
+						.append( $icon )
+						.append( $date )
+						.append( $br );
+					var date = new Date();
+					return function( node ){
+						date.setTime( node.dateAdded||0 );
+						if( node.child ){
+							var $f = $fol.clone(true).attr('id','item'+node.id);
+							$f.find('.title').text( node.title );
+							$f.find('.summary').text(function(){
+								for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
+								return smry;
+							}());
+							$f.find('.date').text( date.myFmt() );
+							return $f;
+						}
+						var $u = $url.clone(true).attr('id','item'+node.id);
+						$u.find('img').attr('src', node.icon ||'item.png');
+						$u.find('.title').text( node.title ).attr('title', node.title);
+						$u.find('.url').text( node.url );
+						$u.find('.iconurl').text( node.icon );
+						$u.find('.date').text( date.myFmt() );
+						return $u;
+					};
+				}();
+				var $items = $('#items').empty();
+				selectItemClear();
+				var index = 0;
+				var length = node.child.length;
+				(function(){
+					if( index < length ){
+						var $e = $item( node.child[index] );
+						// 1行毎色分け
+						if( index%2 ) $e.addClass('bgcolor');
+						$items.append( $e );
+						// 次アイテム
+						index++;
+						timer = setTimeout(arguments.callee,1);
 					}
-					var $u = $url.clone(true).attr('id','item'+node.id);
-					$u.find('img').attr('src', node.icon ||'item.png');
-					$u.find('.title').text( node.title ).attr('title', node.title);
-					$u.find('.url').text( node.url );
-					$u.find('.iconurl').text( node.icon );
-					$u.find('.date').text( date.myFmt() );
-					return $u;
-				};
-			}();
-			var $items = $('#items').empty();
-			selectItemClear();
-			for( var i=0, n=node.child.length; i<n; i++ ){
-				var $e = $item( node.child[i] );
-				// 1行毎色分け
-				if( i%2 ) $e.addClass('bgcolor');
-				$items.append( $e );
+				})();
 			}
 		}
-	}
+	};
 }
 
 function itemSelfClick( ev, shiftKey ){
@@ -1251,9 +1295,8 @@ function itemMouseUp(ev){
 		}
 		$this.removeClass('dropTop dropBottom dropIN');
 		// 表示更新
-		var fid = selectFolder.id;
-		folderTree();
-		$('#'+fid).click();
+		// TODO:ドラッグアイテムにフォルダが含まれていない場合はフォルダツリー更新不要？
+		folderTree({ clickID:selectFolder.id.slice(6) });
 		// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
 		// $(document).mouseup()が実行されていないような挙動にみえるので
 		// 実行したらとりあえず問題ないように見える。
@@ -1532,6 +1575,7 @@ function edit( element ){
 							switch( attrName ){
 							case 'title':
 								// アイテム欄のフォルダの場合、フォルダツリーも更新
+								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
 								if( $(element.parentNode).hasClass('item folder') ) folderTree();
 								break;
 							case 'url':
@@ -1584,7 +1628,7 @@ function edit( element ){
 						}
 					}
 				}).show().focus();
-			}, 10 );
+			},10);
 			break;
 		case 'date':
 			// 作成日時は変更禁止、値コピーのためボックス表示。
@@ -1617,7 +1661,7 @@ function edit( element ){
 						}
 					}
 				}).show().focus();
-			}, 10 );
+			},10);
 			break;
 		}
 	}
