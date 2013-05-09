@@ -336,32 +336,6 @@ var tree = {
 		}
 	}
 };
-
-// 独自フォーマット時刻文字列
-Date.prototype.myFmt = function(){
-	// 0=1970/1/1は空
-	var diff = this.getTime();
-	if( diff <1 ) return '';
-	// YYYY/MM/DD HH:MM:SS
-	var Y = this.getFullYear();
-	var M = this.getMonth() +1;
-	var D = this.getDate();
-	var h = this.getHours();
-	var m = this.getMinutes();
-	var s = this.getSeconds();
-	var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
-	var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
-	// 現在時刻との差分
-	diff = ~~(((new Date()).getTime() - diff) /1000);
-	if( diff <=10 ) return 'いまさっき (' +time +')';
-	if( diff <=60 ) return '1分以内 (' +time +')';
-	if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
-	if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
-	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
-	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
-	return Y +'/' +date +' ' +time;
-}
-
 $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var window_width = $(window).width() -1; // 適当-1px
@@ -399,7 +373,6 @@ $(window).on('resize',function(){
 		.find('.summary').width( url_width +icon_width +14 ).end()	// 見た目で合うように+14px
 		.find('.date').width( date_width -36);					// float対策適当-36px
 });
-
 $(document).on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
@@ -438,7 +411,6 @@ if( IE && IE<9 ){
 	// ウィンドウ外に出たらドラッグやめたことにする。
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
-
 // フォルダツリー生成
 // folderTree({
 //   click0		: true/false 最初のフォルダをクリックするかどうか
@@ -486,7 +458,8 @@ var folderTree = function(){
 		var length = folderList.length;
 		var maxWidth = 0;
 		(function(){
-			if( index < length ){
+			var count=0;
+			while( index < length && count<10 ){
 				// DOM生成
 				var node = folderList[index];
 				var $node = $folder( node.id, node.title, node.icon, node.depth );
@@ -494,7 +467,7 @@ var folderTree = function(){
 				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
 				// TODO:v1.5初期状態で新規フォルダ作ると幅が足りない感じで表示崩れる
 				var $title = $node.find('.title');
-				var width = $title[0].offsetLeft + ~~($title.width() *1.3);
+				var width = $title[0].offsetLeft + ~~($title.width() *1.4);
 				if( width > maxWidth ){
 					$folders.width( width );
 					maxWidth = width;
@@ -507,8 +480,10 @@ var folderTree = function(){
 						if( node.id==opt.clickID ) $node.click();
 					}
 				}
-				// 次フォルダ
-				index++;
+				// 次
+				index++; count++;
+			}
+			if( index < length ){
 				timer = setTimeout(arguments.callee,1);
 			}
 			else{
@@ -518,13 +493,6 @@ var folderTree = function(){
 		})();
 	};
 }();
-
-// ブックマークデータ取得
-tree.load(function(){
-	$(window).resize();
-	$('body').css('visibility','visible');
-	folderTree({ click0:true });
-});
 // 終了
 $('#exit').click(function(){
 	if( tree.modified() ){
@@ -540,22 +508,6 @@ $('#exit').click(function(){
 });
 // 保存
 $('#save').click(function(){ treeSave(); });
-function treeSave( arg ){
-	$('#save').hide();
-	$('#wait').show();
-	tree.save({
-		success:function(){
-			$('#wait').hide();
-			$('#save').show();
-			$('#modified').hide();
-			if( arg && arg.success ) arg.success();
-		}
-		,error:function(){
-			$('#wait').hide();
-			$('#save').show();
-		}
-	});
-}
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
@@ -820,31 +772,32 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
-// フォルダイベント
-$('#folders')
-.on('click','.folder',folderClick())
-.on('selfclick','.folder',itemSelfClick)
-.on('mousedown','.folder',folderMouseDown)
-.on('mousemove','.folder',itemMouseMove)
-.on('mouseup','.folder',itemMouseUp)
-.on('keydown','.folder',folderKeyDown)
-.on('contextmenu','.folder',folderContextMenu);
-// アイテムイベント
-(function(){
-	var data = { itemID:'', itemNotify:'' };
-	$('#items')
-	.on('mousedown','.item',data,itemMouseDown)
-	.on('mousemove','.item',itemMouseMove)
-	.on('mouseup','.item',itemMouseUp)
-	.on('click','.item',data,itemClick)
-	.on('dblclick','.item',itemDblClick)
-	.on('selfclick','.item',itemSelfClick)
-	.on('keydown','.item',itemKeyDown)
-	.on('keypress','.item',itemKeyPress)
-	.on('contextmenu','.item',itemContextMenu);
-})();
-
-function folderClick(){
+// フォルダツリーアイテムクリック
+var folderClick = function(){
+	// 独自フォーマット時刻文字列
+	Date.prototype.myFmt = function(){
+		// 0=1970/1/1は空
+		var diff = this.getTime();
+		if( diff <1 ) return '';
+		// YYYY/MM/DD HH:MM:SS
+		var Y = this.getFullYear();
+		var M = this.getMonth() +1;
+		var D = this.getDate();
+		var h = this.getHours();
+		var m = this.getMinutes();
+		var s = this.getSeconds();
+		var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
+		var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
+		// 現在時刻との差分
+		diff = ~~(((new Date()).getTime() - diff) /1000);
+		if( diff <=10 ) return 'いまさっき (' +time +')';
+		if( diff <=60 ) return '1分以内 (' +time +')';
+		if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
+		if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
+		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
+		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
+		return Y +'/' +date +' ' +time;
+	};
 	var timer = null;	// setTimeoutID
 	return function(ev){
 		clearTimeout( timer ); // 古いのキャンセル
@@ -929,21 +882,66 @@ function folderClick(){
 				var index = 0;
 				var length = node.child.length;
 				(function(){
-					if( index < length ){
+					var count=0;
+					while( index < length && count<10 ){
 						var $e = $item( node.child[index] );
-						// 1行毎色分け
 						if( index%2 ) $e.addClass('bgcolor');
 						$items.append( $e );
-						// 次アイテム
-						index++;
-						timer = setTimeout(arguments.callee,1);
+						index++; count++;
 					}
+					if( index < length ) timer = setTimeout(arguments.callee,1);
 				})();
 			}
 		}
 	};
-}
+}();
+// フォルダイベント
+$('#folders')
+.on('click','.folder',folderClick)
+.on('selfclick','.folder',itemSelfClick)
+.on('mousedown','.folder',folderMouseDown)
+.on('mousemove','.folder',itemMouseMove)
+.on('mouseup','.folder',itemMouseUp)
+.on('keydown','.folder',folderKeyDown)
+.on('contextmenu','.folder',folderContextMenu);
+// アイテムイベント
+(function(){
+	var data = { itemID:'', itemNotify:'' };
+	$('#items')
+	.on('mousedown','.item',data,itemMouseDown)
+	.on('mousemove','.item',itemMouseMove)
+	.on('mouseup','.item',itemMouseUp)
+	.on('click','.item',data,itemClick)
+	.on('dblclick','.item',itemDblClick)
+	.on('selfclick','.item',itemSelfClick)
+	.on('keydown','.item',itemKeyDown)
+	.on('keypress','.item',itemKeyPress)
+	.on('contextmenu','.item',itemContextMenu);
+})();
+// ブックマークデータ取得
+tree.load(function(){
+	$(window).resize();
+	$('body').css('visibility','visible');
+	folderTree({ click0:true });
+});
 
+
+function treeSave( arg ){
+	$('#save').hide();
+	$('#wait').show();
+	tree.save({
+		success:function(){
+			$('#wait').hide();
+			$('#save').show();
+			$('#modified').hide();
+			if( arg && arg.success ) arg.success();
+		}
+		,error:function(){
+			$('#wait').hide();
+			$('#save').show();
+		}
+	});
+}
 function itemSelfClick( ev, shiftKey ){
 	if( IE && IE<9 ){
 		// IE8はmousedown()でエラー発生する仕様なのが影響してか、
@@ -956,7 +954,6 @@ function itemSelfClick( ev, shiftKey ){
 		$(this).trigger('mousedown',shiftKey).mouseup().click().focus();
 	}
 }
-
 function itemMouseDown( ev, shiftKey ){
 	// 変更を反映
 	$('#editbox').trigger('decide');
@@ -1015,7 +1012,7 @@ function itemMouseDown( ev, shiftKey ){
 			$(select=selectItemLast=this).focus();
 			// 選択済みアイテムの数
 			var selectCount = function(children){
-				var count = 0;
+				var count=0;
 				for( var i=0, n=children.length; i<n; i++ ){
 					if( $(children[i]).hasClass('select') ) count++;
 				}
@@ -1038,7 +1035,6 @@ function itemMouseDown( ev, shiftKey ){
 	// 他に適切な対策はないのか？
 	if( IE && IE<9 )xxxxx;
 }
-
 function folderMouseDown(ev){
 	// 変更を反映
 	$('#editbox').trigger('decide');
@@ -1051,7 +1047,6 @@ function folderMouseDown(ev){
 	// 他に適切な対策はないのか？
 	if( IE && IE<9 )xxxxx;
 }
-
 function itemDragStart( element, downX, downY ){
 	// スクロール制御準備
 	var folderbox = document.getElementById('folderbox');
@@ -1198,7 +1193,6 @@ function itemDragStart( element, downX, downY ){
 		}
 	});
 }
-
 function itemMouseMove(ev){
 	if( draggie ){
 		// ドラッグ先が自分の時は何もしない
@@ -1266,11 +1260,9 @@ function itemMouseMove(ev){
 		$this.addClass('dropIN');
 	}
 }
-
 function itemMouseLeave(){
 	if( draggie ) $(this).removeClass('dropTop dropBottom dropIN');
 }
-
 function itemMouseUp(ev){
 	// ここはdocument.mouseupより前に実行されるみたいだけど、
 	// その挙動って前提にしちゃってもいいのかな？ダメな場合は改造が面倒だ…。
@@ -1303,7 +1295,6 @@ function itemMouseUp(ev){
 		if( IE && IE<9 ) $(document).mouseup();
 	}
 }
-
 function itemClick(ev){
 	// 単選択(選択解除)
 	if( ev.data.itemID==this.id ){
@@ -1326,7 +1317,6 @@ function itemClick(ev){
 		}
 	}
 }
-
 function itemDblClick(){
 	if( $(this).find('.summary').length ){
 		// フォルダはフォルダ開く
@@ -1349,7 +1339,6 @@ function itemDblClick(){
 	setTimeout(function(){$('#editbox').trigger('decide');},3);
 	return false;
 }
-
 function itemContextMenu(ev){
 	var item = ev.target.parentNode;
 	while( !item.id.match(/^item/) ){
@@ -1476,12 +1465,10 @@ function itemContextMenu(ev){
 	}).show();
 	return false;	// 既定右クリックメニュー出さない
 }
-
 // TODO:フォルダ右クリックメニュー
 // TODO:ごみ箱には「ごみ箱を空にする」
 function folderContextMenu(ev){
 }
-
 function folderKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 9: // TAB
@@ -1529,14 +1516,12 @@ function itemKeyPress(ev){
 		return false;
 	}
 }
-
 function selectItemClear(){
 	$('#items').children().each(function(){
 		$(this).removeClass('select inactive');
 	});
 	selectItemLast = null;
 }
-
 // TODO:Firefoxのブックマーク管理画面みたいに右下に編集画面があるタイプのが使いやすいかな？
 function edit( element ){
 	if( element ){
@@ -1608,7 +1593,7 @@ function edit( element ){
 							// #folderboxの幅しかなくなって、選択時の色がうまく反映されず変になる。
 							if( isFolderTree ){
 								var foldersWidth = $('#folders').width();
-								var needWidth = element.offsetLeft + ~~($e.width() *1.3);
+								var needWidth = element.offsetLeft + ~~($e.width() *1.4);
 								if( needWidth > foldersWidth ) $('#folders').width( needWidth );
 							}
 						}
@@ -1666,7 +1651,6 @@ function edit( element ){
 		}
 	}
 }
-
 // element全体見えるようスクロール
 function viewScroll( element ){
 	// スクロール対象ボックス確認
@@ -1692,7 +1676,6 @@ function viewScroll( element ){
 	if( pos.bottom >= box.clientHeight )
 		box.scrollTop += pos.bottom - box.clientHeight +5;
 }
-
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
 // 独自改行コードを導入。Chrome/Firefoxは単純に \n でうまくいくのにIE8だけまた・・
@@ -1741,7 +1724,6 @@ function Alert( msg ){
 		$('#dialog').html( HTMLtext( msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 	}
 }
-
 // HTMLエスケープ:$('<a/>').html().text()だと<script>が消えてしまうため自作。
 function HTMLtext( s ){
 	return $('<a/>').html(
