@@ -361,6 +361,91 @@ if( $.css.add==null ){
 	$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
 	$.css.remove=function(a){var b=$.css.sheet;b&&b[$.browser.msie?"removeRule":"deleteRule"](a)};
 }
+// ドキュメント全体
+$(document).on({
+	mousedown:function(ev){
+		// 右クリックメニュー隠す
+		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
+			$('#contextmenu').hide();
+		}
+	}
+	// サイドバーにマウスカーソル近づいたらスライド出現させる。
+	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
+	,mousemove:function(){
+		var animate = null;
+		return function(ev){
+			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
+				if( !animate )
+					animate = $sidebar.animate({width:65},'fast');
+			}
+			else if( animate ){							// サイドバーから離れてるとき隠す
+				$sidebar.stop(true).width(34);
+				animate = null;
+			}
+		};
+	}()
+});
+// パネルタイトルダブルクリックで開閉
+$wall.on('dblclick','.title',function(ev){
+	// ＋－ボタン上の場合は何もしない
+	if( $(ev.target).is('.plusminus') ) return;
+	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
+});
+// パネル右クリックメニュー
+$wall.on('contextmenu','.title',function(ev){
+	// ev.targetはクリックした場所にあるDOMエレメント
+	var panel = ev.target.parentNode;
+	while( panel.className !='panel' ){
+		if( !panel.parentNode ) break;
+		panel = panel.parentNode;
+	}
+	var $menu = $('#contextmenu');
+	$menu.find('a').off();
+	// アイテムすべて開く
+	// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
+	$('#allopen').click(function(){
+		$menu.hide();
+		$(panel).find('.item').each(function(){
+			window.open( this.getAttribute('href') );
+		});
+	});
+	// アイテムテキストで取得
+	$('#showtext').click(function(){
+		$menu.hide();
+		var text='';
+		$(panel).find('.item').each(function(){
+			text += $(this).text() + '\r' + this.getAttribute('href') + '\r';
+		});
+		$('#itemtext').find('textarea').text(text).end().dialog({
+			title	:'アイテムをテキストで取得'
+			,modal	:true
+			,width	:480
+			,height	:360
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
+	});
+	// 表示
+	$menu.css({
+		left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+		,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+	}).show();
+	return false;	// 既定右クリックメニュー出さない
+});
+// ＋－ボタンクリックでパネル開閉
+$wall.on('click','.plusminus',function( ev, pageX, pageY ){
+	pageX = pageX || ev.pageX;
+	pageY = pageY || ev.pageY;
+	// パネルID＝親(.title)の親(.panel)のID
+	panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
+	// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
+	// 例) { btn1:1, btn9:0, btn45:0, ... }
+	var status = {};
+	$('.plusminus').each(function(){
+		//srcはURL('http://localhost:XXX/plus.png'など)文字列
+		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+	});
+	option.panel.status( status );
+});
 // パネルアイテム要素生成関数
 var $panelItem = function(){
 	var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
@@ -641,29 +726,6 @@ var paneler = function(){
 })();
 // ノードツリー変更保存リンク
 $('#modified').click(function(){ modifySave(); } );
-function modifySave( arg ){
-	// 順番に保存
-	$('#modified').hide();
-	$('#progress').show();
-	if( tree.modified() ) tree.save({ 'success':optionSave, 'error':error });
-	else optionSave();
-
-	function optionSave(){
-		if( option.modified() ){
-			option.save({ 'success':success, 'error':error });
-		}
-		else success();
-	}
-	function success(){
-		$('#progress').hide();
-		$wall.css('padding-top','0');
-		if( arg && arg.success ) arg.success();
-	}
-	function error(){
-		$('#progress').hide();
-		$('#modified').show();
-	}
-}
 // パネル設定ダイアログ
 $('#optionico').click(function(){
 	// ページタイトル
@@ -1362,91 +1424,31 @@ $('.barico').on({
 	,focus:function(){ $sidebar.width(65); }
 	,blur:function(){ $sidebar.width(34); }
 });
-// ドキュメント全体
-$(document).on({
-	mousedown:function(ev){
-		// 右クリックメニュー隠す
-		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide();
+
+
+function modifySave( arg ){
+	// 順番に保存
+	$('#modified').hide();
+	$('#progress').show();
+	if( tree.modified() ) tree.save({ 'success':optionSave, 'error':error });
+	else optionSave();
+
+	function optionSave(){
+		if( option.modified() ){
+			option.save({ 'success':success, 'error':error });
 		}
+		else success();
 	}
-	// サイドバーにマウスカーソル近づいたらスライド出現させる。
-	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	,mousemove:function(){
-		var animate = null;
-		return function(ev){
-			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
-				if( !animate )
-					animate = $sidebar.animate({width:65},'fast');
-			}
-			else if( animate ){							// サイドバーから離れてるとき隠す
-				$sidebar.stop(true).width(34);
-				animate = null;
-			}
-		};
-	}()
-});
-// パネルタイトルダブルクリックで開閉
-$wall.on('dblclick','.title',function(ev){
-	// ＋－ボタン上の場合は何もしない
-	if( $(ev.target).is('.plusminus') ) return;
-	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
-});
-// パネル右クリックメニュー
-$wall.on('contextmenu','.title',function(ev){
-	// ev.targetはクリックした場所にあるDOMエレメント
-	var panel = ev.target.parentNode;
-	while( panel.className !='panel' ){
-		if( !panel.parentNode ) break;
-		panel = panel.parentNode;
+	function success(){
+		$('#progress').hide();
+		$wall.css('padding-top','0');
+		if( arg && arg.success ) arg.success();
 	}
-	var $menu = $('#contextmenu');
-	$menu.find('a').off();
-	// アイテムすべて開く
-	// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
-	$('#allopen').click(function(){
-		$menu.hide();
-		$(panel).find('.item').each(function(){
-			window.open( this.getAttribute('href') );
-		});
-	});
-	// アイテムテキストで取得
-	$('#showtext').click(function(){
-		$menu.hide();
-		var text='';
-		$(panel).find('.item').each(function(){
-			text += $(this).text() + '\r' + this.getAttribute('href') + '\r';
-		});
-		$('#itemtext').find('textarea').text(text).end().dialog({
-			title	:'アイテムをテキストで取得'
-			,modal	:true
-			,width	:480
-			,height	:360
-			,close	:function(){ $(this).dialog('destroy'); }
-		});
-	});
-	// 表示
-	$menu.css({
-		left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-		,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
-	}).show();
-	return false;	// 既定右クリックメニュー出さない
-});
-// ＋－ボタンクリックでパネル開閉
-$wall.on('click','.plusminus',function( ev, pageX, pageY ){
-	pageX = pageX || ev.pageX;
-	pageY = pageY || ev.pageY;
-	// パネルID＝親(.title)の親(.panel)のID
-	panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
-	// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
-	// 例) { btn1:1, btn9:0, btn45:0, ... }
-	var status = {};
-	$('.plusminus').each(function(){
-		//srcはURL('http://localhost:XXX/plus.png'など)文字列
-		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
-	});
-	option.panel.status( status );
-});
+	function error(){
+		$('#progress').hide();
+		$('#modified').show();
+	}
+}
 // favicon解析してから移行データ取り込み
 // TODO:IE8はブックマーク数が1万くらいになると「スクリプトに時間がかかっています」ダイアログや、
 // 謎のスクリプトエラーが発生してまともに動かない。Chrome直接インポートでは8千程度でも発生する。
