@@ -1377,7 +1377,7 @@ $(document).on({
 		return function(ev){
 			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
 				if( !animate )
-					animate = $sidebar.animate({width:65});
+					animate = $sidebar.animate({width:65},'fast');
 			}
 			else if( animate ){							// サイドバーから離れてるとき隠す
 				$sidebar.stop(true).width(34);
@@ -1657,7 +1657,7 @@ var panelPopper = function(){
 				}
 				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
 			})();
-			// カーソル移動方向と時間を監視
+			// カーソル移動方向と停止時間を監視
 			$(document).on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
 				clearTimeout( mouseTimer );
