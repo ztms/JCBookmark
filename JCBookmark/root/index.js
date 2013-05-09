@@ -447,20 +447,21 @@ var paneler = function(){
 		var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
 		var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
 		(function(){
-			var layoutSeek = false;
-			for( var coID in panelLayout ){
-				var coN = panelLayout[coID];
-				if( index < coN.length ){
-					var node = tree.node( coN[index] );
-					if( node ) panelCreate( node, coID );
-					layoutSeek = true;
+			var count=0;
+			do{
+				var layoutSeek = false;
+				for( var coID in panelLayout ){
+					var coN = panelLayout[coID];
+					if( index < coN.length ){
+						var node = tree.node( coN[index] );
+						if( node ) panelCreate( node, coID );
+						layoutSeek = true;
+					}
 				}
+				index++; count++;
 			}
-			if( layoutSeek ){
-				index++;
-				timer = setTimeout(arguments.callee,1);
-			}
-			else afterLayout();
+			while( layoutSeek && count<2 );
+			if( layoutSeek ) timer = setTimeout(arguments.callee,1); else afterLayout();
 		})();
 		// レイアウト反映後、残りのパネル配置
 		function afterLayout(){
@@ -477,11 +478,12 @@ var paneler = function(){
 			})( nodeTop );
 			var index=0, length=nodeList.length;
 			(function(){
-				if( index < length ){
-					panelCreate( nodeList[index++] );
-					timer = setTimeout(arguments.callee,1);
+				var count=0;
+				while( index < length && count<5 ){
+					panelCreate( nodeList[index] );
+					index++; count++;
 				}
-				else afterPlaced();
+				if( index < length ) timer = setTimeout(arguments.callee,1); else afterPlaced();
 			})();
 		}
 		// 全パネル配置後
@@ -1647,14 +1649,13 @@ var panelPopper = function(){
 			var length = child.length;
 			var index = 0;
 			(function(){
-				if( $box && panel==$box[0].parentNode && index < length
-					&& $box.css('position')=='absolute' && $box.css('display')=='block'
-				){
+				var count=0;
+				while( index < length && count<10 ){
 					if( !child[index].child )
 						$box.append( $panelItem( child[index] ) );
-					index++;
-					itemTimer = setTimeout(arguments.callee,1);
+					index++; count++;
 				}
+				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
 			})();
 			// カーソル移動方向と時間を監視
 			$(document).on('mousemove.itempop',function(ev){
