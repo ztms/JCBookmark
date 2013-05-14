@@ -29,7 +29,6 @@
 	margin:auto;
 }
 /* カラム(列) */
-/* floatをやめてinline-blockにすると、Chromeでhoverの追従性が悪化する。IEはそれほど変わらないようだが。*/
 .column {
 	float:left;
 	padding-bottom:30px;
@@ -222,7 +221,7 @@
 }
 #itemtext textarea {
 	width:445px;
-	height:305px;
+	height:300px;
 	padding:2px;
 	border:1px solid #888;
 }
