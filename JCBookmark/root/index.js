@@ -394,7 +394,7 @@ $wall.on('dblclick','.title',function(ev){
 // パネル右クリックメニュー
 $wall.on('contextmenu','.title',function(ev){
 	// ev.targetはクリックした場所にあるDOMエレメント
-	var panel = ev.target.parentNode;
+	var panel = ev.target;
 	while( panel.className !='panel' ){
 		if( !panel.parentNode ) break;
 		panel = panel.parentNode;
@@ -413,9 +413,10 @@ $wall.on('contextmenu','.title',function(ev){
 	$('#showtext').click(function(){
 		$menu.hide();
 		var text='';
-		$(panel).find('.item').each(function(){
-			text += $(this).text() + '\r' + this.getAttribute('href') + '\r';
-		});
+		var child = tree.node( panel.id ).child;
+		for( var i=0, n=child.length; i<n; i++ ){
+			text += child[i].title + '\r' + child[i].url + '\r';
+		}
 		$('#itemtext').find('textarea').text(text).end().dialog({
 			title	:'アイテムをテキストで取得'
 			,modal	:true
