@@ -336,6 +336,217 @@ var tree = {
 		}
 	}
 };
+// フォルダツリー生成
+// folderTree({
+//   click0		: true/false 最初のフォルダをクリックするかどうか
+//   clickID	: クリックするフォルダノードID文字列
+//   clickAfter	: クリック完了後に実行するfunction
+// });
+// TODO:フォルダの左側にプラスマイナスボタンほしい
+// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
+// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
+// TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
+var folderTree = function(){
+	var timer = null;	// setTimeoutID
+	return function( opt ){
+		clearTimeout( timer ); // 古いのキャンセル
+		var $folders = $('#folders').empty();
+		var $folder = function(){
+			var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
+					.on('mouseleave',itemMouseLeave);
+			return function( id, title, icon, depth ){
+				var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
+				$f.find('img').attr('src',icon);
+				$f.find('span').text( title );
+				return $f;
+			};
+		}();
+		// setTimeoutで１ノードずつDOM生成するためまずフォルダ情報の配列をつくり、
+		var folderList = [];
+		(function( node, depth ){
+			folderList.push({ id:node.id, title:node.title, icon:'folder.png', depth:depth });
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( node.child[i].child )
+					arguments.callee( node.child[i], depth +1 );
+			}
+		})( tree.top(), 0 );
+		folderList.push({ id:tree.trash().id, title:tree.trash().title, icon:'trash.png', depth:0 });
+		(function( child, depth ){
+			for( var i=0, n=child.length; i<n; i++ ){
+				if( child[i].child ){
+					folderList.push({ id:child[i].id, title:child[i].title, icon:'folder.png', depth:depth });
+					arguments.callee( child[i].child, depth +1 );
+				}
+			}
+		})( tree.trash().child, 1 );
+		// 次に配列をつかって順次DOM生成する
+		var index = 0;
+		var length = folderList.length;
+		var maxWidth = 0;
+		(function(){
+			var count=0;
+			while( index < length && count<10 ){
+				// DOM生成
+				var node = folderList[index];
+				var $node = $folder( node.id, node.title, node.icon, node.depth );
+				$folders.append( $node );
+				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
+				var $title = $node.find('.title');
+				var width = $title[0].offsetLeft + ~~($title.width() *1.4);
+				if( width > maxWidth ){
+					$folders.width( width );
+					maxWidth = width;
+				}
+				if( opt ){
+					if( opt.click0 ){
+						if( index==0 ) $node.click();
+					}
+					else if( opt.clickID ){
+						if( node.id==opt.clickID ) $node.click();
+					}
+				}
+				// 次
+				index++; count++;
+			}
+			if( index < length ){
+				timer = setTimeout(arguments.callee,1);
+			}
+			else{
+				// 全フォルダ完了
+				if( opt && opt.clickAfter ) opt.clickAfter();
+			}
+		})();
+	};
+}();
+// アイテム欄作成
+var itemTable = function(){
+	// 独自フォーマット時刻文字列
+	Date.prototype.myFmt = function(){
+		// 0=1970/1/1は空
+		var diff = this.getTime();
+		if( diff <1 ) return '';
+		// YYYY/MM/DD HH:MM:SS
+		var Y = this.getFullYear();
+		var M = this.getMonth() +1;
+		var D = this.getDate();
+		var h = this.getHours();
+		var m = this.getMinutes();
+		var s = this.getSeconds();
+		var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
+		var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
+		// 現在時刻との差分
+		diff = ~~(((new Date()).getTime() - diff) /1000);
+		if( diff <=10 ) return 'いまさっき (' +time +')';
+		if( diff <=60 ) return '1分以内 (' +time +')';
+		if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
+		if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
+		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
+		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
+		return Y +'/' +date +' ' +time;
+	};
+	var timer = null;	// setTimeoutID
+	return function( node ){
+		clearTimeout( timer ); // 古いのキャンセル
+		var $item = function(){
+			var $e = $('<div class=item tabindex=0><img class=icon></div>')
+				.on('mouseleave',itemMouseLeave);
+			var $head = $('#itemhead');
+			var url_width = $head.find('.url').width() +4;
+			var icon_width = $head.find('.iconurl').width() +4;
+			var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
+			var $url = $('<span class=url></span>').width( url_width );
+			var $icon = $('<span class=iconurl></span>').width( icon_width );
+			var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
+			var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
+			var $br = $('<br class=clear>');
+			var $fol = $e.clone(true)
+				.addClass('folder')
+				.append( $title.clone() )
+				.append( $smry )
+				.append( $date.clone() )
+				.append( $br.clone() );
+			$fol.find('img').attr('src','folder.png');
+			var $url = $e
+				.append( $title )
+				.append( $url )
+				.append( $icon )
+				.append( $date )
+				.append( $br );
+			var date = new Date();
+			return function( node ){
+				date.setTime( node.dateAdded||0 );
+				if( node.child ){
+					var $f = $fol.clone(true).attr('id','item'+node.id);
+					$f.find('.title').text( node.title );
+					$f.find('.summary').text(function(){
+						for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
+						return smry;
+					}());
+					$f.find('.date').text( date.myFmt() );
+					return $f;
+				}
+				var $u = $url.clone(true).attr('id','item'+node.id);
+				$u.find('img').attr('src', node.icon ||'item.png');
+				$u.find('.title').text( node.title ).attr('title', node.title);
+				$u.find('.url').text( node.url );
+				$u.find('.iconurl').text( node.icon );
+				$u.find('.date').text( date.myFmt() );
+				return $u;
+			};
+		}();
+		var $items = $('#items').empty();
+		selectItemClear();
+		var index = 0;
+		var length = node.child.length;
+		(function(){
+			var count=0;
+			while( index < length && count<10 ){
+				var $e = $item( node.child[index] );
+				if( index%2 ) $e.addClass('bgcolor');
+				$items.append( $e );
+				index++; count++;
+			}
+			if( index < length ) timer = setTimeout(arguments.callee,1);
+		})();
+	};
+}();
+// フォルダツリーアイテムクリック
+var folderClick = function(){
+	return function(ev){
+		if( $(this).hasClass('select') ){
+			// 選択済みの場合アクティブに
+			$(select=this).removeClass('inactive').focus();
+			// 選択アイテムを非アクティブに
+			$('#items').children().each(function(){
+				if( $(this).hasClass('select') ) $(this).addClass('inactive');
+			});
+			// 名前編集
+			//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
+			// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
+			// inline-blockにしたら文字上クリックでしか編集できなくなった
+			// ので、自力判定でblock要素のように文字上じゃなくても編集で
+			// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
+			// らしい。
+			//var elm = $(this).find('.title')[0];
+			//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
+			// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
+			// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
+			var $e = $(this).find('.title');
+			if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
+		}
+		else{
+			// ノード取得:自身ID=folderXXならノードID=XX
+			var node = tree.node( this.id.slice(6) );
+			if( node ){
+				// クリックをフォルダ選択状態に
+				$(selectFolder).removeClass('select inactive');
+				$(select=selectFolder=this).addClass('select').focus();
+				// アイテム欄作成
+				itemTable( node );
+			}
+		}
+	};
+}();
 $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var window_width = $(window).width() -1; // 適当-1px
@@ -411,88 +622,6 @@ if( IE && IE<9 ){
 	// ウィンドウ外に出たらドラッグやめたことにする。
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
-// フォルダツリー生成
-// folderTree({
-//   click0		: true/false 最初のフォルダをクリックするかどうか
-//   clickID	: クリックするフォルダノードID文字列
-//   clickAfter	: クリック完了後に実行するfunction
-// });
-// TODO:フォルダの左側にプラスマイナスボタンほしい
-// 表示/非表示の切り替えより、要素の追加/削除のほうが楽かな？
-// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
-var folderTree = function(){
-	var timer = null;	// setTimeoutID
-	return function( opt ){
-		clearTimeout( timer ); // 古いのキャンセル
-		var $folders = $('#folders').empty();
-		var $folder = function(){
-			var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
-					.on('mouseleave',itemMouseLeave);
-			return function( id, title, icon, depth ){
-				var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
-				$f.find('img').attr('src',icon);
-				$f.find('span').text( title );
-				return $f;
-			};
-		}();
-		// setTimeoutで１ノードずつDOM生成するためまずフォルダ情報の配列をつくり、
-		var folderList = [];
-		(function( node, depth ){
-			folderList.push({ id:node.id, title:node.title, icon:'folder.png', depth:depth });
-			for( var i=0, n=node.child.length; i<n; i++ ){
-				if( node.child[i].child )
-					arguments.callee( node.child[i], depth +1 );
-			}
-		})( tree.top(), 0 );
-		folderList.push({ id:tree.trash().id, title:tree.trash().title, icon:'trash.png', depth:0 });
-		(function( child, depth ){
-			for( var i=0, n=child.length; i<n; i++ ){
-				if( child[i].child ){
-					folderList.push({ id:child[i].id, title:child[i].title, icon:'folder.png', depth:depth });
-					arguments.callee( child[i].child, depth +1 );
-				}
-			}
-		})( tree.trash().child, 1 );
-		// 次に配列をつかって順次DOM生成する
-		var index = 0;
-		var length = folderList.length;
-		var maxWidth = 0;
-		(function(){
-			var count=0;
-			while( index < length && count<10 ){
-				// DOM生成
-				var node = folderList[index];
-				var $node = $folder( node.id, node.title, node.icon, node.depth );
-				$folders.append( $node );
-				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
-				// TODO:v1.5初期状態で新規フォルダ作ると幅が足りない感じで表示崩れる
-				var $title = $node.find('.title');
-				var width = $title[0].offsetLeft + ~~($title.width() *1.4);
-				if( width > maxWidth ){
-					$folders.width( width );
-					maxWidth = width;
-				}
-				if( opt ){
-					if( opt.click0 ){
-						if( index==0 ) $node.click();
-					}
-					else if( opt.clickID ){
-						if( node.id==opt.clickID ) $node.click();
-					}
-				}
-				// 次
-				index++; count++;
-			}
-			if( index < length ){
-				timer = setTimeout(arguments.callee,1);
-			}
-			else{
-				// 全フォルダ完了
-				if( opt && opt.clickAfter ) opt.clickAfter();
-			}
-		})();
-	};
-}();
 // 終了
 $('#exit').click(function(){
 	if( tree.modified() ){
@@ -620,14 +749,14 @@ $('#delete').click(function(){
 						tree.eraseNodes( ids );
 						// 表示更新
 						if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
-						else itemsCreate( tree.node(selectFolder.id.slice(6)) );
+						else itemTable( tree.node(selectFolder.id.slice(6)) );
 					}
 				});
 			}
 			else{
 				tree.moveChild( ids, tree.trash() );
 				if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
-				else itemsCreate( tree.node(selectFolder.id.slice(6)) );
+				else itemTable( tree.node(selectFolder.id.slice(6)) );
 			}
 		}
 	}
@@ -773,135 +902,6 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
-// アイテム欄作成
-var itemsCreate = function(){
-	// 独自フォーマット時刻文字列
-	Date.prototype.myFmt = function(){
-		// 0=1970/1/1は空
-		var diff = this.getTime();
-		if( diff <1 ) return '';
-		// YYYY/MM/DD HH:MM:SS
-		var Y = this.getFullYear();
-		var M = this.getMonth() +1;
-		var D = this.getDate();
-		var h = this.getHours();
-		var m = this.getMinutes();
-		var s = this.getSeconds();
-		var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
-		var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
-		// 現在時刻との差分
-		diff = ~~(((new Date()).getTime() - diff) /1000);
-		if( diff <=10 ) return 'いまさっき (' +time +')';
-		if( diff <=60 ) return '1分以内 (' +time +')';
-		if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
-		if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
-		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
-		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
-		return Y +'/' +date +' ' +time;
-	};
-	var timer = null;	// setTimeoutID
-	return function( node ){
-		clearTimeout( timer ); // 古いのキャンセル
-		var $item = function(){
-			var $e = $('<div class=item tabindex=0><img class=icon></div>')
-				.on('mouseleave',itemMouseLeave);
-			var $head = $('#itemhead');
-			var url_width = $head.find('.url').width() +4;
-			var icon_width = $head.find('.iconurl').width() +4;
-			var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
-			var $url = $('<span class=url></span>').width( url_width );
-			var $icon = $('<span class=iconurl></span>').width( icon_width );
-			var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
-			var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
-			var $br = $('<br class=clear>');
-			var $fol = $e.clone(true)
-				.addClass('folder')
-				.append( $title.clone() )
-				.append( $smry )
-				.append( $date.clone() )
-				.append( $br.clone() );
-			$fol.find('img').attr('src','folder.png');
-			var $url = $e
-				.append( $title )
-				.append( $url )
-				.append( $icon )
-				.append( $date )
-				.append( $br );
-			var date = new Date();
-			return function( node ){
-				date.setTime( node.dateAdded||0 );
-				if( node.child ){
-					var $f = $fol.clone(true).attr('id','item'+node.id);
-					$f.find('.title').text( node.title );
-					$f.find('.summary').text(function(){
-						for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
-						return smry;
-					}());
-					$f.find('.date').text( date.myFmt() );
-					return $f;
-				}
-				var $u = $url.clone(true).attr('id','item'+node.id);
-				$u.find('img').attr('src', node.icon ||'item.png');
-				$u.find('.title').text( node.title ).attr('title', node.title);
-				$u.find('.url').text( node.url );
-				$u.find('.iconurl').text( node.icon );
-				$u.find('.date').text( date.myFmt() );
-				return $u;
-			};
-		}();
-		var $items = $('#items').empty();
-		selectItemClear();
-		var index = 0;
-		var length = node.child.length;
-		(function(){
-			var count=0;
-			while( index < length && count<10 ){
-				var $e = $item( node.child[index] );
-				if( index%2 ) $e.addClass('bgcolor');
-				$items.append( $e );
-				index++; count++;
-			}
-			if( index < length ) timer = setTimeout(arguments.callee,1);
-		})();
-	};
-}();
-// フォルダツリーアイテムクリック
-var folderClick = function(){
-	return function(ev){
-		if( $(this).hasClass('select') ){
-			// 選択済みの場合アクティブに
-			$(select=this).removeClass('inactive').focus();
-			// 選択アイテムを非アクティブに
-			$('#items').children().each(function(){
-				if( $(this).hasClass('select') ) $(this).addClass('inactive');
-			});
-			// 名前編集
-			//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
-			// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
-			// inline-blockにしたら文字上クリックでしか編集できなくなった
-			// ので、自力判定でblock要素のように文字上じゃなくても編集で
-			// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
-			// らしい。
-			//var elm = $(this).find('.title')[0];
-			//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
-			// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
-			// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
-			var $e = $(this).find('.title');
-			if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
-		}
-		else{
-			// ノード取得:自身ID=folderXXならノードID=XX
-			var node = tree.node( this.id.slice(6) );
-			if( node ){
-				// クリックをフォルダ選択状態に
-				$(selectFolder).removeClass('select inactive');
-				$(select=selectFolder=this).addClass('select').focus();
-				// アイテム欄作成
-				itemsCreate( node );
-			}
-		}
-	};
-}();
 // フォルダイベント
 $('#folders')
 .on('click','.folder',folderClick)
@@ -1119,7 +1119,7 @@ function itemDragStart( element, downX, downY ){
 			}else{
 				// フォルダツリーでドラッグ
 				$(draggie).addClass('draggie');
-				dragitem = { ids:[ draggie.id.slice(6) ] };
+				dragitem = { ids:[ draggie.id.slice(6) ], foldercount:1 };
 			}
 			// ドラッグボックス表示
 			// <img>タグは$('img',draggie).html()で取れないの？
@@ -1294,8 +1294,8 @@ function itemMouseUp(ev){
 		}
 		$this.removeClass('dropTop dropBottom dropIN');
 		// 表示更新
-		// TODO:ドラッグアイテムにフォルダが含まれていない場合はフォルダツリー更新不要？
-		folderTree({ clickID:selectFolder.id.slice(6) });
+		if( dragitem.foldercount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
+		else itemTable( tree.node(selectFolder.id.slice(6)) );
 		// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
 		// $(document).mouseup()が実行されていないような挙動にみえるので
 		// 実行したらとりあえず問題ないように見える。
@@ -1574,9 +1574,7 @@ function edit( element ){
 								break;
 							case 'url':
 								if( value.length ){
-									// 新品アイテムかファビコン無しの場合はURLを取得解析する
-									// TODO:CococはURLにアクセスせずに登録したいができない…
-									// →ファビコン無しは解析しないことにしてみる
+									// 新品アイテムはURL取得解析する
 									var node = tree.node( nodeid );
 									if( node.title=='新規ブックマーク' ){
 										$.get(':analyze?'+value.replace(/#!/g,'%23!'),function(data){
