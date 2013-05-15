@@ -115,7 +115,8 @@ body {
 	font-weight:normal;
 }
 /* 選択非アクティブ */
-.inactive, .inactive:hover {
+#folders .inactive, #folders .inactive:hover,
+#items .inactive, #items .inactive:hover {
 	color:#000;
 	background:#ccc;
 }
