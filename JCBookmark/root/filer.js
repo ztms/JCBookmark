@@ -599,9 +599,10 @@ $('#selectall').click(function(){
 $('#delete').click(function(){
 	if( select.id.match(/^item/) ){
 		// アイテム欄
-		var titles='', count=0, ids=[];
+		var hasFolder=false, titles='', count=0, ids=[];
 		$('#items').children().each(function(){
 			if( $(this).hasClass('select') ){
+				if( $(this).hasClass('folder') ) hasFolder = true;
 				titles += '　・' +$('.title',this).text() +'#BR#';
 				ids.push(this.id.slice(4));
 				count++;
@@ -618,15 +619,15 @@ $('#delete').click(function(){
 						// ノードツリー変更
 						tree.eraseNodes( ids );
 						// 表示更新
-						// TODO:削除対象にフォルダが含まれていない場合はフォルダツリー更新不要？
-						folderTree({ clickID:selectFolder.id.slice(6) });
+						if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
+						else itemsCreate( tree.node(selectFolder.id.slice(6)) );
 					}
 				});
 			}
 			else{
 				tree.moveChild( ids, tree.trash() );
-				// TODO:削除対象にフォルダが含まれていない場合はフォルダツリー更新不要？
-				folderTree({ clickID:selectFolder.id.slice(6) });
+				if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
+				else itemsCreate( tree.node(selectFolder.id.slice(6)) );
 			}
 		}
 	}
@@ -772,8 +773,8 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
-// フォルダツリーアイテムクリック
-var folderClick = function(){
+// アイテム欄作成
+var itemsCreate = function(){
 	// 独自フォーマット時刻文字列
 	Date.prototype.myFmt = function(){
 		// 0=1970/1/1は空
@@ -799,8 +800,74 @@ var folderClick = function(){
 		return Y +'/' +date +' ' +time;
 	};
 	var timer = null;	// setTimeoutID
-	return function(ev){
+	return function( node ){
 		clearTimeout( timer ); // 古いのキャンセル
+		var $item = function(){
+			var $e = $('<div class=item tabindex=0><img class=icon></div>')
+				.on('mouseleave',itemMouseLeave);
+			var $head = $('#itemhead');
+			var url_width = $head.find('.url').width() +4;
+			var icon_width = $head.find('.iconurl').width() +4;
+			var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
+			var $url = $('<span class=url></span>').width( url_width );
+			var $icon = $('<span class=iconurl></span>').width( icon_width );
+			var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
+			var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
+			var $br = $('<br class=clear>');
+			var $fol = $e.clone(true)
+				.addClass('folder')
+				.append( $title.clone() )
+				.append( $smry )
+				.append( $date.clone() )
+				.append( $br.clone() );
+			$fol.find('img').attr('src','folder.png');
+			var $url = $e
+				.append( $title )
+				.append( $url )
+				.append( $icon )
+				.append( $date )
+				.append( $br );
+			var date = new Date();
+			return function( node ){
+				date.setTime( node.dateAdded||0 );
+				if( node.child ){
+					var $f = $fol.clone(true).attr('id','item'+node.id);
+					$f.find('.title').text( node.title );
+					$f.find('.summary').text(function(){
+						for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
+						return smry;
+					}());
+					$f.find('.date').text( date.myFmt() );
+					return $f;
+				}
+				var $u = $url.clone(true).attr('id','item'+node.id);
+				$u.find('img').attr('src', node.icon ||'item.png');
+				$u.find('.title').text( node.title ).attr('title', node.title);
+				$u.find('.url').text( node.url );
+				$u.find('.iconurl').text( node.icon );
+				$u.find('.date').text( date.myFmt() );
+				return $u;
+			};
+		}();
+		var $items = $('#items').empty();
+		selectItemClear();
+		var index = 0;
+		var length = node.child.length;
+		(function(){
+			var count=0;
+			while( index < length && count<10 ){
+				var $e = $item( node.child[index] );
+				if( index%2 ) $e.addClass('bgcolor');
+				$items.append( $e );
+				index++; count++;
+			}
+			if( index < length ) timer = setTimeout(arguments.callee,1);
+		})();
+	};
+}();
+// フォルダツリーアイテムクリック
+var folderClick = function(){
+	return function(ev){
 		if( $(this).hasClass('select') ){
 			// 選択済みの場合アクティブに
 			$(select=this).removeClass('inactive').focus();
@@ -826,71 +893,11 @@ var folderClick = function(){
 			// ノード取得:自身ID=folderXXならノードID=XX
 			var node = tree.node( this.id.slice(6) );
 			if( node ){
-				// クリックフォルダ選択状態にする
+				// クリックをフォルダ選択状態に
 				$(selectFolder).removeClass('select inactive');
 				$(select=selectFolder=this).addClass('select').focus();
-				// コンテンツにアイテム(child配列)登録
-				var $item = function(){
-					var $e = $('<div class=item tabindex=0><img class=icon></div>')
-						.on('mouseleave',itemMouseLeave);
-					var $head = $('#itemhead');
-					var url_width = $head.find('.url').width() +4;
-					var icon_width = $head.find('.iconurl').width() +4;
-					var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
-					var $url = $('<span class=url></span>').width( url_width );
-					var $icon = $('<span class=iconurl></span>').width( icon_width );
-					var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
-					var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
-					var $br = $('<br class=clear>');
-					var $fol = $e.clone(true)
-						.addClass('folder')
-						.append( $title.clone() )
-						.append( $smry )
-						.append( $date.clone() )
-						.append( $br.clone() );
-					$fol.find('img').attr('src','folder.png');
-					var $url = $e
-						.append( $title )
-						.append( $url )
-						.append( $icon )
-						.append( $date )
-						.append( $br );
-					var date = new Date();
-					return function( node ){
-						date.setTime( node.dateAdded||0 );
-						if( node.child ){
-							var $f = $fol.clone(true).attr('id','item'+node.id);
-							$f.find('.title').text( node.title );
-							$f.find('.summary').text(function(){
-								for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
-								return smry;
-							}());
-							$f.find('.date').text( date.myFmt() );
-							return $f;
-						}
-						var $u = $url.clone(true).attr('id','item'+node.id);
-						$u.find('img').attr('src', node.icon ||'item.png');
-						$u.find('.title').text( node.title ).attr('title', node.title);
-						$u.find('.url').text( node.url );
-						$u.find('.iconurl').text( node.icon );
-						$u.find('.date').text( date.myFmt() );
-						return $u;
-					};
-				}();
-				var $items = $('#items').empty();
-				selectItemClear();
-				var index = 0;
-				var length = node.child.length;
-				(function(){
-					var count=0;
-					while( index < length && count<10 ){
-						var $e = $item( node.child[index] );
-						if( index%2 ) $e.addClass('bgcolor');
-						$items.append( $e );
-						index++; count++;
-					}
-					if( index < length ) timer = setTimeout(arguments.callee,1);
-				})();
+				// アイテム欄作成
+				itemsCreate( node );
 			}
 		}
 	};
