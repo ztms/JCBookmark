@@ -221,10 +221,11 @@ body {
 }
 #contextmenu a {
 	display:block;
-	color:#000;
-	padding:3px 0 3px 15px;
 	cursor:default;
+	color:#000;
+	padding:3px 0 3px 7px;
 	font-size:13px;
+	line-height:17px;
 	font-family:"MS PGothic",sans-serif;
 }
 #contextmenu a:hover {
@@ -234,6 +235,13 @@ body {
 #contextmenu a:active {
 	color:#fff;
 	background:#449;
+}
+#contextmenu img {
+	width:16px;
+	height:16px;
+	margin:0 8px 0 0;
+	vertical-align:top;
+	display:inline-block;
 }
 #contextmenu hr {
 	border-top:1px solid #999;

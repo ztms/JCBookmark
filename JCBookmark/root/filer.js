@@ -1340,29 +1340,31 @@ function itemDblClick(){
 	return false;
 }
 function itemContextMenu(ev){
-	var item = ev.target.parentNode;
+	var item = ev.target;
 	while( !item.id.match(/^item/) ){
 		if( !item.parentNode ) break;
 		item = item.parentNode;
 	}
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
+	var iopen = $(item).find('img').attr('src');
+	var idelete = tree.trashHas( item.id.slice(4) )? 'delete.png' : 'trash.png';
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
-		$box.append($('<a>フォルダを開く</a><hr>').click(function(){
+		$box.append($('<a><img src='+iopen+'>フォルダを開く</a><hr>').click(function(){
 			$menu.hide();
 			$(item).dblclick();
 		}));
 	}
 	else{
 		// ブックマーク
-		$box.append($('<a>URLを開く</a><hr>').click(function(){
+		$box.append($('<a><img src='+iopen+'>URLを開く</a><hr>').click(function(){
 			$menu.hide();
 			var url = $(item).find('.url').text();
 			if( url.length ) window.open( url );
 		}));
-		$box.append($('<a>タイトル/アイコンを取得</a><hr>').click(function(){
+		$box.append($('<a><img src=question.png>タイトル/アイコンを取得</a><hr>').click(function(){
 			$menu.hide();
 			var $title = $('<input id=antitle>');
 			var $icon = $('<img src=wait.gif class=icon>');
@@ -1454,7 +1456,7 @@ function itemContextMenu(ev){
 		}));
 	}
 	// 削除
-	$box.append($('<a>削除</a>').click(function(){
+	$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
 		$menu.hide();
 		$('#delete').click();
 	}));
