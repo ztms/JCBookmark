@@ -1615,6 +1615,20 @@ var panelPopper = function(){
 	var nextPanel = null;	// 次のポップアップパネル
 	var itemTimer = null;	// アイテム追加setTimeout
 	var mouseTimer = null;	// マウス監視setTimeout
+	function elementOnXY( e, x, y ){
+		return ( x >= e.offsetLeft && y >= e.offsetTop && x <= e.offsetLeft + e.offsetWidth && y <= e.offsetTop + e.offsetHeight );
+	}
+	function onMouseStop( x, y ){
+		if( $box ){
+			var box = $box[0];
+			if( elementOnXY( box, x, y ) ) return;
+			if( elementOnXY( box.parentNode, x, y ) ) return;
+			panelPopper(false);
+			if( nextPanel && elementOnXY( nextPanel, x, y ) ){
+				panelPopper( nextPanel, x, y );
+			}
+		}
+	}
 	return function( panel, prevX, prevY ){
 		if( panel==false ){
 			// ポップアップ解除
@@ -1663,17 +1677,7 @@ var panelPopper = function(){
 			$(document).on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
 				clearTimeout( mouseTimer );
-				mouseTimer = setTimeout(function(){
-					if( $box ){
-						var box = $box[0];
-						if( elementOnXY( box, ev.pageX, ev.pageY ) ) return;
-						if( elementOnXY( box.parentNode, ev.pageX, ev.pageY ) ) return;
-						panelPopper(false);
-						if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
-							panelPopper( nextPanel, ev.pageX, ev.pageY );
-						}
-					}
-				},200);
+				mouseTimer = setTimeout(function(){ onMouseStop( ev.pageX, ev.pageY ); },200);
 				// カーソル移動方向が範囲外なら消す
 				var box = $box[0];
 				var dx = ev.pageX - prevX;
@@ -1703,9 +1707,6 @@ var panelPopper = function(){
 			});
 		}
 	};
-	function elementOnXY( e, x, y ){
-		return ( x >= e.offsetLeft && y >= e.offsetTop && x <= e.offsetLeft + e.offsetWidth && y <= e.offsetTop + e.offsetHeight );
-	}
 }();
 // パネル開閉(開いてたら閉じ、閉じてたら開く)
 function panelOpenClose( $panel, itemShow, pageX, pageY ){
