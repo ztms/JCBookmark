@@ -384,8 +384,8 @@ var folderTree = function(){
 		var length = folderList.length;
 		var maxWidth = 0;
 		(function(){
-			var count=0;
-			while( index < length && count<10 ){
+			var count=10;
+			while( index < length && count>0 ){
 				// DOM生成
 				var node = folderList[index];
 				var $node = $folder( node.id, node.title, node.icon, node.depth );
@@ -406,7 +406,7 @@ var folderTree = function(){
 					}
 				}
 				// 次
-				index++; count++;
+				index++; count--;
 			}
 			if( index < length ){
 				timer = setTimeout(arguments.callee,1);
@@ -499,12 +499,12 @@ var itemTable = function(){
 		var index = 0;
 		var length = node.child.length;
 		(function(){
-			var count=0;
-			while( index < length && count<10 ){
+			var count=10;
+			while( index < length && count>0 ){
 				var $e = $item( node.child[index] );
 				if( index%2 ) $e.addClass('bgcolor');
 				$items.append( $e );
-				index++; count++;
+				index++; count--;
 			}
 			if( index < length ) timer = setTimeout(arguments.callee,1);
 		})();

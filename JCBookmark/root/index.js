@@ -533,7 +533,7 @@ var paneler = function(){
 		var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
 		var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
 		(function(){
-			var count=0;
+			var count=2;
 			do{
 				var layoutSeek = false;
 				for( var coID in panelLayout ){
@@ -544,9 +544,9 @@ var paneler = function(){
 						layoutSeek = true;
 					}
 				}
-				index++; count++;
+				index++; count--;
 			}
-			while( layoutSeek && count<2 );
+			while( layoutSeek && count>0 );
 			if( layoutSeek ) timer = setTimeout(arguments.callee,1); else afterLayout();
 		})();
 		// レイアウト反映後、残りのパネル配置
@@ -564,10 +564,10 @@ var paneler = function(){
 			})( nodeTop );
 			var index=0, length=nodeList.length;
 			(function(){
-				var count=0;
-				while( index < length && count<5 ){
+				var count=5;
+				while( index < length && count>0 ){
 					panelCreate( nodeList[index] );
-					index++; count++;
+					index++; count--;
 				}
 				if( index < length ) timer = setTimeout(arguments.callee,1); else afterPlaced();
 			})();
@@ -1652,11 +1652,10 @@ var panelPopper = function(){
 			var length = child.length;
 			var index = 0;
 			(function(){
-				var count=0;
-				while( index < length && count<10 ){
-					if( !child[index].child )
-						$box.append( $panelItem( child[index] ) );
-					index++; count++;
+				var count=10;
+				while( index < length && count>0 ){
+					if( !child[index].child ) $box.append( $panelItem( child[index] ) );
+					index++; count--;
 				}
 				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
 			})();
