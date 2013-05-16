@@ -23,6 +23,16 @@ var $debug = $('<div></div>').css({
 		,'font-size':'12px'
 }).appendTo(document.body);
 */
+// CSSルールの追加削除
+// http://d.hatena.ne.jp/ofk/20090716/1247719727
+// スタイルルールの操作
+// http://ash.jp/web/css/js_style.htm
+// jQuery.Ruleプラグイン
+// http://flesler.blogspot.jp/2007/11/jqueryrule.html
+if( $.css.add==null ){
+	$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
+	$.css.remove=function(a){var b=$.css.sheet;b&&b[$.browser.msie?"removeRule":"deleteRule"](a)};
+}
 // ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 $.ajaxSetup({
 	beforeSend:function(xhr){
@@ -351,102 +361,6 @@ var option = {
 		return option;
 	}
 };
-// CSSルールの追加削除
-// http://d.hatena.ne.jp/ofk/20090716/1247719727
-// スタイルルールの操作
-// http://ash.jp/web/css/js_style.htm
-// jQuery.Ruleプラグイン
-// http://flesler.blogspot.jp/2007/11/jqueryrule.html
-if( $.css.add==null ){
-	$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
-	$.css.remove=function(a){var b=$.css.sheet;b&&b[$.browser.msie?"removeRule":"deleteRule"](a)};
-}
-// ドキュメント全体
-$(document).on({
-	mousedown:function(ev){
-		// 右クリックメニュー隠す
-		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide();
-		}
-	}
-	// サイドバーにマウスカーソル近づいたらスライド出現させる。
-	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	,mousemove:function(){
-		var animate = null;
-		return function(ev){
-			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
-				if( !animate )
-					animate = $sidebar.animate({width:65},'fast');
-			}
-			else if( animate ){							// サイドバーから離れてるとき隠す
-				$sidebar.stop(true).width(34);
-				animate = null;
-			}
-		};
-	}()
-});
-// パネルタイトルダブルクリックで開閉
-$wall.on('dblclick','.title',function(ev){
-	// ＋－ボタン上の場合は何もしない
-	if( $(ev.target).is('.plusminus') ) return;
-	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
-});
-// パネル右クリックメニュー
-$wall.on('contextmenu','.title',function(ev){
-	// ev.targetはクリックした場所にあるDOMエレメント
-	var panel = ev.target;
-	while( panel.className !='panel' ){
-		if( !panel.parentNode ) break;
-		panel = panel.parentNode;
-	}
-	var $menu = $('#contextmenu');
-	$menu.find('a').off();
-	// アイテムすべて開く
-	// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
-	$('#allopen').click(function(){
-		$menu.hide();
-		$(panel).find('.item').each(function(){
-			window.open( this.getAttribute('href') );
-		});
-	});
-	// アイテムテキストで取得
-	$('#showtext').click(function(){
-		$menu.hide();
-		var text='';
-		var child = tree.node( panel.id ).child;
-		for( var i=0, n=child.length; i<n; i++ ){
-			text += child[i].title + '\r' + child[i].url + '\r';
-		}
-		$('#itemtext').find('textarea').text(text).end().dialog({
-			title	:'アイテムをテキストで取得'
-			,modal	:true
-			,width	:480
-			,height	:360
-			,close	:function(){ $(this).dialog('destroy'); }
-		});
-	});
-	// 表示
-	$menu.css({
-		left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-		,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
-	}).show();
-	return false;	// 既定右クリックメニュー出さない
-});
-// ＋－ボタンクリックでパネル開閉
-$wall.on('click','.plusminus',function( ev, pageX, pageY ){
-	pageX = pageX || ev.pageX;
-	pageY = pageY || ev.pageY;
-	// パネルID＝親(.title)の親(.panel)のID
-	panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
-	// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
-	// 例) { btn1:1, btn9:0, btn45:0, ... }
-	var status = {};
-	$('.plusminus').each(function(){
-		//srcはURL('http://localhost:XXX/plus.png'など)文字列
-		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
-	});
-	option.panel.status( status );
-});
 // パネルアイテム要素生成関数
 var $panelItem = function(){
 	var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
@@ -725,158 +639,6 @@ var paneler = function(){
 		}
 	});
 })();
-// ノードツリー変更保存リンク
-$('#modified').click(function(){ modifySave(); } );
-// パネル設定ダイアログ
-$('#optionico').click(function(){
-	// ページタイトル
-	$('#page_title').val( option.page.title() )
-	.off().on('input keyup paste',function(){
-		if( this.value != option.page.title() ){
-			option.page.title( this.value );
-			document.title = option.page.title();
-		}
-	});
-	// 色テーマ
-	$('input[name=colorcss]').each(function(){
-		if( this.value==option.color.css() )
-			$(this).attr('checked','checked');
-	})
-	.off().change(function(){
-		option.color.css( this.value );
-		$('#colorcss').attr('href',option.color.css());
-	});
-	// パネル幅
-	$('#panel_width').val( option.panel.width() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
-		if( this.value !=option.panel.width() ){
-			option.panel.width( this.value );
-			playLocalParam();
-		}
-	});
-	$('#panel_width_inc').off().click(function(){
-		var val = option.panel.width();
-		if( val <1000 ){
-			option.panel.width( ++val );
-			playLocalParam();
-			$('#panel_width').val( val );
-		}
-	});
-	$('#panel_width_dec').off().click(function(){
-		var val = option.panel.width();
-		if( val >100 ){
-			option.panel.width( --val );
-			playLocalParam();
-			$('#panel_width').val( val );
-		}
-	});
-	// パネル余白
-	$('#panel_margin').val( option.panel.margin() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
-		if( this.value !=option.panel.margin() ){
-			option.panel.margin( this.value );
-			playLocalParam();
-		}
-	});
-	$('#panel_margin_inc').off().click(function(){
-		var val = option.panel.margin();
-		if( val <100 ){
-			option.panel.margin( ++val );
-			playLocalParam();
-			$('#panel_margin').val( val );
-		}
-	});
-	$('#panel_margin_dec').off().click(function(){
-		var val = option.panel.margin();
-		if( val >0 ){
-			option.panel.margin( --val );
-			playLocalParam();
-			$('#panel_margin').val( val );
-		}
-	});
-	// 列数
-	$('#column_count').val( option.column.count() )
-	.off().on('input keyup paste',function(){
-		if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
-		if( this.value !=option.column.count() ){
-			changeColumnCount( { prev:option.column.count(), next:this.value } );
-			option.column.count( this.value );
-			playLocalParam();
-		}
-	});
-	$('#column_count_inc').off().click(function(){
-		var val = option.column.count();
-		if( val <30 ){
-			changeColumnCount( { prev:val, next:val+1 } );
-			option.column.count( ++val );
-			playLocalParam();
-			$('#column_count').val( val );
-		}
-	});
-	$('#column_count_dec').off().click(function(){
-		var val = option.column.count();
-		if( val >1 ){
-			changeColumnCount( { prev:val, next:val-1 } );
-			option.column.count( --val );
-			playLocalParam();
-			$('#column_count').val( val );
-		}
-	});
-	// フォントサイズ
-	$('#font_size').val( option.font.size() );
-	$('#font_size_inc').off().click(function(){
-		var val = option.font.size();
-		if( val <24 ){
-			option.font.size( ++val );
-			playLocalParam();
-			$('#font_size').val( val );
-		}
-	});
-	$('#font_size_dec').off().click(function(){
-		var val = option.font.size();
-		if( val >9 ){
-			option.font.size( --val );
-			playLocalParam();
-			$('#font_size').val( val );
-		}
-	});
-	// ダイアログ表示
-	$('#option').dialog({
-		title	:'パネル設定'
-		,modal	:true
-		,width	:390
-		,height	:290
-		,close	:function(){ $(this).dialog('destroy'); }
-		,buttons:{
-			'パネル設定クリア':function(){
-				option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
-				$('#panel_width').val( option.panel.width() );
-				$('#panel_margin').val( option.panel.margin() );
-				$('#column_count').val( option.column.count() );
-				$('#font_size').val( option.font.size() );
-				playLocalParam();
-			}
-			,'パネル配置クリア':function(){
-				option.panel.layout({});
-				paneler( tree.top() );
-			}
-		}
-	});
-});
-// ブックマークの整理
-$('#filerico').click(function(){
-	if( !tree.modified() && !option.modified() ){
-		gotoFiler();
-	}
-	else Confirm({
-		msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
-		,no	:function(){ gotoFiler(); }
-		,yes:function(){ modifySave({ success:gotoFiler }); }
-	});
-	function gotoFiler(){ location.href = 'filer.html'; }
-});
 // ブラウザ情報＋インポートイベント
 (function(){
 	var browser = { ie:1, chrome:1, firefox:1 };
@@ -1056,6 +818,244 @@ $('#filerico').click(function(){
 		}
 	});
 })();
+// ドキュメント全体
+$(document).on({
+	mousedown:function(ev){
+		// 右クリックメニュー隠す
+		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
+			$('#contextmenu').hide();
+		}
+	}
+	// サイドバーにマウスカーソル近づいたらスライド出現させる。
+	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
+	,mousemove:function(){
+		var animate = null;
+		return function(ev){
+			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
+				if( !animate )
+					animate = $sidebar.animate({width:65},'fast');
+			}
+			else if( animate ){							// サイドバーから離れてるとき隠す
+				$sidebar.stop(true).width(34);
+				animate = null;
+			}
+		};
+	}()
+});
+// パネルタイトルダブルクリックで開閉
+$wall.on('dblclick','.title',function(ev){
+	// ＋－ボタン上の場合は何もしない
+	if( $(ev.target).is('.plusminus') ) return;
+	$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
+});
+// パネル右クリックメニュー
+$wall.on('contextmenu','.title',function(ev){
+	// ev.targetはクリックした場所にあるDOMエレメント
+	var panel = ev.target;
+	while( panel.className !='panel' ){
+		if( !panel.parentNode ) break;
+		panel = panel.parentNode;
+	}
+	var $menu = $('#contextmenu');
+	$menu.find('a').off();
+	// アイテムすべて開く
+	// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
+	$('#allopen').click(function(){
+		$menu.hide();
+		$(panel).find('.item').each(function(){
+			window.open( this.getAttribute('href') );
+		});
+	});
+	// アイテムテキストで取得
+	$('#showtext').click(function(){
+		$menu.hide();
+		var text='';
+		var child = tree.node( panel.id ).child;
+		for( var i=0, n=child.length; i<n; i++ ){
+			text += child[i].title + '\r' + child[i].url + '\r';
+		}
+		$('#itemtext').find('textarea').text(text).end().dialog({
+			title	:'アイテムをテキストで取得'
+			,modal	:true
+			,width	:480
+			,height	:360
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
+	});
+	// 表示
+	$menu.css({
+		left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+		,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+	}).show();
+	return false;	// 既定右クリックメニュー出さない
+});
+// ＋－ボタンクリックでパネル開閉
+$wall.on('click','.plusminus',function( ev, pageX, pageY ){
+	pageX = pageX || ev.pageX;
+	pageY = pageY || ev.pageY;
+	// パネルID＝親(.title)の親(.panel)のID
+	panelOpenClose( this.parentNode.parentNode.id, true, pageX, pageY );
+	// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
+	// 例) { btn1:1, btn9:0, btn45:0, ... }
+	var status = {};
+	$('.plusminus').each(function(){
+		//srcはURL('http://localhost:XXX/plus.png'など)文字列
+		status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+	});
+	option.panel.status( status );
+});
+// ノードツリー変更保存リンク
+$('#modified').click(function(){ modifySave(); });
+// パネル設定ダイアログ
+$('#optionico').click(function(){
+	// ページタイトル
+	$('#page_title').val( option.page.title() )
+	.off().on('input keyup paste',function(){
+		if( this.value != option.page.title() ){
+			option.page.title( this.value );
+			document.title = option.page.title();
+		}
+	});
+	// 色テーマ
+	$('input[name=colorcss]').each(function(){
+		if( this.value==option.color.css() )
+			$(this).attr('checked','checked');
+	})
+	.off().change(function(){
+		option.color.css( this.value );
+		$('#colorcss').attr('href',option.color.css());
+	});
+	// パネル幅
+	$('#panel_width').val( option.panel.width() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
+		if( this.value !=option.panel.width() ){
+			option.panel.width( this.value );
+			playLocalParam();
+		}
+	});
+	$('#panel_width_inc').off().click(function(){
+		var val = option.panel.width();
+		if( val <1000 ){
+			option.panel.width( ++val );
+			playLocalParam();
+			$('#panel_width').val( val );
+		}
+	});
+	$('#panel_width_dec').off().click(function(){
+		var val = option.panel.width();
+		if( val >100 ){
+			option.panel.width( --val );
+			playLocalParam();
+			$('#panel_width').val( val );
+		}
+	});
+	// パネル余白
+	$('#panel_margin').val( option.panel.margin() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
+		if( this.value !=option.panel.margin() ){
+			option.panel.margin( this.value );
+			playLocalParam();
+		}
+	});
+	$('#panel_margin_inc').off().click(function(){
+		var val = option.panel.margin();
+		if( val <100 ){
+			option.panel.margin( ++val );
+			playLocalParam();
+			$('#panel_margin').val( val );
+		}
+	});
+	$('#panel_margin_dec').off().click(function(){
+		var val = option.panel.margin();
+		if( val >0 ){
+			option.panel.margin( --val );
+			playLocalParam();
+			$('#panel_margin').val( val );
+		}
+	});
+	// 列数
+	$('#column_count').val( option.column.count() )
+	.off().on('input keyup paste',function(){
+		if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
+		if( this.value !=option.column.count() ){
+			changeColumnCount( { prev:option.column.count(), next:this.value } );
+			option.column.count( this.value );
+			playLocalParam();
+		}
+	});
+	$('#column_count_inc').off().click(function(){
+		var val = option.column.count();
+		if( val <30 ){
+			changeColumnCount( { prev:val, next:val+1 } );
+			option.column.count( ++val );
+			playLocalParam();
+			$('#column_count').val( val );
+		}
+	});
+	$('#column_count_dec').off().click(function(){
+		var val = option.column.count();
+		if( val >1 ){
+			changeColumnCount( { prev:val, next:val-1 } );
+			option.column.count( --val );
+			playLocalParam();
+			$('#column_count').val( val );
+		}
+	});
+	// フォントサイズ
+	$('#font_size').val( option.font.size() );
+	$('#font_size_inc').off().click(function(){
+		var val = option.font.size();
+		if( val <24 ){
+			option.font.size( ++val );
+			playLocalParam();
+			$('#font_size').val( val );
+		}
+	});
+	$('#font_size_dec').off().click(function(){
+		var val = option.font.size();
+		if( val >9 ){
+			option.font.size( --val );
+			playLocalParam();
+			$('#font_size').val( val );
+		}
+	});
+	// ダイアログ表示
+	$('#option').dialog({
+		title	:'パネル設定'
+		,modal	:true
+		,width	:390
+		,height	:290
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{
+			'パネル設定クリア':function(){
+				option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
+				$('#panel_width').val( option.panel.width() );
+				$('#panel_margin').val( option.panel.margin() );
+				$('#column_count').val( option.column.count() );
+				$('#font_size').val( option.font.size() );
+				playLocalParam();
+			}
+			,'パネル配置クリア':function(){
+				option.panel.layout({});
+				paneler( tree.top() );
+			}
+		}
+	});
+});
+// ブックマークの整理
+$('#filerico').click(function(){
+	if( !tree.modified() && !option.modified() ){
+		gotoFiler();
+	}
+	else Confirm({
+		msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+		,no	:function(){ gotoFiler(); }
+		,yes:function(){ modifySave({ success:gotoFiler }); }
+	});
+	function gotoFiler(){ location.href = 'filer.html'; }
+});
 // * HTMLエクスポート
 //   クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
 //   クライアント側で生成する場合、それを単純にダウンロードできればよいが、
@@ -1183,7 +1183,7 @@ $('#impexpico').click(function(){
 // 独自フォーマット時刻文字列
 Date.prototype.myFmt = function(){
 	return this.getFullYear() +'年' +(this.getMonth()+1) +'月' +this.getDate() +'日　'
-			+this.getHours() +'時' +this.getMinutes() +'分';// +this.getSeconds() +'秒';
+			+this.getHours() +'時' +this.getMinutes() +'分';
 }
 // スナップショット
 $('#snapico').click(function(){
@@ -1425,8 +1425,140 @@ $('.barico').on({
 	,focus:function(){ $sidebar.width(65); }
 	,blur:function(){ $sidebar.width(34); }
 });
-
-
+// 閉パネルのアイテムポップアップ処理
+var panelPopper = function(){
+	var $box = null;		// ポップアップ中のアイテムボックス
+	var nextPanel = null;	// 次のポップアップパネル
+	var itemTimer = null;	// アイテム追加setTimeout
+	var mouseTimer = null;	// マウス監視setTimeout
+	function elementOnXY( e, x, y ){
+		return ( x >= e.offsetLeft && y >= e.offsetTop && x <= e.offsetLeft + e.offsetWidth && y <= e.offsetTop + e.offsetHeight );
+	}
+	function onMouseStop( x, y ){
+		if( $box ){
+			var box = $box[0];
+			if( elementOnXY( box, x, y ) ) return;
+			if( elementOnXY( box.parentNode, x, y ) ) return;
+			panelPopper(false);
+			if( nextPanel && elementOnXY( nextPanel, x, y ) ){
+				panelPopper( nextPanel, x, y );
+			}
+		}
+	}
+	return function( panel, prevX, prevY ){
+		if( panel==false ){
+			// ポップアップ解除
+			clearTimeout( itemTimer );
+			$(document).off('mousemove.itempop');
+			$box.hide().off().empty();
+			$box = null;
+		}
+		else if( $box ){
+			// ポップアップ中のため保留
+			nextPanel = panel;
+		}
+		else{
+			// ポップアップ実行
+			clearTimeout( itemTimer );
+			$box = $(panel).find('.itembox');
+			var left = panel.offsetLeft + panel.offsetWidth -2;	// -2ちょい左
+			// 右端にはみ出る場合は左側に出す
+			if( left + panel.offsetWidth > $window.scrollLeft() + $window.width() )
+				left = panel.offsetLeft - panel.offsetWidth +20;
+			$box.css({
+				left	:left
+				,top	:panel.offsetTop -1		// ちょい上
+				,width	:panel.offsetWidth -24	// 適当に幅狭く
+			})
+			.mouseleave(function(ev){
+				var panel = this.parentNode;
+				if( !elementOnXY( panel, ev.pageX, ev.pageY ) ){
+					panelPopper(false);
+				}
+			})
+			.addClass('itempop').empty().show();
+			// アイテム追加
+			var child = tree.node( panel.id ).child;
+			var length = child.length;
+			var index = 0;
+			(function(){
+				var count=10;
+				while( index < length && count>0 ){
+					if( !child[index].child ) $box.append( $panelItem( child[index] ) );
+					index++; count--;
+				}
+				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
+			})();
+			// カーソル移動方向と停止時間を監視
+			$(document).on('mousemove.itempop',function(ev){
+				// 範囲外で一定時間カーソルが止まったら消す
+				clearTimeout( mouseTimer );
+				mouseTimer = setTimeout(function(){ onMouseStop( ev.pageX, ev.pageY ); },200);
+				// カーソル移動方向が範囲外なら消す
+				var box = $box[0];
+				var dx = ev.pageX - prevX;
+				var dy = ev.pageY - prevY;
+				if( Math.abs(dx) + Math.abs(dy) >3 ){	// 適当に溜めないとdx=0が頻発して問題
+					var destX = box.offsetLeft;
+					if( destX < ev.pageX ) destX += box.offsetWidth;
+					var destY = (dx==0)?-999:(destX - ev.pageX) * dy / dx + ev.pageY;
+					if( dx==0							// 垂直移動
+						|| (dx>0 && destX < ev.pageX)	// 逆方向
+						|| (dx<0 && ev.pageX < destX)	// 逆方向
+						|| destY < box.offsetTop		// box範囲外方向
+						|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
+					){
+						if( !elementOnXY( box, ev.pageX, ev.pageY ) &&
+							!elementOnXY( box.parentNode, ev.pageX, ev.pageY )
+						){
+							panelPopper(false);
+							if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
+								panelPopper( nextPanel, ev.pageX, ev.pageY );
+							}
+						}
+					}
+					prevX = ev.pageX;
+					prevY = ev.pageY;
+				}
+			});
+		}
+	};
+}();
+// パネル開閉(開いてたら閉じ、閉じてたら開く)
+function panelOpenClose( $panel, itemShow, pageX, pageY ){
+	// 引数$panelはjQueryオブジェクトまたはパネルID(ノードID)文字列
+	if( $panel instanceof jQuery ){
+		var nodeID = $panel[0].id;
+	}
+	else{
+		var nodeID = $panel;
+		$panel = $('#'+$panel);
+	}
+	var $box = $panel.find('.itembox');
+	var $btn = $panel.find('.plusminus');
+	if( $btn.attr('src')=='plus.png' ){
+		// 開く
+		panelPopper(false);
+		$panel.off('mouseenter.itempop');
+		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
+		$btn.attr('src','minus.png');
+		// アイテム追加
+		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
+			if( !child[i].child )
+				$box.append( $panelItem( child[i] ) );
+		}
+	}else{
+		// 閉じる(hoverでアイテムをポップアップ)
+		// TODO:大量エントリで閉じパネルが多くなると、パネルタイトルは幅狭くていいから
+		// 中身のポップアップの幅をもっと広くしたくなる。どうするか。設定で持つか？
+		// TODO:吹き出しみたいな三角形あるといいかな？いらんかな。
+		$box.hide().css('position','absolute').empty();
+		$panel.on('mouseenter.itempop',function(ev){ panelPopper( this, ev.pageX, ev.pageY ); });
+		$btn.attr('src','plus.png');
+		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
+	}
+}
+// 変更保存
 function modifySave( arg ){
 	// 順番に保存
 	$('#modified').hide();
@@ -1609,139 +1741,6 @@ function setSortable(){
 	.disableSelection();
 	*/
 }
-// 閉パネルのアイテムポップアップ処理
-var panelPopper = function(){
-	var $box = null;		// ポップアップ中のアイテムボックス
-	var nextPanel = null;	// 次のポップアップパネル
-	var itemTimer = null;	// アイテム追加setTimeout
-	var mouseTimer = null;	// マウス監視setTimeout
-	function elementOnXY( e, x, y ){
-		return ( x >= e.offsetLeft && y >= e.offsetTop && x <= e.offsetLeft + e.offsetWidth && y <= e.offsetTop + e.offsetHeight );
-	}
-	function onMouseStop( x, y ){
-		if( $box ){
-			var box = $box[0];
-			if( elementOnXY( box, x, y ) ) return;
-			if( elementOnXY( box.parentNode, x, y ) ) return;
-			panelPopper(false);
-			if( nextPanel && elementOnXY( nextPanel, x, y ) ){
-				panelPopper( nextPanel, x, y );
-			}
-		}
-	}
-	return function( panel, prevX, prevY ){
-		if( panel==false ){
-			// ポップアップ解除
-			clearTimeout( itemTimer );
-			$(document).off('mousemove.itempop');
-			$box.hide().off().empty();
-			$box = null;
-		}
-		else if( $box ){
-			// ポップアップ中のため保留
-			nextPanel = panel;
-		}
-		else{
-			// ポップアップ実行
-			clearTimeout( itemTimer );
-			$box = $(panel).find('.itembox');
-			var left = panel.offsetLeft + panel.offsetWidth -2;	// -2ちょい左
-			// 右端にはみ出る場合は左側に出す
-			if( left + panel.offsetWidth > $window.scrollLeft() + $window.width() )
-				left = panel.offsetLeft - panel.offsetWidth +20;
-			$box.css({
-				left	:left
-				,top	:panel.offsetTop -1		// ちょい上
-				,width	:panel.offsetWidth -24	// 適当に幅狭く
-			})
-			.mouseleave(function(ev){
-				var panel = this.parentNode;
-				if( !elementOnXY( panel, ev.pageX, ev.pageY ) ){
-					panelPopper(false);
-				}
-			})
-			.addClass('itempop').empty().show();
-			// アイテム追加
-			var child = tree.node( panel.id ).child;
-			var length = child.length;
-			var index = 0;
-			(function(){
-				var count=10;
-				while( index < length && count>0 ){
-					if( !child[index].child ) $box.append( $panelItem( child[index] ) );
-					index++; count--;
-				}
-				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
-			})();
-			// カーソル移動方向と停止時間を監視
-			$(document).on('mousemove.itempop',function(ev){
-				// 範囲外で一定時間カーソルが止まったら消す
-				clearTimeout( mouseTimer );
-				mouseTimer = setTimeout(function(){ onMouseStop( ev.pageX, ev.pageY ); },200);
-				// カーソル移動方向が範囲外なら消す
-				var box = $box[0];
-				var dx = ev.pageX - prevX;
-				var dy = ev.pageY - prevY;
-				if( Math.abs(dx) + Math.abs(dy) >3 ){	// 適当に溜めないとdx=0が頻発して問題
-					var destX = box.offsetLeft;
-					if( destX < ev.pageX ) destX += box.offsetWidth;
-					var destY = (dx==0)?-999:(destX - ev.pageX) * dy / dx + ev.pageY;
-					if( dx==0							// 垂直移動
-						|| (dx>0 && destX < ev.pageX)	// 逆方向
-						|| (dx<0 && ev.pageX < destX)	// 逆方向
-						|| destY < box.offsetTop		// box範囲外方向
-						|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
-					){
-						if( !elementOnXY( box, ev.pageX, ev.pageY ) &&
-							!elementOnXY( box.parentNode, ev.pageX, ev.pageY )
-						){
-							panelPopper(false);
-							if( nextPanel && elementOnXY( nextPanel, ev.pageX, ev.pageY ) ){
-								panelPopper( nextPanel, ev.pageX, ev.pageY );
-							}
-						}
-					}
-					prevX = ev.pageX;
-					prevY = ev.pageY;
-				}
-			});
-		}
-	};
-}();
-// パネル開閉(開いてたら閉じ、閉じてたら開く)
-function panelOpenClose( $panel, itemShow, pageX, pageY ){
-	// 引数$panelはjQueryオブジェクトまたはパネルID(ノードID)文字列
-	if( $panel instanceof jQuery ){
-		var nodeID = $panel[0].id;
-	}
-	else{
-		var nodeID = $panel;
-		$panel = $('#'+$panel);
-	}
-	var $box = $panel.find('.itembox');
-	var $btn = $panel.find('.plusminus');
-	if( $btn.attr('src')=='plus.png' ){
-		// 開く
-		panelPopper(false);
-		$panel.off('mouseenter.itempop');
-		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
-		$btn.attr('src','minus.png');
-		// アイテム追加
-		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
-			if( !child[i].child )
-				$box.append( $panelItem( child[i] ) );
-		}
-	}else{
-		// 閉じる(hoverでアイテムをポップアップ)
-		// TODO:大量エントリで閉じパネルが多くなると、パネルタイトルは幅狭くていいから
-		// 中身のポップアップの幅をもっと広くしたくなる。どうするか。設定で持つか？
-		// TODO:吹き出しみたいな三角形あるといいかな？いらんかな。
-		$box.hide().css('position','absolute').empty();
-		$panel.on('mouseenter.itempop',function(ev){ panelPopper( this, ev.pageX, ev.pageY ); });
-		$btn.attr('src','plus.png');
-		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
-	}
-}
 // パラメータ変更反映
 function playLocalParam(){
 	var font_size = option.font.size();
@@ -1858,65 +1857,5 @@ function HTMLtext( s ){
 		})
 	).text();
 }
-/*
-// ChromeでPUTが動かないことがあったので調査のための$.ajax({})ラッパ。しかし詳細判明せず…。
-function ajax( opt ){
-	opt.type = opt.type || 'get';
-	opt.url = opt.url || '/';
-	opt.data = opt.data || '';
-	opt.async = opt.async || true;
-	opt.success = opt.success || function(){};
-	opt.error = opt.error || function(){};
-	opt.complete = opt.complete || function(){};
-	var req = function(){
-		if( IE ){
-			try {
-				return new ActiveXObject('Msxml2.XMLHTTP');
-			}
-			catch( e ){
-				return new ActiveXObject('Microsoft.XMLHTTP');
-			}
-		}
-		else{
-			return new XMLHttpRequest();
-		}
-	}();
-	req.onreadystatechange = function(){
-		switch( req.readyState ){
-		case 1: // Open
-			break;
-		case 2: // Sent
-			break;
-		case 3: // Receiving
-			break;
-		case 4: // Loaded
-			switch( req.status.toString().charAt(0) ){
-			case '2':
-			case '3':
-				$debug[0].innerHTML += 'ajax success.';
-				var ct = req.getResponseHeader('Content-Type');
-				if( ct ){
-					if( ct.match(/application\/jsonp/) )
-						opt.success( req.responseText );
-					else if( ct.match(/application\/json/) )
-						opt.success( $.parseJSON(req.responseText) );
-				}
-				else{
-					opt.success( req.responseText );
-				}
-				break;
-			case '4':
-			case '5':
-			default: // 404にはならず0になるようだ…
-				$debug[0].innerHTML += 'ajax error.';
-				opt.error( req, req.statusText );
-			}
-			opt.complete();
-		}
-	};
-	req.open( opt.type, opt.url, opt.async );
-	req.send( opt.data );
-}
-*/
 
 })($);

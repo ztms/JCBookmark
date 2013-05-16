@@ -418,6 +418,12 @@ var folderTree = function(){
 		})();
 	};
 }();
+// ブックマークデータ取得
+tree.load(function(){
+	$(window).resize();
+	$('body').css('visibility','visible');
+	folderTree({ click0:true });
+});
 // アイテム欄作成
 var itemTable = function(){
 	// 独自フォーマット時刻文字列
@@ -547,6 +553,30 @@ var folderClick = function(){
 		}
 	};
 }();
+// フォルダイベント
+$('#folders')
+.on('click','.folder',folderClick)
+.on('selfclick','.folder',itemSelfClick)
+.on('mousedown','.folder',folderMouseDown)
+.on('mousemove','.folder',itemMouseMove)
+.on('mouseup','.folder',itemMouseUp)
+.on('keydown','.folder',folderKeyDown)
+.on('contextmenu','.folder',folderContextMenu);
+// アイテムイベント
+(function(){
+	var data = { itemID:'', itemNotify:'' };
+	$('#items')
+	.on('mousedown','.item',data,itemMouseDown)
+	.on('mousemove','.item',itemMouseMove)
+	.on('mouseup','.item',itemMouseUp)
+	.on('click','.item',data,itemClick)
+	.on('dblclick','.item',itemDblClick)
+	.on('selfclick','.item',itemSelfClick)
+	.on('keydown','.item',itemKeyDown)
+	.on('keypress','.item',itemKeyPress)
+	.on('contextmenu','.item',itemContextMenu);
+})();
+//
 $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var window_width = $(window).width() -1; // 適当-1px
@@ -902,37 +932,6 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
-// フォルダイベント
-$('#folders')
-.on('click','.folder',folderClick)
-.on('selfclick','.folder',itemSelfClick)
-.on('mousedown','.folder',folderMouseDown)
-.on('mousemove','.folder',itemMouseMove)
-.on('mouseup','.folder',itemMouseUp)
-.on('keydown','.folder',folderKeyDown)
-.on('contextmenu','.folder',folderContextMenu);
-// アイテムイベント
-(function(){
-	var data = { itemID:'', itemNotify:'' };
-	$('#items')
-	.on('mousedown','.item',data,itemMouseDown)
-	.on('mousemove','.item',itemMouseMove)
-	.on('mouseup','.item',itemMouseUp)
-	.on('click','.item',data,itemClick)
-	.on('dblclick','.item',itemDblClick)
-	.on('selfclick','.item',itemSelfClick)
-	.on('keydown','.item',itemKeyDown)
-	.on('keypress','.item',itemKeyPress)
-	.on('contextmenu','.item',itemContextMenu);
-})();
-// ブックマークデータ取得
-tree.load(function(){
-	$(window).resize();
-	$('body').css('visibility','visible');
-	folderTree({ click0:true });
-});
-
-
 function treeSave( arg ){
 	$('#save').hide();
 	$('#wait').show();
