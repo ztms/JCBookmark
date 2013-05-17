@@ -41,6 +41,7 @@ $.ajaxSetup({
 });
 var IE = window.ActiveXObject ? document.documentMode : 0;
 var $window = $(window);
+var $document = $(document);
 var $wall = $('#wall');
 var $sidebar = $('#sidebar');
 var tree = {
@@ -361,6 +362,27 @@ var option = {
 		return option;
 	}
 };
+// ブックマークデータ取得
+(function(){
+	var option_ok = false;
+	var tree_ok = false;
+	var paneler_ok = false;
+	// 並列通信して後に終わった方がpaneler()実行する
+	option.load(function(){
+		option_ok = true;
+		if( tree_ok && !paneler_ok ){
+			paneler_ok = true;
+			paneler( tree.top() );
+		}
+	});
+	tree.load(function(){
+		tree_ok = true;
+		if( option_ok && !paneler_ok ){
+			paneler_ok = true;
+			paneler( tree.top() );
+		}
+	});
+})();
 // パネルアイテム要素生成関数
 var $panelItem = function(){
 	var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
@@ -522,17 +544,17 @@ var paneler = function(){
 			column.height += $p.height();
 			// 完了
 			placeList[node.id] = true;
-			// 高さがいちばん低いカラムオブジェクトを返す
-			function lowestColumn(){
-				var target = null;
-				for( var id in columnList ){
-					if( !target )
-						target = columnList[id];
-					else if( target.height > columnList[id].height )
-						target = columnList[id];
-				}
-				return target;
+		}
+		// 高さがいちばん低いカラムオブジェクトを返す
+		function lowestColumn(){
+			var target = null;
+			for( var id in columnList ){
+				if( !target )
+					target = columnList[id];
+				else if( target.height > columnList[id].height )
+					target = columnList[id];
 			}
+			return target;
 		}
 		// 新規URL投入BOX作成
 		// TODO:IE8/Firefoxで文字列をマウスでドラッグ選択できない。あれ？前からだっけ？
@@ -618,27 +640,6 @@ var paneler = function(){
 		}
 	};
 }();
-// ブックマークデータ取得
-(function(){
-	var option_ok = false;
-	var tree_ok = false;
-	var paneler_ok = false;
-	// 並列通信して後に終わった方がpaneler()実行する
-	option.load(function(){
-		option_ok = true;
-		if( tree_ok && !paneler_ok ){
-			paneler_ok = true;
-			paneler( tree.top() );
-		}
-	});
-	tree.load(function(){
-		tree_ok = true;
-		if( option_ok && !paneler_ok ){
-			paneler_ok = true;
-			paneler( tree.top() );
-		}
-	});
-})();
 // ブラウザ情報＋インポートイベント
 (function(){
 	var browser = { ie:1, chrome:1, firefox:1 };
@@ -819,7 +820,7 @@ var paneler = function(){
 	});
 })();
 // ドキュメント全体
-$(document).on({
+$document.on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
 		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
@@ -1426,6 +1427,7 @@ $('.barico').on({
 	,blur:function(){ $sidebar.width(34); }
 });
 // 閉パネルのアイテムポップアップ処理
+// TODO:IE8重い…
 var panelPopper = function(){
 	var $box = null;		// ポップアップ中のアイテムボックス
 	var nextPanel = null;	// 次のポップアップパネル
@@ -1449,7 +1451,7 @@ var panelPopper = function(){
 		if( panel==false ){
 			// ポップアップ解除
 			clearTimeout( itemTimer );
-			$(document).off('mousemove.itempop');
+			$document.off('mousemove.itempop');
 			$box.hide().off().empty();
 			$box = null;
 		}
@@ -1490,7 +1492,7 @@ var panelPopper = function(){
 				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
 			})();
 			// カーソル移動方向と停止時間を監視
-			$(document).on('mousemove.itempop',function(ev){
+			$document.on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
 				clearTimeout( mouseTimer );
 				mouseTimer = setTimeout(function(){ onMouseStop( ev.pageX, ev.pageY ); },200);

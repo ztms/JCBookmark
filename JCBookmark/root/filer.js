@@ -336,6 +336,12 @@ var tree = {
 		}
 	}
 };
+// ブックマークデータ取得
+tree.load(function(){
+	$(window).resize();
+	$('body').css('visibility','visible');
+	folderTree({ click0:true });
+});
 // フォルダツリー生成
 // folderTree({
 //   click0		: true/false 最初のフォルダをクリックするかどうか
@@ -418,12 +424,6 @@ var folderTree = function(){
 		})();
 	};
 }();
-// ブックマークデータ取得
-tree.load(function(){
-	$(window).resize();
-	$('body').css('visibility','visible');
-	folderTree({ click0:true });
-});
 // アイテム欄作成
 var itemTable = function(){
 	// 独自フォーマット時刻文字列
