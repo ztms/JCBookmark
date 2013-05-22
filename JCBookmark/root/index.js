@@ -2004,17 +2004,18 @@ function Sortable( sort ){
 						// ドロップ場所
 						if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
 						if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
-						if( $(this).hasClass( sort.itemClass ) ){
+						var $this = $(this);
+						if( $this.hasClass( sort.itemClass ) ){
 							// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
-							if( ev.pageY <= $(this).offset().top + this.offsetHeight/2 ){
-								if( $(this).prev() != $place ) $(this).before( $place );
+							if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
+								if( $this.prev() != $place ) $this.before( $place );
 							}
 							else{
-								if( $(this).next() != $place ) $(this).after( $place );
+								if( $this.next() != $place ) $this.after( $place );
 							}
 						}
-						else if( $(this).hasClass( sort.boxClass ) ){
-							if( !this.childNodes.length ) $(this).append( $place );
+						else if( $this.hasClass( sort.boxClass ) ){
+							if( !this.childNodes.length ) $this.append( $place );
 						}
 					});
 					// IE8
