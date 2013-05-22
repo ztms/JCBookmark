@@ -37,8 +37,8 @@
 .panel {
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
-	cursor:move;
 	border-radius:3px;
+	cursor:move;
 }
 /* パネルタイトル(フォルダ名) */
 .title {
@@ -92,26 +92,19 @@
 }
 /* ブックマークアイテム */
 .item {
-	text-decoration:none;
 	display:block;
 	height:16px;
 	border:2px solid transparent;
 	border-radius:3px;
 	white-space:nowrap;
+	text-decoration:none;
 	overflow:hidden;
+	outline:0;
 }
-/* パネルドラッグ先領域 */
-.ui-sortable-placeholder {
-	visibility:visible !important;
-	border-radius:3px !important;
-	height:50px !important;
-}
-.ui-sortable-placeholder * {
-	visibility:hidden;
-}
-/* アイテムドラッグ先領域 */
-.item-placeholder {
-	display:block;
+/* 並べ替えドロップ場所 */
+.paneldrop {
+	height:18px;
+	border-radius:3px;
 }
 /* サイドバー */
 #sidebar {

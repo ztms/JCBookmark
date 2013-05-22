@@ -20,16 +20,16 @@ body {
 	border:1px solid #444;
 	background:#222;
 }
-/* パネルマウスオーバーで枠を少し強調 */
-.panel:hover {
-	border-color:#775;
-}
 /* パネルタイトル(フォルダ名) */
 .title {
 	color:#fff;
 	background:#332;
 	background:linear-gradient(#414130,#393928);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#414130,endcolorstr=#393928)";
+}
+/* パネルマウスオーバーで枠を少し強調 */
+.panel:hover {
+	border-color:#775;
 }
 /* パネルマウスオーバーでタイトルグラデを少し強調 */
 .panel:hover .title {
@@ -100,13 +100,12 @@ body {
 	background:linear-gradient(#27372f,#112a15);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#27372f,endcolorstr=#112a15)";
 }
-/* パネルドラッグ先領域 */
-.ui-sortable-placeholder {
-	border:1px dashed #aaa !important;
-	background:#555 !important;
+/* 並べ替えドロップ場所 */
+.paneldrop {
+	border:1px dashed #f88;
+	background:#733;
 }
-/* アイテムドラッグ先領域 */
-.item-placeholder {
+.itemdrop {
 	border:2px solid #f88;
 }
 /* コンテキストメニュー */
