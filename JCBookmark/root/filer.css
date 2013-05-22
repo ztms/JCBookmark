@@ -176,7 +176,6 @@ body {
 	border:1px dotted #000;
 	background:#ddf;
 	filter:alpha(opacity=40);
-	-moz-opacity:0.4;
 	opacity:0.4;
 }
 #dragbox img {
@@ -290,18 +289,17 @@ body {
 /* ドラッグ中アイテム */
 .draggie {
 	filter:alpha(opacity=25);
-	-moz-opacity:0.25;
 	opacity:0.25;
 }
 /* ドロップ先アイテム */
 .dropTop, .dropTop:hover {
-	border-top:4px solid #e78;/*#55c;*/
+	border-top:4px solid #e78;
 }
 .dropBottom, .dropBottom:hover {
-	border-bottom:4px solid #e78;/*#55c;*/
+	border-bottom:4px solid #e78;
 }
 .dropIN, .dropIN:hover {
 	color:#000;
-	border:2px solid #e89;/*#66d;*/
-	background:#fee;/*#ddf;*/
+	border:2px solid #e89;
+	background:#fee;
 }

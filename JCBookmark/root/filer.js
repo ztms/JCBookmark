@@ -648,7 +648,7 @@ $(document).on({
 	}
 });
 if( IE && IE<9 ){
-	// IE8ウィンドウ外ドラッグのよい解決策がないので、
+	// IE8ウィンドウ外ドラッグでイベントが来ない問題のよい解決策がないので、
 	// ウィンドウ外に出たらドラッグやめたことにする。
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
@@ -1058,28 +1058,28 @@ function itemDragStart( element, downX, downY ){
 	var folderbox = document.getElementById('folderbox');
 	var itembox = document.getElementById('itembox');
 	// フォルダ欄上領域
-	var folder_top = {
+	var folderTop = {
 		X0	:folderbox.offsetLeft
 		,Y0	:folderbox.offsetTop
 		,X1	:folderbox.offsetLeft +folderbox.clientWidth
 		,Y1	:folderbox.offsetTop +36
 	};
 	// フォルダ欄下領域
-	var folder_bottom = {
+	var folderBottom = {
 		X0	:folderbox.offsetLeft
 		,Y0	:folderbox.offsetTop +folderbox.clientHeight -36
 		,X1	:folderbox.offsetLeft +folderbox.clientWidth
 		,Y1	:folderbox.offsetTop +folderbox.clientHeight
 	};
 	// アイテム欄上領域
-	var item_top = {
+	var itemTop = {
 		X0	:itembox.offsetLeft
 		,Y0	:itembox.offsetTop
 		,X1	:itembox.offsetLeft +itembox.clientWidth
 		,Y1	:itembox.offsetTop +36
 	};
 	// アイテム欄下領域
-	var item_bottom = {
+	var itemBottom = {
 		X0	:itembox.offsetLeft
 		,Y0	:itembox.offsetTop +itembox.clientHeight -36
 		,X1	:itembox.offsetLeft +itembox.clientWidth
@@ -1130,12 +1130,12 @@ function itemDragStart( element, downX, downY ){
 				// ドラッグボックス移動
 				$('#dragbox').css({ left:ev.pageX+5, top:ev.pageY+5 });
 				// ドラッグ中に上端/下端に近づいたらスクロールさせる
-				if( ev.pageX >=folder_top.X0 && ev.pageX <=folder_top.X1 ){
-					if( ev.pageY >=folder_top.Y0 && ev.pageY <=folder_top.Y1 ){
+				if( ev.pageX >=folderTop.X0 && ev.pageX <=folderTop.X1 ){
+					if( ev.pageY >=folderTop.Y0 && ev.pageY <=folderTop.Y1 ){
 						//$debug.text('フォルダ欄で上スクロール');
 						if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,-30);},100);
 					}
-					else if( ev.pageY >=folder_bottom.Y0 && ev.pageY <=folder_bottom.Y1 ){
+					else if( ev.pageY >=folderBottom.Y0 && ev.pageY <=folderBottom.Y1 ){
 						//$debug.text('フォルダ欄で下スクロール');
 						if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,30);},100);
 					}
@@ -1147,12 +1147,12 @@ function itemDragStart( element, downX, downY ){
 						}
 					}
 				}
-				else if( ev.pageX >=item_top.X0 && ev.pageX <= item_top.X1 ){
-					if( ev.pageY >=item_top.Y0 && ev.pageY <=item_top.Y1 ){
+				else if( ev.pageX >=itemTop.X0 && ev.pageX <= itemTop.X1 ){
+					if( ev.pageY >=itemTop.Y0 && ev.pageY <=itemTop.Y1 ){
 						//$debug.text('アイテム欄で上スクロール');
 						if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,-30);},100);
 					}
-					else if( ev.pageY >=item_bottom.Y0 && ev.pageY <=item_bottom.Y1 ){
+					else if( ev.pageY >=itemBottom.Y0 && ev.pageY <=itemBottom.Y1 ){
 						//$debug.text('アイテム欄で下スクロール');
 						if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,30);},100);
 					}
