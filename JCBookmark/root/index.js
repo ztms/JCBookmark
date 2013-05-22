@@ -1648,7 +1648,7 @@ function setEvents(){
 						$place.after( $panelItem(node) );
 					}
 					else{
-						$('#'+node.id).css('opacity',1);
+						$('#'+node.id).css('opacity',1).one('click',function(){ return false; });
 					}
 					node = null;
 				}
