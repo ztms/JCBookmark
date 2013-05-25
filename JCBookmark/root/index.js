@@ -1616,7 +1616,6 @@ function setEvents(){
 			,stop:function( $item, $place ){ // 並べ替え終了
 				// $item==start()戻り値、$place==place()戻り値
 				if( node ){
-					var modified = false;
 					if( $place.parent().hasClass('itembox') ){
 						var $prev = $place.prev();
 						var $next = $place.next();
@@ -1624,31 +1623,22 @@ function setEvents(){
 							if( $next.hasClass('item') ){
 								if( $prev[0].id !=node.id && $next[0].id !=node.id ){
 									tree.moveSibling( [node.id], $next[0].id );
-									modified = true;
 								}
 							}
 							else if( $prev[0].id !=node.id ){ // 末尾
 								tree.moveSibling( [node.id], $prev[0].id, true );
-								modified = true;
 							}
 						}
 						else if( $next.hasClass('item') ){
 							if( $next[0].id !=node.id ){ // 先頭
 								tree.moveSibling( [node.id], $next[0].id );
-								modified = true;
 							}
 						}
 						else{ // 空パネル
 							tree.moveChild( [node.id], $place.parent().parent()[0].id );
-							modified = true;
 						}
-					}
-					if( modified ){
 						$('#'+node.id).remove();
 						$place.after( $panelItem(node) );
-					}
-					else{
-						$('#'+node.id).css('opacity',1).one('click',function(){ return false; });
 					}
 					node = null;
 				}
