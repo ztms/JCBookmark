@@ -53,8 +53,8 @@
 	width:16px;
 	height:16px;
 	margin:0 6px 0 1px;
-	display:inline-block;
 	vertical-align:-4px;
+	display:inline-block;
 }
 /* パネル開閉ボタン */
 /* TODO:フォルダ名が長いと押せない */

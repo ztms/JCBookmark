@@ -125,7 +125,7 @@ var tree = {
 		$.ajax({
 			dataType:'json'
 			,url	:tree.path
-			,error	:function(xhr,text){ Alert('データ取得できません:'+text); }
+			,error	:function(xhr){ Alert('データ取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){
 				tree.replace( data );
 				if( onSuccess ) onSuccess();
@@ -141,8 +141,8 @@ var tree = {
 			type	:'put'
 			,url	:tree.path
 			,data	:JSON.stringify( tree.root )
-			,error	:function(xhr,text){
-				Alert('保存できませんでした:'+text);
+			,error	:function(xhr){
+				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
 				if( arg.error ) arg.error();
 			}
 			,success:function(){
@@ -481,8 +481,8 @@ var option = {
 			type	:'put'
 			,url	:option.path
 			,data	:JSON.stringify( option.data )
-			,error	:function(xhr,text){
-				Alert('保存できませんでした:'+text);
+			,error	:function(xhr){
+				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
 				if( arg.error ) arg.error();
 			}
 			,success:function(){
@@ -812,7 +812,7 @@ function setEvents(){
 								MsgBox('処理中です...');
 								$.ajax({
 									url		:':chrome.json'
-									,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
+									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
 									,success:function( data ){
 										bookmarks = data;
 										$.ajax({
@@ -910,7 +910,7 @@ function setEvents(){
 								$.ajax({
 									url		:':favorites.json'
 									//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
+									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
 									,success:function(data){ analyzer( data ); }
 								});
 							}
@@ -929,7 +929,7 @@ function setEvents(){
 								$.ajax({
 									url		:':firefox.json'
 									//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr,text){ Alert('データ取得エラー:'+text); }
+									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
 									,success:function(data){ analyzer( data ); }
 								});
 							}
@@ -1285,7 +1285,7 @@ function setEvents(){
 				type	:'put'
 				,url	:'export.html'
 				,data	:html
-				,error	:function(xhr,text){ Alert('データ保存できません:'+text); }
+				,error	:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
 				,success:function(){ location.href = 'export.html'; }
 			});
 		});
@@ -1315,7 +1315,7 @@ function setEvents(){
 		var $shots = $('#shots').text('...取得中...');
 		$.ajax({
 			url		:':shotlist'
-			,error	:function(xhr,text){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+text); }
+			,error	:function(xhr){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){ shotlist( data ); }
 		});
 		// 作成ボタン
@@ -1331,8 +1331,8 @@ function setEvents(){
 			setTimeout(function(){
 				$.ajax({
 					url		:':snapshot'
-					,error	:function(xhr,text){
-						Alert('作成できません:'+text);
+					,error	:function(xhr){
+						Alert('作成できません:'+xhr.status+' '+xhr.statusText);
 						$btn.next().hide();
 						$btn.show();
 					}
@@ -1367,8 +1367,8 @@ function setEvents(){
 				$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
 				$.ajax({
 					url		:':shotget?'+item.id
-					,error	:function(xhr,text){
-						Alert('データ取得できません:'+text);
+					,error	:function(xhr){
+						Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
 						$btn.next().hide();
 						$btn.show();
 					}
@@ -1396,8 +1396,8 @@ function setEvents(){
 						$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
 						$.ajax({
 							url		:':shotdel?'+item.id
-							,error	:function(xhr,text){
-								Alert('消去できません:'+text);
+							,error	:function(xhr){
+								Alert('消去できません:'+xhr.status+' '+xhr.statusText);
 								$btn.next().hide();
 								$btn.show();
 							}
@@ -1466,7 +1466,7 @@ function setEvents(){
 							var opt = {
 								type	:text.length? 'put' : 'del'
 								,url	:'snap/'+id.replace(/cab$/,'txt')
-								,error	:function(xhr,text){ Alert('メモを保存できません:'+text); }
+								,error	:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
 								,success:function(){ item.memo=text; widthAdjust(); }
 							};
 							if( text.length ) opt.data = text;
@@ -1788,25 +1788,27 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	}
 }
 // 変更保存
+// TODO:変更保存と共にスナップショットを自動保存すると履歴が残ってよいかも。
+// ただパネル開閉のたびにスナップショットが増えていくのは無駄である。。
 function modifySave( arg ){
 	// 順番に保存
 	$('#modified').hide();
 	$('#progress').show();
-	if( tree.modified() ) tree.save({ 'success':optionSave, 'error':error });
+	if( tree.modified() ) tree.save({ success:optionSave, error:err });
 	else optionSave();
 
 	function optionSave(){
 		if( option.modified() ){
-			option.save({ 'success':success, 'error':error });
+			option.save({ success:suc, error:err });
 		}
-		else success();
+		else suc();
 	}
-	function success(){
+	function suc(){
 		$('#progress').hide();
 		$wall.css('padding-top','0');
 		if( arg && arg.success ) arg.success();
 	}
-	function error(){
+	function err(){
 		$('#progress').hide();
 		$('#modified').show();
 	}
@@ -1906,16 +1908,16 @@ function importer( nodeTop ){
 		,height	:180
 		,close	:function(){ $(this).dialog('destroy'); }
 		,buttons:{
-			"差し替える":function(){
+			'差し替える':function(){
 				$(this).dialog('destroy');
 				option.panel.layout({}).panel.status({});
 				paneler( tree.replace(nodeTop).top() );
 			}
-			,"追加登録する":function(){
+			,'追加登録する':function(){
 				$(this).dialog('destroy');
 				paneler( tree.mount(nodeTop.child[0]).top() );
 			}
-			,"キャンセル":function(){ $(this).dialog('destroy'); }
+			,'キャンセル':function(){ $(this).dialog('destroy'); }
 		}
 	});
 }
