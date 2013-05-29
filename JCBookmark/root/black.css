@@ -3,18 +3,6 @@
 body {
 	background:#171300;
 }
-/* 変更通知 */
-#progress, #modified {
-	color:#c00;
-	background:#ffc;
-}
-#modified:hover {
-	color:#f00;
-	background:#ff9;
-}
-#modified:active {
-	background:#fff399;
-}
 /* パネル */
 .panel {
 	border:1px solid #444;

@@ -310,6 +310,7 @@ var option = {
 			,margin	:-1
 			,width	:-1
 		}
+		,autoshot:false
 	}
 	,_modified:false
 	,modified:function( on ){
@@ -335,6 +336,10 @@ var option = {
 			if( 'margin' in data.panel ) od.panel.margin = data.panel.margin;
 			if( 'width' in data.panel ) od.panel.width = data.panel.width;
 		}
+		if( 'autoshot' in data ){
+			od.autoshot = data.autoshot;
+			$('#autoshot').attr('checked', data.autoshot );
+		}
 		return option;
 	}
 	,merge:function( data ){
@@ -348,6 +353,7 @@ var option = {
 			if( 'margin' in data.panel ) option.panel.margin( data.panel.margin );
 			if( 'width' in data.panel ) option.panel.width( data.panel.width );
 		}
+		if( 'autoshot' in data ) option.autoshot( data.autoshot );
 		return option;
 	}
 	,clear:function(){
@@ -360,6 +366,7 @@ var option = {
 		if( od.panel.status !={} ) option.panel.status({});
 		if( od.panel.margin != -1 ) option.panel.margin(-1);
 		if( od.panel.width != -1 ) option.panel.width(-1);
+		if( od.autoshot !=false ) option.autoshot(false);
 		return option;
 	}
 	,page:{
@@ -464,13 +471,22 @@ var option = {
 			return panel.width;
 		}
 	}
+	,autoshot:function( val ){
+		if( arguments.length ){
+			option.data.autoshot = val;
+			$('#autoshot').attr('checked', val );
+			option.modified(true);
+			return option;
+		}
+		return option.data.autoshot;
+	}
 	,path:'index.json'
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
 		$.ajax({
 			dataType:'json'
-			,url	:option.path
-			,success:function(data){ option.init( data ); }
+			,url	 :option.path
+			,success :function(data){ option.init( data ); }
 			,complete:onComplete
 		});
 		return option;
@@ -762,8 +778,8 @@ function setEvents(){
 	(function(){
 		var browser = { ie:1, chrome:1, firefox:1 };
 		$.ajax({
-			url		:':browser.json'
-			,success:function( data ){ browser = data; }
+			url		 :':browser.json'
+			,success :function(data){ browser = data; }
 			,complete:function(){
 				if( 'chrome' in browser ){
 					// Chromeブックマークインポート
@@ -1022,8 +1038,13 @@ function setEvents(){
 		});
 		option.panel.status( status );
 	});
-	// ノードツリー変更保存リンク
-	$('#modified').click(function(){ modifySave(); });
+	// 変更保存リンク
+	$('#modified').click(function(ev){
+		if( ev.target.id=='modified' ) modifySave();
+	});
+	$('#modified label,#autoshot').click(function(){
+		option.autoshot( $(this).attr('checked')? true:false );
+	});
 	// パネル設定ダイアログ
 	$('#optionico').click(function(){
 		// ページタイトル
@@ -1373,8 +1394,8 @@ function setEvents(){
 						$btn.show();
 					}
 					,success:function(data){
-						option.clear();
 						if( 'index.json' in data ) option.merge( data['index.json'] );
+						else option.clear();
 						paneler( tree.replace(data['tree.json']).top() );
 						$btn.next().hide();
 						$btn.show();
@@ -1788,8 +1809,6 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	}
 }
 // 変更保存
-// TODO:変更保存と共にスナップショットを自動保存すると履歴が残ってよいかも。
-// ただパネル開閉のたびにスナップショットが増えていくのは無駄である。。
 function modifySave( arg ){
 	// 順番に保存
 	$('#modified').hide();
@@ -1806,7 +1825,14 @@ function modifySave( arg ){
 	function suc(){
 		$('#progress').hide();
 		$wall.css('padding-top','0');
-		if( arg && arg.success ) arg.success();
+		if( option.autoshot() ){
+			$.ajax({
+				url		 :':snapshot'
+				,error	 :function(xhr){ Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText); }
+				,complete:function(){ if( arg && arg.success ) arg.success(); }
+			});
+		}
+		else if( arg && arg.success ) arg.success();
 	}
 	function err(){
 		$('#progress').hide();
@@ -1860,12 +1886,8 @@ function analyzer( nodeTop ){
 					done: false
 					,xhr: $.ajax({
 						url		 :':analyze?'+node.url.replace(/#!/g,'%23!')
-						,success :function(data){
-							if( data.icon.length ) node.icon = data.icon;
-						}
-						,complete:function(){
-							ajaxs[index].done = true;
-						}
+						,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
+						,complete:function(){ ajaxs[index].done = true; }
 					})
 				};
 			}
