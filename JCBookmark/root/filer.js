@@ -658,7 +658,7 @@ $('#exit').click(function(){
 		Confirm({
 			msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
 			,yes:function(){ treeSave({ success:reload }); }
-			,no :function(){ reload(); }
+			,no :reload
 		});
 	}
 	else reload();
@@ -799,7 +799,7 @@ $('#delete').click(function(){
 					msg		:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
 					,width	:400
 					,height	:200
-					,ok:function(){
+					,ok		:function(){
 						tree.eraseNode( nid );
 						folderTree({ click0:true });
 					}
@@ -932,22 +932,54 @@ $('#itembox').mousedown(function(ev){
 		});
 	}
 });
-function treeSave( arg ){
-	$('#save').hide();
-	$('#wait').show();
-	tree.save({
-		success:function(){
+// ノードツリー保存
+var treeSave = function(){
+	var autoshot = false;
+	$.ajax({
+		dataType:'json'
+		,url	:'index.json'
+		,success:function(data){
+			if( 'autoshot' in data ){
+				autoshot = data.autoshot;
+				if( autoshot ) $('#save').attr({
+					title:'変更を保存＋スナップショット'
+					,src:'saveshot.png'
+				});
+			}
+		}
+	});
+	return function( arg ){
+		$('#wait').show();
+		$('#save').hide();
+		tree.save({
+			error	:err
+			,success:function(){
+				if( autoshot ){
+					$.ajax({
+						url		:':snapshot'
+						,error	:function(xhr){
+							Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText);
+							err();
+						}
+						,success:suc
+					});
+				}
+				else suc();
+			}
+		});
+		function err(){
+			$('#wait').hide();
+			$('#save').show();
+		}
+		function suc(){
 			$('#wait').hide();
 			$('#save').show();
 			$('#modified').hide();
 			if( arg && arg.success ) arg.success();
 		}
-		,error:function(){
-			$('#wait').hide();
-			$('#save').show();
-		}
-	});
-}
+	}
+}();
+// マウスイベント
 function itemSelfClick( ev, shiftKey ){
 	if( IE && IE<9 ){
 		// IE8はmousedown()でエラー発生する仕様なのが影響してか、
