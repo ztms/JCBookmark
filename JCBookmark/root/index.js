@@ -1321,8 +1321,26 @@ function setEvents(){
 	});
 	// 独自フォーマット時刻文字列
 	Date.prototype.myFmt = function(){
-		return this.getFullYear() +'年' +(this.getMonth()+1) +'月' +this.getDate() +'日　'
-				+this.getHours() +'時' +this.getMinutes() +'分';
+		// 0=1970/1/1は空
+		var diff = this.getTime();
+		if( diff <1 ) return '';
+		// 年月日 時分
+		var Y = this.getFullYear();
+		var M = this.getMonth() +1;
+		var D = this.getDate();
+		var h = this.getHours();
+		var m = this.getMinutes();
+		var date = M+'/'+D;
+		var time = h+':'+m;
+		// 現在時刻との差分
+		diff = ~~(((new Date()).getTime() - diff) /1000);
+		if( diff <=10 ) return 'いまさっき <small>(' +time +')</small>';
+		if( diff <=60 ) return '1分以内 <small>(' +time +')</small>';
+		if( diff <=3600 ) return ~~(diff /60) +'分前 <small>(' +time +')</small>';
+		if( diff <=3600*1.5 ) return '1時間前 <small>(' +time +')</small>';
+		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 <small>(' +date +' ' +time +')</small>';
+		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 <small>(' +date +' ' +time +')</small>';
+		return Y+'年'+M+'月'+D+'日　'+h+'時'+m+'分';
 	}
 	// スナップショット
 	$('#snapico').click(function(){
