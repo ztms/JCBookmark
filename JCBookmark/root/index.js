@@ -1029,7 +1029,7 @@ function setEvents(){
 				.append('<img class=icon src=folder.png>')
 				.append(
 					$('<input id=ed'+panel.id+'>').val( node.title ).css('font-weight','bold')
-					.blur(blur).keypress(keypress).keydown(keydown)
+					.keypress(keypress).keydown(keydown)
 					.on('input keyup paste',function(){ $(this).focus(); })
 				)
 			);
@@ -1045,7 +1045,7 @@ function setEvents(){
 						var $item = $('<a></a>');
 						var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
 						var $edit = $('<input id=ed'+node.id+'>').val( node.title )
-									.blur(blur).keypress(keypress).keydown(keydown)
+									.keypress(keypress).keydown(keydown)
 									.on('input keyup paste',function(){ $(this).focus(); });
 						$box.append( $item.append($icon).append($edit) );
 					}
@@ -1053,19 +1053,6 @@ function setEvents(){
 				}
 				if( index < length ) timer = setTimeout(arguments.callee,1);
 			}());
-			// フォーカス失う時変更反映
-			function blur(){
-				var nid = this.id.slice(2);
-				if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
-					var $e = $('#'+nid);
-					if( $e.hasClass('panel') ){
-						$e.find('.title').find('span').text( this.value );
-					}
-					else if( $e.hasClass('item') ){
-						$e.attr('title',this.value).find('span').text( this.value );
-					}
-				}
-			}
 			// Enterで次アイテム選択
 			function keypress(ev){
 				switch( ev.which || ev.keyCode || ev.charCode ){
@@ -1097,14 +1084,27 @@ function setEvents(){
 				title	:'パネル名・アイテム名の変更'
 				,modal	:true
 				,width	:480
-				,height	:360
-				,close	:function(){
-					clearTimeout( timer );
-					// Firefoxはblurが発生しないようなので強制発行
-					$(this).find('input').each(function(){
-						if( $(this).is(':focus') ){ $(this).blur(); return false; }
-					})
-					.dialog('destroy');
+				,height	:420
+				,close	:function(){ clearTimeout(timer); $(this).dialog('destroy'); }
+				,buttons:{
+					' O K ':function(){
+						clearTimeout(timer);
+						// ノードツリー反映
+						$(this).find('input').each(function(){
+							var nid = this.id.slice(2);
+							if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
+								var $e = $('#'+nid);
+								if( $e.hasClass('panel') ){
+									$e.find('.title').find('span').text( this.value );
+								}
+								else if( $e.hasClass('item') ){
+									$e.attr('title',this.value).find('span').text( this.value );
+								}
+							}
+						});
+						$(this).dialog('destroy');
+					}
+					,'キャンセル':function(){ clearTimeout(timer); $(this).dialog('destroy'); }
 				}
 			});
 		}));
