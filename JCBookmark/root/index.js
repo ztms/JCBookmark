@@ -2257,18 +2257,22 @@ function changeColumnCount( count ){
 }
 // 一行入力ダイアログ
 function InputDialog( arg ){
-	var $input = $('<input>').width(240);
+	var $input = $('<input>').width(240).css('padding-left',2)
+	.keypress(function(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: ok(); return false; // Enterで反映
+		}
+	});
 	$('#dialog').dialog('destroy').text(arg.text+' ').append($input).dialog({
 		title	:arg.title
 		,modal	:true
 		,width	:365
 		,height	:170
-		,close	:function(){ $(this).dialog('destroy'); }
-		,buttons:{
-			' O K ':function(){ $(this).dialog('destroy'); arg.ok($input.val()); $input.remove(); }
-			,'キャンセル':function(){ $(this).dialog('destroy'); $input.remove(); }
-		}
+		,close	:close
+		,buttons:{ ' O K ':ok, 'キャンセル':close }
 	});
+	function ok(){ arg.ok( $input.val() ); close(); }
+	function close(){ $input.remove(); $('#dialog').dialog('destroy'); }
 }
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
