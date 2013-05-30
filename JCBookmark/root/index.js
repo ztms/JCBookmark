@@ -1043,7 +1043,7 @@ function setEvents(){
 		if( ev.target.id=='modified' ) modifySave();
 	});
 	$('#modified label,#autoshot').click(function(){
-		option.autoshot( $(this).attr('checked')? true:false );
+		option.autoshot( $('#autoshot').attr('checked')? true:false );
 	});
 	// パネル設定ダイアログ
 	$('#optionico').click(function(){
