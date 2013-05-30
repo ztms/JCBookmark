@@ -1010,6 +1010,7 @@ function setEvents(){
 		$menu.find('a').off();
 		// ここに新規パネル作成
 		$('#newpanel').click(function(){
+			$menu.hide();
 			InputDialog({
 				title:'新規パネル作成'
 				,text:'パネル名'
