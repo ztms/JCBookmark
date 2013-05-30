@@ -1029,7 +1029,8 @@ function setEvents(){
 				.append('<img class=icon src=folder.png>')
 				.append(
 					$('<input id=ed'+panel.id+'>').val( node.title ).css('font-weight','bold')
-					.blur(blur).on('input keyup paste',function(){ $(this).focus(); })
+					.blur(blur).keypress(keypress).keydown(keydown)
+					.on('input keyup paste',function(){ $(this).focus(); })
 				)
 			);
 			var $box = $('<div></div>').appendTo( $itemedit );
@@ -1044,15 +1045,16 @@ function setEvents(){
 						var $item = $('<a></a>');
 						var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
 						var $edit = $('<input id=ed'+node.id+'>').val( node.title )
-									.blur(blur).on('input keyup paste',function(){ $(this).focus(); });
+									.blur(blur).keypress(keypress).keydown(keydown)
+									.on('input keyup paste',function(){ $(this).focus(); });
 						$box.append( $item.append($icon).append($edit) );
 					}
 					index++; count--;
 				}
 				if( index < length ) timer = setTimeout(arguments.callee,1);
 			}());
+			// フォーカス失う時変更反映
 			function blur(){
-				// フォーカス失う時変更反映
 				var nid = this.id.slice(2);
 				if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
 					var $e = $('#'+nid);
@@ -1063,6 +1065,33 @@ function setEvents(){
 						$e.attr('title',this.value).find('span').text( this.value );
 					}
 				}
+			}
+			// Enterで次アイテム選択
+			function keypress(ev){
+				switch( ev.which || ev.keyCode || ev.charCode ){
+				case 13: next(this); return false;
+				}
+			}
+			function next(e){
+				if( e.parentNode.nextSibling ){
+					if( e.parentNode.nextSibling.tagName=='A' )
+						$(e.parentNode.nextSibling).find('input').focus();
+					else // パネル名から先頭アイテムへ
+						$(e.parentNode.nextSibling.firstChild).find('input').focus();
+				}
+			}
+			// ↑↓キーでアイテム選択移動
+			function keydown(ev){
+				switch( ev.which || ev.keyCode || ev.charCode ){
+				case 38: prev(this); return false; // ↑
+				case 40: next(this); return false; // ↓
+				}
+			}
+			function prev(e){
+				if( e.parentNode.previousSibling )
+					$(e.parentNode.previousSibling).find('input').focus();
+				else // 先頭アイテムからパネル名へ
+					$(e.parentNode.parentNode.previousSibling).find('input').focus();
 			}
 			$itemedit.dialog({
 				title	:'パネル名・アイテム名の変更'
