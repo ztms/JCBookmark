@@ -102,15 +102,15 @@ var tree = {
 	// 指定ノードIDがごみ箱にあるかどうか
 	,trashHas:function( id ){ return tree.nodeAhasB( tree.trash(), id ); }
 	// 新規フォルダ作成
-	,newFolder:function( pid, title ){
+	,newFolder:function( title, pid ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
 			,title		:title || '新規フォルダ'
 			,child		:[]
 		};
-		// 引数IDのchild先頭に追加する
-		( tree.node(pid) || tree.top() ).child.unshift( node );
+		// 指定ノードのchild先頭に追加する
+		( ( pid && tree.node(pid) ) || tree.top() ).child.unshift( node );
 		tree.modified(true);
 		return node;
 	}
@@ -673,7 +673,7 @@ $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
 	var nid = selectFolder.id.slice(6);
 	var name = $('#newname').val();
-	var node = tree.newFolder( nid, name );
+	var node = tree.newFolder( name, nid );
 	// フォルダツリー生成
 	folderTree({
 		clickID:nid

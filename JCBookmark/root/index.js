@@ -90,6 +90,19 @@ var tree = {
 			return null;
 		}( tree.top() );
 	}
+	// 新規フォルダ作成
+	,newFolder:function( title, pid ){
+		var node = {
+			id			:tree.root.nextid++
+			,dateAdded	:(new Date()).getTime()
+			,title		:title || '新規フォルダ'
+			,child		:[]
+		};
+		// 指定ノードのchild先頭に追加する
+		( ( pid && tree.node(pid) ) || tree.top() ).child.unshift( node );
+		tree.modified(true);
+		return node;
+	}
 	// 新規アイテム作成
 	,newURL:function( url ){
 		var node = {
@@ -430,6 +443,19 @@ var option = {
 			}
 			return option.data.panel.layout;
 		}
+		,layoutSave:function(){
+			// パネル配置(どのカラム=段にどのパネルが入っているか)保存
+			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
+			// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
+			var layout = {};
+			$('.panel').each(function(){
+				var id = { column:this.parentNode.id, panel:this.id };
+				if( !(id.column in layout) ) layout[id.column] = [];
+				layout[id.column].push( id.panel );
+			});
+			if( JSON.stringify(option.panel.layout()) !=JSON.stringify(layout) )
+				option.panel.layout( layout );
+		}
 		,status:function( val ){
 			if( arguments.length ){
 				option.data.panel.status = val;
@@ -530,7 +556,22 @@ var option = {
 		}
 	});
 })();
-// パネルアイテム要素生成関数
+// カラム生成関数
+var $columnBase = $('<div class=column></div>');
+function $column( id ){ return $columnBase.clone().attr('id',id); }
+// パネル生成関数
+var $panelBase = $('<div class=panel><div class=itembox></div></div>')
+	.prepend(
+		$('<div class=title><img class=icon src="folder.png"><span></span></div>')
+		.prepend( $('<img class=plusminus src="minus.png">') ) // [－]ボタン(開き状態)
+	);
+function $panel( node ){
+	var $p = $panelBase.clone(true).attr('id',node.id);
+	$p.find('span').text( node.title );
+	$p.find('.plusminus').attr('id','btn'+node.id);
+	return $p;
+}
+// パネルアイテム生成関数
 var $panelItem = function(){
 	var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 	return function( node ){
@@ -561,7 +602,6 @@ var paneler = function(){
 		clearTimeout( timer ); // 古いのキャンセル
 		document.title = option.page.title();
 		$('#colorcss').attr('href',option.color.css());
-		var fontSize = option.font.size();
 		var panelWidth = option.panel.width();
 		var panelMargin = option.panel.margin();
 		var columnCount = option.column.count();
@@ -570,37 +610,18 @@ var paneler = function(){
 		.css({
 			'padding-right': panelMargin +'px'
 		});
-		// カラム要素生成関数
-		var $column = function(){
-			var $e = $('<div class=column></div>').width( columnWidth );
-			return function( id ){
-				return $e.clone().attr('id',id).appendTo( $wall );
-			};
-		}();
-		// パネル要素生成関数
-		var $panel = function(){
-			var $e = $('<div class=panel><div class=itembox></div></div>')
-				.width( panelWidth )
-				.css({
-					'font-size': fontSize +'px'
-					,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
-				})
-				.prepend(
-					$('<div class=title><img class=icon src="folder.png"><span></span></div>')
-					.prepend( $('<img class=plusminus src="minus.png">') ) // [－]ボタン(開き状態)
-				);
-			return function( node ){
-				var $p = $e.clone(true).attr('id',node.id);
-				$p.find('span').text( node.title );
-				$p.find('.plusminus').attr('id','btn'+node.id);
-				return $p;
-			};
-		}();
+		// カラム元要素
+		$columnBase.width( columnWidth );
+		// パネル元要素
+		$panelBase.width( panelWidth ).css({
+			'font-size': option.font.size() +'px'
+			,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+		});
 		// カラム(段)生成
 		var columnList = {};
 		for( var i=0; i<columnCount; i++ ){
 			columnList['co'+i] = {
-				$e: $column( 'co'+i )
+				$e: $column( 'co'+i ).appendTo( $wall )
 				,height: 0
 			};
 		}
@@ -987,6 +1008,19 @@ function setEvents(){
 		}
 		var $menu = $('#contextmenu');
 		$menu.find('a').off();
+		// ここに新規パネル作成
+		$('#newpanel').click(function(){
+			InputDialog({
+				title:'新規パネル作成'
+				,text:'パネル名'
+				,ok:function( name ){
+					var node = tree.newFolder( name ||'新規パネル' );
+					var $p = $panel( node );
+					$(panel).before( $p );
+					option.panel.layoutSave();
+				}
+			});
+		});
 		// アイテムすべて開く
 		// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
 		$('#allopen').click(function(){
@@ -1584,23 +1618,14 @@ function setEvents(){
 			// $item==start()戻り値、$place==place()戻り値
 			if( $place.parent().hasClass('column') ) $place.after( $item );
 			$place.remove();
-			$item.css({position:'',opacity:1});
+			$item.css({ position:'', opacity:1 });
 			// 閉パネルポップアップ再開
 			if( $item.find('.plusminus').attr('src')=='plus.png' ){
 				$item.find('.plusminus').attr('src','minus.png');
 				panelOpenClose( $item[0].id );
 			}
-			// パネルレイアウト(どのカラム=段にどのパネルが入っているか)保存
-			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
-			// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
-			var layout = {};
-			$('.panel').each(function(){
-				var id = { column:this.parentNode.id, panel:this.id };
-				if( !(id.column in layout) ) layout[id.column] = [];
-				layout[id.column].push( id.panel );
-			});
-			if( JSON.stringify(option.panel.layout()) !=JSON.stringify(layout) )
-				option.panel.layout( layout );
+			// 配置保存
+			option.panel.layoutSave();
 		}
 	});
 	// パネルアイテム並べ替え
@@ -2141,39 +2166,52 @@ function changeColumnCount( count ){
 		}
 	}
 }
+// 一行入力ダイアログ
+function InputDialog( arg ){
+	var $input = $('<input>').width(240);
+	$('#dialog').dialog('destroy').text(arg.text+' ').append($input).dialog({
+		title	:arg.title
+		,modal	:true
+		,width	:365
+		,height	:170
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{
+			' O K ':function(){ $(this).dialog('destroy'); arg.ok($input.val()); $input.remove(); }
+			,'キャンセル':function(){ $(this).dialog('destroy'); $input.remove(); }
+		}
+	});
+}
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
 // 独自改行コードを導入。Chrome/Firefoxは単純に \n でうまくいくのにIE8だけまた・・
 function Confirm( arg ){
-	if( arguments.length ){
-		var opt ={
-			title	:arg.title ||'確認'
-			,modal	:true
-			,width	:365
-			,height	:190
-			,close	:function(){ $(this).dialog('destroy'); }
-			,buttons:{}
-		};
-		if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
-		if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
-		if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
-		opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
+	var opt ={
+		title	:arg.title ||'確認'
+		,modal	:true
+		,width	:365
+		,height	:190
+		,close	:function(){ $(this).dialog('destroy'); }
+		,buttons:{}
+	};
+	if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
+	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
+	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
+	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
 
-		if( arg.width ){
-			var maxWidth = $window.width() -100;
-			if( arg.width > maxWidth ) arg.width = maxWidth;
-			else if( arg.width < 300 ) arg.width = 300;
-			opt.width = arg.width;
-		}
-		if( arg.height ){
-			var maxHeight = $window.height() -100;
-			if( arg.height > maxHeight ) arg.height = maxHeight;
-			else if( arg.height < 150 ) arg.height = 150;
-			opt.height = arg.height;
-		}
-
-		$('#dialog').dialog('destroy').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+	if( arg.width ){
+		var maxWidth = $window.width() -100;
+		if( arg.width > maxWidth ) arg.width = maxWidth;
+		else if( arg.width < 300 ) arg.width = 300;
+		opt.width = arg.width;
 	}
+	if( arg.height ){
+		var maxHeight = $window.height() -100;
+		if( arg.height > maxHeight ) arg.height = maxHeight;
+		else if( arg.height < 150 ) arg.height = 150;
+		opt.height = arg.height;
+	}
+
+	$('#dialog').dialog('destroy').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
 // 警告ダイアログ
 function Alert( msg ){
@@ -2200,13 +2238,16 @@ function MsgBox( msg ){
 // jQuery.html().text()すると<script>が消えてしまうので、あらかじめ <>
 // は文字参照にエンコードして渡す。テストサイトでタイトルに<h1>,<script>
 // &,&amp;などを入れて動作確認。
-function HTMLtext( s ){
-	return $('<a/>').html(
-		s.replace(/[<>]/g,function(m){
-			return { '<':'&lt;', '>':'&gt;' }[m];
-		})
-	).text();
-}
+var HTMLtext = function(){
+	var $a = $('<a/>');
+	return function( html ){
+		return $a.html(
+			html.replace(/[<>]/g,function(m){
+				return { '<':'&lt;', '>':'&gt;' }[m];
+			})
+		).text();
+	};
+}();
 // 引数が文字列かどうか判定
 function isString( s ){
 	return (Object.prototype.toString.call(s)==='[object String]');
