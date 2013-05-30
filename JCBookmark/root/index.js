@@ -1024,8 +1024,7 @@ function setEvents(){
 		$box.append($('<a><img src=filer.png>パネル名・アイテム名の変更</a>').click(function(){
 			$menu.hide();
 			var node = tree.node( panel.id );
-			var $itemedit = $('#itemedit').empty()
-			.append(
+			var $itemedit = $('#itemedit').empty().append(
 				$('<a></a>')
 				.append('<img class=icon src=folder.png>')
 				.append(
@@ -1035,15 +1034,23 @@ function setEvents(){
 			);
 			var $box = $('<div></div>').appendTo( $itemedit );
 			var child = node.child;
-			for( var i=0, n=child.length; i<n; i++ ){
-				if( !child[i].child ){
-					var $item = $('<a></a>');
-					var $icon = $('<img class=icon src='+( child[i].icon ||'item.png')+'>');
-					var $edit = $('<input id=ed'+child[i].id+'>').val( child[i].title )
-								.blur(blur).on('input keyup paste',function(){ $(this).focus(); });
-					$box.append( $item.append($icon).append($edit) );
+			var index = 0, length = child.length;
+			var timer = null;
+			(function(){
+				var count=5;
+				while( index < length && count>0 ){
+					var node = child[index];
+					if( !node.child ){
+						var $item = $('<a></a>');
+						var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
+						var $edit = $('<input id=ed'+node.id+'>').val( node.title )
+									.blur(blur).on('input keyup paste',function(){ $(this).focus(); });
+						$box.append( $item.append($icon).append($edit) );
+					}
+					index++; count--;
 				}
-			}
+				if( index < length ) timer = setTimeout(arguments.callee,1);
+			}());
 			function blur(){
 				// フォーカス失う時変更反映
 				var nid = this.id.slice(2);
@@ -1063,6 +1070,7 @@ function setEvents(){
 				,width	:480
 				,height	:360
 				,close	:function(){
+					clearTimeout( timer );
 					// Firefoxはblurが発生しないようなので強制発行
 					$(this).find('input').each(function(){
 						if( $(this).is(':focus') ){ $(this).blur(); return false; }

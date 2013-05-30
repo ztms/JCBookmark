@@ -258,6 +258,9 @@
 	border:1px solid transparent;
 	padding:1px;
 }
+#itemedit input:hover {
+	border:1px dashed #fc3;
+}
 #itemedit input:focus {
 	border:1px solid #eb0;
 }
