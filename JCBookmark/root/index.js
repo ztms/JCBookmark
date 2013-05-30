@@ -1022,14 +1022,6 @@ function setEvents(){
 				}
 			});
 		});
-		// アイテムすべて開く
-		// IE8とOpera12だと設定でポップアップを許可しないと１つしか開かない。Chromeも23でダメに。
-		$('#allopen').click(function(){
-			$menu.hide();
-			$(panel).find('.item').each(function(){
-				window.open( this.getAttribute('href') );
-			});
-		});
 		// アイテムテキストで取得
 		$('#showtext').click(function(){
 			$menu.hide();
