@@ -197,7 +197,7 @@
 	display:none;
 	position:absolute;
 	left:0; top:0;
-	width:200px;
+	width:220px;
 	border:1px solid #999;
 	background:#e7e7e7;
 }
@@ -209,10 +209,11 @@
 	border-bottom:1px solid #999;
 }
 #contextmenu a {
+	display:block;
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
-	display:block;
-	padding:4px 0 4px 15px;
+	line-height:17px;
+	padding:3px 0 3px 9px;
 	cursor:default;
 }
 #contextmenu a:hover {
@@ -222,6 +223,13 @@
 #contextmenu a:active {
 	color:#fff;
 	background:#449;
+}
+#contextmenu img {
+	width:16px;
+	height:16px;
+	margin:0 8px 0 0;
+	vertical-align:top;
+	display:inline-block;
 }
 #contextmenu hr {
 	margin:3px 0 3px 0;

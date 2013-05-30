@@ -1007,9 +1007,8 @@ function setEvents(){
 			panel = panel.parentNode;
 		}
 		var $menu = $('#contextmenu');
-		$menu.find('a').off();
-		// ここに新規パネル作成
-		$('#newpanel').click(function(){
+		var $box = $menu.children('div').empty();
+		$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a><hr>').click(function(){
 			$menu.hide();
 			InputDialog({
 				title:'新規パネル作成'
@@ -1021,9 +1020,8 @@ function setEvents(){
 					option.panel.layoutSave();
 				}
 			});
-		});
-		// アイテムテキストで取得
-		$('#showtext').click(function(){
+		}));
+		$box.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
 			var text='';
 			var child = tree.node( panel.id ).child;
@@ -1037,7 +1035,16 @@ function setEvents(){
 				,height	:360
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
-		});
+		}));
+		if( tree.movable( panel.id ) ){
+			$box.append('<hr>')
+			.append($('<a><img src=trash.png>このパネルを削除</a>').click(function(){
+				$menu.hide();
+				tree.moveChild( [panel.id], tree.trash() );
+				$(panel).remove();
+				option.panel.layoutSave();
+			}));
+		}
 		// 表示
 		$menu.css({
 			left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
