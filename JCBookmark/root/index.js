@@ -1024,19 +1024,23 @@ function setEvents(){
 		$box.append($('<a><img src=filer.png>パネル名・アイテム名の変更</a>').click(function(){
 			$menu.hide();
 			var node = tree.node( panel.id );
-			var child = node.child;
-			var $itemedit = $('#itemedit').empty();
-			var $box = $('<div></div>').appendTo( $itemedit )
+			var $itemedit = $('#itemedit').empty()
 			.append(
-				$('<div></div>')
+				$('<a></a>')
 				.append('<img class=icon src=folder.png>')
-				.append( $('<input id=ed'+panel.id+'>').val( node.title ).blur(blur).css('font-weight','bold') )
+				.append(
+					$('<input id=ed'+panel.id+'>').val( node.title ).css('font-weight','bold')
+					.blur(blur).on('input keyup paste',function(){ $(this).focus(); })
+				)
 			);
+			var $box = $('<div></div>').appendTo( $itemedit );
+			var child = node.child;
 			for( var i=0, n=child.length; i<n; i++ ){
 				if( !child[i].child ){
-					var $item = $('<div></div>');
+					var $item = $('<a></a>');
 					var $icon = $('<img class=icon src='+( child[i].icon ||'item.png')+'>');
-					var $edit = $('<input id=ed'+child[i].id+'>').val( child[i].title ).blur(blur);
+					var $edit = $('<input id=ed'+child[i].id+'>').val( child[i].title )
+								.blur(blur).on('input keyup paste',function(){ $(this).focus(); });
 					$box.append( $item.append($icon).append($edit) );
 				}
 			}

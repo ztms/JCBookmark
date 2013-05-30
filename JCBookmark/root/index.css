@@ -240,13 +240,18 @@
 #itemedit {
 	display:none;
 }
-#itemedit > div {
+#itemedit div {
+	width:445px;
+	height:280px;
+	margin-top:2px;
+	padding:2px;
+	border:1px solid #ddd;
+	overflow-y:scroll;
+}
+#itemedit a {
+	display:block;
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
-	width:445px;
-	height:300px;
-	padding:2px;
-	overflow-y:scroll;
 }
 #itemedit input {
 	width:400px;
