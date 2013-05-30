@@ -1319,29 +1319,6 @@ function setEvents(){
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 	});
-	// 独自フォーマット時刻文字列
-	Date.prototype.myFmt = function(){
-		// 0=1970/1/1は空
-		var diff = this.getTime();
-		if( diff <1 ) return '';
-		// 年月日 時分
-		var Y = this.getFullYear();
-		var M = this.getMonth() +1;
-		var D = this.getDate();
-		var h = this.getHours();
-		var m = this.getMinutes();
-		var date = M+'/'+D;
-		var time = h+':'+m;
-		// 現在時刻との差分
-		diff = ~~(((new Date()).getTime() - diff) /1000);
-		if( diff <=10 ) return 'いまさっき <small>(' +time +')</small>';
-		if( diff <=60 ) return '1分以内 <small>(' +time +')</small>';
-		if( diff <=3600 ) return ~~(diff /60) +'分前 <small>(' +time +')</small>';
-		if( diff <=3600*1.5 ) return '1時間前 <small>(' +time +')</small>';
-		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 <small>(' +date +' ' +time +')</small>';
-		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 <small>(' +date +' ' +time +')</small>';
-		return Y+'年'+M+'月'+D+'日　'+h+'時'+m+'分';
-	}
 	// スナップショット
 	$('#snapico').click(function(){
 		// なぜかbutton()だけだとhover動作が起きないので自力hover()。
@@ -1474,10 +1451,11 @@ function setEvents(){
 		function shotlist( list ){
 			$shots.empty();
 			var date = new Date();
+			var nowTime = (new Date()).getTime();
 			for( var i=0, n=list.length; i<n; i++ ){
 				date.setTime( list[i].date||0 );
 				var $item = $('<div id="' + list[i].id + '"></div>');
-				var $date = $('<span class=date>' + date.myFmt() + '</span>');
+				var $date = $('<span class=date>' + myFmt(date,nowTime) + '</span>');
 				var $memo = $('<input class=memo value="' + (list[i].memo||'') + '">');
 				// アイテムクリック選択
 				$item.click(function(ev){
@@ -1702,6 +1680,29 @@ function setEvents(){
 	});
 	// IE8テキスト選択キャンセル
 	if( IE && IE<9 ) $document.on('selectstart',function(ev){ if( ev.target.id !='newurl' ) return false; });
+}
+// 独自フォーマット時刻文字列
+function myFmt( date, nowTime ){
+	// 0=1970/1/1は空
+	var diff = date.getTime();
+	if( diff <1 ) return '';
+	// 年月日 時分
+	var Y = date.getFullYear();
+	var M = date.getMonth() +1;
+	var D = date.getDate();
+	var h = date.getHours();
+	var m = date.getMinutes();
+	var date = M+'/'+D;
+	var time = h+':'+m;
+	// 現在時刻との差分
+	diff = ~~((nowTime - diff) /1000);
+	if( diff <=10 ) return 'いまさっき <small>(' +time +')</small>';
+	if( diff <=60 ) return '1分以内 <small>(' +time +')</small>';
+	if( diff <=3600 ) return ~~(diff /60) +'分前 <small>(' +time +')</small>';
+	if( diff <=3600*1.5 ) return '1時間前 <small>(' +time +')</small>';
+	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 <small>(' +date +' ' +time +')</small>';
+	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 <small>(' +date +' ' +time +')</small>';
+	return Y+'年'+M+'月'+D+'日　'+h+'時'+m+'分';
 }
 // 要素の内側に座標XYがある
 function elementHasXY( e, x, y ){

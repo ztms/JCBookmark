@@ -424,32 +424,32 @@ var folderTree = function(){
 		})();
 	};
 }();
+// 独自フォーマット時刻文字列
+function myFmt( date, nowTime ){
+	// 0=1970/1/1は空
+	var diff = date.getTime();
+	if( diff <1 ) return '';
+	// YYYY/MM/DD HH:MM:SS
+	var Y = date.getFullYear();
+	var M = date.getMonth() +1;
+	var D = date.getDate();
+	var h = date.getHours();
+	var m = date.getMinutes();
+	var s = date.getSeconds();
+	var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
+	var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
+	// 現在時刻との差分
+	diff = ~~((nowTime - diff) /1000);
+	if( diff <=10 ) return 'いまさっき (' +time +')';
+	if( diff <=60 ) return '1分以内 (' +time +')';
+	if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
+	if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
+	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
+	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
+	return Y +'/' +date +' ' +time;
+}
 // アイテム欄作成
 var itemTable = function(){
-	// 独自フォーマット時刻文字列
-	Date.prototype.myFmt = function(){
-		// 0=1970/1/1は空
-		var diff = this.getTime();
-		if( diff <1 ) return '';
-		// YYYY/MM/DD HH:MM:SS
-		var Y = this.getFullYear();
-		var M = this.getMonth() +1;
-		var D = this.getDate();
-		var h = this.getHours();
-		var m = this.getMinutes();
-		var s = this.getSeconds();
-		var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
-		var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
-		// 現在時刻との差分
-		diff = ~~(((new Date()).getTime() - diff) /1000);
-		if( diff <=10 ) return 'いまさっき (' +time +')';
-		if( diff <=60 ) return '1分以内 (' +time +')';
-		if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
-		if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
-		if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
-		if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
-		return Y +'/' +date +' ' +time;
-	};
 	var timer = null;	// setTimeoutID
 	return function( node ){
 		clearTimeout( timer ); // 古いのキャンセル
@@ -479,7 +479,7 @@ var itemTable = function(){
 				.append( $date )
 				.append( $br );
 			var date = new Date();
-			return function( node ){
+			return function( node, nowTime ){
 				date.setTime( node.dateAdded||0 );
 				if( node.child ){
 					var $f = $fol.clone(true).attr('id','item'+node.id);
@@ -488,7 +488,7 @@ var itemTable = function(){
 						for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
 						return smry;
 					}());
-					$f.find('.date').text( date.myFmt() );
+					$f.find('.date').text( myFmt(date,nowTime) );
 					return $f;
 				}
 				var $u = $url.clone(true).attr('id','item'+node.id);
@@ -496,18 +496,19 @@ var itemTable = function(){
 				$u.find('.title').text( node.title ).attr('title', node.title);
 				$u.find('.url').text( node.url );
 				$u.find('.iconurl').text( node.icon );
-				$u.find('.date').text( date.myFmt() );
+				$u.find('.date').text( myFmt(date,nowTime) );
 				return $u;
 			};
 		}();
 		var $items = $('#items').empty();
 		selectItemClear();
+		var nowTime = (new Date()).getTime();
 		var index = 0;
 		var length = node.child.length;
 		(function(){
 			var count=10;
 			while( index < length && count>0 ){
-				var $e = $item( node.child[index] );
+				var $e = $item( node.child[index], nowTime );
 				if( index%2 ) $e.addClass('bgcolor');
 				$items.append( $e );
 				index++; count--;
