@@ -1107,8 +1107,8 @@ function setEvents(){
 		}
 		// 表示
 		$menu.css({
-			left: (($window.width() -ev.pageX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-			,top: (($window.height() -ev.pageY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+			left: (($window.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+			,top: (($window.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 		}).show();
 		return false;	// 既定右クリックメニュー出さない
 	})
