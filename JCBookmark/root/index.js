@@ -114,11 +114,11 @@ var tree = {
 		};
 		// topのchild先頭に追加
 		tree.top().child.unshift( node );
-		// 変更メッセージ
 		tree.modified(true);
 		return node;
 	}
 	// 属性変更
+	// id:ノードID文字列、attr:属性名文字列、value:属性値
 	,nodeAttr:function( id, attr, value ){
 		if( arguments.length <2 ) return null;
 		if( arguments.length <3 ) return tree.node(id)[attr];
@@ -1021,14 +1021,62 @@ function setEvents(){
 				}
 			});
 		}));
+		$box.append($('<a><img src=filer.png>パネル名・アイテム名の変更</a>').click(function(){
+			$menu.hide();
+			var node = tree.node( panel.id );
+			var child = node.child;
+			var $itemedit = $('#itemedit').empty();
+			var $box = $('<div></div>').appendTo( $itemedit )
+			.append(
+				$('<div></div>')
+				.append('<img class=icon src=folder.png>')
+				.append( $('<input id=ed'+panel.id+'>').val( node.title ).blur(blur).css('font-weight','bold') )
+			);
+			for( var i=0, n=child.length; i<n; i++ ){
+				if( !child[i].child ){
+					var $item = $('<div></div>');
+					var $icon = $('<img class=icon src='+( child[i].icon ||'item.png')+'>');
+					var $edit = $('<input id=ed'+child[i].id+'>').val( child[i].title ).blur(blur);
+					$box.append( $item.append($icon).append($edit) );
+				}
+			}
+			function blur(){
+				// フォーカス失う時変更反映
+				var nid = this.id.slice(2);
+				if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
+					var $e = $('#'+nid);
+					if( $e.hasClass('panel') ){
+						$e.find('.title').find('span').text( this.value );
+					}
+					else if( $e.hasClass('item') ){
+						$e.attr('title',this.value).find('span').text( this.value );
+					}
+				}
+			}
+			$itemedit.dialog({
+				title	:'パネル名・アイテム名の変更'
+				,modal	:true
+				,width	:480
+				,height	:360
+				,close	:function(){
+					// Firefoxはblurが発生しないようなので強制発行
+					$(this).find('input').each(function(){
+						if( $(this).is(':focus') ){ $(this).blur(); return false; }
+					})
+					.dialog('destroy');
+				}
+			});
+		}));
 		$box.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
 			var text='';
 			var child = tree.node( panel.id ).child;
 			for( var i=0, n=child.length; i<n; i++ ){
-				text += child[i].title + '\r' + child[i].url + '\r';
+				if( !child[i].child ){
+					text += child[i].title + '\r' + child[i].url + '\r';
+				}
 			}
-			$('#itemtext').find('textarea').text(text).end().dialog({
+			$('#itemedit').empty().append($('<textarea></textarea>').text(text)).dialog({
 				title	:'アイテムをテキストで取得'
 				,modal	:true
 				,width	:480
@@ -1504,7 +1552,7 @@ function setEvents(){
 					// ちょっと仕様が汚い。でもサーバ側のPOST実装対応が面倒でPUTのが楽だったので…(；´Д｀)
 					blur:function(){
 						var id = this.parentNode.id;
-						var text = $(this).val();
+						var text = this.value;
 						var item = null;
 						for( var i=0, n=list.length; i<n; i++ ){
 							if( list[i].id==id && list[i].memo!=text ){
@@ -1704,7 +1752,7 @@ function setEvents(){
 		,blur:function(){ $sidebar.width(34); }
 	});
 	// IE8テキスト選択キャンセル
-	if( IE && IE<9 ) $document.on('selectstart',function(ev){ if( ev.target.id !='newurl' ) return false; });
+	if( IE && IE<9 ) $document.on('selectstart',function(ev){ if( ev.target.tagName !='INPUT' ) return false; });
 }
 // 独自フォーマット時刻文字列
 function myFmt( date, nowTime ){

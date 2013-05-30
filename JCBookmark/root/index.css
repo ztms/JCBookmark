@@ -150,8 +150,8 @@
 	border-color:#aaa;
 	background:#fff;
 }
-.barico:active {
-	border-color:#da7;
+.barico:focus {
+	border-color:#eb0;
 	background:#fff5f0;
 }
 .clear {
@@ -236,11 +236,28 @@
 	border-top:1px solid #999;
 	border-bottom:1px solid #fff;
 }
-/* アイテムをテキストで取得 */
-#itemtext {
+/* パネル・アイテム名の変更 */
+#itemedit {
 	display:none;
 }
-#itemtext textarea {
+#itemedit > div {
+	font-family:"MS PGothic",sans-serif;
+	font-size:13px;
+	width:445px;
+	height:300px;
+	padding:2px;
+	overflow-y:scroll;
+}
+#itemedit input {
+	width:400px;
+	border:1px solid transparent;
+	padding:1px;
+}
+#itemedit input:focus {
+	border:1px solid #eb0;
+}
+/* アイテムをテキストで取得 */
+#itemedit textarea {
 	width:445px;
 	height:300px;
 	padding:2px;
