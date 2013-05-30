@@ -398,7 +398,7 @@ var folderTree = function(){
 				$folders.append( $node );
 				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
 				var $title = $node.find('.title');
-				var width = $title[0].offsetLeft + ~~($title.width() *1.4);
+				var width = $title[0].offsetLeft + ~~($title.width() *1.6);
 				if( width > maxWidth ){
 					$folders.width( width );
 					maxWidth = width;
@@ -1632,7 +1632,7 @@ function edit( element ){
 							// #folderboxの幅しかなくなって、選択時の色がうまく反映されず変になる。
 							if( isFolderTree ){
 								var foldersWidth = $('#folders').width();
-								var needWidth = element.offsetLeft + ~~($e.width() *1.4);
+								var needWidth = element.offsetLeft + ~~($e.width() *1.6);
 								if( needWidth > foldersWidth ) $('#folders').width( needWidth );
 							}
 						}
