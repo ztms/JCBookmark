@@ -86,7 +86,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.6"
+#define		APPNAME				L"JCBookmark v1.7dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -131,7 +131,7 @@ HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -2353,6 +2353,10 @@ struct {
 // しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
 // イマイチなのも確か…。なにかいい手はないものか…。
 // ブラウザのアドオンを使う手もあるか？
+// TODO:数百MBのバイナリデータURL(例えば.iso)が入力されると、無駄にメモリ消費
+// してしまう。ぜんぶ受信しようとする場合と途中で終わる場合があるようで挙動が
+// 謎だが、バイナリデータの場合はヘッダで判定して中断すべき。というかテキスト
+// データでなければ中断か。いやむしろ Content-Type:text/html だけ受信すればよい？
 unsigned __stdcall analyze( void* p )
 {
 	TClient* cp = (TClient*)p;
