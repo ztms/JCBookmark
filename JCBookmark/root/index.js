@@ -1021,7 +1021,7 @@ function setEvents(){
 				}
 			});
 		}));
-		$box.append($('<a><img src=filer.png>パネル名・アイテム名の変更</a>').click(function(){
+		$box.append($('<a><img src=filer.png>パネル編集（名前変更・アイテム削除）</a>').click(function(){
 			$menu.hide();
 			var node = tree.node( panel.id );
 			var $itemedit = $('#itemedit').empty().append(
@@ -1037,6 +1037,7 @@ function setEvents(){
 			var child = node.child;
 			var index = 0, length = child.length;
 			var timer = null;
+			var idels = [];
 			(function(){
 				var count=5;
 				while( index < length && count>0 ){
@@ -1047,7 +1048,12 @@ function setEvents(){
 						var $edit = $('<input id=ed'+node.id+'>').val( node.title )
 									.keypress(keypress).keydown(keydown)
 									.on('input keyup paste',function(){ $(this).focus(); });
-						$box.append( $item.append($icon).append($edit) );
+						var $trash = $('<img class=idel src=delete.png>').click(function(){
+							// アイテム削除ノードID配列
+							idels.push( this.previousSibling.id.slice(2) );
+							$(this.parentNode).remove();
+						});
+						$box.append( $item.append($icon).append($edit).append($trash) );
 					}
 					index++; count--;
 				}
@@ -1081,15 +1087,14 @@ function setEvents(){
 					$(e.parentNode.parentNode.previousSibling).find('input').focus();
 			}
 			$itemedit.dialog({
-				title	:'パネル名・アイテム名の変更'
+				title	:'パネル編集（名前変更・アイテム削除）'
 				,modal	:true
 				,width	:480
 				,height	:420
-				,close	:function(){ clearTimeout(timer); $(this).dialog('destroy'); }
+				,close	:close
 				,buttons:{
 					' O K ':function(){
-						clearTimeout(timer);
-						// ノードツリー反映
+						// 名前変更ツリー反映
 						$(this).find('input').each(function(){
 							var nid = this.id.slice(2);
 							if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
@@ -1102,11 +1107,18 @@ function setEvents(){
 								}
 							}
 						});
-						$(this).dialog('destroy');
+						// アイテム削除ツリー反映
+						var idelsJSON = JSON.stringify(idels);	// JSON複製保持
+						tree.moveChild( idels, tree.trash() );	// idelsは空になる
+						idels = $.parseJSON(idelsJSON)			// 復元
+						for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
+						// おわり
+						close();
 					}
-					,'キャンセル':function(){ clearTimeout(timer); $(this).dialog('destroy'); }
+					,'キャンセル':close
 				}
 			});
+			function close(){ clearTimeout(timer); $itemedit.dialog('destroy'); }
 		}));
 		$box.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
@@ -1127,7 +1139,7 @@ function setEvents(){
 		}));
 		if( tree.movable( panel.id ) ){
 			$box.append('<hr>')
-			.append($('<a><img src=trash.png>このパネルを削除</a>').click(function(){
+			.append($('<a><img src=delete.png>このパネルを削除</a>').click(function(){
 				$menu.hide();
 				tree.moveChild( [panel.id], tree.trash() );
 				$(panel).remove();

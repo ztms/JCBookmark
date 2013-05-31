@@ -197,7 +197,7 @@
 	display:none;
 	position:absolute;
 	left:0; top:0;
-	width:220px;
+	width:260px;
 	border:1px solid #999;
 	background:#e7e7e7;
 }
@@ -252,17 +252,43 @@
 	display:block;
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
+	border:1px solid transparent;
+}
+#itemedit div a:hover {
+	background:#f7f7f7;
+	border:1px solid #ddd;
 }
 #itemedit input {
-	width:400px;
-	border:1px solid transparent;
+	width:380px;
+	height:14px;
 	padding:1px;
+	border:1px solid transparent;
+	background:transparent;
 }
 #itemedit input:hover {
-	border:1px dashed #fc3;
+	border:1px dashed #fb1;
 }
 #itemedit input:focus {
 	border:1px solid #eb0;
+	font-weight:bold;
+}
+#itemedit .idel {
+	float:right;
+	border:1px solid transparent;
+	width:16px;
+	height:16px;
+	vertical-align:-4px;
+	background:#fff;
+	filter:alpha(opacity=10);
+	opacity:0.1;
+}
+#itemedit .idel:active {
+	background:#fdd;
+}
+#itemedit a:hover .idel {
+	border:1px solid #faa;
+	filter:alpha(opacity=100);
+	opacity:1;
 }
 /* アイテムをテキストで取得 */
 #itemedit textarea {
