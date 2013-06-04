@@ -5,7 +5,6 @@
 // TODO:一括でパネル開閉
 // TODO:インポート時にも、例えばウィンドウ高さの数倍を超えたら「フォルダ（パネル）を閉じた状態に
 // するか？」ダイアログを出して確認する手もあるか？でも差し替えと追加登録との違いをどうするか…。
-// TODO:ブックマークのコンテキストメニューで名前変更や削除など？そうするとURLコピーができないのが
 // 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
 /*
@@ -560,6 +559,7 @@ var option = {
 var $columnBase = $('<div class=column></div>');
 function $column( id ){ return $columnBase.clone().attr('id',id); }
 // パネル生成関数
+// TODO:開閉ボタンの左にペンアイコンつけてパネル編集をワンクリック起動
 var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 	.prepend(
 		$('<div class=title><img class=icon src="folder.png"><span></span></div>')
@@ -1010,6 +1010,8 @@ function setEvents(){
 		var $box = $menu.children('div').empty();
 		$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a><hr>').click(function(){
 			$menu.hide();
+			// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
+			// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
 			InputDialog({
 				title:'新規パネル作成'
 				,text:'パネル名'
@@ -1022,6 +1024,8 @@ function setEvents(){
 			});
 		}));
 		$box.append($('<a><img src=filer.png>パネル編集（名前変更・アイテム削除）</a>').click(function(){
+			// TODO:ファビコンD&Dでアイテム並べ替え
+			// TODO:アイテム欄の先頭に新規URL入力ボックス
 			$menu.hide();
 			var node = tree.node( panel.id );
 			var $itemedit = $('#itemedit').empty().append(
@@ -1181,6 +1185,7 @@ function setEvents(){
 		option.autoshot( $('#autoshot').attr('checked')? true:false );
 	});
 	// パネル設定ダイアログ
+	// TODO:行間の広さも設定あるとよし
 	$('#optionico').click(function(){
 		// ページタイトル
 		$('#page_title').val( option.page.title() )
@@ -1278,6 +1283,7 @@ function setEvents(){
 			}
 		});
 		// フォントサイズ
+		// TODO:行の高さ/アイコン大きさ/開閉ボタン大きさもフォントサイズに合わせて変わるべき
 		$('#font_size').val( option.font.size() );
 		$('#font_size_inc').off().click(function(){
 			var val = option.font.size();
@@ -1730,6 +1736,9 @@ function setEvents(){
 		}
 	});
 	// パネルアイテム並べ替え
+	// TODO:閉パネルアイテムをドラッグして外に出て（ポップアップ消えて）、また戻る（ポップアップする）と
+	// ドラッグアイテムの半透明化が解除されている。ポップアップ処理の方でアイテムがドラッグ中かどうか判別
+	// しないとダメかな・・面倒くさそう・・。
 	(function(){
 		var node = null;
 		Sortable({

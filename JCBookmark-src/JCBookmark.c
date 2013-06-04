@@ -2455,6 +2455,12 @@ unsigned __stdcall analyze( void* p )
 		// リクエストにAccept-Encodingがない場合、Content-Encoding:gzip で応答が返ってくる。
 		// gzip未対応なのでとりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら
 		// どっちも大丈夫になった。gzipに対応するにはzlibを使えばいいのかな…後回し(；´Д｀)
+		// TODO:まだgzipで返ってきてしまう場合があった。サイト側にリバースプロキシがあると
+		// ブラウザでgzip受信したすぐ後にはgzipになってしまう？？？時間が経過したら大丈夫に
+		// なったが、使い勝手にかなり影響がある。たしかにブラウザとおなじUser-Agentでリクエスト
+		// しているので、Accept-Encodingもおなじでないとダメかもしれない・・。gzip対応くらいは
+		// すべきか・・。
+		// http://kaigai-hosting.com/opt_site-specify-vary-header.php
 		{
 			UCHAR* begin = stristr(rsp->body,"<title");
 			UCHAR* end;
