@@ -2326,11 +2326,11 @@ function Confirm( arg ){
 		opt.height = arg.height;
 	}
 
-	$('#dialog').dialog('destroy').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+	$('#dialog').dialog('destroy').html( HTMLenc(arg.msg).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
 // 警告ダイアログ
 function Alert( msg ){
-	$('#dialog').dialog('destroy').html( HTMLenc( ''+msg ).replace(/#BR#/g,'<br>') ).dialog({
+	$('#dialog').dialog('destroy').html( HTMLenc(''+msg).replace(/#BR#/g,'<br>') ).dialog({
 		title	:'通知'
 		,modal	:true
 		,width	:360

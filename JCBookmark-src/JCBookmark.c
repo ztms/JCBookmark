@@ -2081,12 +2081,13 @@ typedef struct {
 	size_t		bytes;			// 受信バッファ有効バイト
 	UINT		ContentLength;	// Content-Length値
 	UCHAR		ContentType;	// Content-Type識別
-	#define		TEXT_HTML		0x01
+	#define		TYPE_HTML		0x01
+	#define		TYPE_OTHER		0xff
 	UCHAR		charset;		// 文字コード識別
-	#define		UTF8			0x01
-	#define		SJIS			0x02
-	#define		EUC				0x03
-	#define		JIS				0x04
+	#define		CS_UTF8			0x01
+	#define		CS_SJIS			0x02
+	#define		CS_EUC			0x03
+	#define		CS_JIS			0x04
 	UCHAR*		body;			// レスポンス本文開始
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
@@ -2242,23 +2243,34 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 										UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
 										if( p ){
 											if( strnicmp(p,"text/html",9)==0 ){
-												rsp->ContentType = TEXT_HTML; //LogW(L"HTMLです");
+												rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+											}
+											else{
+												rsp->ContentType = TYPE_OTHER;
 											}
 											p = stristr(p,"charset=");
 											if( p ){
 												p += 8;
 												if( *p=='"') p++;
 												if( strnicmp(p,"utf-8",5)==0 )
-													rsp->charset = UTF8;
+													rsp->charset = CS_UTF8;
 												else if( strnicmp(p,"shift_jis",9)==0 )
-													rsp->charset = SJIS;
+													rsp->charset = CS_SJIS;
 												else if( strnicmp(p,"euc-jp",6)==0 )
-													rsp->charset = EUC;
+													rsp->charset = CS_EUC;
 												else if( strnicmp(p,"iso-2022-jp",11)==0 )
-													rsp->charset = JIS;
+													rsp->charset = CS_JIS;
 												//LogW(L"charset=%u",rsp->charset);
 											}
 										}
+									}
+									else if( rsp->ContentType==TYPE_HTML ){
+										// HTMLなら</head>まで
+										if( stristr(rsp->body,"</head>") ) break;
+									}
+									else{
+										// HTML以外はヘッダのみで終了
+										break;
 									}
 									if( !rsp->ContentLength ){
 										UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
@@ -2271,14 +2283,10 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 											rsp->ContentLength = n; //LogW(L"%uバイトです",n);
 										}
 									}
-								}
-								if( rsp->ContentType==TEXT_HTML ){
-									// HTMLなら</head>まで
-									if( stristr(rsp->body,"</head>") ) break;
-								}
-								if( rsp->ContentLength ){
-									// Content-Lengthぶん受信したらおわり
-									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+									else if( rsp->ContentLength ){
+										// Content-Lengthぶん受信したらおわり
+										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+									}
 								}
 								// バッファいっぱい
 								if( rsp->bytes >= rsp->bufsize ){
@@ -2353,10 +2361,6 @@ struct {
 // しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
 // イマイチなのも確か…。なにかいい手はないものか…。
 // ブラウザのアドオンを使う手もあるか？
-// TODO:数百MBのバイナリデータURL(例えば.iso)が入力されると、無駄にメモリ消費
-// してしまう。ぜんぶ受信しようとする場合と途中で終わる場合があるようで挙動が
-// 謎だが、バイナリデータの場合はヘッダで判定して中断すべき。というかテキスト
-// データでなければ中断か。いやむしろ Content-Type:text/html だけ受信すればよい？
 unsigned __stdcall analyze( void* p )
 {
 	TClient* cp = (TClient*)p;
@@ -2372,14 +2376,14 @@ unsigned __stdcall analyze( void* p )
 		// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 		// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
 		// とりあえずConvertINetString()で変換しておく。
-		if( rsp->ContentType==TEXT_HTML ){
+		if( rsp->ContentType==TYPE_HTML ){
 			if( mlang.Convert ){
 				DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
 				switch( rsp->charset ){
-				case UTF8: CP = 65001; break;
-				case SJIS: CP = 932;   break;
-				case EUC : CP = 51932; break;
-				case JIS : CP = 50221; break;
+				case CS_UTF8: CP = 65001; break;
+				case CS_SJIS: CP = 932;   break;
+				case CS_EUC : CP = 51932; break;
+				case CS_JIS : CP = 50221; break;
 				default:
 					if( rsp->body ){
 						// HTTPヘッダにcharset指定がなかった場合。
@@ -2460,7 +2464,17 @@ unsigned __stdcall analyze( void* p )
 		// なったが、使い勝手にかなり影響がある。たしかにブラウザとおなじUser-Agentでリクエスト
 		// しているので、Accept-Encodingもおなじでないとダメかもしれない・・。gzip対応くらいは
 		// すべきか・・。
+		// サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
 		// http://kaigai-hosting.com/opt_site-specify-vary-header.php
+		// HTTPのgzip圧縮コンテントをzlibで展開
+		// http://blogs.itmedia.co.jp/komata/2011/04/httpgzipzlib-b764.html
+		// Cでのzlibの伸張
+		// http://kacl19nrlb99.blog117.fc2.com/blog-entry-84.html
+		// zlib の使い方
+		// http://s-yata.jp/docs/zlib/
+		// 伸長においては，圧縮形式を自動判別することもできます．
+		// zlibはスタティック.libにするか、ソース組み込みにするか、迷う
+		// http://dencha.ojaru.jp/programs/pg_filer_04.html
 		{
 			UCHAR* begin = stristr(rsp->body,"<title");
 			UCHAR* end;
@@ -2570,7 +2584,7 @@ unsigned __stdcall analyze( void* p )
 						HTTPGet* tmp = httpGET( icon, cp->req.UserAgent );
 						if( tmp ){
 							if( strnicmp(tmp->buf+8," 200 ",5)==0 ) // HTTP/1.x 200 OK
-								if( tmp->ContentType !=TEXT_HTML ) // text/html 除外
+								if( tmp->ContentType !=TYPE_HTML ) // text/html 除外
 									success = TRUE;
 							free( tmp );
 						}
