@@ -710,7 +710,7 @@ var paneler = function(){
 							// は削除されたURLがリクエストされることに。だいじょぶかな？
 							$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
 								if( data.title.length ){
-									data.title = HTMLtext( data.title );
+									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
 								}
@@ -1042,6 +1042,7 @@ function setEvents(){
 			var index = 0, length = child.length;
 			var timer = null;
 			var idels = [];
+			// TODO:clone()で高速化
 			(function(){
 				var count=5;
 				while( index < length && count>0 ){
@@ -1053,7 +1054,7 @@ function setEvents(){
 									.keypress(keypress).keydown(keydown)
 									.on('input keyup paste',function(){ $(this).focus(); });
 						var $trash = $('<img class=idel src=delete.png>').click(function(){
-							// アイテム削除ノードID配列
+							// 削除アイテムノードID配列
 							idels.push( this.previousSibling.id.slice(2) );
 							$(this.parentNode).remove();
 						});
@@ -2325,11 +2326,11 @@ function Confirm( arg ){
 		opt.height = arg.height;
 	}
 
-	$('#dialog').dialog('destroy').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+	$('#dialog').dialog('destroy').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
 // 警告ダイアログ
 function Alert( msg ){
-	$('#dialog').dialog('destroy').html( HTMLtext( ''+msg ).replace(/#BR#/g,'<br>') ).dialog({
+	$('#dialog').dialog('destroy').html( HTMLenc( ''+msg ).replace(/#BR#/g,'<br>') ).dialog({
 		title	:'通知'
 		,modal	:true
 		,width	:360
@@ -2347,21 +2348,28 @@ function MsgBox( msg ){
 		,height	:100
 	});
 }
+// HTMLエンコード
+function HTMLenc( html ){
+	var $a = $('<a/>');
+	var enc = $a.text(html).html();
+	$a.remove();
+	return enc;
+}
 // サイトのタイトルに含まれる文字参照(&#39;とか)をデコードする。
 // 通常はないがもしタイトルにタグや<script>が含まれている場合、そのまま
 // jQuery.html().text()すると<script>が消えてしまうので、あらかじめ <>
 // は文字参照にエンコードして渡す。テストサイトでタイトルに<h1>,<script>
 // &,&amp;などを入れて動作確認。
-var HTMLtext = function(){
+function HTMLdec( html ){
 	var $a = $('<a/>');
-	return function( html ){
-		return $a.html(
-			html.replace(/[<>]/g,function(m){
-				return { '<':'&lt;', '>':'&gt;' }[m];
-			})
-		).text();
-	};
-}();
+	var dec = $a.html(
+		html.replace(/[<>]/g,function(m){
+			return { '<':'&lt;', '>':'&gt;' }[m];
+		})
+	).text();
+	$a.remove();
+	return dec;
+}
 // 引数が文字列かどうか判定
 function isString( s ){
 	return (Object.prototype.toString.call(s)==='[object String]');

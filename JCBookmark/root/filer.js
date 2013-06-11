@@ -205,7 +205,6 @@ var tree = {
 	// ids:ノードID配列
 	,eraseNodes:function( ids ){
 		if( ids.length ){
-			//Alert(ids.toString());
 			var count=0;
 			(function( child ){
 				for( var i=0; i<child.length; i++ ){
@@ -230,7 +229,6 @@ var tree = {
 				}
 			})( tree.root.child );
 			if( count ){
-				//Alert(count+'個のノードを削除');
 				tree.modified(true);
 				return true;
 			}
@@ -722,7 +720,7 @@ $('#newitem').click(function(){
 		if( url.length ){
 			$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
 				if( data.title.length ){
-					data.title = HTMLtext( data.title );
+					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 						$('#item'+node.id).find('.title').text( data.title );
 				}
@@ -1475,7 +1473,7 @@ function itemContextMenu(ev){
 					}
 					,success:function(data){
 						if( url==$(item).find('.url').text() ){
-							$title.val( HTMLtext( data.title ||'' ) );
+							$title.val( HTMLdec( data.title ||'' ) );
 							$icon.attr('src',data.icon ||'item.png');
 							$iconurl.val( data.icon ||'' );
 						}
@@ -1611,7 +1609,7 @@ function edit( element ){
 									if( node.title=='新規ブックマーク' ){
 										$.get(':analyze?'+value.replace(/#!/g,'%23!'),function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
-												data.title = HTMLtext( data.title );
+												data.title = HTMLdec( data.title );
 												if( tree.nodeAttr( nodeid, 'title', data.title ) >1 )
 													$('#item'+nodeid).find('.title').text( data.title );
 											}
@@ -1719,57 +1717,63 @@ function viewScroll( element ){
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
 // 独自改行コードを導入。Chrome/Firefoxは単純に \n でうまくいくのにIE8だけまた・・
 function Confirm( arg ){
-	if( arguments.length ){
-		var opt ={
-			title		:arg.title ||'確認'
-			,modal		:true
-			,resizable	:false
-			,width		:365
-			,height		:190
-			,close		:function(){ $(this).dialog('destroy'); }
-			,buttons	:{}
-		};
-		if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
-		if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
-		if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
-		opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
+	var opt ={
+		title		:arg.title ||'確認'
+		,modal		:true
+		,resizable	:false
+		,width		:365
+		,height		:190
+		,close		:function(){ $(this).dialog('destroy'); }
+		,buttons	:{}
+	};
+	if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
+	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
+	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
+	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
 
-		if( arg.width ){
-			var maxWidth = $(window).width() -100;
-			if( arg.width > maxWidth ) arg.width = maxWidth;
-			else if( arg.width < 300 ) arg.width = 300;
-			opt.width = arg.width;
-		}
-		if( arg.height ){
-			var maxHeight = $(window).height() -100;
-			if( arg.height > maxHeight ) arg.height = maxHeight;
-			else if( arg.height < 150 ) arg.height = 150;
-			opt.height = arg.height;
-		}
-
-		$('#dialog').html( HTMLtext( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+	if( arg.width ){
+		var maxWidth = $(window).width() -100;
+		if( arg.width > maxWidth ) arg.width = maxWidth;
+		else if( arg.width < 300 ) arg.width = 300;
+		opt.width = arg.width;
 	}
+	if( arg.height ){
+		var maxHeight = $(window).height() -100;
+		if( arg.height > maxHeight ) arg.height = maxHeight;
+		else if( arg.height < 150 ) arg.height = 150;
+		opt.height = arg.height;
+	}
+
+	$('#dialog').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
 function Alert( msg ){
-	if( arguments.length ){
-		var opt ={
-			title		:'通知'
-			,modal		:true
-			,width		:360
-			,height		:160
-			,close		:function(){ $(this).dialog('destroy'); }
-			,buttons	:{ 'O K':function(){ $(this).dialog('destroy'); } }
-		};
-		$('#dialog').html( HTMLtext( msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
-	}
+	var opt ={
+		title		:'通知'
+		,modal		:true
+		,width		:360
+		,height		:160
+		,close		:function(){ $(this).dialog('destroy'); }
+		,buttons	:{ 'O K':function(){ $(this).dialog('destroy'); } }
+	};
+	$('#dialog').html( HTMLenc( msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
-// HTMLエスケープ:$('<a/>').html().text()だと<script>が消えてしまうため自作。
-function HTMLtext( s ){
-	return $('<a/>').html(
-		s.replace(/[<>]/g,function(m){
+// HTMLエンコード
+function HTMLenc( html ){
+	var $a = $('<a/>');
+	var enc = $a.text(html).html();
+	$a.remove();
+	return enc;
+}
+// HTMLデコード
+function HTMLdec( html ){
+	var $a = $('<a/>');
+	var dec = $a.html(
+		html.replace(/[<>]/g,function(m){
 			return { '<':'&lt;', '>':'&gt;' }[m];
 		})
 	).text();
+	$a.remove();
+	return dec;
 }
 // 引数が文字列かどうか判定
 function isString( s ){
