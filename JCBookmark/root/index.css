@@ -279,8 +279,8 @@
 	height:16px;
 	vertical-align:-4px;
 	background:#fff;
-	filter:alpha(opacity=10);
-	opacity:0.1;
+	filter:alpha(opacity=15);
+	opacity:0.15;
 }
 #itemedit a:hover .idel {
 	background:#f7f7f7;
