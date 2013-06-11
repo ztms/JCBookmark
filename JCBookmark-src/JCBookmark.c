@@ -1541,19 +1541,9 @@ typedef struct {
 	RegFavoriteOrderItem	item[1];	// 先頭アイテム
 } RegFavoriteOrder;
 
-// TODO:XPで並び順が少しだけ違う場合がある。特定のフォルダやお気に入りが違う場所にある。
-// UNICODEのlongnameが取得できるエントリとできないエントリがある。違いがわからん。
-// どうもshortnameが5文字まであるいは9文字までという条件は正しくなさそうで、shortnameの途中から
-// ゴミになっている場合はゴミを除いた長さを取得しないといけないのかな？wcslenではゴミまで含まれ
-// てしまう、つまりNULL終端していないのか？どうすればいいんだ。長さがわからないとlongname開始
-// 位置がわからないので、なにか目印があるはずだ。構造体メンバに長さ情報があるかまたは終端目印？
-// あるいはNULL終端していない目印があり、その場合は固定長とか。とにかく長さがわからないと…。
 // shortname と longname の間にある謎の20～42バイトが常に「xx 00 03 00 04」(16進)になる？
 // という非公式情報を元に実装したところ、XPはうまく動いた。
-// TODO:Win7 Home Premium SP1 日本語版 で並び順ぜんぜんダメ。
-// name(shortname)がUNICODEで長い名前の時にlongnameが取得できていないようだ。
-// XPと同じくゴミつき文字列をwcslenしてlongnameの開始位置を決めているのが正しくない？
-// しかしXP用の実装では動かない。謎の20～42バイトが「xx 00 08 00 04」になっているもよう。
+// Win7 Home Premium SP1 日本語版は、謎の20～42バイトが「xx 00 08 00 04」になってるもよう。
 // Vistaではまた違うのか？Vistaが無いのでわからない。これを目印にするのは危険だろうか？
 // とりあえず「xx 00 xx 00 04」を目印にして手元のXP,7はどちらもうまく動いている。。
 void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
@@ -1593,7 +1583,8 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 								// でも、どうやら謎の20～42バイトの最後がNULL終端と同等のようで、wcslenでは
 								// ちょうど謎の20～42バイトの終わりまでが文字列と判定されるもよう。また謎の
 								// 20～42バイトは、XPでは常に16進「xx 00 03 00 04」になるらしい(非公式情報)。
-								// Win7では「xx 00 08 00 04」、Vistaは不明。
+								// Win7では「xx 00 08 00 04」、Vistaは不明。とりあえず「xx 00 xx 00 04」を
+								// 目印にして手元のXP,7はどちらもうまく動いている。。
 								#define magicTag(p) ( (p)[0] && (p)[1]==0x00 && (p)[2] && (p)[3]==0x00 && (p)[4]==0x04 )
 								len = wcslen((WCHAR*)item->name);
 								longname = (BYTE*)((WCHAR*)item->name + len + 1);
