@@ -556,7 +556,6 @@ var option = {
 var $columnBase = $('<div class=column></div>');
 function $column( id ){ return $columnBase.clone().attr('id',id); }
 // パネル生成関数
-// TODO:開閉ボタンの左にペンアイコンつけてパネル編集をワンクリック起動
 var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 	.prepend(
 		$('<div class=title><img class=icon src=folder.png><span></span></div>')
@@ -927,8 +926,7 @@ function setEvents(){
 							if( 'synced' in bookmarks )
 								root.child[0].child.push( chrome2node(bookmarks.synced) );
 							// 完了
-							// TODO:これなんでsetTimeoutしてるんだっけ？
-							setTimeout(function(){ analyzer( root ); },1);
+							analyzer( root );
 						}
 					});
 				}
