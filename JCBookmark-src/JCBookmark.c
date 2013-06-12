@@ -2065,6 +2065,75 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 
 	return result;
 }
+// zlib伸張
+// たとえばhttp://api.jquery.com/jQuery.ajax/やhttp://www.hide10.com/archives/6186は、
+// リクエストにAccept-Encodingがない場合、Content-Encoding:gzip で応答が返ってくる。
+// とりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら大丈夫になったが、
+// それでもgzipで返ってきてしまう場合があった。どうもサイト側にリバースプロキシがあると
+// ブラウザでgzip受信したすぐ後にはgzipになってしまうケース？時間が経過したら大丈夫に
+// なったが、たしかにブラウザとおなじUser-Agentでリクエストしてるので、Accept-Encoding
+// もおなじでないとおかしいが・・やはりgzip対応くらいはすべきか。
+// Chrome27は Accept-Encoding: gzip,deflate,sdch
+// Fierfox21とIE8は Accept-Encoding: gzip, deflate
+// いちおうgzip対応はしておいて、やっぱりAccept-Encodingは空にしておこうかな。
+// 空じゃなくてidentityという値が無圧縮という意味らしいのでidentityにしてみよう。
+// TODO:コンテンツ圧縮を積極的に使うべきかどうなのか？無圧縮なら</head>まで受信して
+// 次に進めるからちょっと速いかも？いやgzip伸長の負荷によるから一概には言えないか…
+// [参考サイト]
+// サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
+// http://kaigai-hosting.com/opt_site-specify-vary-header.php
+// HTTPのgzip圧縮コンテントをzlibで展開
+// http://blogs.itmedia.co.jp/komata/2011/04/httpgzipzlib-b764.html
+// Cでのzlibの伸張
+// http://kacl19nrlb99.blog117.fc2.com/blog-entry-84.html
+// 3.5 内容コーディング
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec3.5
+// 14.3 Accept-Encoding
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.3
+// 14.11 Content-Encoding
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.11
+// zlib の使い方
+// http://s-yata.jp/docs/zlib/
+// 伸長においては，圧縮形式を自動判別することもできます．
+// zlibはスタティック.libにするか、ソース組み込みにするか、迷う
+// http://dencha.ojaru.jp/programs/pg_filer_04.html
+#pragma comment(lib,"zlib.lib")
+#include "zlib.h"
+size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
+{
+	z_stream z;
+	int status;
+	// メモリ管理をライブラリに任せる
+	z.zalloc = Z_NULL;
+	z.zfree  = Z_NULL;
+	z.opaque = Z_NULL;
+	// 初期化
+	z.next_in  = indata;			// 入力データ
+	z.avail_in = inbytes;			// 入力データサイズ
+	z.next_out  = outdata;			// 出力バッファ
+	z.avail_out = outbytes;			// 出力バッファ残量
+	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK )
+	{
+		LogA("inflateInit2エラー(%s)",z.msg?z.msg:"???");
+		return 0;
+	}
+	// 展開
+	status = inflate( &z, Z_NO_FLUSH );
+	if( status !=Z_OK && status !=Z_STREAM_END )
+	{
+		LogA("inflateエラー(%s)",z.msg?z.msg:"???");
+		inflateEnd(&z);
+		return 0;
+	}
+	outbytes -= z.avail_out;
+	// 後始末
+	if( inflateEnd(&z) !=Z_OK )
+	{
+		LogA("inflateEndエラー(%s)",z.msg?z.msg:"???");
+		return 0;
+	}
+	return outbytes;
+}
 
 // HTTPクライアント
 typedef struct {
@@ -2079,6 +2148,11 @@ typedef struct {
 	#define		CS_SJIS			0x02
 	#define		CS_EUC			0x03
 	#define		CS_JIS			0x04
+	#define		CS_OTHER		0xff
+	UCHAR		ContentEncoding;// Content-Encoding
+	#define		ENC_GZIP		0x01
+	#define		ENC_DEFLATE		0x02
+	#define		ENC_OTHER		0xff
 	UCHAR*		body;			// レスポンス本文開始
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
@@ -2184,7 +2258,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 							"GET /%s HTTP/1.0\r\n"
 							"Host: %s\r\n"			// fc2でHostヘッダがないとエラーになる
 							"User-Agent: %s\r\n"	// facebookでUser-Agentないと302 move
-							"Accept-Encoding: \r\n"	// つけないとContent-Encoding:gzipで返してくるサーバがある
+							"Accept-Encoding: identity\r\n"	// gzip,deflateでも動作可能
 							"Connection: close\r\n"
 							"\r\n"
 							,path, host, (ua && *ua)? ua : "Mozilla/4.0"
@@ -2214,8 +2288,8 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 							if( bytes >0 ){
 								rsp->bytes += bytes;
 								rsp->buf[rsp->bytes] = '\0';
-								// 本文
 								if( !rsp->body ){
+									// ヘッダと本文の区切り空行をさがす
 									rsp->body = strstr(rsp->buf,"\r\n\r\n");
 									if( rsp->body ){
 										*rsp->body = '\0';
@@ -2227,71 +2301,97 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 											rsp->body += 2;
 										}
 									}
-								}
-								// ヘッダ
-								if( rsp->body ){
-									if( !rsp->ContentType ){
-										UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
-										if( p ){
-											if( strnicmp(p,"text/html",9)==0 ){
-												rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
-											}
-											else{
-												rsp->ContentType = TYPE_OTHER;
-											}
-											p = stristr(p,"charset=");
+									// 空行みつかったらヘッダ解析
+									if( rsp->body ){
+										// Content-Length
+										if( !rsp->ContentLength ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
 											if( p ){
-												p += 8;
-												if( *p=='"') p++;
-												if( strnicmp(p,"utf-8",5)==0 )
-													rsp->charset = CS_UTF8;
-												else if( strnicmp(p,"shift_jis",9)==0 )
-													rsp->charset = CS_SJIS;
-												else if( strnicmp(p,"euc-jp",6)==0 )
-													rsp->charset = CS_EUC;
-												else if( strnicmp(p,"iso-2022-jp",11)==0 )
-													rsp->charset = CS_JIS;
-												//LogW(L"charset=%u",rsp->charset);
+												UINT n = 0;
+												while( isdigit(*p) ){
+													n = n*10 + *p - '0';
+													p++;
+												}
+												rsp->ContentLength = n; //LogW(L"%uバイトです",n);
 											}
+											//else LogW(L"Content-Lengthなし");
 										}
-									}
-									else if( rsp->ContentType==TYPE_HTML ){
-										// HTMLなら</head>まで
-										if( stristr(rsp->body,"</head>") ) break;
-									}
-									else{
-										// HTML以外はヘッダのみで終了
-										break;
-									}
-									if( !rsp->ContentLength ){
-										UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
-										if( p ){
-											UINT n = 0;
-											while( isdigit(*p) ){
-												n = n*10 + *p - '0';
-												p++;
+										// Content-Encoding
+										if( !rsp->ContentEncoding ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Encoding");
+											if( p ){
+												if( strnicmp(p,"deflate",7)==0 ){
+													rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+												}
+												else if( strnicmp(p,"gzip",4)==0 ){
+													rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+												}
+												else{
+													rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+												}
 											}
-											rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+											//else LogW(L"Content-Encodingなし");
 										}
-									}
-									else if( rsp->ContentLength ){
-										// Content-Lengthぶん受信したらおわり
-										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+										// Content-Type
+										if( !rsp->ContentType ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
+											if( p ){
+												if( strnicmp(p,"text/html",9)==0 ){
+													rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+												}
+												else{
+													rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+												}
+												p = stristr(p,"charset=");
+												if( p ){
+													p += 8;
+													if( *p=='"') p++;
+													if( strnicmp(p,"utf-8",5)==0 ){
+														rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+													}
+													else if( strnicmp(p,"shift_jis",9)==0 ){
+														rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+													}
+													else if( strnicmp(p,"euc-jp",6)==0 ){
+														rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+													}
+													else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+														rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+													}
+													else{
+														rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+													}
+												}
+											}
+											//else LogW(L"Content-Typeなし");
+										}
 									}
 								}
-								// バッファいっぱい
+								// 受信終了チェック
+								if( rsp->ContentLength ){
+									// Content-Lengthぶん受信したらおわり
+									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+								}
+								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+									// 非圧縮HTMLなら</head>まであればおわり
+									if( stristr(rsp->body,"</head>") ) break;
+								}
+								if( rsp->bytes >1024*1024*10 ){
+									LogW(L"10MBを超える受信データ破棄します");
+									break;
+								}
 								if( rsp->bytes >= rsp->bufsize ){
+									// バッファ拡大して受信継続
 									size_t newsize = rsp->bufsize * 2;
 									HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
 									if( newrsp ){
 										int distance = (BYTE*)newrsp - (BYTE*)rsp;
 										memset( newrsp, 0, sizeof(HTTPGet) + newsize );
 										memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-										free( rsp );
-										rsp = newrsp;
-										rsp->bufsize = newsize;
-										if( rsp->body ) rsp->body += distance;
+										if( rsp->body ) newrsp->body += distance;
+										newrsp->bufsize = newsize;
 										LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+										free(rsp), rsp=newrsp;
 									}
 									else{
 										LogW(L"L%u:mallocエラー",__LINE__);
@@ -2326,7 +2426,35 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	}
 	else LogA("不正なURL:%s",url);
 fin:
-	if( !success ) free(rsp), rsp=NULL;
+	if( success ){
+		// gzip,deflate伸長
+		// TODO:301 Moved Permanentlyや302 Foundが(なぜか)伸長エラーになってしまうもよう
+		// Accept-Encoding:identityではなかなか圧縮されないので、発生させるにはgzip,deflateに変更する
+		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
+			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
+			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文(圧縮データ)バイト数
+			size_t newsize = headbytes + bodybytes * 20;	// 伸長バッファサイズ適当20倍
+			HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+			if( newrsp ){
+				int distance = (BYTE*)newrsp - (BYTE*)rsp;
+				int bytes;
+				memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+				memcpy( newrsp, rsp, sizeof(HTTPGet) + headbytes );
+				newrsp->body += distance;
+				newrsp->bufsize = newsize;
+				LogW(L"伸長バッファ確保%ubytes",newsize);
+				bytes = zlibInflate( rsp->body, bodybytes, newrsp->body, newsize - headbytes );
+				if( !bytes ) LogW(L"圧縮コンテンツ伸長エラー(%u)",rsp->ContentEncoding);
+				else LogW(L"伸長[%u]%u->%ubyte(%.1f倍)",rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+				newrsp->bytes = headbytes + bytes;
+				free(rsp), rsp=newrsp;
+			}
+			else LogW(L"L%u:mallocエラー",__LINE__);
+		}
+	}
+	else{
+		free(rsp), rsp=NULL;
+	}
 	return rsp;
 }
 
@@ -2446,26 +2574,6 @@ unsigned __stdcall analyze( void* p )
 			}
 		}
 		// タイトル取得
-		// http://api.jquery.com/jQuery.ajax/やhttp://www.hide10.com/archives/6186は、
-		// リクエストにAccept-Encodingがない場合、Content-Encoding:gzip で応答が返ってくる。
-		// gzip未対応なのでとりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら
-		// どっちも大丈夫になった。gzipに対応するにはzlibを使えばいいのかな…後回し(；´Д｀)
-		// TODO:まだgzipで返ってきてしまう場合があった。サイト側にリバースプロキシがあると
-		// ブラウザでgzip受信したすぐ後にはgzipになってしまう？？？時間が経過したら大丈夫に
-		// なったが、使い勝手にかなり影響がある。たしかにブラウザとおなじUser-Agentでリクエスト
-		// しているので、Accept-Encodingもおなじでないとダメかもしれない・・。gzip対応くらいは
-		// すべきか・・。
-		// サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
-		// http://kaigai-hosting.com/opt_site-specify-vary-header.php
-		// HTTPのgzip圧縮コンテントをzlibで展開
-		// http://blogs.itmedia.co.jp/komata/2011/04/httpgzipzlib-b764.html
-		// Cでのzlibの伸張
-		// http://kacl19nrlb99.blog117.fc2.com/blog-entry-84.html
-		// zlib の使い方
-		// http://s-yata.jp/docs/zlib/
-		// 伸長においては，圧縮形式を自動判別することもできます．
-		// zlibはスタティック.libにするか、ソース組み込みにするか、迷う
-		// http://dencha.ojaru.jp/programs/pg_filer_04.html
 		{
 			UCHAR* begin = stristr(rsp->body,"<title");
 			UCHAR* end;
@@ -5712,6 +5820,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		if( mlang.dll ) FreeLibrary( mlang.dll );
 		memset( &mlang, 0, sizeof(mlang) );
 	}
+	//LogA("zlib version %s (%s)",zlibVersion(),ZLIB_VERSION);
 	// 空ノードファイル作る。既存ファイル上書きしない。
 	GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
 	if( SetCurrentDirectoryW( DocumentRoot ) ){
