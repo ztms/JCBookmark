@@ -2185,6 +2185,9 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	if( strnicmp(url,"http://",7)==0 ){
 		url += 7;
 	}
+	else if( strncmp(url,"//",2)==0 ){ // "http:"は省略できるらしい(はてなhotentryのファビコン<link>タグ)
+		url += 2;
+	}
 	else if( strnicmp(url,"https://",8)==0 ){
 		url += 8;
 		if( ssl_ctx )
@@ -2635,28 +2638,43 @@ unsigned __stdcall analyze( void* p )
 				}
 			}
 			// 相対URLは完全URLになおす
-			if( icon && !strstr(icon,"://") ){
+			if( icon ){
 				UCHAR* url = NULL;
-				UCHAR* host = strstr(cp->req.param,"://");
-				if( host ){
-					host += 3;
-					if( *icon=='/' ){
-						// href="/img/favicon.ico"
-						UCHAR* slash = strchr(host,'/');
-						if( slash ) *slash = '\0';
+				if( strncmp(icon,"//",2)==0 ){
+					// スキームが省略された完全URL
+					// はてなhotentryの<link>タグが「href="//b.hatena.ne.jp/favicon.ico"」となっている。
+					// 相対URLでなく完全URLとみなすべきもののようだ。先頭のhttp:を省略して「//」で
+					// 始まってもいいらしい。この場合はスキームを補完した完全URLを生成する。
+					UCHAR* slash = strstr(cp->req.param,"://");
+					if( slash ){
+						slash++;
+						*slash='\0';
 						url = strjoin( cp->req.param, icon, 0 );
-						if( slash ) *slash = '/';
-					}
-					else{
-						// href="img/favicon.ico"
-						UCHAR* slash = strrchr(host,'/');
-						if( slash ) *slash = '\0';
-						url = strjoin( cp->req.param, "/", icon );
-						if( slash ) *slash = '/';
+						*slash='/';
 					}
 				}
-				free( icon );
-				icon = url;
+				else if( !strstr(icon,"://") ){
+					// 相対URL
+					UCHAR* host = strstr(cp->req.param,"://");
+					if( host ){
+						host += 3;
+						if( *icon=='/' ){
+							// href="/img/favicon.ico"
+							UCHAR* slash = strchr(host,'/');
+							if( slash ) *slash = '\0';
+							url = strjoin( cp->req.param, icon, 0 );
+							if( slash ) *slash = '/';
+						}
+						else{
+							// href="img/favicon.ico"
+							UCHAR* slash = strrchr(host,'/');
+							if( slash ) *slash = '\0';
+							url = strjoin( cp->req.param, "/", icon );
+							if( slash ) *slash = '/';
+						}
+					}
+				}
+				if( url ) free(icon), icon=url;
 			}
 			// URL取得確認
 			if( icon ){
