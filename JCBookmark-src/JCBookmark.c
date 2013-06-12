@@ -101,6 +101,7 @@ HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
 #define CMD_SETTING		2		// ポップアップメニュー設定
 #define CMD_LOGSAVE		3		// ポップアップメニューログ保存
 #define CMD_LOGCLEAR	4		// ポップアップメニューログ消去
+#define CMD_ABOUT		5		// ポップアップメニューバージョン情報
 #define CMD_IE			10		// IEボタン
 #define CMD_CHROME		11		// Chromeボタン
 #define CMD_FIREFOX		12		// Firefoxボタン
@@ -1762,7 +1763,7 @@ NodeList* FavoriteListCreate( void )
 		memset( &os, 0, sizeof(os) );
 		os.dwOSVersionInfoSize = sizeof(os);
 		GetVersionExA( &os );
-		LogW(L"Windows%u.%u",os.dwMajorVersion,os.dwMinorVersion);
+		//LogW(L"Windows%u.%u",os.dwMajorVersion,os.dwMinorVersion);
 		switch( os.dwMajorVersion ){
 		case 5: magicBytes = 20; break;	// XP,2003
 		case 6: // Vista以降
@@ -5820,7 +5821,6 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		if( mlang.dll ) FreeLibrary( mlang.dll );
 		memset( &mlang, 0, sizeof(mlang) );
 	}
-	//LogA("zlib version %s (%s)",zlibVersion(),ZLIB_VERSION);
 	// 空ノードファイル作る。既存ファイル上書きしない。
 	GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
 	if( SetCurrentDirectoryW( DocumentRoot ) ){
@@ -5984,6 +5984,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			AppendMenuW( menu, MF_SEPARATOR, 0, L"" );
 			AppendMenuW( menu, MF_STRING, CMD_SETTING, L"設定" );
 			AppendMenuW( menu, MF_SEPARATOR, 0, L"" );
+			AppendMenuW( menu, MF_STRING, CMD_ABOUT, L"バージョン情報" );
 			AppendMenuW( menu, MF_STRING, CMD_EXIT, L"終了" );
 			SetForegroundWindow( hwnd );
 			TrackPopupMenu( menu, 0, LOWORD(lp), HIWORD(lp), 0, hwnd, NULL );
@@ -6007,6 +6008,41 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			break;
 		case CMD_SETTING:	// 設定
 			if( ConfigDialog(0)==ID_DLG_OK ) PostMessage( hwnd, WM_SETTING_OK, 0,0 );
+			break;
+		case CMD_ABOUT:		// バージョン情報
+			{
+				UCHAR lib[64];
+				WCHAR* wlib;
+				_snprintf(lib,sizeof(lib),
+						"zlib %s\r\n"
+						"SQLite %s\r\n"
+						"%s"
+						,ZLIB_VERSION
+						,SQLITE_VERSION
+						,SSLeay_version(SSLEAY_VERSION)
+				);
+				wlib = MultiByteToWideCharAlloc( lib, CP_UTF8 );
+				if( wlib ){
+					WCHAR msg[128];
+					OSVERSIONINFOA os;
+					memset( &os, 0, sizeof(os) );
+					os.dwOSVersionInfoSize = sizeof(os);
+					GetVersionExA( &os );
+					_snwprintf(msg,sizeof(msg)/sizeof(WCHAR),
+							L"%s\r\n\r\n"
+							L"%s\r\n\r\n"
+							L"Windows%s %u.%u.%u"
+							,APPNAME
+							,wlib
+							,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
+							,os.dwMajorVersion
+							,os.dwMinorVersion
+							,os.dwBuildNumber
+					);
+					MessageBoxW( hwnd, msg, L"バージョン情報", MB_ICONINFORMATION );
+					free( wlib );
+				}
+			}
 			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
 		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
