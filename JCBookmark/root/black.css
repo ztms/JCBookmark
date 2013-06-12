@@ -3,38 +3,32 @@
 body {
 	background:#171300;
 }
-/* パネル */
 .panel {
 	border:1px solid #444;
 	background:#222;
 }
-/* パネルタイトル(フォルダ名) */
-.title {
+.panel .title {
 	color:#fff;
 	background:#332;
 	background:linear-gradient(#414130,#393928);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#414130,endcolorstr=#393928)";
 }
-/* パネルマウスオーバーで枠を少し強調 */
 .panel:hover {
 	border-color:#775;
 }
-/* パネルマウスオーバーでタイトルグラデを少し強調 */
 .panel:hover .title {
 	background:linear-gradient(#555544,#2e2e1d);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#555544,endcolorstr=#2e2e1d)";
 }
-/* パネル開閉/編集ボタン */
-.pen:hover, .plusminus:hover {
+.panel .pen:hover, .panel .plusminus:hover {
 	border-color:#bbb;
 	background:#111;
 }
-.pen:active, .plusminus:active {
+.panel .pen:active, .panel .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#ccc;
 	background:#555;
 }
-/* 新規ブックマークURL投入INPUTボックス */
 #newurl {
 	color:#fff;
 	border:1px solid #777;
@@ -58,8 +52,7 @@ body {
 	background:#754;
 	border-color:#f98;
 }
-/* アイテムボックス */
-.itembox {
+.panel .itembox {
 	color:#fff;
 	background:#111;
 	background:linear-gradient(#1c1c1c,#111111);
@@ -69,18 +62,17 @@ body {
 	border:1px solid #776;
 	box-shadow:0 0 12px 4px #776;
 }
-/* ブックマークアイテム */
-.item {
+.panel .item {
 	color:#ec4;
 }
-.item:hover {
+.panel .item:hover {
 	color:#afd;
 	border-color:#366;
 	background:#010705;
 	background:linear-gradient(#17271f,#011a05);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#17271f,endcolorstr=#011a05)";
 }
-.item:active {
+.panel .item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#9fd;
 	border-color:#477;
@@ -88,7 +80,6 @@ body {
 	background:linear-gradient(#27372f,#112a15);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#27372f,endcolorstr=#112a15)";
 }
-/* 並べ替えドロップ場所 */
 .paneldrop {
 	border:1px dashed #f88;
 	background:#733;
@@ -96,7 +87,6 @@ body {
 .itemdrop {
 	border:2px solid #f88;
 }
-/* コンテキストメニュー */
 #contextmenu {
 	box-shadow:3px 3px 4px #000;
 }

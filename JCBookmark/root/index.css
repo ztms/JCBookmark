@@ -48,20 +48,17 @@
 #wall {
 	margin:auto;
 }
-/* カラム(列) */
 .column {
 	float:left;
 	padding-bottom:30px;
 }
-/* パネル */
 .panel {
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
 	border-radius:3px;
 	cursor:move;
 }
-/* パネルタイトル(フォルダ名) */
-.title {
+.panel .title {
 	font-weight:bold;
 	white-space:nowrap;
 	overflow:hidden;
@@ -76,8 +73,7 @@
 	vertical-align:-4px;
 	display:inline-block;
 }
-/* パネル開閉/編集ボタン */
-.pen, .plusminus {
+.panel .pen, .panel .plusminus {
 	display:none;
 	float:right;
 	width:14px;
@@ -87,12 +83,9 @@
 	border:1px solid transparent;
 	border-radius:2px;
 }
-/* パネルマウスオーバーの時だけボタン表示 */
-.panel:hover .pen,
-.panel:hover .plusminus {
+.panel:hover .pen, .panel:hover .plusminus {
 	display:block;
 }
-/* 新規ブックマークURL投入INPUTボックス */
 #newurl {
 	line-height:1.5;
 	width:98%;
@@ -105,13 +98,11 @@
 	border-radius:3px;
 	padding:1px;
 }
-/* アイテムボックス */
-.itembox {
+.panel .itembox {
 	border-radius:3px;
 	padding:2px 2px 3px 2px;
 }
-/* ブックマークアイテム */
-.item {
+.panel .item {
 	display:block;
 	height:16px;
 	border:2px solid transparent;
@@ -121,12 +112,10 @@
 	overflow:hidden;
 	outline:0;
 }
-/* 並べ替えドロップ場所 */
 .paneldrop {
 	height:18px;
 	border-radius:3px;
 }
-/* サイドバー */
 #sidebar {
 	position:fixed;
 	top:10px;
@@ -157,7 +146,6 @@
 .clear {
 	clear:both;
 }
-/* パネル設定ダイアログ */
 #option {
 	display:none;
 	text-align:center;
@@ -192,7 +180,6 @@
 #page_title, #panel_width, #panel_margin, #column_count, #font_size {
 	border:1px solid gray;
 }
-/* コンテキストメニュー */
 #contextmenu {
 	display:none;
 	position:absolute;
@@ -236,11 +223,11 @@
 	border-top:1px solid #999;
 	border-bottom:1px solid #fff;
 }
-/* パネル編集 */
 #editbox {
 	display:none;
 }
 #editbox div {
+	/* アイテムボックス */
 	width:445px;
 	height:280px;
 	margin-top:2px;
@@ -249,12 +236,14 @@
 	overflow-y:scroll;
 }
 #editbox a {
+	/* パネル名・URLアイテム */
 	display:block;
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
 	border:1px solid transparent;
 }
 #editbox div a:hover {
+	/* URLアイテム */
 	background:#f7f7f7;
 	border:1px solid #ddd;
 }
@@ -273,6 +262,7 @@
 	font-weight:bold;
 }
 #editbox a .idel {
+	/* 削除ボタン */
 	float:right;
 	border:1px solid transparent;
 	width:16px;
@@ -295,14 +285,12 @@
 #editbox a .idel:active {
 	background:#fdd;
 }
-/* アイテムをテキストで取得 */
 #editbox textarea {
 	width:445px;
 	height:300px;
 	padding:2px;
 	border:1px solid #888;
 }
-/* HTMLインポート・エクスポート・いろいろダイアログ */
 #impexp, #snap, #dialog {
 	display:none;
 	line-height:1.5;
@@ -388,7 +376,6 @@
 	display:none;
 	margin:0 50px 0 46px;
 }
-/* jQuery UI Dialog */
 .ui-dialog {
 	font-size:14px;
 }

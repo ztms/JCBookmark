@@ -3,38 +3,32 @@
 body {
 	background:#f6faff;
 }
-/* パネル */
 .panel {
 	border:1px solid #d0d0d0;
 	background:#f3f3f5;
 }
-/* パネルタイトル(フォルダ名) */
-.title {
+.panel .title {
 	color:#335;
 	background:#dadae0;
 	background:linear-gradient(#e7e7f7,#dddde7);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#e7e7f7,endcolorstr=#dddde7)";
 }
-/* パネルマウスオーバーで枠を少し強調 */
 .panel:hover {
 	border-color:#99b;
 }
-/* パネルマウスオーバーでタイトルグラデを少し強調 */
 .panel:hover .title {
 	background:linear-gradient(#f5f5ff,#d5d5dd);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#f5f5ff,endcolorstr=#d5d5dd)";
 }
-/* パネル編集/開閉ボタン */
-.pen:hover, .plusminus:hover {
+.panel .pen:hover, .panel .plusminus:hover {
 	border-color:#bbb;
 	background:#fff;
 }
-.pen:active, .plusminus:active {
+.panel .pen:active, .panel .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#aaa;
 	background:#eee;
 }
-/* 新規ブックマークURL投入INPUTボックス */
 #newurl {
 	color:#000;
 	border:1px solid #ccc;
@@ -58,8 +52,7 @@ body {
 	background:#fff5e3;
 	border-color:#d84;
 }
-/* アイテムボックス */
-.itembox {
+.panel .itembox {
 	color:#000;
 	background:#fafafc;
 	background:linear-gradient(#fcfcfe,#f5f5f7);
@@ -69,18 +62,17 @@ body {
 	border:1px solid #aac;
 	box-shadow:0 0 10px 3px #aac;
 }
-/* ブックマークアイテム */
-.item {
+.panel .item {
 	color:#14d;
 }
-.item:hover {
+.panel .item:hover {
 	color:#600020;
 	border-color:#dcb9b9;
 	background:#f7f0f5;
 	background:linear-gradient(#fffafc,#f3e5ec);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fffafc,endcolorstr=#f3e5ec)";
 }
-.item:active {
+.panel .item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#a00020;
 	border-color:#eca9a9;
@@ -88,7 +80,6 @@ body {
 	background:linear-gradient(#fff8fa,#f3e0e7);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fff8fa,endcolorstr=#ff3e0e7)";
 }
-/* 並べ替えドロップ場所 */
 .paneldrop {
 	border:1px dashed #d55;
 	background:#fdd;
@@ -96,7 +87,6 @@ body {
 .itemdrop {
 	border:2px solid #f88;
 }
-/* コンテキストメニュー */
 #contextmenu {
 	box-shadow:3px 3px 4px #555;
 }
