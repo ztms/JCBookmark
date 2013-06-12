@@ -5889,6 +5889,41 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 	}
 	return FALSE;
 }
+// バージョン情報ダイアログ
+void AboutBox( void )
+{
+	UCHAR libs[128];
+	WCHAR* wlibs;
+	_snprintf(libs,sizeof(libs),
+			"zlib %s\r\n"
+			"SQLite %s\r\n"
+			"%s"
+			,ZLIB_VERSION
+			,SQLITE_VERSION
+			,SSLeay_version(SSLEAY_VERSION)
+	);
+	wlibs = MultiByteToWideCharAlloc( libs, CP_UTF8 );
+	if( wlibs ){
+		WCHAR msg[256];
+		OSVERSIONINFOA os;
+		memset( &os, 0, sizeof(os) );
+		os.dwOSVersionInfoSize = sizeof(os);
+		GetVersionExA( &os );
+		_snwprintf(msg,sizeof(msg)/sizeof(WCHAR),
+				L"%s\r\n\r\n"
+				L"%s\r\n\r\n"
+				L"Windows%s %u.%u.%u"
+				,APPNAME
+				,wlibs
+				,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
+				,os.dwMajorVersion
+				,os.dwMinorVersion
+				,os.dwBuildNumber
+		);
+		MessageBoxW( MainForm, msg, L"バージョン情報", MB_ICONINFORMATION );
+		free( wlibs );
+	}
+}
 // メインフォームWindowProc
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -6010,39 +6045,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( ConfigDialog(0)==ID_DLG_OK ) PostMessage( hwnd, WM_SETTING_OK, 0,0 );
 			break;
 		case CMD_ABOUT:		// バージョン情報
-			{
-				UCHAR lib[64];
-				WCHAR* wlib;
-				_snprintf(lib,sizeof(lib),
-						"zlib %s\r\n"
-						"SQLite %s\r\n"
-						"%s"
-						,ZLIB_VERSION
-						,SQLITE_VERSION
-						,SSLeay_version(SSLEAY_VERSION)
-				);
-				wlib = MultiByteToWideCharAlloc( lib, CP_UTF8 );
-				if( wlib ){
-					WCHAR msg[128];
-					OSVERSIONINFOA os;
-					memset( &os, 0, sizeof(os) );
-					os.dwOSVersionInfoSize = sizeof(os);
-					GetVersionExA( &os );
-					_snwprintf(msg,sizeof(msg)/sizeof(WCHAR),
-							L"%s\r\n\r\n"
-							L"%s\r\n\r\n"
-							L"Windows%s %u.%u.%u"
-							,APPNAME
-							,wlib
-							,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
-							,os.dwMajorVersion
-							,os.dwMinorVersion
-							,os.dwBuildNumber
-					);
-					MessageBoxW( hwnd, msg, L"バージョン情報", MB_ICONINFORMATION );
-					free( wlib );
-				}
-			}
+			AboutBox();
 			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
 		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
