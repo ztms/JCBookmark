@@ -27,12 +27,12 @@ body {
 /* パネル開閉/編集ボタン */
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
-	background:#666;
+	background:#111;
 }
 .pen:active, .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#ccc;
-	background:#888;
+	background:#555;
 }
 /* 新規ブックマークURL投入INPUTボックス */
 #newurl {
