@@ -3,9 +3,6 @@
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉
-// TODO:インポート時にも、例えばウィンドウ高さの数倍を超えたら「フォルダ（パネル）を閉じた状態に
-// するか？」ダイアログを出して確認する手もあるか？でも差し替えと追加登録との違いをどうするか…。
-// 難点だが…テキスト表示メニューがあればいい？ダメ？
 (function($){
 /*
 var start = new Date(); // 測定
@@ -562,8 +559,9 @@ function $column( id ){ return $columnBase.clone().attr('id',id); }
 // TODO:開閉ボタンの左にペンアイコンつけてパネル編集をワンクリック起動
 var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 	.prepend(
-		$('<div class=title><img class=icon src="folder.png"><span></span></div>')
-		.prepend( $('<img class=plusminus src="minus.png">') ) // [－]ボタン(開き状態)
+		$('<div class=title><img class=icon src=folder.png><span></span></div>')
+		.prepend( $('<img class=pen src=pen.png>') )			// パネル編集ボタン
+		.prepend( $('<img class=plusminus src=minus.png>') )	// [－]ボタン(開き状態)
 	);
 function $panel( node ){
 	var $p = $panelBase.clone(true).attr('id',node.id);
@@ -1023,107 +1021,11 @@ function setEvents(){
 				}
 			});
 		}));
-		$box.append($('<a><img src=filer.png>パネル編集（名前変更・アイテム削除）</a>').click(function(){
+		$box.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
 			// TODO:ファビコンD&Dでアイテム並べ替え
 			// TODO:アイテム欄の先頭に新規URL入力ボックス
 			$menu.hide();
-			var node = tree.node( panel.id );
-			var $itemedit = $('#itemedit').empty().append(
-				$('<a></a>')
-				.append('<img class=icon src=folder.png>')
-				.append(
-					$('<input id=ed'+panel.id+'>').val( node.title ).css('font-weight','bold')
-					.keypress(keypress).keydown(keydown)
-					.on('input keyup paste',function(){ $(this).focus(); })
-				)
-			);
-			var $box = $('<div></div>').appendTo( $itemedit );
-			var child = node.child;
-			var index = 0, length = child.length;
-			var timer = null;
-			var idels = [];
-			// TODO:clone()で高速化
-			(function(){
-				var count=5;
-				while( index < length && count>0 ){
-					var node = child[index];
-					if( !node.child ){
-						var $item = $('<a></a>');
-						var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
-						var $edit = $('<input id=ed'+node.id+'>').val( node.title )
-									.keypress(keypress).keydown(keydown)
-									.on('input keyup paste',function(){ $(this).focus(); });
-						var $trash = $('<img class=idel src=delete.png>').click(function(){
-							// 削除アイテムノードID配列
-							idels.push( this.previousSibling.id.slice(2) );
-							$(this.parentNode).remove();
-						});
-						$box.append( $item.append($icon).append($edit).append($trash) );
-					}
-					index++; count--;
-				}
-				if( index < length ) timer = setTimeout(arguments.callee,1);
-			}());
-			// Enterで次アイテム選択
-			function keypress(ev){
-				switch( ev.which || ev.keyCode || ev.charCode ){
-				case 13: next(this); return false;
-				}
-			}
-			function next(e){
-				if( e.parentNode.nextSibling ){
-					if( e.parentNode.nextSibling.tagName=='A' )
-						$(e.parentNode.nextSibling).find('input').focus();
-					else // パネル名から先頭アイテムへ
-						$(e.parentNode.nextSibling.firstChild).find('input').focus();
-				}
-			}
-			// ↑↓キーでアイテム選択移動
-			function keydown(ev){
-				switch( ev.which || ev.keyCode || ev.charCode ){
-				case 38: prev(this); return false; // ↑
-				case 40: next(this); return false; // ↓
-				}
-			}
-			function prev(e){
-				if( e.parentNode.previousSibling )
-					$(e.parentNode.previousSibling).find('input').focus();
-				else // 先頭アイテムからパネル名へ
-					$(e.parentNode.parentNode.previousSibling).find('input').focus();
-			}
-			$itemedit.dialog({
-				title	:'パネル編集（名前変更・アイテム削除）'
-				,modal	:true
-				,width	:480
-				,height	:420
-				,close	:close
-				,buttons:{
-					' O K ':function(){
-						// 名前変更ツリー反映
-						$(this).find('input').each(function(){
-							var nid = this.id.slice(2);
-							if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
-								var $e = $('#'+nid);
-								if( $e.hasClass('panel') ){
-									$e.find('.title').find('span').text( this.value );
-								}
-								else if( $e.hasClass('item') ){
-									$e.attr('title',this.value).find('span').text( this.value );
-								}
-							}
-						});
-						// アイテム削除ツリー反映
-						var idelsJSON = JSON.stringify(idels);	// JSON複製保持
-						tree.moveChild( idels, tree.trash() );	// idelsは空になる
-						idels = $.parseJSON(idelsJSON)			// 復元
-						for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
-						// おわり
-						close();
-					}
-					,'キャンセル':close
-				}
-			});
-			function close(){ clearTimeout(timer); $itemedit.dialog('destroy'); }
+			panelEdit( panel.id );
 		}));
 		$box.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
@@ -1134,7 +1036,7 @@ function setEvents(){
 					text += child[i].title + '\r' + child[i].url + '\r';
 				}
 			}
-			$('#itemedit').empty().append($('<textarea></textarea>').text(text)).dialog({
+			$('#editbox').empty().append($('<textarea></textarea>').text(text)).dialog({
 				title	:'アイテムをテキストで取得'
 				,modal	:true
 				,width	:480
@@ -1177,6 +1079,11 @@ function setEvents(){
 			status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
 		});
 		option.panel.status( status );
+	})
+	// 編集アイコンクリックでパネル編集
+	.on('click','.pen',function(){
+		// パネルID＝親(.title)の親(.panel)のID
+		panelEdit( this.parentNode.parentNode.id );
 	});
 	// 変更保存リンク
 	$('#modified').click(function(ev){
@@ -1962,6 +1869,106 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$btn.attr('src','plus.png');
 		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
 	}
+}
+// パネル編集
+function panelEdit( pid ){
+	var node = tree.node( pid );
+	var $editbox = $('#editbox').empty().append(
+		$('<a></a>')
+		.append('<img class=icon src=folder.png>')
+		.append(
+			$('<input id=ed'+pid+'>').val( node.title ).css('font-weight','bold')
+			.keypress(keypress).keydown(keydown)
+			.on('input keyup paste',function(){ $(this).focus(); })
+		)
+	);
+	var $box = $('<div></div>').appendTo( $editbox );
+	var child = node.child;
+	var index = 0, length = child.length;
+	var timer = null;
+	var idels = [];
+	// TODO:clone()で高速化
+	(function(){
+		var count=5;
+		while( index < length && count>0 ){
+			var node = child[index];
+			if( !node.child ){
+				var $item = $('<a></a>');
+				var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
+				var $edit = $('<input id=ed'+node.id+'>').val( node.title )
+							.keypress(keypress).keydown(keydown)
+							.on('input keyup paste',function(){ $(this).focus(); });
+				var $trash = $('<img class=idel src=delete.png>').click(function(){
+					// 削除アイテムノードID配列
+					idels.push( this.previousSibling.id.slice(2) );
+					$(this.parentNode).remove();
+				});
+				$box.append( $item.append($icon).append($edit).append($trash) );
+			}
+			index++; count--;
+		}
+		if( index < length ) timer = setTimeout(arguments.callee,1);
+	}());
+	// Enterで次アイテム選択
+	function keypress(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: next(this); return false;
+		}
+	}
+	function next(e){
+		if( e.parentNode.nextSibling ){
+			if( e.parentNode.nextSibling.tagName=='A' )
+				$(e.parentNode.nextSibling).find('input').focus();
+			else // パネル名から先頭アイテムへ
+				$(e.parentNode.nextSibling.firstChild).find('input').focus();
+		}
+	}
+	// ↑↓キーでアイテム選択移動
+	function keydown(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 38: prev(this); return false; // ↑
+		case 40: next(this); return false; // ↓
+		}
+	}
+	function prev(e){
+		if( e.parentNode.previousSibling )
+			$(e.parentNode.previousSibling).find('input').focus();
+		else // 先頭アイテムからパネル名へ
+			$(e.parentNode.parentNode.previousSibling).find('input').focus();
+	}
+	$editbox.dialog({
+		title	:'パネル編集（パネル名・アイテム編集）'
+		,modal	:true
+		,width	:480
+		,height	:420
+		,close	:close
+		,buttons:{
+			' O K ':function(){
+				// 名前変更ツリー反映
+				$(this).find('input').each(function(){
+					var nid = this.id.slice(2);
+					if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
+						var $e = $('#'+nid);
+						if( $e.hasClass('panel') ){
+							$e.find('.title').find('span').text( this.value );
+						}
+						else if( $e.hasClass('item') ){
+							$e.attr('title',this.value).find('span').text( this.value );
+						}
+					}
+				});
+				// アイテム削除ツリー反映
+				var idelsJSON = JSON.stringify(idels);	// JSON複製保持
+				tree.moveChild( idels, tree.trash() );	// idelsは空になる
+				idels = $.parseJSON(idelsJSON)			// 復元
+				for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
+				// おわり
+				close();
+			}
+			,'キャンセル':close
+		}
+	});
+	function close(){ clearTimeout(timer); $editbox.dialog('destroy'); }
 }
 // 変更保存
 function modifySave( arg ){

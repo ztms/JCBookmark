@@ -24,12 +24,12 @@ body {
 	background:linear-gradient(#f5f5ff,#d5d5dd);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#f5f5ff,endcolorstr=#d5d5dd)";
 }
-/* パネル開閉ボタン */
-.plusminus:hover {
+/* パネル編集/開閉ボタン */
+.pen:hover, .plusminus:hover {
 	border-color:#bbb;
 	background:#fff;
 }
-.plusminus:active {
+.pen:active, .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#aaa;
 	background:#eee;

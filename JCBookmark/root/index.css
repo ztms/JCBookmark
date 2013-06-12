@@ -76,19 +76,19 @@
 	vertical-align:-4px;
 	display:inline-block;
 }
-/* パネル開閉ボタン */
-/* TODO:フォルダ名が長いと押せない */
-.plusminus {
+/* パネル開閉/編集ボタン */
+.pen, .plusminus {
 	display:none;
 	float:right;
-	width:13px;
-	height:13px;
+	width:14px;
+	height:14px;
 	margin:0 2px 0 0;
 	cursor:default;
 	border:1px solid transparent;
 	border-radius:2px;
 }
-/* パネルマウスオーバーの時だけ開閉ボタン表示 */
+/* パネルマウスオーバーの時だけボタン表示 */
+.panel:hover .pen,
 .panel:hover .plusminus {
 	display:block;
 }
@@ -236,11 +236,11 @@
 	border-top:1px solid #999;
 	border-bottom:1px solid #fff;
 }
-/* パネル・アイテム名の変更 */
-#itemedit {
+/* パネル編集 */
+#editbox {
 	display:none;
 }
-#itemedit div {
+#editbox div {
 	width:445px;
 	height:280px;
 	margin-top:2px;
@@ -248,31 +248,31 @@
 	border:1px solid #ddd;
 	overflow-y:scroll;
 }
-#itemedit a {
+#editbox a {
 	display:block;
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
 	border:1px solid transparent;
 }
-#itemedit div a:hover {
+#editbox div a:hover {
 	background:#f7f7f7;
 	border:1px solid #ddd;
 }
-#itemedit input {
+#editbox input {
 	width:380px;
 	height:14px;
 	padding:1px;
 	border:1px solid transparent;
 	background:transparent;
 }
-#itemedit input:hover {
+#editbox input:hover {
 	border:1px dashed #fb1;
 }
-#itemedit input:focus {
+#editbox input:focus {
 	border:1px solid #eb0;
 	font-weight:bold;
 }
-#itemedit a .idel {
+#editbox a .idel {
 	float:right;
 	border:1px solid transparent;
 	width:16px;
@@ -282,21 +282,21 @@
 	filter:alpha(opacity=15);
 	opacity:0.15;
 }
-#itemedit a:hover .idel {
+#editbox a:hover .idel {
 	background:#f7f7f7;
 	filter:alpha(opacity=70);
 	opacity:0.7;
 }
-#itemedit a .idel:hover {
+#editbox a .idel:hover {
 	border:1px solid #faa;
 	filter:alpha(opacity=100);
 	opacity:1;
 }
-#itemedit a .idel:active {
+#editbox a .idel:active {
 	background:#fdd;
 }
 /* アイテムをテキストで取得 */
-#itemedit textarea {
+#editbox textarea {
 	width:445px;
 	height:300px;
 	padding:2px;
