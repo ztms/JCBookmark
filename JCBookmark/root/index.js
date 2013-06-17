@@ -1615,7 +1615,8 @@ function setEvents(){
 			return $('<div></div>')
 					.addClass('paneldrop')
 					.css('marginLeft',$panel.css('marginLeft'))
-					.css('marginTop',$panel.css('marginTop'));
+					.css('marginTop',$panel.css('marginTop'))
+					.height( option.font.size() +5 );
 		}
 		,onDrag:function( ev, $panel, $place ){ // ドラッグ中
 			if( ev.target.id=='wall' ){
@@ -1661,7 +1662,10 @@ function setEvents(){
 					$item.css('opacity',0.4);
 					// カーソルと共に移動する要素は新規作成して返却
 					return $('<div class=panel></div>')
-							.css({position:'absolute'})
+							.css({
+								position: 'absolute'
+								,'font-size': option.font.size() +'px'
+							})
 							.width( $item.width() )
 							.append( $('<a class=item></a>').append( $item.children().clone() ) )
 							.appendTo( document.body );
