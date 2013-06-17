@@ -686,10 +686,8 @@ $('#newfolder').click(function(){
 			setTimeout(function(){
 				$item.mouseup();
 				if( !name.length ){
-					// 名前変更
-					edit( $item.children('.title')[0] );
-					// テキスト全選択
-					$('#editbox').select();
+					// 名前変更・テキスト選択
+					edit( $item.children('.title')[0], {select:true} );
 				}
 			},1);
 		}
@@ -730,10 +728,8 @@ $('#newitem').click(function(){
 				}
 			});
 		}else{
-			// URL変更
+			// URL編集
 			edit( $item.children('.url')[0] );
-			// テキスト全選択
-			$('#editbox').select();
 		}
 	},1);
 	$('#newurl').val('');
@@ -1562,10 +1558,12 @@ function selectItemClear(){
 	selectItemLast = null;
 }
 // TODO:Firefoxのブックマーク管理画面みたいに右下に編集画面があるタイプのが使いやすいかな？
-function edit( element ){
+function edit( element, opt ){
+	var $editbox = $('#editbox');
+	var fontWeight = 'normal';
 	if( element ){
 		switch( element.className ){
-		case 'title':
+		case 'title': fontWeight = 'bold';
 		case 'url':
 		case 'iconurl':
 			// element全体見えるようスクロール
@@ -1579,11 +1577,12 @@ function edit( element ){
 				var $e = $(element);
 				var offset = $e.offset();
 				var isFolderTree = element.parentNode.id.match(/^folder/);
-				$('#editbox').css({
+				$editbox.css({
 					left			:offset.left -1
 					,top			:offset.top -1
 					,width			:isFolderTree? $('#folders').width() -element.offsetLeft : element.offsetWidth -1
 					,'padding-left'	:$e.css('padding-left')
+					,'font-weight'	:fontWeight
 				})
 				.val( $e.text() )
 				.on({
@@ -1650,6 +1649,7 @@ function edit( element ){
 						}
 					}
 				}).show().focus();
+				if( opt && opt.select ) $editbox.select();
 			},10);
 			break;
 		case 'date':
@@ -1657,11 +1657,12 @@ function edit( element ){
 			setTimeout(function(){
 				var $e = $(element);
 				var offset = $e.offset();
-				$('#editbox').css({
+				$editbox.css({
 					left			:offset.left -1
 					,top			:offset.top -1
 					,width			:element.offsetWidth -1
 					,'padding-left'	:$e.css('padding-left')
+					,'font-weight'	:fontWeight
 				})
 				.val( $e.text() )
 				.on({
@@ -1687,6 +1688,7 @@ function edit( element ){
 			break;
 		}
 	}
+	return $editbox;
 }
 // element全体見えるようスクロール
 function viewScroll( element ){
