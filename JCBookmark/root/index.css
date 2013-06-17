@@ -76,8 +76,8 @@
 .panel .pen, .panel .plusminus {
 	display:none;
 	float:right;
-	width:14px;
-	height:14px;
+	width:13px;
+	height:13px;
 	margin:0 2px 0 0;
 	cursor:default;
 	border:1px solid transparent;

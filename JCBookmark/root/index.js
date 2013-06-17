@@ -613,7 +613,7 @@ var paneler = function(){
 			'font-size': fontSize +'px'
 			,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 		})
-		.find('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+		.find('.pen, .plusminus').width( fontSize ).height( fontSize );
 		// パネルアイテム元要素
 		$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
 		// カラム(段)生成
@@ -2258,14 +2258,14 @@ function playLocalParam(){
 		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 	});
 	$('.icon').width( fontSize +3 ).height( fontSize +3 );
-	$('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+	$('.pen, .plusminus').width( fontSize ).height( fontSize );
 	$('#newurl').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size': fontSize +'px'
 		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 	})
-	.find('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+	.find('.pen, .plusminus').width( fontSize ).height( fontSize );
 	// パネルアイテム元要素
 	$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
 }
