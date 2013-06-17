@@ -562,26 +562,24 @@ var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 		.prepend( $('<img class=pen src=pen.png>') )			// パネル編集ボタン
 		.prepend( $('<img class=plusminus src=minus.png>') )	// [－]ボタン(開き状態)
 	);
-function $panel( node ){
+function $newPanel( node ){
 	var $p = $panelBase.clone(true).attr('id',node.id);
 	$p.find('span').text( node.title );
 	$p.find('.plusminus').attr('id','btn'+node.id);
 	return $p;
 }
 // パネルアイテム生成関数
-var $panelItem = function(){
-	var $e = $('<a class=item target="_blank"><img class=icon><span></span></a>');
-	return function( node ){
-		var $i = $e.clone().attr({
-					id		: node.id
-					,href	: node.url
-					,title	: node.title
-		});
-		$i.find('img').attr('src', node.icon ||'item.png');
-		$i.find('span').text( node.title );
-		return $i;
-	};
-}();
+var $itemBase = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+function $newItem( node ){
+	var $i = $itemBase.clone().attr({
+		id		: node.id
+		,href	: node.url
+		,title	: node.title
+	});
+	$i.find('img').attr('src', node.icon ||'item.png');
+	$i.find('span').text( node.title );
+	return $i;
+}
 // margin,padding覚書
 // |<------------------ #wall ---------------------->|
 // |<-- .column width --->|<-- .column width --->| p |
@@ -599,27 +597,31 @@ var paneler = function(){
 		clearTimeout( timer ); // 古いのキャンセル
 		document.title = option.page.title();
 		$('#colorcss').attr('href',option.color.css());
+		var fontSize = option.font.size();
 		var panelWidth = option.panel.width();
 		var panelMargin = option.panel.margin();
 		var columnCount = option.column.count();
 		var columnWidth = panelWidth + panelMargin +2;	// +2 適当たぶんボーダーぶん
 		$wall.empty().width( columnWidth * columnCount )
-		.css({
-			'padding-right': panelMargin +'px'
-		});
+			.css({
+				'padding-right': panelMargin +'px'
+			});
 		// カラム元要素
 		$columnBase.width( columnWidth );
 		// パネル元要素
 		$panelBase.width( panelWidth ).css({
-			'font-size': option.font.size() +'px'
+			'font-size': fontSize +'px'
 			,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
-		});
+		})
+		.find('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+		// パネルアイテム元要素
+		$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
 		// カラム(段)生成
 		var columnList = {};
 		for( var i=0; i<columnCount; i++ ){
 			columnList['co'+i] = {
 				$e: $column( 'co'+i ).appendTo( $wall )
-				,height: 0
+					,height: 0
 			};
 		}
 		// float解除
@@ -648,7 +650,7 @@ var paneler = function(){
 				index++; count--;
 			}
 			while( layoutSeek && count>0 );
-			if( layoutSeek ) timer = setTimeout(arguments.callee,1); else afterLayout();
+		if( layoutSeek ) timer = setTimeout(arguments.callee,1); else afterLayout();
 		})();
 		// レイアウト反映後、残りのパネル配置
 		function afterLayout(){
@@ -677,18 +679,18 @@ var paneler = function(){
 		function afterPlaced(){
 			// 新規URL投入BOX作成
 			$('#'+nodeTop.id).find('.itembox').before(
-				$('<input>').attr({
-					id:'newurl'
-					,title:'新規ブックマークURL'
-					,placeholder:'新規ブックマークURL'
-				})
-				.on({
-					// 新規登録
-					commit:function(){
-						var node = tree.newURL( this.value );
-						if( node ){
-							// DOM要素追加
-							$(this.parentNode).find('.itembox').prepend( $panelItem( node ) );
+					$('<input>').attr({
+						id:'newurl'
+						,title:'新規ブックマークURL'
+						,placeholder:'新規ブックマークURL'
+					})
+					.on({
+						// 新規登録
+						commit:function(){
+								   var node = tree.newURL( this.value );
+								   if( node ){
+									   // DOM要素追加
+									   $(this.parentNode).find('.itembox').prepend( $newItem( node ) );
 							// URLタイトル、favicon取得
 							// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
 							// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
@@ -755,7 +757,7 @@ var paneler = function(){
 		// パネル１つ生成配置
 		function panelCreate( node, coID ){
 			var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
-			var $p = $panel( node ).appendTo( column.$e );
+			var $p = $newPanel( node ).appendTo( column.$e );
 			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
 			// 例) { btn1:1, btn9:0, btn45:0, ... }
 			// パネルID=XXX は、ボタンID=btnXXX に対応
@@ -769,7 +771,7 @@ var paneler = function(){
 				var $box = $p.find('.itembox').empty();
 				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
 					if( !child[i].child )
-						$box.append( $panelItem( child[i] ) );
+						$box.append( $newItem( child[i] ) );
 				}
 			}
 			// カラム高さ
@@ -1013,15 +1015,13 @@ function setEvents(){
 				,text:'パネル名'
 				,ok:function( name ){
 					var node = tree.newFolder( name ||'新規パネル' );
-					var $p = $panel( node );
+					var $p = $newPanel( node );
 					$(panel).before( $p );
 					option.panel.layoutSave();
 				}
 			});
 		}));
 		$box.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
-			// TODO:ファビコンD&Dでアイテム並べ替え
-			// TODO:アイテム欄の先頭に新規URL入力ボックス
 			$menu.hide();
 			panelEdit( panel.id );
 		}));
@@ -1189,7 +1189,6 @@ function setEvents(){
 			}
 		});
 		// フォントサイズ
-		// TODO:行の高さ/アイコン大きさ/開閉ボタン大きさもフォントサイズに合わせて変わるべき
 		$('#font_size').val( option.font.size() );
 		$('#font_size_inc').off().click(function(){
 			var val = option.font.size();
@@ -1600,24 +1599,24 @@ function setEvents(){
 		,distance:30
 		,start:function( item ){ // 並べ替えドラッグ開始
 			// item==パネル要素
-			var $item = $(item);
+			var $panel = $(item);
 			// 閉パネルポップアップ停止(しないとおかしな場所にポップアップして幽霊のようになる)
-			if( $item.find('.plusminus').attr('src')=='plus.png' ){
-				$item.off().find('.itembox').hide();
+			if( $panel.find('.plusminus').attr('src')=='plus.png' ){
+				$panel.off().find('.itembox').hide();
 			}
 			// カーソルと共に移動するjQuery要素を返却
-			return $item.css({position:'absolute',opacity:0.4});
+			return $panel.css({position:'absolute',opacity:0.4});
 		}
 		,place:function( item ){ // ドロップ場所作成
 			// item==パネル要素
-			var $item = $(item);
+			var $panel = $(item);
 			// ドロップ場所を示すjQueryオブジェクトを返却
 			return $('<div></div>')
 					.addClass('paneldrop')
-					.css('marginLeft',$item.css('marginLeft'))
-					.css('marginTop',$item.css('marginTop'));
+					.css('marginLeft',$panel.css('marginLeft'))
+					.css('marginTop',$panel.css('marginTop'));
 		}
-		,onDrag:function( ev, $item, $place ){ // ドラッグ中
+		,onDrag:function( ev, $panel, $place ){ // ドラッグ中
 			if( ev.target.id=='wall' ){
 				$('.column').each(function(){
 					if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
@@ -1627,15 +1626,15 @@ function setEvents(){
 				});
 			}
 		}
-		,stop:function( $item, $place ){ // 並べ替え終了
-			// $item==start()戻り値、$place==place()戻り値
-			if( $place.parent().hasClass('column') ) $place.after( $item );
+		,stop:function( $panel, $place ){ // 並べ替え終了
+			// $panel==start()戻り値、$place==place()戻り値
+			if( $place.parent().hasClass('column') ) $place.after( $panel );
 			$place.remove();
-			$item.css({ position:'', opacity:1 });
+			$panel.css({ position:'', opacity:1 });
 			// 閉パネルポップアップ再開
-			if( $item.find('.plusminus').attr('src')=='plus.png' ){
-				$item.find('.plusminus').attr('src','minus.png');
-				panelOpenClose( $item[0].id );
+			if( $panel.find('.plusminus').attr('src')=='plus.png' ){
+				$panel.find('.plusminus').attr('src','minus.png');
+				panelOpenClose( $panel[0].id );
 			}
 			// 配置保存
 			option.panel.layoutSave();
@@ -1659,7 +1658,7 @@ function setEvents(){
 					var $item = $(item);
 					// 元の要素は半透明にして、
 					$item.css('opacity',0.4);
-					// カーソルと共に移動するボックス要素は新規作成する
+					// カーソルと共に移動する要素は新規作成して返却
 					return $('<div class=panel></div>')
 							.css({position:'absolute'})
 							.width( $item.width() )
@@ -1696,7 +1695,7 @@ function setEvents(){
 							tree.moveChild( [node.id], $place.parent().parent()[0].id );
 						}
 						$('#'+node.id).remove();
-						$place.after( $panelItem(node) );
+						$place.after( $newItem(node) );
 					}
 					node = null;
 				}
@@ -1801,7 +1800,7 @@ var panelPopper = function(){
 			(function(){
 				var count=10;
 				while( index < length && count>0 ){
-					if( !child[index].child ) $box.append( $panelItem( child[index] ) );
+					if( !child[index].child ) $box.append( $newItem( child[index] ) );
 					index++; count--;
 				}
 				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
@@ -1855,7 +1854,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		// アイテム追加
 		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
 			if( !child[i].child )
-				$box.append( $panelItem( child[i] ) );
+				$box.append( $newItem( child[i] ) );
 		}
 	}else{
 		// 閉じる(hoverでアイテムをポップアップ)
@@ -1869,6 +1868,8 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	}
 }
 // パネル編集
+// TODO:ファビコンD&Dでアイテム並べ替え
+// TODO:アイテム欄の先頭に新規URL入力ボックス
 function panelEdit( pid ){
 	var node = tree.node( pid );
 	var $editbox = $('#editbox').empty().append(
@@ -1880,7 +1881,8 @@ function panelEdit( pid ){
 			.on('input keyup paste',function(){ $(this).focus(); })
 		)
 	);
-	var $box = $('<div></div>').appendTo( $editbox );
+	var $itembox = $('<div></div>').appendTo( $editbox );
+	var $newurl = $('<input title="新規ブックマークURL" placeholder="新規ブックマークURL">').appendTo( $itembox );
 	var child = node.child;
 	var index = 0, length = child.length;
 	var timer = null;
@@ -1901,7 +1903,7 @@ function panelEdit( pid ){
 					idels.push( this.previousSibling.id.slice(2) );
 					$(this.parentNode).remove();
 				});
-				$box.append( $item.append($icon).append($edit).append($trash) );
+				$itembox.append( $item.append($icon).append($edit).append($trash) );
 			}
 			index++; count--;
 		}
@@ -1944,14 +1946,17 @@ function panelEdit( pid ){
 			' O K ':function(){
 				// 名前変更ツリー反映
 				$(this).find('input').each(function(){
-					var nid = this.id.slice(2);
-					if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
-						var $e = $('#'+nid);
-						if( $e.hasClass('panel') ){
-							$e.find('.title').find('span').text( this.value );
-						}
-						else if( $e.hasClass('item') ){
-							$e.attr('title',this.value).find('span').text( this.value );
+					if( this.id ){
+						// ID属性("ed"+ノードID)を持つものだけ
+						var nid = this.id.slice(2);
+						if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
+							var $e = $('#'+nid);
+							if( $e.hasClass('panel') ){
+								$e.find('.title').find('span').text( this.value );
+							}
+							else if( $e.hasClass('item') ){
+								$e.attr('title',this.value).find('span').text( this.value );
+							}
 						}
 					}
 				});
@@ -2240,19 +2245,29 @@ function Sortable( sort ){
 }
 // パラメータ変更反映
 function playLocalParam(){
-	var font_size = option.font.size();
-	var panel_width = option.panel.width();
-	var panel_margin = option.panel.margin();
-	var column_width = panel_width +panel_margin +2;	// +2 適当たぶんボーダーぶん
-	$wall.width( column_width *option.column.count() ).css({
-		'padding-right': panel_margin +'px'
+	var fontSize = option.font.size();
+	var panelWidth = option.panel.width();
+	var panelMargin = option.panel.margin();
+	var columnWidth = panelWidth +panelMargin +2;	// +2 適当たぶんボーダーぶん
+	$wall.width( columnWidth *option.column.count() ).css({
+		'padding-right': panelMargin +'px'
+	});
+	$('.column').width( columnWidth );
+	$('.panel').width( panelWidth ).css({
+		'font-size': fontSize +'px'
+		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+	});
+	$('.icon').width( fontSize +3 ).height( fontSize +3 );
+	$('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+	$('#newurl').css('font-size',fontSize);
+	// パネル元要素
+	$panelBase.width( panelWidth ).css({
+		'font-size': fontSize +'px'
+		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 	})
-	.find('.column').width( column_width )
-	.find('.panel').width( panel_width ).css({
-		'font-size': font_size +'px'
-		,'margin': panel_margin +'px 0 0 ' +panel_margin +'px'
-	})
-	.find('#newurl').css('font-size',font_size);
+	.find('.pen, .plusminus').width( fontSize +1 ).height( fontSize +1 );
+	// パネルアイテム元要素
+	$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
 }
 // カラム数変更
 function changeColumnCount( count ){
