@@ -1128,8 +1128,8 @@ function itemDragStart( element, downX, downY ){
 		}
 	}
 	// イベント
-	$(document).on('mousemove.itemdrag1',function(ev){
-		if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >3 ){
+	$(document).on('mousemove.itemdrag',function(ev){
+		if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >9 ){
 			// ある程度カーソル移動したらドラッグ開始
 			draggie = element;
 			// ドラッグ中スタイル適用
@@ -1157,7 +1157,7 @@ function itemDragStart( element, downX, downY ){
 			.prepend( $('<img class=icon>').attr('src', $('img',draggie).attr('src')) )
 			.css({ left:ev.pageX+5, top:ev.pageY+5 }).show();
 			// イベント再登録
-			$(document).off('mousemove.itemdrag1').on('mousemove.itemdrag2',function(ev){
+			$(document).off('mousemove.itemdrag').on('mousemove.itemdrag',function(ev){
 				// ドラッグボックス移動
 				$('#dragbox').css({ left:ev.pageX+5, top:ev.pageY+5 });
 				// ドラッグ中に上端/下端に近づいたらスクロールさせる
@@ -1212,7 +1212,7 @@ function itemDragStart( element, downX, downY ){
 			scrolling = null;
 		}
 		// イベント解除
-		$(document).off('mousemove.itemdrag1 mousemove.itemdrag2');
+		$(document).off('mousemove.itemdrag');
 		// ドラッグ解除
 		$('#dragbox').hide();
 		if( draggie ){
