@@ -101,6 +101,13 @@ var tree = {
 	}
 	// 指定ノードIDがごみ箱にあるかどうか
 	,trashHas:function( id ){ return tree.nodeAhasB( tree.trash(), id ); }
+	// ごみ箱を空にする
+	,trashEmpty:function(){
+		if( tree.trash().child.length ){
+			tree.trash().child.length = 0;
+			tree.modified(true);
+		}
+	}
 	// 新規フォルダ作成
 	,newFolder:function( title, pid ){
 		var node = {
@@ -802,7 +809,7 @@ $('#delete').click(function(){
 			}
 			else{
 				tree.moveChild( [nid], tree.trash() );
-				folderTree({ click0:true });
+				folderTree({ clickID:nid });
 			}
 		}
 	}
@@ -1512,16 +1519,43 @@ function folderContextMenu(ev){
 	if( nid==tree.trash().id ){
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
-			$('#delete').click();
+			Confirm({
+				msg		:'ごみ箱の全アイテム・フォルダを完全に消去します。'
+				,width	:400
+				,height	:180
+				,ok		:function(){
+					var selectTrash = tree.trashHas( selectFolder.id.slice(6) );
+					tree.trashEmpty();
+					if( selectTrash ) folderTree({ click0:true });
+					else folderTree({ clickID:selectFolder.id.slice(6) });
+				}
+			});
 		}));
 		$menu.width(150);
 	}
 	else if( tree.movable(nid) ){
-		var idelete = tree.trashHas(nid)? 'delete.png' : 'trash.png';
-		$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
-			$menu.hide();
-			$('#delete').click();
-		}));
+		if( tree.trashHas(nid) ){
+			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
+				$menu.hide();
+				Confirm({
+					msg		:'フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
+					,width	:400
+					,height	:200
+					,ok		:function(){
+						tree.eraseNode( nid );
+						if( folder==selectFolder ) folderTree({ click0:true });
+						else folderTree({ clickID:selectFolder.id.slice(6) });
+					}
+				});
+			}));
+		}
+		else{
+			$box.append($('<a><img src=trash.png>削除</a>').click(function(){
+				$menu.hide();
+				tree.moveChild( [nid], tree.trash() );
+				folderTree({ clickID:selectFolder.id.slice(6) });
+			}));
+		}
 		$menu.width(100);
 	}
 	else return; // ルートノード
