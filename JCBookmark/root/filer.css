@@ -247,6 +247,10 @@ body {
 	border-bottom:1px solid #fff;
 	margin:3px 0 3px 0;
 }
+/* コンテキストメニュー中 */
+.contexted {
+	background:#ebf9ff;
+}
 /* ダイアログ */
 #dialog {
 	display:none;

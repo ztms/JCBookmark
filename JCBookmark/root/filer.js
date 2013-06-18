@@ -625,6 +625,7 @@ $(document).on({
 		// 右クリックメニュー隠す
 		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
 			$('#contextmenu').hide();
+			if( onContextHide ) onContextHide();
 		}
 		// inputタグはフォーカスするためtrue返す
 		if( $(ev.target).is('input, .barbtn') ){
@@ -1507,6 +1508,7 @@ function itemContextMenu(ev){
 	}).show();
 	return false;	// 既定右クリックメニュー出さない
 }
+var onContextHide = null; // #contextmenu.hide()時に実行する関数
 function folderContextMenu(ev){
 	var folder = ev.target;
 	while( !$(folder).hasClass('folder') ){
@@ -1519,6 +1521,7 @@ function folderContextMenu(ev){
 	if( nid==tree.trash().id ){
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
+			onContextHide();
 			Confirm({
 				msg		:'ごみ箱の全アイテム・フォルダを完全に消去します。'
 				,width	:400
@@ -1537,6 +1540,7 @@ function folderContextMenu(ev){
 		if( tree.trashHas(nid) ){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide();
+				onContextHide();
 				Confirm({
 					msg		:'フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
 					,width	:400
@@ -1552,6 +1556,7 @@ function folderContextMenu(ev){
 		else{
 			$box.append($('<a><img src=trash.png>削除</a>').click(function(){
 				$menu.hide();
+				onContextHide();
 				tree.moveChild( [nid], tree.trash() );
 				folderTree({ clickID:selectFolder.id.slice(6) });
 			}));
@@ -1559,6 +1564,12 @@ function folderContextMenu(ev){
 		$menu.width(100);
 	}
 	else return; // ルートノード
+	// ターゲットフォルダ色つけ
+	$(folder).addClass('contexted');
+	onContextHide = function(){
+		$(folder).removeClass('contexted');
+		onContextHide = null;
+	};
 	// 表示
 	$menu.css({
 		left: (($(window).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
