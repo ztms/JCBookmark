@@ -1374,14 +1374,13 @@ function itemDblClick(){
 }
 function itemContextMenu(ev){
 	var item = ev.target;
-	while( !item.id.match(/^item/) ){
-		if( !item.parentNode ) break;
+	while( !$(item).hasClass('item') ){
+		if( !item.parentNode ) return;
 		item = item.parentNode;
 	}
-	var $menu = $('#contextmenu');
+	var $menu = $('#contextmenu').width(200);
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).find('img').attr('src');
-	var idelete = tree.trashHas( item.id.slice(4) )? 'delete.png' : 'trash.png';
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
@@ -1489,6 +1488,7 @@ function itemContextMenu(ev){
 		}));
 	}
 	// 削除
+	var idelete = tree.trashHas( item.id.slice(4) )? 'delete.png' : 'trash.png';
 	$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
 		$menu.hide();
 		$('#delete').click();
@@ -1500,9 +1500,37 @@ function itemContextMenu(ev){
 	}).show();
 	return false;	// 既定右クリックメニュー出さない
 }
-// TODO:フォルダ右クリックメニュー
-// TODO:ごみ箱には「ごみ箱を空にする」
 function folderContextMenu(ev){
+	var folder = ev.target;
+	while( !$(folder).hasClass('folder') ){
+		if( !folder.parentNode ) return;
+		folder = folder.parentNode;
+	}
+	var nid = folder.id.slice(6); // ノードID
+	var $menu = $('#contextmenu');
+	var $box = $menu.children('div').empty();
+	if( nid==tree.trash().id ){
+		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
+			$menu.hide();
+			$('#delete').click();
+		}));
+		$menu.width(150);
+	}
+	else if( tree.movable(nid) ){
+		var idelete = tree.trashHas(nid)? 'delete.png' : 'trash.png';
+		$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
+			$menu.hide();
+			$('#delete').click();
+		}));
+		$menu.width(100);
+	}
+	else return; // ルートノード
+	// 表示
+	$menu.css({
+		left: (($(window).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
+		,top: (($(window).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
+	}).show();
+	return false;	// 既定右クリックメニュー出さない
 }
 function folderKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
