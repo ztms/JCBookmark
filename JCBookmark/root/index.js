@@ -559,8 +559,8 @@ function $column( id ){ return $columnBase.clone().attr('id',id); }
 var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 	.prepend(
 		$('<div class=title><img class=icon src=folder.png><span></span></div>')
-		.prepend( $('<img class=pen src=pen.png>') )			// パネル編集ボタン
-		.prepend( $('<img class=plusminus src=minus.png>') )	// [－]ボタン(開き状態)
+		.prepend( $('<img class=pen src=pen.png title="パネル編集">') )
+		.prepend( $('<img class=plusminus src=minus.png title="閉じる">') )
 	);
 function $newPanel( node ){
 	var $p = $panelBase.clone(true).attr('id',node.id);
@@ -1635,7 +1635,7 @@ function setEvents(){
 			$panel.css({ position:'', opacity:1 });
 			// 閉パネルポップアップ再開
 			if( $panel.find('.plusminus').attr('src')=='plus.png' ){
-				$panel.find('.plusminus').attr('src','minus.png');
+				$panel.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });
 				panelOpenClose( $panel[0].id );
 			}
 			// 配置保存
@@ -1855,7 +1855,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		panelPopper(false);
 		$panel.off('mouseenter.itempop');
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
-		$btn.attr('src','minus.png');
+		$btn.attr({ src:'minus.png', title:'閉じる' });
 		// アイテム追加
 		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
 			if( !child[i].child )
@@ -1868,7 +1868,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		// TODO:吹き出しみたいな三角形あるといいかな？いらんかな。
 		$box.hide().css('position','absolute').empty();
 		$panel.on('mouseenter.itempop',function(ev){ panelPopper( this, ev.pageX, ev.pageY ); });
-		$btn.attr('src','plus.png');
+		$btn.attr({ src:'plus.png', title:'開く' });
 		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
 	}
 }
@@ -1903,7 +1903,7 @@ function panelEdit( pid ){
 				var $edit = $('<input id=ed'+node.id+'>').val( node.title )
 							.keypress(keypress).keydown(keydown)
 							.on('input keyup paste',function(){ $(this).focus(); });
-				var $trash = $('<img class=idel src=delete.png>').click(function(){
+				var $trash = $('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
 					// 削除アイテムノードID配列
 					idels.push( this.previousSibling.id.slice(2) );
 					$(this.parentNode).remove();
