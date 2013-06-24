@@ -1,4 +1,5 @@
 // vim:set ts=4:vim modeline
+'use strict';
 (function($){
 /*
 var $debug = $('<div></div>').css({
@@ -48,14 +49,14 @@ var tree = {
 	,trash:function(){ return tree.root.child[1]; }
 	// 指定ノードIDのノードオブジェクト
 	,node:function( id ){
-		return function( node ){
+		return function callee( node ){
 			if( node.id==id ){
 				// 見つけた
 				return node;
 			}
 			if( node.child ){
 				for( var i=0, n=node.child.length; i<n; i++ ){
-					var found = arguments.callee( node.child[i] );
+					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
 			}
@@ -64,14 +65,14 @@ var tree = {
 	}
 	// 指定ノードIDの親ノードオブジェクト
 	,nodeParent:function( id ){
-		return function( node ){
-			for( var i=0; i<node.child.length; i++ ){
+		return function callee( node ){
+			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].id==id ){
 					// 見つけた
 					return node;
 				}
 				if( node.child[i].child ){
-					var found = arguments.callee( node.child[i] );
+					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
 			}
@@ -83,15 +84,13 @@ var tree = {
 	,nodeAhasB:function( A, B ){
 		if( isString(A) ) A = tree.node(A);
 		if( A && A.child ){
-			return function( child ){
+			return function callee( child ){
 				for( var i=0, n=child.length; i<n; i++ ){
 					// TODO:BがID文字列だった場合とノードオブジェクトだった場合
 					// この判定方法でいいのかな…？
-					if( child[i].id==B || child[i]===B )
-						return true;
+					if( child[i].id==B || child[i]===B ) return true;
 					if( child[i].child ){
-						if( arguments.callee( child[i].child ) )
-							return true;
+						if( callee( child[i].child ) ) return true;
 					}
 				}
 				return false;
@@ -191,7 +190,7 @@ var tree = {
 	// id:ノードID
 	,eraseNode:function( id ){
 		if( tree.movable(id) ){
-			(function( child ){
+			(function callee( child ){
 				for( var i=0; i<child.length; i++ ){
 					if( child[i].id==id ){
 						// 見つけた消去
@@ -200,8 +199,7 @@ var tree = {
 						return true;
 					}
 					if( child[i].child ){
-						if( arguments.callee( child[i].child ) )
-							return true;
+						if( callee( child[i].child ) ) return true;
 					}
 				}
 			})( tree.root.child );
@@ -213,10 +211,10 @@ var tree = {
 	,eraseNodes:function( ids ){
 		if( ids.length ){
 			var count=0;
-			(function( child ){
+			(function callee( child ){
 				for( var i=0; i<child.length; i++ ){
 					if( ids.length && child[i].child ){
-						arguments.callee( child[i].child );
+						callee( child[i].child );
 					}
 					for( var j=0; j<ids.length; j++ ){
 						if( tree.movable(ids[j]) ){
@@ -255,10 +253,10 @@ var tree = {
 			if( ids.length ){
 				// 切り取り
 				var clipboard = [];
-				(function( child ){
+				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
 						if( ids.length && child[i].child ){
-							arguments.callee( child[i].child );
+							callee( child[i].child );
 						}
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
@@ -295,10 +293,10 @@ var tree = {
 			if( dstParent ){
 				// 移動元ノード抜き出し
 				var movenodes = [];
-				(function( child ){
+				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
 						if( ids.length && child[i].child ){
-							arguments.callee( child[i].child );
+							callee( child[i].child );
 						}
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
@@ -374,19 +372,19 @@ var folderTree = function(){
 		}();
 		// setTimeoutで１ノードずつDOM生成するためまずフォルダ情報の配列をつくり、
 		var folderList = [];
-		(function( node, depth ){
+		(function toplist( node, depth ){
 			folderList.push({ id:node.id, title:node.title, icon:'folder.png', depth:depth });
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].child )
-					arguments.callee( node.child[i], depth +1 );
+					toplist( node.child[i], depth +1 );
 			}
 		})( tree.top(), 0 );
 		folderList.push({ id:tree.trash().id, title:tree.trash().title, icon:'trash.png', depth:0 });
-		(function( child, depth ){
+		(function trashlist( child, depth ){
 			for( var i=0, n=child.length; i<n; i++ ){
 				if( child[i].child ){
 					folderList.push({ id:child[i].id, title:child[i].title, icon:'folder.png', depth:depth });
-					arguments.callee( child[i].child, depth +1 );
+					trashlist( child[i].child, depth +1 );
 				}
 			}
 		})( tree.trash().child, 1 );
@@ -394,7 +392,7 @@ var folderTree = function(){
 		var index = 0;
 		var length = folderList.length;
 		var maxWidth = 0;
-		(function(){
+		(function callee(){
 			var count=10;
 			while( index < length && count>0 ){
 				// DOM生成
@@ -420,7 +418,7 @@ var folderTree = function(){
 				index++; count--;
 			}
 			if( index < length ){
-				timer = setTimeout(arguments.callee,1);
+				timer = setTimeout(callee,1);
 			}
 			else{
 				// 全フォルダ完了
@@ -510,7 +508,7 @@ var itemTable = function(){
 		var nowTime = (new Date()).getTime();
 		var index = 0;
 		var length = node.child.length;
-		(function(){
+		(function callee(){
 			var count=10;
 			while( index < length && count>0 ){
 				var $e = $item( node.child[index], nowTime );
@@ -518,7 +516,7 @@ var itemTable = function(){
 				$items.append( $e );
 				index++; count--;
 			}
-			if( index < length ) timer = setTimeout(arguments.callee,1);
+			if( index < length ) timer = setTimeout(callee,1);
 		})();
 	};
 }();
@@ -1380,6 +1378,9 @@ function itemDblClick(){
 	setTimeout(function(){$('#editbox').trigger('decide');},3);
 	return false;
 }
+// TODO:左ボタンドラッグと右ボタンドラッグを区別していないので、右ドラッグした時に
+// たまたまカーソル下に要素があればコンテキストメニューが出て、なければ出ないという
+// 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
 function itemContextMenu(ev){
 	var item = ev.target;
 	while( !$(item).hasClass('item') ){
@@ -1508,6 +1509,9 @@ function itemContextMenu(ev){
 	}).show();
 	return false;	// 既定右クリックメニュー出さない
 }
+// TODO:左ボタンドラッグと右ボタンドラッグを区別していないので、右ドラッグした時に
+// たまたまカーソル下に要素があればコンテキストメニューが出て、なければ出ないという
+// 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
 var onContextHide = null; // #contextmenu.hide()時に実行する関数
 function folderContextMenu(ev){
 	var folder = ev.target;
