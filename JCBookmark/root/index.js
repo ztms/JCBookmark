@@ -3,6 +3,7 @@
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉
+'use strict';
 (function($){
 /*
 var start = new Date(); // 測定
@@ -58,13 +59,11 @@ var tree = {
 	// 指定IDのchildに接ぎ木
 	,mount:function( subtree ){
 		// ノードIDつけて
-		(function( node ){
+		(function callee( node ){
 			node.id = tree.root.nextid++;
-			if( node.child ){
-				for( var i=0, child=node.child, n=child.length; i<n; i++ )
-					arguments.callee( child[i] );
-			}
-		})( subtree );
+			if( node.child )
+				for( var i=0, n=node.child.length; i<n; i++ ) callee( node.child[i] );
+		}( subtree ));
 		// トップノード(固定)child配列に登録
 		tree.top().child.push( subtree ); // 最後に
 		tree.modified(true);
@@ -72,14 +71,14 @@ var tree = {
 	}
 	// 指定ノードIDを持つノードオブジェクト(ごみ箱は探さない)
 	,node:function( id ){
-		return function( node ){
+		return function callee( node ){
 			if( node.id==id ){
 				// 見つけた
 				return node;
 			}
 			if( node.child ){
-				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-					var found = arguments.callee( child[i] );
+				for( var i=0, n=node.child.length; i<n; i++ ){
+					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
 			}
@@ -173,15 +172,13 @@ var tree = {
 	,nodeAhasB:function( A, B ){
 		if( isString(A) ) A = tree.node(A);
 		if( A && A.child ){
-			return function( child ){
+			return function callee( child ){
 				for( var i=0, n=child.length; i<n; i++ ){
 					// TODO:BがID文字列だった場合とノードオブジェクトだった場合
 					// この判定方法でいいのかな…？
-					if( child[i].id==B || child[i]===B )
-						return true;
+					if( child[i].id==B || child[i]===B ) return true;
 					if( child[i].child ){
-						if( arguments.callee( child[i].child ) )
-							return true;
+						if( callee( child[i].child ) ) return true;
 					}
 				}
 				return false;
@@ -191,14 +188,14 @@ var tree = {
 	}
 	// 指定ノードIDの親ノードオブジェクト
 	,nodeParent:function( id ){
-		return function( node ){
-			for( var i=0; i<node.child.length; i++ ){
+		return function callee( node ){
+			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].id==id ){
 					// 見つけた
 					return node;
 				}
 				if( node.child[i].child ){
-					var found = arguments.callee( node.child[i] );
+					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
 			}
@@ -218,10 +215,10 @@ var tree = {
 			if( ids.length ){
 				// 切り取り
 				var clipboard = [];
-				(function( child ){
+				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
 						if( ids.length && child[i].child ){
-							arguments.callee( child[i].child );
+							callee( child[i].child );
 						}
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
@@ -233,7 +230,7 @@ var tree = {
 							}
 						}
 					}
-				})( tree.root.child );
+				}( tree.root.child ));
 				// 貼り付け
 				// TODO:先頭挿入(画面で上の方に追加される)のと末尾追加(画面下の方に追加)はどっちがいいか？
 				if( clipboard.length ){
@@ -258,10 +255,10 @@ var tree = {
 			if( dstParent ){
 				// 移動元ノード抜き出し
 				var movenodes = [];
-				(function( child ){
+				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
 						if( ids.length && child[i].child ){
-							arguments.callee( child[i].child );
+							callee( child[i].child );
 						}
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
@@ -273,7 +270,7 @@ var tree = {
 							}
 						}
 					}
-				})( tree.root.child );
+				}( tree.root.child ));
 				if( movenodes.length ){
 					// 移動先のchildインデックス
 					for( var i=0; i<dstParent.child.length; i++ ){
@@ -636,7 +633,7 @@ var paneler = function(){
 		var panelStatus = option.panel.status();
 		var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
 		var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
-		(function(){
+		(function layouter(){
 			var count=2;
 			do{
 				var layoutSeek = false;
@@ -651,30 +648,30 @@ var paneler = function(){
 				index++; count--;
 			}
 			while( layoutSeek && count>0 );
-		if( layoutSeek ) timer = setTimeout(arguments.callee,1); else afterLayout();
-		})();
+			if( layoutSeek ) timer = setTimeout(layouter,1); else afterLayout();
+		}());
 		// レイアウト反映後、残りのパネル配置
 		function afterLayout(){
 			var nodeList = [];	// 未配置ノードオブジェクト配列
-			(function( node ){
+			(function lister( node ){
 				if( !(node.id in placeList) ){
 					nodeList.push( node );
 				}
-				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-					if( child[i].child ){
-						arguments.callee( child[i] );
+				for( var i=0, n=node.child.length; i<n; i++ ){
+					if( node.child[i].child ){
+						lister( node.child[i] );
 					}
 				}
-			})( nodeTop );
+			}( nodeTop ));
 			var index=0, length=nodeList.length;
-			(function(){
+			(function placer(){
 				var count=5;
 				while( index < length && count>0 ){
 					panelCreate( nodeList[index] );
 					index++; count--;
 				}
-				if( index < length ) timer = setTimeout(arguments.callee,1); else afterPlaced();
-			})();
+				if( index < length ) timer = setTimeout(placer,1); else afterPlaced();
+			}());
 		}
 		// 全パネル配置後
 		function afterPlaced(){
@@ -911,7 +908,7 @@ function setEvents(){
 									// フォルダ
 									node.child = [];
 									for( var i=0, n=data.children.length; i<n; i++ ){
-										node.child.push( arguments.callee( data.children[i] ) );
+										node.child.push( chrome2node( data.children[i] ) );
 									}
 								}else{
 									// ブックマーク
@@ -975,7 +972,7 @@ function setEvents(){
 				else $('#firefoxico').hide();
 			}
 		});
-	})();
+	}());
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
 	$document.on('mousemove',function(){
@@ -1310,7 +1307,7 @@ function setEvents(){
 					+'<TITLE>Bookmarks</TITLE>\n'
 					+'<H1>'+tree.top().title+'</H1>\n'
 					+'<DL><p>\n';
-			(function( child, depth ){
+			(function callee( child, depth ){
 				var indent='';
 				for(var i=0,n=depth*4; i<n; i++ ) indent +=' ';
 				for(var i=0,n=child.length; i<n; i++ ){
@@ -1323,7 +1320,7 @@ function setEvents(){
 						// フォルダ
 						html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
 						html += indent +'<DL><p>\n';
-						arguments.callee( node.child, depth+1 );
+						callee( node.child, depth+1 );
 						html += indent +'</DL><p>\n';
 					}
 					else{
@@ -1346,7 +1343,7 @@ function setEvents(){
 						html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
 					}
 				}
-			})( tree.top().child, 1 );
+			}( tree.top().child, 1 ));
 			html += '</DL><p>\n';
 			// アップロード＆ダウンロード
 			$.ajax({
@@ -1791,25 +1788,38 @@ var panelPopper = function(){
 			// 右端にはみ出る場合は左側に出す
 			if( left + panel.offsetWidth > $window.scrollLeft() + $window.width() )
 				left = panel.offsetLeft - panel.offsetWidth +20;
-			$box.css({
+			$box.addClass('itempop').css({
 				left	:left
 				,top	:panel.offsetTop -1		// ちょい上
 				,width	:panel.offsetWidth -24	// 適当に幅狭く
 			})
-			.mouseleave( nextpop )
-			.addClass('itempop').empty().show();
+			.mouseleave( nextpop ).empty().show();
 			// アイテム追加
 			var child = tree.node( panel.id ).child;
 			var length = child.length;
 			var index = 0;
-			(function(){
+			var winHeight = $window.height();
+			var winScrollTop = $window.scrollTop();
+			var clientTop = (tree.modified() || option.modified())? $('#modified').height() : 0;
+			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
 					if( !child[index].child ) $box.append( $newItem( child[index] ) );
 					index++; count--;
 				}
-				if( index < length ) itemTimer = setTimeout(arguments.callee,1);
-			})();
+				// 下に隠れる場合は上に移動
+				var boxTop = $box.offset().top;
+				var boxHeight = $box.height();
+				var hidden = boxTop + boxHeight - winScrollTop - winHeight;
+				if( hidden >0 ){
+					if( boxHeight > winHeight - clientTop )
+						$box.css('top', winScrollTop + clientTop );
+					else
+						$box.css('top', boxTop - hidden -7 ); // -7pxなぜかもうちょい上
+				}
+				// 次
+				if( index < length ) itemTimer = setTimeout(callee,1);
+			}());
 			// カーソル移動方向と停止時間を監視
 			$document.on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
@@ -1873,7 +1883,6 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	}
 }
 // パネル編集
-// TODO:ファビコンD&Dでアイテム並べ替え
 // TODO:アイテム欄の先頭に新規URL入力ボックス
 function panelEdit( pid ){
 	var node = tree.node( pid );
@@ -1893,7 +1902,7 @@ function panelEdit( pid ){
 	var timer = null;
 	var idels = [];
 	// TODO:clone()で高速化
-	(function(){
+	(function callee(){
 		var count=5;
 		while( index < length && count>0 ){
 			var node = child[index];
@@ -1912,7 +1921,12 @@ function panelEdit( pid ){
 			}
 			index++; count--;
 		}
-		if( index < length ) timer = setTimeout(arguments.callee,1);
+		if( index < length ){
+			timer = setTimeout(callee,1);
+		}
+		else{
+			// TODO:ファビコンD&Dでアイテム並べ替え
+		}
 	}());
 	// Enterで次アイテム選択
 	function keypress(ev){
@@ -2043,10 +2057,9 @@ function analyzer( nodeTop ){
 		}
 	});
 	// ファビコン解析
-	(function( node ){
+	(function ajaxer( node ){
 		if( node.child ){
-			for( var i=0, child=node.child, n=child.length; i<n; i++ )
-				arguments.callee( child[i] );
+			for( var i=0, n=node.child.length; i<n; i++ ) ajaxer( node.child[i] );
 		}
 		else{
 			total++;
@@ -2062,13 +2075,13 @@ function analyzer( nodeTop ){
 				};
 			}
 		}
-	})( nodeTop );
+	}( nodeTop ));
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+ajaxs.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+ajaxs.length+')');
 	$pgbar.progressbar('value',0);
 	// 解析完了待ちループ
-	(function(){
+	(function waiter(){
 		if( skipped ){
 			importer( nodeTop );
 		}
@@ -2082,13 +2095,13 @@ function analyzer( nodeTop ){
 				var count = ajaxs.length - waiting;
 				$count.text('('+count+'/'+ajaxs.length+')');
 				$pgbar.progressbar('value',count*100/ajaxs.length);
-				setTimeout(arguments.callee,500);
+				setTimeout(waiter,500);
 				return;
 			}
 			// 完了
 			importer( nodeTop );
 		}
-	})();
+	}());
 }
 // 移行データ取り込み
 function importer( nodeTop ){
@@ -2134,12 +2147,12 @@ var scroller = function(){
 				dy = 40 -($window.height() -ev.clientY);
 			}
 			if( dx!=0 || dy!=0 ){
-				(function(){
+				(function callee(){
 					var oldLeft = $window.scrollLeft();
 					var oldTop = $window.scrollTop();
 					scrollTo( oldLeft + dx, oldTop + dy );
 					if( $window.scrollLeft()!=oldLeft || $window.scrollTop()!=oldTop ){
-						timer = setTimeout(arguments.callee,100);
+						timer = setTimeout(callee,100);
 					}
 				}());
 			}
@@ -2401,4 +2414,4 @@ function isString( s ){
 	return (Object.prototype.toString.call(s)==='[object String]');
 }
 
-})($);
+}($));
