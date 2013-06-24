@@ -1799,10 +1799,10 @@ var panelPopper = function(){
 			var length = child.length;
 			var index = 0;
 			var winScrollBottom = $window.scrollTop() + $window.height();
-			var barHeight = (tree.modified() || option.modified())? $('#modified').height() : 0;
-			var viewHeight = $window.height() - barHeight;
-			var boxTopLimit = $window.scrollTop() + barHeight;
-			if( boxTopLimit >=panel.offsetTop ) boxTopLimit = panel.offsetTop -1; // 初期box.offsetTop
+			var boxTopLimit = $window.scrollTop();
+			var boxTop = $box.offset().top;
+			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').height();
+			if( boxTopLimit > boxTop ) boxTopLimit = boxTop;
 			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
@@ -1810,12 +1810,14 @@ var panelPopper = function(){
 					index++; count--;
 				}
 				// 下に隠れる場合は上に移動
-				var boxTop = $box.offset().top;
 				var hidden = boxTop + $box.height() - winScrollBottom;
 				if( hidden >0 ){
 					var newTop = boxTop - hidden -7; // -7pxなぜかもうちょい上
 					if( newTop < boxTopLimit ) newTop = boxTopLimit;
-					$box.css('top', newTop );
+					if( newTop != boxTop ){
+						$box.css('top', newTop );
+						boxTop = newTop;
+					}
 				}
 				// 次
 				if( index < length ) itemTimer = setTimeout(callee,1);
