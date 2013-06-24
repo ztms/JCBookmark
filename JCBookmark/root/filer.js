@@ -1,6 +1,6 @@
 // vim:set ts=4:vim modeline
-'use strict';
 (function($){
+'use strict';
 /*
 var $debug = $('<div></div>').css({
 	position:'fixed'

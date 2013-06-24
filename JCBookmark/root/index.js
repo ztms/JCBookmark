@@ -3,8 +3,8 @@
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉
-'use strict';
 (function($){
+'use strict';
 /*
 var start = new Date(); // 測定
 var $debug = $('<div></div>').css({
