@@ -1798,9 +1798,11 @@ var panelPopper = function(){
 			var child = tree.node( panel.id ).child;
 			var length = child.length;
 			var index = 0;
-			var winHeight = $window.height();
-			var winScrollTop = $window.scrollTop();
-			var clientTop = (tree.modified() || option.modified())? $('#modified').height() : 0;
+			var winScrollBottom = $window.scrollTop() + $window.height();
+			var barHeight = (tree.modified() || option.modified())? $('#modified').height() : 0;
+			var viewHeight = $window.height() - barHeight;
+			var boxTopLimit = $window.scrollTop() + barHeight;
+			if( boxTopLimit >=panel.offsetTop ) boxTopLimit = panel.offsetTop -1; // 初期box.offsetTop
 			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
@@ -1809,13 +1811,11 @@ var panelPopper = function(){
 				}
 				// 下に隠れる場合は上に移動
 				var boxTop = $box.offset().top;
-				var boxHeight = $box.height();
-				var hidden = boxTop + boxHeight - winScrollTop - winHeight;
+				var hidden = boxTop + $box.height() - winScrollBottom;
 				if( hidden >0 ){
-					if( boxHeight > winHeight - clientTop )
-						$box.css('top', winScrollTop + clientTop );
-					else
-						$box.css('top', boxTop - hidden -7 ); // -7pxなぜかもうちょい上
+					var newTop = boxTop - hidden -7; // -7pxなぜかもうちょい上
+					if( newTop < boxTopLimit ) newTop = boxTopLimit;
+					$box.css('top', newTop );
 				}
 				// 次
 				if( index < length ) itemTimer = setTimeout(callee,1);
