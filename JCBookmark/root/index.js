@@ -1111,14 +1111,14 @@ function setEvents(){
 			if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
 			if( this.value !=option.panel.width() ){
 				option.panel.width( this.value );
-				playLocalParam();
+				optionApply();
 			}
 		});
 		$('#panel_width_inc').off().click(function(){
 			var val = option.panel.width();
 			if( val <1000 ){
 				option.panel.width( ++val );
-				playLocalParam();
+				optionApply();
 				$('#panel_width').val( val );
 			}
 		});
@@ -1126,7 +1126,7 @@ function setEvents(){
 			var val = option.panel.width();
 			if( val >100 ){
 				option.panel.width( --val );
-				playLocalParam();
+				optionApply();
 				$('#panel_width').val( val );
 			}
 		});
@@ -1136,14 +1136,14 @@ function setEvents(){
 			if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
 			if( this.value !=option.panel.margin() ){
 				option.panel.margin( this.value );
-				playLocalParam();
+				optionApply();
 			}
 		});
 		$('#panel_margin_inc').off().click(function(){
 			var val = option.panel.margin();
 			if( val <100 ){
 				option.panel.margin( ++val );
-				playLocalParam();
+				optionApply();
 				$('#panel_margin').val( val );
 			}
 		});
@@ -1151,7 +1151,7 @@ function setEvents(){
 			var val = option.panel.margin();
 			if( val >0 ){
 				option.panel.margin( --val );
-				playLocalParam();
+				optionApply();
 				$('#panel_margin').val( val );
 			}
 		});
@@ -1160,26 +1160,26 @@ function setEvents(){
 		.off().on('input keyup paste',function(){
 			if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
 			if( this.value !=option.column.count() ){
-				changeColumnCount( { prev:option.column.count(), next:this.value } );
+				columnCountChange( { prev:option.column.count(), next:this.value } );
 				option.column.count( this.value );
-				playLocalParam();
+				optionApply();
 			}
 		});
 		$('#column_count_inc').off().click(function(){
 			var val = option.column.count();
 			if( val <30 ){
-				changeColumnCount( { prev:val, next:val+1 } );
+				columnCountChange( { prev:val, next:val+1 } );
 				option.column.count( ++val );
-				playLocalParam();
+				optionApply();
 				$('#column_count').val( val );
 			}
 		});
 		$('#column_count_dec').off().click(function(){
 			var val = option.column.count();
 			if( val >1 ){
-				changeColumnCount( { prev:val, next:val-1 } );
+				columnCountChange( { prev:val, next:val-1 } );
 				option.column.count( --val );
-				playLocalParam();
+				optionApply();
 				$('#column_count').val( val );
 			}
 		});
@@ -1189,7 +1189,7 @@ function setEvents(){
 			var val = option.font.size();
 			if( val <24 ){
 				option.font.size( ++val );
-				playLocalParam();
+				optionApply();
 				$('#font_size').val( val );
 			}
 		});
@@ -1197,7 +1197,7 @@ function setEvents(){
 			var val = option.font.size();
 			if( val >9 ){
 				option.font.size( --val );
-				playLocalParam();
+				optionApply();
 				$('#font_size').val( val );
 			}
 		});
@@ -1215,7 +1215,7 @@ function setEvents(){
 					$('#panel_margin').val( option.panel.margin() );
 					$('#column_count').val( option.column.count() );
 					$('#font_size').val( option.font.size() );
-					playLocalParam();
+					optionApply();
 				}
 				,'パネル配置クリア':function(){
 					option.panel.layout({});
@@ -2316,7 +2316,7 @@ function Sortable( sort ){
 	});
 }
 // パラメータ変更反映
-function playLocalParam(){
+function optionApply(){
 	var fontSize = option.font.size();
 	var panelWidth = option.panel.width();
 	var panelMargin = option.panel.margin();
@@ -2343,7 +2343,7 @@ function playLocalParam(){
 	$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
 }
 // カラム数変更
-function changeColumnCount( count ){
+function columnCountChange( count ){
 	if( count.prev < count.next ){
 		// カラム増える
 		var width = $('#co0').width();		// 1列目(co0)と同じ幅
