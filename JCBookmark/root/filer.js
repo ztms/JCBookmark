@@ -121,7 +121,7 @@ var tree = {
 		return node;
 	}
 	// 新規ブックマーク作成
-	,newURL:function( pid, url, title, icon ){
+	,newURL:function( pnode, url, title, icon ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
@@ -129,8 +129,9 @@ var tree = {
 			,url		:url || ''
 			,icon		:icon || ''
 		};
-		// 引数IDのchild先頭に追加する
-		( tree.node(pid) || tree.top() ).child.unshift( node );
+		// 引数ノードのchild先頭に追加する
+		if( isString(pnode) ) pnode = tree.node(pnode);
+		( pnode || tree.top() ).child.unshift( node );
 		tree.modified(true);
 		return node;
 	}

@@ -86,12 +86,11 @@
 .panel:hover .pen, .panel:hover .plusminus {
 	display:block;
 }
-#newurl {
-	line-height:1.5;
+.panel .newurl {
 	width:98%;
 	padding:1px;
 }
-#commit {
+.panel .commit {
 	width:98%;
 	cursor:pointer;
 	text-align:center;
@@ -224,6 +223,8 @@
 }
 #editbox {
 	display:none;
+	font-family:"MS PGothic",sans-serif;
+	font-size:13px;
 }
 #editbox div {
 	/* アイテムボックス */
@@ -234,33 +235,57 @@
 	border:1px solid #ccc;
 	overflow-y:scroll;
 }
-#editbox a {
-	/* パネル名・URLアイテム */
-	display:block;
-	font-family:"MS PGothic",sans-serif;
-	font-size:13px;
-	border:1px solid transparent;
-}
-#editbox div a:hover {
-	/* URLアイテム */
-	background:#f7f7f7;
+#editbox .newurl {
+	width:423px;
 	border:1px solid #ddd;
 }
-#editbox input {
+#editbox .newurl:hover {
+	border:1px dashed #fb1;
+}
+#editbox .newurl:focus {
+	border-color:#eb0;
+}
+#editbox .commit {
+	width:421px;
+	padding:1px;
+	text-align:center;
+	cursor:pointer;
+	background:#eee;
+	border:1px solid #aaa;
+	border-radius:3px;
+}
+#editbox .commit:hover {
+	border-color:#e70;
+	background:#fed;
+}
+#editbox .commit:active {
+	background:#ffe5d3;
+}
+#editbox .edit {
+	/* パネル名・URLアイテム */
+	display:block;
+	border:1px solid transparent;
+}
+#editbox div .edit:hover {
+	/* URLアイテム */
+	background:#f7f7f7;
+	border-color:#ddd;
+}
+#editbox .edit input {
 	width:380px;
 	height:14px;
 	padding:1px;
-	border:1px solid transparent;
 	background:transparent;
+	border:1px solid transparent;
 }
-#editbox input:hover {
+#editbox .edit input:hover {
 	border:1px dashed #fb1;
 }
-#editbox input:focus {
-	border:1px solid #eb0;
+#editbox .edit input:focus {
+	border-color:#eb0;
 	font-weight:bold;
 }
-#editbox a .idel {
+#editbox .edit .idel {
 	/* 削除ボタン */
 	float:right;
 	border:1px solid transparent;
@@ -271,17 +296,17 @@
 	filter:alpha(opacity=15);
 	opacity:0.15;
 }
-#editbox a:hover .idel {
+#editbox .edit:hover .idel {
 	background:#f7f7f7;
 	filter:alpha(opacity=70);
 	opacity:0.7;
 }
-#editbox a .idel:hover {
-	border:1px solid #faa;
+#editbox .edit .idel:hover {
+	border-color:#faa;
 	filter:alpha(opacity=100);
 	opacity:1;
 }
-#editbox a .idel:active {
+#editbox .edit .idel:active {
 	background:#fdd;
 }
 #editbox textarea {

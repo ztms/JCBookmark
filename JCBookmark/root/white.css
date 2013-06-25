@@ -29,25 +29,25 @@ body {
 	border-color:#aaa;
 	background:#eee;
 }
-#newurl {
+.panel .newurl {
 	color:#000;
 	border:1px solid #ccc;
 	background:#fff;
 }
-#newurl:hover {
+.panel .newurl:hover {
 	border-color:#fa3;
 }
-#commit {
+.panel .commit {
 	color:#555;
 	border:1px solid #aaa;
 	background:#eee;
 }
-#commit:hover {
+.panel .commit:hover {
 	color:#333;
 	background:#fed;
 	border-color:#c95;
 }
-#commit:active {
+.panel .commit:active {
 	color:#511;
 	background:#fff5e3;
 	border-color:#d84;

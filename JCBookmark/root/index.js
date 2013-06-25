@@ -99,16 +99,17 @@ var tree = {
 		return node;
 	}
 	// 新規アイテム作成
-	,newURL:function( url ){
+	,newURL:function( pnode, url, title, icon ){
 		var node = {
-			id		: tree.root.nextid++
+			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
-			,title	: url.replace(/^https?:\/\//,'')
-			,url	: url
-			,icon	: ''
+			,title		:title || '新規ブックマーク'
+			,url		:url || ''
+			,icon		:icon || ''
 		};
-		// topのchild先頭に追加
-		tree.top().child.unshift( node );
+		// 引数ノードのchild先頭に追加する
+		if( isString(pnode) ) pnode = tree.node(pnode);
+		( pnode || tree.top() ).child.unshift( node );
 		tree.modified(true);
 		return node;
 	}
@@ -677,18 +678,14 @@ var paneler = function(){
 		function afterPlaced(){
 			// 新規URL投入BOX作成
 			$('#'+nodeTop.id).find('.itembox').before(
-					$('<input>').attr({
-						id:'newurl'
-						,title:'新規ブックマークURL'
-						,placeholder:'新規ブックマークURL'
-					})
-					.on({
-						// 新規登録
-						commit:function(){
-								   var node = tree.newURL( this.value );
-								   if( node ){
-									   // DOM要素追加
-									   $(this.parentNode).find('.itembox').prepend( $newItem( node ) );
+				$('<input id=newurl class=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
+				.on({
+					// 新規登録
+					commit:function(){
+					   var node = tree.newURL( tree.top(), this.value, this.value.replace(/^https?:\/\//,'') );
+					   if( node ){
+						   // DOM要素追加
+						   $(this.parentNode).find('.itembox').prepend( $newItem( node ) );
 							// URLタイトル、favicon取得
 							// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
 							// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
@@ -734,7 +731,7 @@ var paneler = function(){
 						if( $newurl.val().length ){
 							if( $newurl.next().attr('id')!='commit' )
 								$newurl.after(
-									$('<div id=commit tabindex=0>↓↓↓新規登録↓↓↓</div>').on({
+									$('<div id=commit class=commit tabindex=0>↓↓↓新規登録↓↓↓</div>').on({
 										click:function(){ $newurl.trigger('commit'); }
 										,keypress:function(ev){
 											switch( ev.which || ev.keyCode || ev.charCode ){
@@ -1887,19 +1884,60 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 // パネル編集
 // TODO:アイテム欄の先頭に新規URL入力ボックス
 function panelEdit( pid ){
-	var node = tree.node( pid );
-	var $editbox = $('#editbox').empty().append(
-		$('<a></a>')
+	var pnode = tree.node( pid );
+	var $pname = $('<a class=edit></a>')
 		.append('<img class=icon src=folder.png>')
 		.append(
-			$('<input id=ed'+pid+'>').val( node.title ).css('font-weight','bold')
+			$('<input>').val( pnode.title ).css('font-weight','bold')
 			.keypress(keypress).keydown(keydown)
 			.on('input keyup paste',function(){ $(this).focus(); })
-		)
-	);
+		);
+	var $editbox = $('#editbox').empty().append( $pname );
 	var $itembox = $('<div></div>').appendTo( $editbox );
-	var $newurl = $('<input title="新規ブックマークURL" placeholder="新規ブックマークURL">').appendTo( $itembox );
-	var child = node.child;
+	var $newurl = $('<input class=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
+				.on('commit',function(){
+					if( this.value.length ){
+						var $item = $('<a class=edit></a>').attr('title',this.value);
+						var $icon = $('<img class=icon src=item.png>');
+						var $edit = $('<input>').val( this.value.replace(/^https?:\/\//,'') )
+									.keypress(keypress).keydown(keydown)
+									.on('input keyup paste',function(){ $edit.focus(); });
+						var $remove = $('<img class=idel src=delete.png title="削除">')
+									.click(function(){ $item.remove(); });
+						// 新規登録ボタンの次に挿入
+						$commit.after( $item.append($icon).append($edit).append($remove) );
+						// URLタイトル、favicon取得
+						$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
+							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
+							if( data.icon.length ) $icon.attr('src',data.icon);
+						});
+						$commit.hide();
+						this.value = '';
+					}
+				})
+				.on('keypress',function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 13: $newurl.trigger('commit'); return false;
+					}
+				})
+				.on('input keyup paste',function(){
+					// 文字列がある時だけ登録ボタン表示
+					// なぜかsetTimeout()しないと動かない…この時点ではvalueに値が入ってないからかな？
+					setTimeout(function(){
+						if( $newurl.val().length ) $commit.show();
+						else $commit.hide();
+					},10);
+				})
+				.appendTo( $itembox );
+	var $commit = $('<a class=commit style="display:block">↓↓↓新規登録↓↓↓</a>')
+				.click(function(){ $newurl.trigger('commit'); })
+				.on('keypress',function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 13: $newurl.trigger('commit'); return false;
+					}
+				})
+				.appendTo( $itembox ).hide();
+	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
 	var idels = [];
@@ -1909,14 +1947,14 @@ function panelEdit( pid ){
 		while( index < length && count>0 ){
 			var node = child[index];
 			if( !node.child ){
-				var $item = $('<a></a>');
+				var $item = $('<a id=ed'+node.id+' class=edit></a>');
 				var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
-				var $edit = $('<input id=ed'+node.id+'>').val( node.title )
+				var $edit = $('<input>').val( node.title )
 							.keypress(keypress).keydown(keydown)
 							.on('input keyup paste',function(){ $(this).focus(); });
 				var $trash = $('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
 					// 削除アイテムノードID配列
-					idels.push( this.previousSibling.id.slice(2) );
+					idels.push( this.parentNode.id.slice(2) );
 					$(this.parentNode).remove();
 				});
 				$itembox.append( $item.append($icon).append($edit).append($trash) );
@@ -1965,27 +2003,41 @@ function panelEdit( pid ){
 		,close	:close
 		,buttons:{
 			' O K ':function(){
-				// 名前変更ツリー反映
-				$(this).find('input').each(function(){
-					if( this.id ){
-						// ID属性("ed"+ノードID)を持つものだけ
-						var nid = this.id.slice(2);
-						if( tree.nodeAttr( nid, 'title', this.value ) >1 ){
-							var $e = $('#'+nid);
-							if( $e.hasClass('panel') ){
-								$e.find('.title').find('span').text( this.value );
-							}
-							else if( $e.hasClass('item') ){
-								$e.attr('title',this.value).find('span').text( this.value );
-							}
-						}
-					}
-				});
-				// アイテム削除ツリー反映
+				// パネル名
+				var $panel = $('#'+pid);
+				var title = $pname.find('input').val();
+				if( tree.nodeAttr( pid, 'title', title ) >1 ){
+					$panel.find('.title').find('span').text( title );
+				}
+				// アイテム削除
 				var idelsJSON = JSON.stringify(idels);	// JSON複製保持
 				tree.moveChild( idels, tree.trash() );	// idelsは空になる
 				idels = $.parseJSON(idelsJSON)			// 復元
 				for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
+				// アイテム変更
+				// TODO:なんだか危うい方式な気もする…
+				var $panelbox = $panel.find('.itembox');
+				$($itembox.children('.edit').get().reverse()).each(function(){
+					var $this = $(this);
+					if( this.id ){
+						// 既存タイトル変更
+						// TODO:nodeAttr/moveChildの処理内容は冗長だが重くないか問題ないか
+						var nid = this.id.slice(2);
+						var title = $this.find('input').val();
+						tree.nodeAttr( nid, 'title', title );
+						tree.moveChild( [nid], pnode );
+						$('#'+nid).prependTo( $panelbox ).find('span').text( title );
+					}
+					else{
+						// 新規登録
+						var url = $this.attr('title');
+						var icon = $this.find('.icon').attr('src');
+						var title = $this.find('input').val();
+						$newItem(
+							tree.newURL( pnode, url, title, (icon=='item.png')?'':icon )
+						).prependTo( $panelbox );
+					}
+				});
 				// おわり
 				close();
 			}
