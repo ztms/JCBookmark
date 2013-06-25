@@ -218,9 +218,8 @@ var tree = {
 				var clipboard = [];
 				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
-						if( ids.length && child[i].child ){
-							callee( child[i].child );
-						}
+						if( !ids.length ) break;
+						if( child[i].child ) callee( child[i].child );
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
 								// 見つけた
