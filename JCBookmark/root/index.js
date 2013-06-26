@@ -1599,7 +1599,7 @@ function setEvents(){
 				$panel.off().find('.itembox').hide();
 			}
 			// カーソルと共に移動するjQuery要素を返却
-			return $panel.css({position:'absolute',opacity:0.4});
+			return $panel.css({ position:'absolute', opacity:0.4 });
 		}
 		,place:function( item ){ // ドロップ場所作成
 			// item==パネル要素
@@ -1881,9 +1881,10 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 	}
 }
 // パネル編集
-// TODO:アイテム欄の先頭に新規URL入力ボックス
+// pid:パネルノードID
 function panelEdit( pid ){
 	var pnode = tree.node( pid );
+	// パネル名
 	var $pname = $('<a class=edit></a>')
 		.append('<img class=icon src=folder.png>')
 		.append(
@@ -1892,6 +1893,7 @@ function panelEdit( pid ){
 			.on('input keyup paste',function(){ $(this).focus(); })
 		);
 	var $editbox = $('#editbox').empty().append( $pname );
+	// アイテムボックス
 	var $itembox = $('<div></div>').appendTo( $editbox );
 	var $newurl = $('<input class=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
 				.on('commit',function(){
@@ -1936,11 +1938,12 @@ function panelEdit( pid ){
 					}
 				})
 				.appendTo( $itembox ).hide();
+	// アイテムループ
+	// TODO:clone()で高速化？
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
 	var idels = [];
-	// TODO:clone()で高速化
 	(function callee(){
 		var count=5;
 		while( index < length && count>0 ){
@@ -1960,13 +1963,91 @@ function panelEdit( pid ){
 			}
 			index++; count--;
 		}
-		if( index < length ){
-			timer = setTimeout(callee,1);
-		}
-		else{
-			// TODO:ファビコンD&Dでアイテム並べ替え
-		}
+		if( index < length ) timer = setTimeout(callee,1); else itemSortable();
 	}());
+	// ファビコンD&Dでアイテム並べ替え(TODO:Sortableとかぶる)
+	function itemSortable(){
+		$document.on('mousedown.paneledit','#editbox div .icon',function(ev){
+			var item = this.parentNode;
+			var downX = ev.pageX;
+			var downY = ev.pageY;
+			var $dragi = null;
+			var $place = null;
+			var scroll = null;
+			$document.on('mousemove.paneledit',function(ev){
+				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >10 ){
+					// ドラッグ開始
+					var $item = $(item);
+					$dragi = $('<div class=edragi></div>').css({
+								left:ev.pageX +5
+								,top:ev.pageY +5
+								,'z-index':$('.ui-dialog').css('z-index') // ダイアログの裏に隠れないよう
+							})
+							.text( $item.find('input').val() )
+							.prepend( $item.find('.icon').clone() )
+							.appendTo( document.body );
+					$place = $('<hr class=place>');
+					$item.css('opacity',0.3).after( $place );
+					var offsetTop = $editbox.offset().top;
+					var scrollTop = $itembox.offset().top +30;
+					var scrollBottom = scrollTop + $itembox.height() -60;
+					var speed = 0;
+					$document.off('mousemove.paneledit');
+					$document.on('mousemove.paneledit',function(ev){
+						// ドラッグ物移動
+						$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
+						// スクロール
+						speed = 0;
+						if( ev.pageY < scrollTop ){
+							speed = ev.pageY - scrollTop;
+						}
+						else if( ev.pageY > scrollBottom ){
+							speed = ev.pageY - scrollBottom;
+						}
+						if( speed==0 ){
+							clearInterval( scroll ); scroll=null;
+						}
+						else if( !scroll ){
+							scroll = setInterval(function(){
+								var old = $itembox.scrollTop();
+								$itembox.scrollTop( old + speed );
+								if( old==$itembox.scrollTop() ){
+									clearInterval( scroll ); scroll=null;
+								}
+							},100);
+						}
+					});
+					$document.on('mousemove.paneledit','#editbox div .edit',function(ev){
+						// ドロップ場所移動
+						if( ev.pageY < offsetTop + this.offsetTop + this.offsetHeight/2 )
+							$(this).before( $place );
+						else
+							$(this).after( $place );
+					});
+				}
+			});
+			$document.one('mouseup',function(){
+				clearInterval( scroll );
+				$document.off('mousemove.paneledit mouseleave.paneledit');
+				if( $dragi ) $dragi.remove();
+				if( $place ){
+					$place.after( item );
+					$place.remove();
+				}
+				$(item).css('opacity',1);
+			});
+			if( IE && IE<9 ){
+				$document.on('mouseleave.paneledit',function(){
+					$place.remove(); $place=null;
+					$document.mouseup();
+				});
+				// IE8はなぜかエラー発生させればドラッグ可能になる…
+				xxxxx;
+			}
+			// Firefoxはreturn falseしないとテキスト選択になってしまう…
+			else return false;
+		});
+	}
 	// Enterで次アイテム選択
 	function keypress(ev){
 		switch( ev.which || ev.keyCode || ev.charCode ){
@@ -2020,7 +2101,7 @@ function panelEdit( pid ){
 					var $this = $(this);
 					if( this.id ){
 						// 既存タイトル変更
-						// TODO:nodeAttr/moveChildの処理内容は冗長だが重くないか問題ないか
+						// nodeAttr/moveChildは処理内容が冗長だがまあいいか…
 						var nid = this.id.slice(2);
 						var title = $this.find('input').val();
 						tree.nodeAttr( nid, 'title', title );
@@ -2032,9 +2113,8 @@ function panelEdit( pid ){
 						var url = $this.attr('title');
 						var icon = $this.find('.icon').attr('src');
 						var title = $this.find('input').val();
-						$newItem(
-							tree.newURL( pnode, url, title, (icon=='item.png')?'':icon )
-						).prependTo( $panelbox );
+						var node = tree.newURL( pnode, url, title, (icon=='item.png')?'':icon );
+						$newItem( node ).prependTo( $panelbox );
 					}
 				});
 				// おわり
@@ -2043,7 +2123,11 @@ function panelEdit( pid ){
 			,'キャンセル':close
 		}
 	});
-	function close(){ clearTimeout(timer); $editbox.dialog('destroy'); }
+	function close(){
+		clearTimeout(timer);
+		$document.off('mousedown.paneledit');
+		$editbox.dialog('destroy');
+	}
 }
 // 変更保存
 function modifySave( arg ){
@@ -2217,7 +2301,7 @@ function Sortable( sort ){
 	var isDrag = false;
 	$document.on('mousedown', '.'+sort.itemClass, function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
-		// .panelだけで必要(.itemは不要)な処理だけどまあいいか…
+		// TODO:.panelだけで必要(.itemは不要)な処理だけどまあいいか…
 		if( ev.target.id=='newurl' ) return;
 		if( ev.target.id=='commit' ) return false;
 		var element = this;

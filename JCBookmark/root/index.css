@@ -226,6 +226,9 @@
 	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
 }
+#editbox input {
+	font-family:"MS PGothic",sans-serif;
+}
 #editbox div {
 	/* アイテムボックス */
 	width:445px;
@@ -238,6 +241,7 @@
 #editbox .newurl {
 	width:423px;
 	border:1px solid #ddd;
+	padding:1px;
 }
 #editbox .newurl:hover {
 	border:1px dashed #fb1;
@@ -270,6 +274,9 @@
 	/* URLアイテム */
 	background:#f7f7f7;
 	border-color:#ddd;
+}
+#editbox div .icon {
+	cursor:n-resize;
 }
 #editbox .edit input {
 	width:380px;
@@ -314,6 +321,21 @@
 	height:300px;
 	padding:2px;
 	border:1px solid #888;
+}
+.edragi {
+	position:absolute;
+	background:#fff;
+	font-family:"MS PGothic",sans-serif;
+	font-size:13px;
+	border:1px solid #ddd;
+	padding:1px;
+	width:400px;
+	white-space:nowrap;
+	overflow:hidden;
+}
+.place {
+	height:0;
+	border:2px solid #f88;
 }
 #impexp, #snap, #dialog {
 	display:none;
