@@ -5161,6 +5161,7 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 #define ID_DLG_OK		1
 #define ID_DLG_CANCEL	2
 #define ID_DLG_FOPEN	3
+#define ID_DLG_CLOSE	4
 #define ID_DLG_DESTROY	99
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -5497,8 +5498,8 @@ DWORD ConfigDialog( UINT tabid )
 						CONFIGDIALOGNAME
 						,APPNAME L" 設定"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
-						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 150
-						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 75
+						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 480/2
+						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 300/2
 						,480, 300
 						,MainForm,NULL
 						,GetModuleHandle(NULL),NULL
@@ -5908,38 +5909,133 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 	return FALSE;
 }
 // バージョン情報ダイアログ
+LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+{
+	switch( msg ){
+	case WM_CREATE:
+		{
+			HINSTANCE hinst = GetModuleHandle(NULL);
+			HFONT hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
+			HWND hTxt;
+			WCHAR wtxt[256]=L"";
+			UCHAR libs[128]="";
+			WCHAR* wlibs;
+
+			_snprintf(libs,sizeof(libs),
+					"zlib %s\r\n" "SQLite %s\r\n" "%s"
+					,ZLIB_VERSION
+					,SQLITE_VERSION
+					,SSLeay_version(SSLEAY_VERSION)
+			);
+			wlibs = MultiByteToWideCharAlloc( libs, CP_UTF8 );
+			if( wlibs ){
+				OSVERSIONINFOA os;
+				memset( &os, 0, sizeof(os) );
+				os.dwOSVersionInfoSize = sizeof(os);
+				GetVersionExA( &os );
+				_snwprintf(wtxt,sizeof(wtxt)/sizeof(WCHAR),
+						L"%s\r\n\r\n" L"%s\r\n\r\n" L"Windows%s %u.%u"
+						,APPNAME, wlibs
+						,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
+						,os.dwMajorVersion, os.dwMinorVersion
+				);
+				free( wlibs );
+			}
+			// アイコン
+			SendMessageA(
+				CreateWindowW(
+					L"static", L""
+					,WS_CHILD |WS_VISIBLE |SS_ICON
+					,10,10,32,32, hwnd,NULL, hinst,NULL
+				)
+				,STM_SETICON, (WPARAM)LoadIconA(hinst,"0"), 0
+			);
+			// テキスト
+			hTxt = CreateWindowW(
+						L"edit", wtxt
+						,ES_LEFT |ES_MULTILINE |WS_CHILD |WS_VISIBLE
+						,60,10,230,130 ,hwnd,NULL ,hinst,NULL
+			);
+			SendMessageA( hTxt, WM_SETFONT, (WPARAM)hFont, 0 );
+			SendMessageA( hTxt, EM_SETREADONLY, TRUE, 0 );
+			// ボタン
+			SendMessageA(
+				CreateWindowW(
+					L"button", L"閉じる"
+					,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+					,100,148,100,36
+					,hwnd, (HMENU)ID_DLG_CLOSE
+					,hinst, NULL
+				)
+				,WM_SETFONT, (WPARAM)hFont, 0
+			);
+		}
+		break;
+
+	case WM_COMMAND:
+		if( LOWORD(wp)==ID_DLG_CLOSE ) DestroyWindow( hwnd );
+		return 0;
+
+	case WM_SYSCOMMAND:
+		// Alt+F4で閉じる。ちなみにConfigDialog()はこの処理がなくてもなぜかAlt+F4で閉じる。
+		// なぜかConfigDialogではWM_COMMAND/ID_DLG_CANCELメッセージも(頼んでないのに)飛んで
+		// くるようだ。なんで？？？
+		if( LOWORD(wp)==SC_CLOSE ) DestroyWindow( hwnd );
+		break;
+
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
+	}
+	return DefDlgProc( hwnd, msg, wp, lp );
+}
 void AboutBox( void )
 {
-	UCHAR libs[128];
-	WCHAR* wlibs;
-	_snprintf(libs,sizeof(libs),
-			"zlib %s\r\n"
-			"SQLite %s\r\n"
-			"%s"
-			,ZLIB_VERSION
-			,SQLITE_VERSION
-			,SSLeay_version(SSLEAY_VERSION)
-	);
-	wlibs = MultiByteToWideCharAlloc( libs, CP_UTF8 );
-	if( wlibs ){
-		WCHAR msg[256];
-		OSVERSIONINFOA os;
-		memset( &os, 0, sizeof(os) );
-		os.dwOSVersionInfoSize = sizeof(os);
-		GetVersionExA( &os );
-		_snwprintf(msg,sizeof(msg)/sizeof(WCHAR),
-				L"%s\r\n\r\n"
-				L"%s\r\n\r\n"
-				L"Windows%s %u.%u.%u"
-				,APPNAME
-				,wlibs
-				,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
-				,os.dwMajorVersion
-				,os.dwMinorVersion
-				,os.dwBuildNumber
+	#define ABOUTBOXCLASS L"ABOUTBOX"
+	HINSTANCE hinst = GetModuleHandle(NULL);
+	WNDCLASSEXW	wc;
+
+	memset( &wc, 0, sizeof(wc) );
+	wc.cbSize        = sizeof(wc);
+	wc.cbWndExtra	 = DLGWINDOWEXTRA;
+	wc.lpfnWndProc   = AboutBoxProc;
+	wc.hInstance     = hinst;
+	wc.hIcon	     = LoadIconA( hinst, "0" );
+	wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
+	wc.lpszClassName = ABOUTBOXCLASS;
+
+	if( RegisterClassExW(&wc) ){
+		HWND hwnd = CreateWindowW(
+						ABOUTBOXCLASS
+						,L"バージョン情報"
+						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
+						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 300/2
+						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 220/2
+						,300, 220
+						,MainForm,NULL
+						,hinst,NULL
 		);
-		MessageBoxW( MainForm, msg, L"バージョン情報", MB_ICONINFORMATION );
-		free( wlibs );
+		if( hwnd ){
+			MSG msg;
+			// メインフォーム無効
+			EnableWindow( MainForm, FALSE );
+			// ダイアログ閉じるまでループ
+			while( GetMessage(&msg,NULL,0,0) >0 ){
+				if( !IsDialogMessage( hwnd, &msg ) ){
+					TranslateMessage( &msg );
+					DispatchMessage( &msg );
+				}
+			}
+			// メインフォーム有効
+			EnableWindow( MainForm, TRUE );
+			// なぜか隠れてしまうので最前面にする
+			SetForegroundWindow( MainForm );
+			BringWindowToTop( MainForm );
+			SetActiveWindow( MainForm );
+			SetFocus( MainForm );
+		}
+		UnregisterClassW( ABOUTBOXCLASS, hinst );
 	}
 }
 // メインフォームWindowProc
