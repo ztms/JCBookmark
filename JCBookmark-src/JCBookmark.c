@@ -86,7 +86,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMNAME		L"MainForm"
 #define		CONFIGDIALOGNAME	L"ConfigDialog"
-#define		APPNAME				L"JCBookmark v1.7dev"
+#define		APPNAME				L"JCBookmark v1.7"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -132,7 +132,7 @@ HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
 //   -00F56B20
 //   -00F58C10
 // 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -5520,6 +5520,7 @@ DWORD ConfigDialog( UINT tabid )
 			// メインフォーム有効
 			EnableWindow( MainForm, TRUE );
 			// なぜか隠れてしまうので最前面にする
+			// TODO:「キャンセル」はいいけど「OK」で隠れてしまう事しばしば発生なぜだ
 			SetForegroundWindow( MainForm );
 			BringWindowToTop( MainForm );
 			SetActiveWindow( MainForm );
@@ -6030,6 +6031,7 @@ void AboutBox( void )
 			// メインフォーム有効
 			EnableWindow( MainForm, TRUE );
 			// なぜか隠れてしまうので最前面にする
+			// TODO:隠れてしまう事しばしば発生なぜだ
 			SetForegroundWindow( MainForm );
 			BringWindowToTop( MainForm );
 			SetActiveWindow( MainForm );
