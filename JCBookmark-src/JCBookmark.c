@@ -5954,7 +5954,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			hTxt = CreateWindowW(
 						L"edit", wtxt
 						,ES_LEFT |ES_MULTILINE |WS_CHILD |WS_VISIBLE
-						,60,10,230,130 ,hwnd,NULL ,hinst,NULL
+						,60,10,230,126 ,hwnd,NULL ,hinst,NULL
 			);
 			SendMessageA( hTxt, WM_SETFONT, (WPARAM)hFont, 0 );
 			SendMessageA( hTxt, EM_SETREADONLY, TRUE, 0 );
@@ -5963,7 +5963,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				CreateWindowW(
 					L"button", L"閉じる"
 					,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-					,100,148,100,36
+					,100,140,100,36
 					,hwnd, (HMENU)ID_DLG_CLOSE
 					,hinst, NULL
 				)
