@@ -308,6 +308,7 @@ var option = {
 		// 空(規定値ではない)を設定
 		page	:{ title:null }
 		,color	:{ css	:'' }
+		,wall	:{ margin:'' }
 		,font	:{ size	:-1 }
 		,column	:{ count:-1 }
 		,panel	:{
@@ -334,6 +335,7 @@ var option = {
 		var od = option.data;
 		if( 'page' in data && 'title' in data.page ) od.page.title = data.page.title;
 		if( 'color' in data && 'css' in data.color ) od.color.css = data.color.css;
+		if( 'wall' in data && 'margin' in data.wall ) od.wall.margin = data.wall.margin;
 		if( 'font' in data && 'size' in data.font ) od.font.size = data.font.size;
 		if( 'column' in data && 'count' in data.column ) od.column.count = data.column.count;
 		if( 'panel' in data ){
@@ -351,6 +353,7 @@ var option = {
 	,merge:function( data ){
 		if( 'page' in data && 'title' in data.page ) option.page.title( data.page.title );
 		if( 'color' in data && 'css' in data.color ) option.color.css( data.color.css );
+		if( 'wall' in data && 'margin' in data.wall ) option.wall.margin( data.wall.margin );
 		if( 'font' in data && 'size' in data.font ) option.font.size( data.font.size );
 		if( 'column' in data && 'count' in data.column ) option.column.count( data.column.count );
 		if( 'panel' in data ){
@@ -366,6 +369,7 @@ var option = {
 		var od = option.data;
 		if( od.page.title !=null ) option.page.title(null);
 		if( od.color.css !='' ) option.color.css('');
+		if( od.wall.margin !='' ) option.wall.margin('');
 		if( od.font.size != -1 ) option.font.size(-1);
 		if( od.column.count != -1 ) option.column.count(-1);
 		if( od.panel.layout !={} ) option.panel.layout({});
@@ -399,6 +403,19 @@ var option = {
 			// 一度目の参照時に規定値を設定
 			if( color.css=='' ) color.css = 'black.css';
 			return color.css;
+		}
+	}
+	,wall:{
+		margin:function( val ){
+			if( arguments.length ){
+				option.data.wall.margin = val;
+				option.modified(true);
+				return option;
+			}
+			var wall = option.data.wall;
+			// 一度目の参照時に規定値を設定
+			if( wall.margin=='' ) wall.margin = 'auto';
+			return wall.margin;
 		}
 	}
 	,font:{
@@ -599,10 +616,10 @@ var paneler = function(){
 		var panelMargin = option.panel.margin();
 		var columnCount = option.column.count();
 		var columnWidth = panelWidth + panelMargin +2;	// +2 適当たぶんボーダーぶん
-		$wall.empty().width( columnWidth * columnCount )
-			.css({
-				'padding-right': panelMargin +'px'
-			});
+		$wall.empty().width( columnWidth * columnCount ).css({
+			'padding-right': panelMargin +'px'
+			,'margin': option.wall.margin()
+		});
 		// カラム元要素
 		$columnBase.width( columnWidth );
 		// パネル元要素
@@ -1104,6 +1121,15 @@ function setEvents(){
 			option.color.css( this.value );
 			$('#colorcss').attr('href',option.color.css());
 		});
+		// 全体
+		$('input[name=wall_margin]').each(function(){
+			if( this.value==option.wall.margin() )
+				$(this).attr('checked','checked');
+		})
+		.off().change(function(){
+			option.wall.margin( this.value );
+			$wall.css('margin',option.wall.margin());
+		});
 		// パネル幅
 		$('#panel_width').val( option.panel.width() )
 		.off().on('input keyup paste',function(){
@@ -1205,7 +1231,7 @@ function setEvents(){
 			title	:'パネル設定'
 			,modal	:true
 			,width	:390
-			,height	:290
+			,height	:320
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
@@ -1988,7 +2014,6 @@ function panelEdit( pid ){
 							.appendTo( document.body );
 					$place = $('<hr class=place>');
 					$item.css('opacity',0.3).after( $place );
-					var offsetTop = $editbox.offset().top;
 					var scrollTop = $itembox.offset().top +30;
 					var scrollBottom = scrollTop + $itembox.height() -60;
 					var speed = 0;
@@ -2019,10 +2044,11 @@ function panelEdit( pid ){
 					});
 					$document.on('mousemove.paneledit','#editbox div .edit',function(ev){
 						// ドロップ場所移動
-						if( ev.pageY < offsetTop + this.offsetTop + this.offsetHeight/2 )
-							$(this).before( $place );
+						var $this = $(this);
+						if( ev.pageY < $this.offset().top + $this.height()/2 )
+							$this.before( $place );
 						else
-							$(this).after( $place );
+							$this.after( $place );
 					});
 				}
 			});
@@ -2095,7 +2121,6 @@ function panelEdit( pid ){
 				idels = $.parseJSON(idelsJSON)			// 復元
 				for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
 				// アイテム変更
-				// TODO:なんだか危うい方式な気もする…
 				var $panelbox = $panel.find('.itembox');
 				$($itembox.children('.edit').get().reverse()).each(function(){
 					var $this = $(this);
