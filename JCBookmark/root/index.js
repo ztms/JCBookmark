@@ -1965,20 +1965,17 @@ function panelEdit( pid ){
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
-	var $newitem = (function(){
-		var $base = $('<a class=edit><img class=icon><input><img class=idel src=delete.png title="削除（ごみ箱）"></a>');
-		return function( node ){
-			var $e = $base.clone(true).attr('id','ed'+node.id);
-			$e.find('.icon').attr('src', node.icon ||'item.png');
-			$e.find('input').val( node.title );
-			return $e;
-		};
-	}());
+	var $itembase = $('<a class=edit><img class=icon><input><img class=idel src=delete.png title="削除（ごみ箱）"></a>');
 	(function callee(){
 		var count=5;
 		while( index < length && count>0 ){
 			var node = child[index];
-			if( !node.child ) $itembox.append( $newitem(node) );
+			if( !node.child ){
+				var $e = $itembase.clone().attr('id','ed'+node.id);
+				$e.find('.icon').attr('src', node.icon ||'item.png');
+				$e.find('input').val( node.title );
+				$itembox.append( $e );
+			}
 			index++; count--;
 		}
 		if( index < length ) timer = setTimeout(callee,1); else itemSortable();
@@ -2115,6 +2112,7 @@ function panelEdit( pid ){
 	});
 	function close(){
 		clearTimeout(timer);
+		$itembase.remove();
 		$document.off('click.paneledit mousedown.paneledit');
 		$editbox.dialog('destroy');
 	}
