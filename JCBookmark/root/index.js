@@ -1914,11 +1914,7 @@ function panelEdit( pid ){
 	// パネル名
 	var $pname = $('<a class=edit></a>')
 		.append('<img class=icon src=folder.png>')
-		.append(
-			$('<input>').val( pnode.title ).css('font-weight','bold')
-			.keypress(keypress).keydown(keydown)
-			.on('input keyup paste',function(){ $(this).focus(); })
-		);
+		.append( $('<input>').val( pnode.title ).css('font-weight','bold') );
 	var $editbox = $('#editbox').empty().append( $pname );
 	// アイテムボックス
 	var $itembox = $('<div></div>').appendTo( $editbox );
@@ -1927,13 +1923,10 @@ function panelEdit( pid ){
 					if( this.value.length ){
 						var $item = $('<a class=edit></a>').attr('title',this.value);
 						var $icon = $('<img class=icon src=item.png>');
-						var $edit = $('<input>').val( this.value.replace(/^https?:\/\//,'') )
-									.keypress(keypress).keydown(keydown)
-									.on('input keyup paste',function(){ $edit.focus(); });
-						var $remove = $('<img class=idel src=delete.png title="削除">')
-									.click(function(){ $item.remove(); });
+						var $edit = $('<input>').val( this.value.replace(/^https?:\/\//,'') );
+						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// 新規登録ボタンの次に挿入
-						$commit.after( $item.append($icon).append($edit).append($remove) );
+						$commit.after( $item.append($icon).append($edit).append($idel) );
 						// URLタイトル、favicon取得
 						$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
@@ -1943,12 +1936,7 @@ function panelEdit( pid ){
 						this.value = '';
 					}
 				})
-				.on('keypress',function(ev){
-					switch( ev.which || ev.keyCode || ev.charCode ){
-					case 13: $newurl.trigger('commit'); return false;
-					}
-				})
-				.on('input keyup paste',function(){
+				.keypress(keypress).on('input keyup paste',function(){
 					// 文字列がある時だけ登録ボタン表示
 					// なぜかsetTimeout()しないと動かない…この時点ではvalueに値が入ってないからかな？
 					setTimeout(function(){
@@ -1957,33 +1945,28 @@ function panelEdit( pid ){
 					},10);
 				})
 				.appendTo( $itembox );
-	var $commit = $('<a class=commit style="display:block">↓↓↓新規登録↓↓↓</a>')
+	var $commit = $('<a class=commit tabindex=0 style="display:block">↓↓↓新規登録↓↓↓</a>')
 				.click(function(){ $newurl.trigger('commit'); })
-				.on('keypress',function(ev){
-					switch( ev.which || ev.keyCode || ev.charCode ){
-					case 13: $newurl.trigger('commit'); return false;
-					}
-				})
-				.appendTo( $itembox ).hide();
+				.keypress(keypress).appendTo( $itembox ).hide();
+	// Enterで新規アイテム作成
+	function keypress(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: $newurl.trigger('commit').focus(); return false;
+		}
+	}
+	// 削除ボタン
+	var idels = [];
+	$document.on('click.paneledit','#editbox .idel',function(){
+		// 削除アイテムノードID配列
+		if( this.parentNode.id ) idels.push( this.parentNode.id.slice(2) );
+		$(this.parentNode).remove();
+	});
 	// アイテムループ
-	// TODO:clone()で高速化？
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
-	var idels = [];
 	var $newitem = (function(){
-		var $base = $('<a class=edit><img class=icon></a>')
-					.append(
-						$('<input>').keypress(keypress).keydown(keydown)
-						.on('input keyup paste',function(){ $(this).focus(); })
-					)
-					.append(
-						$('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
-							// 削除アイテムノードID配列
-							idels.push( this.parentNode.id.slice(2) );
-							$(this.parentNode).remove();
-						})
-					);
+		var $base = $('<a class=edit><img class=icon><input><img class=idel src=delete.png title="削除（ごみ箱）"></a>');
 		return function( node ){
 			var $e = $base.clone(true).attr('id','ed'+node.id);
 			$e.find('.icon').attr('src', node.icon ||'item.png');
@@ -1995,21 +1978,6 @@ function panelEdit( pid ){
 		var count=5;
 		while( index < length && count>0 ){
 			var node = child[index];
-			/*
-			if( !node.child ){
-				var $item = $('<a id=ed'+node.id+' class=edit></a>');
-				var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
-				var $edit = $('<input>').val( node.title )
-							.keypress(keypress).keydown(keydown)
-							.on('input keyup paste',function(){ $(this).focus(); });
-				var $trash = $('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
-								// 削除アイテムノードID配列
-								idels.push( this.parentNode.id.slice(2) );
-								$(this.parentNode).remove();
-							});
-				$itembox.append( $item.append($icon).append($edit).append($trash) );
-			}
-			*/
 			if( !node.child ) $itembox.append( $newitem(node) );
 			index++; count--;
 		}
@@ -2098,33 +2066,6 @@ function panelEdit( pid ){
 			else return false;
 		});
 	}
-	// Enterで次アイテム選択
-	function keypress(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 13: next(this); return false;
-		}
-	}
-	function next(e){
-		if( e.parentNode.nextSibling ){
-			if( e.parentNode.nextSibling.tagName=='A' )
-				$(e.parentNode.nextSibling).find('input').focus();
-			else // パネル名から先頭アイテムへ
-				$(e.parentNode.nextSibling.firstChild).find('input').focus();
-		}
-	}
-	// ↑↓キーでアイテム選択移動
-	function keydown(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 38: prev(this); return false; // ↑
-		case 40: next(this); return false; // ↓
-		}
-	}
-	function prev(e){
-		if( e.parentNode.previousSibling )
-			$(e.parentNode.previousSibling).find('input').focus();
-		else // 先頭アイテムからパネル名へ
-			$(e.parentNode.parentNode.previousSibling).find('input').focus();
-	}
 	$editbox.dialog({
 		title	:'パネル編集（パネル名・アイテム編集）'
 		,modal	:true
@@ -2174,7 +2115,7 @@ function panelEdit( pid ){
 	});
 	function close(){
 		clearTimeout(timer);
-		$document.off('mousedown.paneledit');
+		$document.off('click.paneledit mousedown.paneledit');
 		$editbox.dialog('destroy');
 	}
 }
