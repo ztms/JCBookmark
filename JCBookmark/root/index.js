@@ -1053,6 +1053,7 @@ function setEvents(){
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
 		}));
+		// TODO:開く/閉じる、全パネルを閉じる、全パネルを開く
 		if( tree.movable( panel.id ) ){
 			$box.append('<hr>')
 			.append($('<a><img src=delete.png>このパネルを削除</a>').click(function(){
@@ -1970,10 +1971,31 @@ function panelEdit( pid ){
 	var index = 0, length = child.length;
 	var timer = null;
 	var idels = [];
+	var $newitem = (function(){
+		var $base = $('<a class=edit><img class=icon></a>')
+					.append(
+						$('<input>').keypress(keypress).keydown(keydown)
+						.on('input keyup paste',function(){ $(this).focus(); })
+					)
+					.append(
+						$('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
+							// 削除アイテムノードID配列
+							idels.push( this.parentNode.id.slice(2) );
+							$(this.parentNode).remove();
+						})
+					);
+		return function( node ){
+			var $e = $base.clone(true).attr('id','ed'+node.id);
+			$e.find('.icon').attr('src', node.icon ||'item.png');
+			$e.find('input').val( node.title );
+			return $e;
+		};
+	}());
 	(function callee(){
 		var count=5;
 		while( index < length && count>0 ){
 			var node = child[index];
+			/*
 			if( !node.child ){
 				var $item = $('<a id=ed'+node.id+' class=edit></a>');
 				var $icon = $('<img class=icon src='+( node.icon ||'item.png')+'>');
@@ -1981,12 +2003,14 @@ function panelEdit( pid ){
 							.keypress(keypress).keydown(keydown)
 							.on('input keyup paste',function(){ $(this).focus(); });
 				var $trash = $('<img class=idel src=delete.png title="削除（ごみ箱）">').click(function(){
-					// 削除アイテムノードID配列
-					idels.push( this.parentNode.id.slice(2) );
-					$(this.parentNode).remove();
-				});
+								// 削除アイテムノードID配列
+								idels.push( this.parentNode.id.slice(2) );
+								$(this.parentNode).remove();
+							});
 				$itembox.append( $item.append($icon).append($edit).append($trash) );
 			}
+			*/
+			if( !node.child ) $itembox.append( $newitem(node) );
 			index++; count--;
 		}
 		if( index < length ) timer = setTimeout(callee,1); else itemSortable();
