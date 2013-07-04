@@ -315,7 +315,7 @@ var option = {
 		,panel	:{
 			layout	:{}
 			,status	:{}
-			,margin	:-1
+			,margin	:{ top:-1, left:-1 }
 			,width	:-1
 		}
 		,autoshot:false
@@ -343,7 +343,17 @@ var option = {
 		if( 'panel' in data ){
 			if( 'layout' in data.panel ) od.panel.layout = data.panel.layout;
 			if( 'status' in data.panel ) od.panel.status = data.panel.status;
-			if( 'margin' in data.panel ) od.panel.margin = data.panel.margin;
+			if( 'margin' in data.panel ){
+				if( isObject(data.panel.margin) ){
+					// v1.8
+					if( 'top' in data.panel.margin ) od.panel.margin.top = data.panel.margin.top;
+					if( 'left' in data.panel.margin ) od.panel.margin.left = data.panel.margin.left;
+				}
+				else{
+					// v1.7まで
+					od.panel.margin.top = od.panel.margin.left = data.panel.margin|0;
+				}
+			}
 			if( 'width' in data.panel ) od.panel.width = data.panel.width;
 		}
 		if( 'autoshot' in data ){
@@ -362,7 +372,18 @@ var option = {
 		if( 'panel' in data ){
 			if( 'layout' in data.panel ) option.panel.layout( data.panel.layout );
 			if( 'status' in data.panel ) option.panel.status( data.panel.status );
-			if( 'margin' in data.panel ) option.panel.margin( data.panel.margin );
+			if( 'margin' in data.panel ){
+				if( isObject(data.panel.margin) ){
+					// v1.8
+					if( 'top' in data.panel.margin ) option.panel.margin.top( data.panel.margin.top );
+					if( 'left' in data.panel.margin ) option.panel.margin.left( data.panel.margin.left );
+				}
+				else{
+					// v1.7まで
+					option.panel.margin.top( data.panel.margin|0 );
+					option.panel.margin.left( data.panel.margin|0 );
+				}
+			}
 			if( 'width' in data.panel ) option.panel.width( data.panel.width );
 		}
 		if( 'autoshot' in data ) option.autoshot( data.autoshot );
@@ -378,7 +399,8 @@ var option = {
 		if( od.column.count != -1 ) option.column.count(-1);
 		if( od.panel.layout !={} ) option.panel.layout({});
 		if( od.panel.status !={} ) option.panel.status({});
-		if( od.panel.margin != -1 ) option.panel.margin(-1);
+		if( od.panel.margin.top != -1 ) option.panel.margin.top(-1);
+		if( od.panel.margin.left != -1 ) option.panel.margin.left(-1);
 		if( od.panel.width != -1 ) option.panel.width(-1);
 		if( od.autoshot !=false ) option.autoshot(false);
 		return option;
@@ -501,16 +523,29 @@ var option = {
 			}
 			return option.data.panel.status;
 		}
-		,margin:function( val ){
-			if( arguments.length ){
-				option.data.panel.margin = val |0;
-				option.modified(true);
-				return option;
+		,margin:{
+			left:function( val ){
+				if( arguments.length ){
+					option.data.panel.margin.left = val |0;
+					option.modified(true);
+					return option;
+				}
+				var margin = option.data.panel.margin;
+				// 一度目の参照時に規定値を設定(px)
+				if( margin.left<0 ) margin.left = 1;
+				return margin.left;
 			}
-			var panel = option.data.panel;
-			// 一度目の参照時に規定値を設定(px)
-			if( panel.margin<0 ) panel.margin = 1;
-			return panel.margin;
+			,top:function( val ){
+				if( arguments.length ){
+					option.data.panel.margin.top = val |0;
+					option.modified(true);
+					return option;
+				}
+				var margin = option.data.panel.margin;
+				// 一度目の参照時に規定値を設定(px)
+				if( margin.top<0 ) margin.top = 1;
+				return margin.top;
+			}
 		}
 		,width:function( val ){
 			if( arguments.length ){
@@ -520,7 +555,7 @@ var option = {
 			}
 			var panel = option.data.panel;
 			// 一度目の参照時に規定値を設定(px)
-			if( panel.width<0 ) panel.width = (($window.width() -27) /option.column.count() -option.panel.margin())|0;
+			if( panel.width<0 ) panel.width = (($window.width() -27) /option.column.count() -option.panel.margin.left())|0;
 			return panel.width;
 		}
 	}
@@ -631,11 +666,12 @@ var paneler = function(){
 		var fontSize = option.font.size();
 		var iconSize = option.icon.size();
 		var panelWidth = option.panel.width();
-		var panelMargin = option.panel.margin();
+		var panelMarginTop = option.panel.margin.top();
+		var panelMarginLeft = option.panel.margin.left();
 		var columnCount = option.column.count();
-		var columnWidth = panelWidth + panelMargin +2;	// +2 適当たぶんボーダーぶん
+		var columnWidth = panelWidth + panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
 		$wall.empty().width( columnWidth * columnCount ).css({
-			'padding-right': panelMargin +'px'
+			'padding-right': panelMarginLeft +'px'
 			,'margin': option.wall.margin()
 		});
 		// カラム元要素
@@ -643,7 +679,7 @@ var paneler = function(){
 		// パネル元要素
 		$panelBase.width( panelWidth ).css({
 			'font-size': fontSize +'px'
-			,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+			,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 		});
 		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 		$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
@@ -1177,28 +1213,52 @@ function setEvents(){
 			}
 		});
 		// パネル余白
-		$('#panel_margin').val( option.panel.margin() )
+		$('#panel_marginV').val( option.panel.margin.top() )
 		.off().on('input keyup paste',function(){
-			if( !this.value.match(/^\d{1,3}$/) || this.value < 0 || this.value > 100 ) return;
-			if( this.value !=option.panel.margin() ){
-				option.panel.margin( this.value );
+			if( !this.value.match(/^\d{1,3}$/) || this.value <0 || this.value >50 ) return;
+			if( this.value !=option.panel.margin.top() ){
+				option.panel.margin.top( this.value );
 				optionApply();
 			}
 		});
-		$('#panel_margin_inc').off().click(function(){
-			var val = option.panel.margin();
-			if( val <100 ){
-				option.panel.margin( ++val );
+		$('#panel_marginH').val( option.panel.margin.left() )
+		.off().on('input keyup paste',function(){
+			if( !this.value.match(/^\d{1,3}$/) || this.value <0 || this.value >50 ) return;
+			if( this.value !=option.panel.margin.left() ){
+				option.panel.margin.left( this.value );
 				optionApply();
-				$('#panel_margin').val( val );
 			}
 		});
-		$('#panel_margin_dec').off().click(function(){
-			var val = option.panel.margin();
+		$('#panel_marginV_inc').off().click(function(){
+			var val = option.panel.margin.top();
+			if( val <50 ){
+				option.panel.margin.top( ++val );
+				optionApply();
+				$('#panel_marginV').val( val );
+			}
+		});
+		$('#panel_marginV_dec').off().click(function(){
+			var val = option.panel.margin.top();
 			if( val >0 ){
-				option.panel.margin( --val );
+				option.panel.margin.top( --val );
 				optionApply();
-				$('#panel_margin').val( val );
+				$('#panel_marginV').val( val );
+			}
+		});
+		$('#panel_marginH_inc').off().click(function(){
+			var val = option.panel.margin.left();
+			if( val <50 ){
+				option.panel.margin.left( ++val );
+				optionApply();
+				$('#panel_marginH').val( val );
+			}
+		});
+		$('#panel_marginH_dec').off().click(function(){
+			var val = option.panel.margin.left();
+			if( val >0 ){
+				option.panel.margin.left( --val );
+				optionApply();
+				$('#panel_marginH').val( val );
 			}
 		});
 		// 列数
@@ -1270,13 +1330,14 @@ function setEvents(){
 			title	:'パネル設定'
 			,modal	:true
 			,width	:390
-			,height	:340
+			,height	:360
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
-					option.font.size(-1).column.count(-1).panel.margin(-1).panel.width(-1);
+					option.font.size(-1).column.count(-1).panel.margin.top(-1).panel.margin.left(-1).panel.width(-1);
 					$('#panel_width').val( option.panel.width() );
-					$('#panel_margin').val( option.panel.margin() );
+					$('#panel_marginV').val( option.panel.margin.top() );
+					$('#panel_marginH').val( option.panel.margin.left() );
 					$('#column_count').val( option.column.count() );
 					$('#font_size').val( option.font.size() );
 					optionApply();
@@ -2426,15 +2487,16 @@ function optionApply(){
 	var fontSize = option.font.size();
 	var iconSize = option.icon.size();
 	var panelWidth = option.panel.width();
-	var panelMargin = option.panel.margin();
-	var columnWidth = panelWidth +panelMargin +2;	// +2 適当たぶんボーダーぶん
+	var panelMarginTop = option.panel.margin.top();
+	var panelMarginLeft = option.panel.margin.left();
+	var columnWidth = panelWidth +panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
 	$wall.width( columnWidth *option.column.count() ).css({
-		'padding-right': panelMargin +'px'
+		'padding-right': panelMarginLeft +'px'
 	});
 	$('.column').width( columnWidth );
 	$('.panel').width( panelWidth ).css({
 		'font-size': fontSize +'px'
-		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+		,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$('.title span').css('vertical-align',(iconSize/2)|0);
 	$('.item span').css('vertical-align',(iconSize/2)|0);
@@ -2444,7 +2506,7 @@ function optionApply(){
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size': fontSize +'px'
-		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
+		,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 	$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
@@ -2574,9 +2636,12 @@ function HTMLdec( html ){
 	$a.remove();
 	return dec;
 }
-// 引数が文字列かどうか判定
-function isString( s ){
-	return (Object.prototype.toString.call(s)==='[object String]');
+// 型判定
+function isString( v ){
+	return (Object.prototype.toString.call(v)==='[object String]');
+}
+function isObject( v ){
+	return (Object.prototype.toString.call(v)==='[object Object]');
 }
 
 }($));

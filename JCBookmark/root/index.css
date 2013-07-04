@@ -172,17 +172,18 @@
 }
 #page_title {
 	width:200px;
-	border-radius:3px;
 }
-#panel_width, #panel_margin, #column_count, #font_size {
+#panel_width, #column_count, #font_size {
 	width:60px;
-	border-radius:3px;
 }
-#page_title, #panel_width, #panel_margin, #column_count, #font_size, #icon_size {
-	border:1px solid gray;
+#panel_marginV, #panel_marginH {
+	width:42px;
 }
 #icon_size {
 	width:46px;
+}
+#page_title, #panel_width, #panel_marginV, #panel_marginH, #column_count, #font_size, #icon_size {
+	border:1px solid gray;
 	border-radius:3px;
 }
 #contextmenu {
