@@ -1251,7 +1251,7 @@ function setEvents(){
 		$('#icon_size').val( option.icon.size() );
 		$('#icon_size_inc').off().click(function(){
 			var val = option.icon.size();
-			if( val <16 ){
+			if( val <24 ){
 				option.icon.size( ++val );
 				optionApply();
 				$('#icon_size').val( val );
