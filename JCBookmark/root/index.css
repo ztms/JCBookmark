@@ -178,8 +178,12 @@
 	width:60px;
 	border-radius:3px;
 }
-#page_title, #panel_width, #panel_margin, #column_count, #font_size {
+#page_title, #panel_width, #panel_margin, #column_count, #font_size, #icon_size {
 	border:1px solid gray;
+}
+#icon_size {
+	width:46px;
+	border-radius:3px;
 }
 #contextmenu {
 	display:none;

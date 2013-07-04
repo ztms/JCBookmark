@@ -310,6 +310,7 @@ var option = {
 		,color	:{ css	:'' }
 		,wall	:{ margin:'' }
 		,font	:{ size	:-1 }
+		,icon	:{ size	:-1 }
 		,column	:{ count:-1 }
 		,panel	:{
 			layout	:{}
@@ -337,6 +338,7 @@ var option = {
 		if( 'color' in data && 'css' in data.color ) od.color.css = data.color.css;
 		if( 'wall' in data && 'margin' in data.wall ) od.wall.margin = data.wall.margin;
 		if( 'font' in data && 'size' in data.font ) od.font.size = data.font.size;
+		if( 'icon' in data && 'size' in data.icon ) od.icon.size = data.icon.size;
 		if( 'column' in data && 'count' in data.column ) od.column.count = data.column.count;
 		if( 'panel' in data ){
 			if( 'layout' in data.panel ) od.panel.layout = data.panel.layout;
@@ -355,6 +357,7 @@ var option = {
 		if( 'color' in data && 'css' in data.color ) option.color.css( data.color.css );
 		if( 'wall' in data && 'margin' in data.wall ) option.wall.margin( data.wall.margin );
 		if( 'font' in data && 'size' in data.font ) option.font.size( data.font.size );
+		if( 'icon' in data && 'size' in data.icon ) option.icon.size( data.icon.size );
 		if( 'column' in data && 'count' in data.column ) option.column.count( data.column.count );
 		if( 'panel' in data ){
 			if( 'layout' in data.panel ) option.panel.layout( data.panel.layout );
@@ -371,6 +374,7 @@ var option = {
 		if( od.color.css !='' ) option.color.css('');
 		if( od.wall.margin !='' ) option.wall.margin('');
 		if( od.font.size != -1 ) option.font.size(-1);
+		if( od.icon.size != -1 ) option.icon.size(-1);
 		if( od.column.count != -1 ) option.column.count(-1);
 		if( od.panel.layout !={} ) option.panel.layout({});
 		if( od.panel.status !={} ) option.panel.status({});
@@ -429,6 +433,19 @@ var option = {
 			// 一度目の参照時に規定値を設定
 			if( font.size<0 ) font.size = 13;	// px
 			return font.size;
+		}
+	}
+	,icon:{
+		size:function( val ){
+			if( arguments.length ){
+				option.data.icon.size = val |0;
+				option.modified(true);
+				return option;
+			}
+			var icon = option.data.icon;
+			// 一度目の参照時に規定値を設定
+			if( icon.size<0 ) icon.size = 0;	// px
+			return icon.size;
 		}
 	}
 	,column:{
@@ -612,6 +629,7 @@ var paneler = function(){
 		document.title = option.page.title();
 		$('#colorcss').attr('href',option.color.css());
 		var fontSize = option.font.size();
+		var iconSize = option.icon.size();
 		var panelWidth = option.panel.width();
 		var panelMargin = option.panel.margin();
 		var columnCount = option.column.count();
@@ -627,10 +645,12 @@ var paneler = function(){
 			'font-size': fontSize +'px'
 			,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 		});
-		$panelBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
-		$panelBase.find('.pen, .plusminus').width( fontSize ).height( fontSize );
+		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
+		$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+		$panelBase.find('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
 		// パネルアイテム元要素
-		$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
+		$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
+		$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 		// カラム(段)生成
 		var columnList = {};
 		for( var i=0; i<columnCount; i++ ){
@@ -1227,12 +1247,30 @@ function setEvents(){
 				$('#font_size').val( val );
 			}
 		});
+		// アイコンサイズ
+		$('#icon_size').val( option.icon.size() );
+		$('#icon_size_inc').off().click(function(){
+			var val = option.icon.size();
+			if( val <10 ){
+				option.icon.size( ++val );
+				optionApply();
+				$('#icon_size').val( val );
+			}
+		});
+		$('#icon_size_dec').off().click(function(){
+			var val = option.icon.size();
+			if( val >0 ){
+				option.icon.size( --val );
+				optionApply();
+				$('#icon_size').val( val );
+			}
+		});
 		// ダイアログ表示
 		$('#option').dialog({
 			title	:'パネル設定'
 			,modal	:true
 			,width	:390
-			,height	:320
+			,height	:340
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
@@ -2181,7 +2219,7 @@ function analyzer( nodeTop ){
 			'スキップして次に進む':function(){ skip(); $(this).dialog('destroy'); }
 		}
 	});
-	// ファビコン解析
+	// ajaxリクエスト
 	(function ajaxer( node ){
 		if( node.child ){
 			for( var i=0, n=node.child.length; i<n; i++ ) ajaxer( node.child[i] );
@@ -2389,6 +2427,7 @@ function Sortable( sort ){
 // パラメータ変更反映
 function optionApply(){
 	var fontSize = option.font.size();
+	var iconSize = option.icon.size();
 	var panelWidth = option.panel.width();
 	var panelMargin = option.panel.margin();
 	var columnWidth = panelWidth +panelMargin +2;	// +2 適当たぶんボーダーぶん
@@ -2400,18 +2439,22 @@ function optionApply(){
 		'font-size': fontSize +'px'
 		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 	});
-	$('.icon').width( fontSize +3 ).height( fontSize +3 );
-	$('.pen, .plusminus').width( fontSize ).height( fontSize );
+	$('.title span').css('vertical-align',(iconSize/2)|0);
+	$('.item span').css('vertical-align',(iconSize/2)|0);
+	$('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+	$('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
 	$('#newurl').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size': fontSize +'px'
 		,'margin': panelMargin +'px 0 0 ' +panelMargin +'px'
 	});
-	$panelBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
-	$panelBase.find('.pen, .plusminus').width( fontSize ).height( fontSize );
+	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
+	$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+	$panelBase.find('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
 	// パネルアイテム元要素
-	$itemBase.find('.icon').width( fontSize +3 ).height( fontSize +3 );
+	$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
+	$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 }
 // カラム数変更
 function columnCountChange( count ){
