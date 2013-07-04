@@ -401,7 +401,7 @@ var folderTree = function(){
 				$folders.append( $node );
 				// #foldersの幅を設定(しないと横スクロールバーが必要な時に幅が狭くなり表示崩れる)
 				var $title = $node.find('.title');
-				var width = $title[0].offsetLeft + ~~($title.width() *1.6);
+				var width = $title[0].offsetLeft + (($title.width() *1.6)|0);
 				if( width > maxWidth ){
 					$folders.width( width );
 					maxWidth = width;
@@ -442,10 +442,10 @@ function myFmt( date, nowTime ){
 	var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
 	var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
 	// 現在時刻との差分
-	diff = ~~((nowTime - diff) /1000);
+	diff = ((nowTime - diff) /1000)|0;
 	if( diff <=10 ) return 'いまさっき (' +time +')';
 	if( diff <=60 ) return '1分以内 (' +time +')';
-	if( diff <=3600 ) return ~~(diff /60) +'分前 (' +time +')';
+	if( diff <=3600 ) return ((diff /60)|0) +'分前 (' +time +')';
 	if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
 	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
 	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
@@ -584,13 +584,13 @@ $('#folders')
 $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var window_width = $(window).width() -1; // 適当-1px
-	var folderbox_width = ~~(window_width /5.3);
+	var folderbox_width = (window_width /5.3)|0;
 	var folderbox_height = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
 	var itembox_width = window_width -folderbox_width -$('#border').width() -2;	// borderぶん適当-2px
 	var items_width = ((itembox_width <400)? 400 : itembox_width) -17;			// スクロールバー17px
-	var title_width = ~~(items_width /3);										// 割合適当
-	var url_width = ~~((items_width -title_width) /2.5);						// 割合適当
-	var icon_width = ~~((items_width -title_width -url_width) /1.8);			// 割合適当
+	var title_width = (items_width /3)|0;										// 割合適当
+	var url_width = ((items_width -title_width) /2.5)|0;						// 割合適当
+	var icon_width = ((items_width -title_width -url_width) /1.8)|0;			// 割合適当
 	var date_width = items_width -title_width -url_width -icon_width;
 
 	$('#toolbar') // #modifiedがfloatで下にいかないよう1040px以上必要
@@ -1706,7 +1706,7 @@ function edit( element, opt ){
 							// #folderboxの幅しかなくなって、選択時の色がうまく反映されず変になる。
 							if( isFolderTree ){
 								var foldersWidth = $('#folders').width();
-								var needWidth = element.offsetLeft + ~~($e.width() *1.6);
+								var needWidth = element.offsetLeft + (($e.width() *1.6)|0);
 								if( needWidth > foldersWidth ) $('#folders').width( needWidth );
 							}
 						}

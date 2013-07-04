@@ -457,7 +457,7 @@ var option = {
 			}
 			var column = option.data.column;
 			// 一度目の参照時に規定値を設定
-			if( column.count<0 ) column.count = ~~($window.width() /230);
+			if( column.count<0 ) column.count = ($window.width() /230)|0;
 			return column.count;
 		}
 	}
@@ -520,7 +520,7 @@ var option = {
 			}
 			var panel = option.data.panel;
 			// 一度目の参照時に規定値を設定(px)
-			if( panel.width<0 ) panel.width = ~~(($window.width() -27) /option.column.count() -option.panel.margin());
+			if( panel.width<0 ) panel.width = (($window.width() -27) /option.column.count() -option.panel.margin())|0;
 			return panel.width;
 		}
 	}
@@ -1798,10 +1798,10 @@ function myFmt( date, nowTime ){
 	var date = M+'/'+D;
 	var time = h+':'+m;
 	// 現在時刻との差分
-	diff = ~~((nowTime - diff) /1000);
+	diff = ((nowTime - diff) /1000)|0;
 	if( diff <=10 ) return 'いまさっき <small>(' +time +')</small>';
 	if( diff <=60 ) return '1分以内 <small>(' +time +')</small>';
-	if( diff <=3600 ) return ~~(diff /60) +'分前 <small>(' +time +')</small>';
+	if( diff <=3600 ) return ((diff /60)|0) +'分前 <small>(' +time +')</small>';
 	if( diff <=3600*1.5 ) return '1時間前 <small>(' +time +')</small>';
 	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 <small>(' +date +' ' +time +')</small>';
 	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 <small>(' +date +' ' +time +')</small>';
