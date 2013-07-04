@@ -2203,6 +2203,8 @@ function analyzer( nodeTop ){
 			ajaxs[i].xhr.abort();
 			ajaxs[i].done = true;
 		}
+		$('#dialog').dialog('destroy');
+		importer( nodeTop );
 	}
 	// プログレスバーつき進捗ダイアログ
 	var $msg = $('<span></span>').text('ブックマークを解析しています...');
@@ -2214,10 +2216,8 @@ function analyzer( nodeTop ){
 		,modal	:true
 		,width	:400
 		,height	:210
-		,close	:function(){ skip(); $(this).dialog('destroy'); }
-		,buttons:{
-			'スキップして次に進む':function(){ skip(); $(this).dialog('destroy'); }
-		}
+		,close	:skip
+		,buttons:{ 'スキップして次に進む':skip }
 	});
 	// ajaxリクエスト
 	(function ajaxer( node ){
@@ -2245,25 +2245,22 @@ function analyzer( nodeTop ){
 	$pgbar.progressbar('value',0);
 	// 解析完了待ちループ
 	(function waiter(){
-		if( skipped ){
-			importer( nodeTop );
+		if( skipped ) return;
+		var waiting=0;
+		for( var i=0, n=ajaxs.length; i<n; i++ ){
+			if( !ajaxs[i].done ) waiting++;
 		}
-		else{
-			var waiting=0;
-			for( var i=0, n=ajaxs.length; i<n; i++ ){
-				if( !ajaxs[i].done ) waiting++;
-			}
-			if( waiting ){
-				// 進捗表示
-				var count = ajaxs.length - waiting;
-				$count.text('('+count+'/'+ajaxs.length+')');
-				$pgbar.progressbar('value',count*100/ajaxs.length);
-				setTimeout(waiter,500);
-				return;
-			}
-			// 完了
-			importer( nodeTop );
+		if( waiting ){
+			// 進捗表示
+			var count = ajaxs.length - waiting;
+			$count.text('('+count+'/'+ajaxs.length+')');
+			$pgbar.progressbar('value',count*100/ajaxs.length);
+			setTimeout(waiter,500);
+			return;
 		}
+		// 完了
+		$('#dialog').dialog('destroy');
+		importer( nodeTop );
 	}());
 }
 // 移行データ取り込み
