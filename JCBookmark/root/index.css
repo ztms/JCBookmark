@@ -170,7 +170,8 @@
 	border-color:#e70;
 }
 #option input[type=radio] {
-	vertical-align:-3px;
+	vertical-align:middle;
+	border:0;
 }
 #option .inc, #option .dec {
 	width:18px;
@@ -180,7 +181,7 @@
 	border:1px solid #ccc;
 	background:#f5f5f5;
 	border-radius:3px;
-	color:#666;
+	color:#777;
 }
 #option .inc:hover, #option .dec:hover,
 #option .inc:focus, #option .dec:focus {
