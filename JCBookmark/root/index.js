@@ -1196,7 +1196,7 @@ function setEvents(){
 				optionApply();
 			}
 		})
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.width();
 			if( val <1000 ){
 				option.panel.width( ++val );
@@ -1204,7 +1204,7 @@ function setEvents(){
 				$('#panel_width').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.width();
 			if( val >100 ){
 				option.panel.width( --val );
@@ -1221,7 +1221,7 @@ function setEvents(){
 				optionApply();
 			}
 		})
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.margin.top();
 			if( val <50 ){
 				option.panel.margin.top( ++val );
@@ -1229,7 +1229,7 @@ function setEvents(){
 				$('#panel_marginV').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.margin.top();
 			if( val >0 ){
 				option.panel.margin.top( --val );
@@ -1245,7 +1245,7 @@ function setEvents(){
 				optionApply();
 			}
 		})
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.margin.left();
 			if( val <50 ){
 				option.panel.margin.left( ++val );
@@ -1253,7 +1253,7 @@ function setEvents(){
 				$('#panel_marginH').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.panel.margin.left();
 			if( val >0 ){
 				option.panel.margin.left( --val );
@@ -1271,7 +1271,7 @@ function setEvents(){
 				optionApply();
 			}
 		})
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.column.count();
 			if( val <30 ){
 				columnCountChange( { prev:val, next:val+1 } );
@@ -1280,7 +1280,7 @@ function setEvents(){
 				$('#column_count').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.column.count();
 			if( val >1 ){
 				columnCountChange( { prev:val, next:val-1 } );
@@ -1291,7 +1291,7 @@ function setEvents(){
 		});
 		// フォントサイズ
 		$('#font_size').val( option.font.size() )
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.font.size();
 			if( val <24 ){
 				option.font.size( ++val );
@@ -1299,7 +1299,7 @@ function setEvents(){
 				$('#font_size').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.font.size();
 			if( val >9 ){
 				option.font.size( --val );
@@ -1309,7 +1309,7 @@ function setEvents(){
 		});
 		// アイコンサイズ
 		$('#icon_size').val( option.icon.size() )
-		.parent().find('.inc').off().click(function(){
+		.next().off().click(function(){
 			var val = option.icon.size();
 			if( val <24 ){
 				option.icon.size( ++val );
@@ -1317,7 +1317,7 @@ function setEvents(){
 				$('#icon_size').val( val );
 			}
 		})
-		.end().find('.dec').off().click(function(){
+		.next().off().click(function(){
 			var val = option.icon.size();
 			if( val >0 ){
 				option.icon.size( --val );

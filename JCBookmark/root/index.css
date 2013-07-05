@@ -163,7 +163,7 @@
 }
 #option input {
 	border:1px solid gray;
-	border-radius:3px;
+	border-radius:2px;
 	padding-left:2px;
 }
 #option input:focus {
@@ -173,7 +173,7 @@
 	vertical-align:middle;
 	border:0;
 }
-#option .inc, #option .dec {
+#option button {
 	width:18px;
 	height:18px;
 	line-height:1;
@@ -183,26 +183,20 @@
 	border-radius:3px;
 	color:#777;
 }
-#option .inc:hover, #option .dec:hover,
-#option .inc:focus, #option .dec:focus {
+#option button:hover,
+#option button:focus {
 	border-color:#e70;
 	background:#fed;
 	color:#000;
 }
-#option .inc:active, #option .dec:active {
+#option button:active {
 	background:#fdc;
 }
 #page_title {
 	width:200px;
 }
-#panel_width, #column_count, #font_size {
+#panel_width, #column_count, #font_size, #panel_marginV, #panel_marginH, #icon_size {
 	width:60px;
-}
-#panel_marginV, #panel_marginH {
-	width:42px;
-}
-#icon_size {
-	width:46px;
 }
 #contextmenu {
 	display:none;
