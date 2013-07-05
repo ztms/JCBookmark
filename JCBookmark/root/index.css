@@ -161,14 +161,30 @@
 	text-align:left;
 	white-space:nowrap;
 }
+#option input {
+	padding-left:2px;
+}
 #option input[type=radio] {
 	vertical-align:-3px;
 }
-#option .updown {
+#option .inc, #option .dec {
 	width:18px;
 	height:18px;
 	line-height:1;
 	padding:0;
+	border:1px solid #ccc;
+	background:#eee;
+	border-radius:2px;
+	color:#444;
+}
+#option .inc:hover, #option .dec:hover,
+#option .inc:focus, #option .dec:focus {
+	border-color:#e70;
+	background:#fed;
+	color:#000;
+}
+#option .inc:active, #option .dec:active {
+	background:#fdc;
 }
 #page_title {
 	width:200px;

@@ -1060,7 +1060,7 @@ function setEvents(){
 	// パネルタイトルダブルクリックで開閉
 	.on('dblclick','.title',function(ev){
 		// ＋－ボタン上の場合は何もしない
-		if( $(ev.target).is('.plusminus') ) return;
+		if( $(ev.target).hasClass('plusminus') ) return;
 		$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
 	})
 	// パネル右クリックメニュー
@@ -1127,9 +1127,9 @@ function setEvents(){
 		return false;	// 既定右クリックメニュー出さない
 	})
 	.on('mousedown',function(ev){
-		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide();
-		}
+		// 右クリックメニュー隠す
+		for( var e=ev.target; e; e=e.parentNode ) if( e.id=='contextmenu' ) return;
+		$('#contextmenu').hide();
 	})
 	// ＋－ボタンクリックでパネル開閉
 	.on('click','.plusminus',function( ev, pageX, pageY ){
@@ -1195,16 +1195,16 @@ function setEvents(){
 				option.panel.width( this.value );
 				optionApply();
 			}
-		});
-		$('#panel_width_inc').off().click(function(){
+		})
+		.parent().find('.inc').off().click(function(){
 			var val = option.panel.width();
 			if( val <1000 ){
 				option.panel.width( ++val );
 				optionApply();
 				$('#panel_width').val( val );
 			}
-		});
-		$('#panel_width_dec').off().click(function(){
+		})
+		.end().find('.dec').off().click(function(){
 			var val = option.panel.width();
 			if( val >100 ){
 				option.panel.width( --val );
@@ -1220,6 +1220,22 @@ function setEvents(){
 				option.panel.margin.top( this.value );
 				optionApply();
 			}
+		})
+		.parent().find('.inc').off().click(function(){
+			var val = option.panel.margin.top();
+			if( val <50 ){
+				option.panel.margin.top( ++val );
+				optionApply();
+				$('#panel_marginV').val( val );
+			}
+		})
+		.end().find('.dec').off().click(function(){
+			var val = option.panel.margin.top();
+			if( val >0 ){
+				option.panel.margin.top( --val );
+				optionApply();
+				$('#panel_marginV').val( val );
+			}
 		});
 		$('#panel_marginH').val( option.panel.margin.left() )
 		.off().on('input keyup paste',function(){
@@ -1228,32 +1244,16 @@ function setEvents(){
 				option.panel.margin.left( this.value );
 				optionApply();
 			}
-		});
-		$('#panel_marginV_inc').off().click(function(){
-			var val = option.panel.margin.top();
-			if( val <50 ){
-				option.panel.margin.top( ++val );
-				optionApply();
-				$('#panel_marginV').val( val );
-			}
-		});
-		$('#panel_marginV_dec').off().click(function(){
-			var val = option.panel.margin.top();
-			if( val >0 ){
-				option.panel.margin.top( --val );
-				optionApply();
-				$('#panel_marginV').val( val );
-			}
-		});
-		$('#panel_marginH_inc').off().click(function(){
+		})
+		.parent().find('.inc').off().click(function(){
 			var val = option.panel.margin.left();
 			if( val <50 ){
 				option.panel.margin.left( ++val );
 				optionApply();
 				$('#panel_marginH').val( val );
 			}
-		});
-		$('#panel_marginH_dec').off().click(function(){
+		})
+		.end().find('.dec').off().click(function(){
 			var val = option.panel.margin.left();
 			if( val >0 ){
 				option.panel.margin.left( --val );
@@ -1270,8 +1270,8 @@ function setEvents(){
 				option.column.count( this.value );
 				optionApply();
 			}
-		});
-		$('#column_count_inc').off().click(function(){
+		})
+		.parent().find('.inc').off().click(function(){
 			var val = option.column.count();
 			if( val <30 ){
 				columnCountChange( { prev:val, next:val+1 } );
@@ -1279,8 +1279,8 @@ function setEvents(){
 				optionApply();
 				$('#column_count').val( val );
 			}
-		});
-		$('#column_count_dec').off().click(function(){
+		})
+		.end().find('.dec').off().click(function(){
 			var val = option.column.count();
 			if( val >1 ){
 				columnCountChange( { prev:val, next:val-1 } );
@@ -1290,16 +1290,16 @@ function setEvents(){
 			}
 		});
 		// フォントサイズ
-		$('#font_size').val( option.font.size() );
-		$('#font_size_inc').off().click(function(){
+		$('#font_size').val( option.font.size() )
+		.parent().find('.inc').off().click(function(){
 			var val = option.font.size();
 			if( val <24 ){
 				option.font.size( ++val );
 				optionApply();
 				$('#font_size').val( val );
 			}
-		});
-		$('#font_size_dec').off().click(function(){
+		})
+		.end().find('.dec').off().click(function(){
 			var val = option.font.size();
 			if( val >9 ){
 				option.font.size( --val );
@@ -1308,16 +1308,16 @@ function setEvents(){
 			}
 		});
 		// アイコンサイズ
-		$('#icon_size').val( option.icon.size() );
-		$('#icon_size_inc').off().click(function(){
+		$('#icon_size').val( option.icon.size() )
+		.parent().find('.inc').off().click(function(){
 			var val = option.icon.size();
 			if( val <24 ){
 				option.icon.size( ++val );
 				optionApply();
 				$('#icon_size').val( val );
 			}
-		});
-		$('#icon_size_dec').off().click(function(){
+		})
+		.end().find('.dec').off().click(function(){
 			var val = option.icon.size();
 			if( val >0 ){
 				option.icon.size( --val );

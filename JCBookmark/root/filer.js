@@ -621,14 +621,12 @@ $(window).on('resize',function(){
 $(document).on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
-		if( !$(ev.target).is('#contextmenu,#contextmenu *') ){
-			$('#contextmenu').hide();
-			if( onContextHide ) onContextHide();
-		}
+		for( var e=ev.target; e; e=e.parentNode ) if( e.id=='contextmenu' ) return false;
+		$('#contextmenu').hide();
+		if( onContextHide ) onContextHide();
 		// inputタグはフォーカスするためtrue返す
-		if( $(ev.target).is('input, .barbtn') ){
-			return true;
-		}
+		if( ev.target.tagName=='INPUT' ) return true;
+		if( $(ev.target).hasClass('barbtn') ) return true;
 		// (WK,GK)既定アクション停止
 		return false;
 	}
@@ -638,7 +636,7 @@ $(document).on({
 		case 27: // Esc
 			$('#exit').click(); return false;
 		case 46: // Delete
-			if( !$(ev.target).is('input') ){
+			if( ev.target.tagName !='INPUT' ){
 				$('#delete').click();
 				return false;
 			}
@@ -646,9 +644,7 @@ $(document).on({
 	}
 	// テキスト選択キャンセル
 	,selectstart:function(ev){
-		if( $(ev.target).is('input') ){
-			return true;
-		}
+		if( ev.target.tagName=='INPUT' ) return true;
 		return false;
 	}
 });
