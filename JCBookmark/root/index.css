@@ -162,7 +162,12 @@
 	white-space:nowrap;
 }
 #option input {
+	border:1px solid gray;
+	border-radius:3px;
 	padding-left:2px;
+}
+#option input:focus {
+	border-color:#e70;
 }
 #option input[type=radio] {
 	vertical-align:-3px;
@@ -197,10 +202,6 @@
 }
 #icon_size {
 	width:46px;
-}
-#page_title, #panel_width, #panel_marginV, #panel_marginH, #column_count, #font_size, #icon_size {
-	border:1px solid gray;
-	border-radius:3px;
 }
 #contextmenu {
 	display:none;
