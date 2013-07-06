@@ -460,12 +460,12 @@ var itemTable = function(){
 			var $e = $('<div class=item tabindex=0><img class=icon></div>')
 				.on('mouseleave',itemMouseLeave);
 			var $head = $('#itemhead');
-			var url_width = $head.find('.url').width() +4;
-			var icon_width = $head.find('.iconurl').width() +4;
+			var urlWidth = $head.find('.url').width() +4;
+			var iconWidth = $head.find('.iconurl').width() +4;
 			var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
-			var $url = $('<span class=url></span>').width( url_width );
-			var $icon = $('<span class=iconurl></span>').width( icon_width );
-			var $smry = $('<span class=summary></span>').width( url_width +icon_width +6 );
+			var $url = $('<span class=url></span>').width( urlWidth );
+			var $icon = $('<span class=iconurl></span>').width( iconWidth );
+			var $smry = $('<span class=summary></span>').width( urlWidth +iconWidth +6 );
 			var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
 			var $br = $('<br class=clear>');
 			var $fol = $e.clone(true)
@@ -583,40 +583,40 @@ $('#folders')
 //
 $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
-	var window_width = $(window).width() -1; // 適当-1px
-	var folderbox_width = (window_width /5.3)|0;
-	var folderbox_height = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
-	var itembox_width = window_width -folderbox_width -$('#border').width() -2;	// borderぶん適当-2px
-	var items_width = ((itembox_width <400)? 400 : itembox_width) -17;			// スクロールバー17px
-	var title_width = (items_width /3)|0;										// 割合適当
-	var url_width = ((items_width -title_width) /2.5)|0;						// 割合適当
-	var icon_width = ((items_width -title_width -url_width) /1.8)|0;			// 割合適当
-	var date_width = items_width -title_width -url_width -icon_width;
+	var windowWidth = $(window).width() -1; // 適当-1px
+	var folderboxWidth = (windowWidth /5.3)|0;
+	var folderboxHeight = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
+	var itemboxWidth = windowWidth -folderboxWidth -$('#border').width() -2;	// borderぶん適当-2px
+	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
+	var titleWidth = (itemsWidth /3)|0;										// 割合適当
+	var urlWidth = ((itemsWidth -titleWidth) /2.5)|0;						// 割合適当
+	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.8)|0;			// 割合適当
+	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
 
 	$('#toolbar') // #modifiedがfloatで下にいかないよう1040px以上必要
-		.width( (window_width <1040)? 1040 : window_width );
+		.width( (windowWidth <1040)? 1040 : windowWidth );
 	$('#folderbox')
-		.width( folderbox_width )
-		.height( folderbox_height );
+		.width( folderboxWidth )
+		.height( folderboxHeight );
 	$('#border')
-		.height( folderbox_height );
+		.height( folderboxHeight );
 	$('#itembox')
-		.width( itembox_width )
-		.height( folderbox_height );
+		.width( itemboxWidth )
+		.height( folderboxHeight );
 	// アイテムヘッダのボーダーと合うよう適当に増減して設定
 	$('#itemhead')
-		.width( items_width )
-		.find('.title').width( title_width ).end()
-		.find('.url').width( url_width ).end()
-		.find('.iconurl').width( icon_width ).end()
-		.find('.date').width( date_width -38 );			// -38px適当float対策
+		.width( itemsWidth )
+		.find('.title').width( titleWidth ).end()
+		.find('.url').width( urlWidth ).end()
+		.find('.iconurl').width( iconWidth ).end()
+		.find('.date').width( dateWidth -38 );			// -38px適当float対策
 	$('#items')
-		.width( items_width )
-		.find('.title').width( title_width -18 ).end()				// アイコンのぶん-18px
-		.find('.url').width( url_width +4 ).end()					// itemborderのぶん-4px
-		.find('.iconurl').width( icon_width +4 ).end()				// itemborderのぶん-4px
-		.find('.summary').width( url_width +icon_width +14 ).end()	// 見た目で合うように+14px
-		.find('.date').width( date_width -36);					// float対策適当-36px
+		.width( itemsWidth )
+		.find('.title').width( titleWidth -18 ).end()				// アイコンのぶん-18px
+		.find('.url').width( urlWidth +4 ).end()					// itemborderのぶん-4px
+		.find('.iconurl').width( iconWidth +4 ).end()				// itemborderのぶん-4px
+		.find('.summary').width( urlWidth +iconWidth +14 ).end()	// 見た目で合うように+14px
+		.find('.date').width( dateWidth -36);					// float対策適当-36px
 });
 $(document).on({
 	mousedown:function(ev){
@@ -828,19 +828,18 @@ $('#folderbox,#itembox').on('scroll',function(){ $('#editbox').trigger('decide')
 // ボーダードラッグ
 $('#border').mousedown(function(ev){
 	$('#editbox').trigger('decide');
-	var $border = $(this);
 	var $folderbox = $('#folderbox');
 	var $itembox = $('#itembox');
-	var folderbox_width = $folderbox.width();
-	var itembox_width = $itembox.width();
+	var folderboxWidth = $folderbox.width();
+	var itemboxWidth = $itembox.width();
 	var downX = ev.pageX;
 	$(document).on('mousemove.border',function(ev){
 		var dx = ev.pageX -downX;
-		var folderbox_width_new = folderbox_width +dx;
-		var itembox_width_new = itembox_width -dx;
-		if( folderbox_width_new >20 && itembox_width_new >20 ){
-			$folderbox.width( folderbox_width_new );
-			$itembox.width( itembox_width_new );
+		var newFolderboxWidth = folderboxWidth +dx;
+		var newItemboxWidth = itemboxWidth -dx;
+		if( newFolderboxWidth >20 && newItemboxWidth >20 ){
+			$folderbox.width( newFolderboxWidth );
+			$itembox.width( newItemboxWidth );
 		}
 	})
 	.one('mouseup',function(){
@@ -861,25 +860,25 @@ $('.itemborder').mousedown(function(ev){
 		$smry = $('#items').find('.summary');
 	}
 	var $last = $('#items').find('.'+$lasthead.attr('class'));
-	var attrhead_width = $attrhead.width();
-	var lasthead_width = $lasthead.width();
-	var attr_width = $attr.length? $attr.width() : 0;
-	var smry_width = $smry.length? $smry.width() : 0;
-	var last_width = $last.length? $last.width() : 0;
+	var attrheadWidth = $attrhead.width();
+	var lastheadWidth = $lasthead.width();
+	var attrWidth = $attr.length? $attr.width() : 0;
+	var smryWidth = $smry.length? $smry.width() : 0;
+	var lastWidth = $last.length? $last.width() : 0;
 	var downX = ev.pageX;
 	$(document).on('mousemove.itemborder',function(ev){
 		var dx = ev.pageX - downX;
-		var attrhead_width_new = attrhead_width + dx;
-		var lasthead_width_new = lasthead_width - dx;
-		var attr_width_new = attr_width + dx;
-		var smry_width_new = smry_width + dx;
-		var last_width_new = last_width - dx;
-		if( attrhead_width_new >20 && lasthead_width_new >20 ){
-			$attrhead.width( attrhead_width_new );
-			$lasthead.width( lasthead_width_new );
-			if( attr_width ) $attr.width( attr_width_new );
-			if( smry_width ) $smry.width( smry_width_new );
-			if( last_width ) $last.width( last_width_new );
+		var newAttrheadWidth = attrheadWidth + dx;
+		var newLastheadWidth = lastheadWidth - dx;
+		var newAttrWidth = attrWidth + dx;
+		var newSmryWidth = smryWidth + dx;
+		var newLastWidth = lastWidth - dx;
+		if( newAttrheadWidth >20 && newLastheadWidth >20 ){
+			$attrhead.width( newAttrheadWidth );
+			$lasthead.width( newLastheadWidth );
+			if( attrWidth ) $attr.width( newAttrWidth );
+			if( smryWidth ) $smry.width( newSmryWidth );
+			if( lastWidth ) $last.width( newLastWidth );
 		}
 	})
 	.one('mouseup',function(){
