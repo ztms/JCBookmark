@@ -142,9 +142,6 @@ var tree = {
 		});
 	}
 	// ノードツリー保存
-	// TODO:たまにChromeでPUTされない時がある。エラーは出ないし、PUTされないのに
-	// onSuccessは実行されてしまうし、かなりイヤな感じ。なにがきっかけか不明だが
-	// けっこう発生する。他のブラウザでは見たこと無い。
 	,save:function( arg ){
 		$.ajax({
 			type	:'put'
@@ -232,7 +229,6 @@ var tree = {
 					}
 				}( tree.root.child ));
 				// 貼り付け
-				// TODO:先頭挿入(画面で上の方に追加される)のと末尾追加(画面下の方に追加)はどっちがいいか？
 				if( clipboard.length ){
 					//for( var i=0; i<clipboard.length; i++ ) dst.child.push( clipboard[i] ); // 末尾に
 					for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] ); // 先頭に
@@ -302,7 +298,6 @@ var tree = {
 	}
 };
 // パネルオプション
-// TODO:treeの中に入れる＝tree.jsonに保存した方が楽？
 var option = {
 	data:{
 		// 空(規定値ではない)を設定
@@ -1047,7 +1042,7 @@ function setEvents(){
 	$document.on('mousemove',function(){
 		var animate = null;
 		return function(ev){
-			if( ev.clientX <37 && ev.clientY <260 ){	// サイドバー周辺にある程度近づいた
+			if( ev.clientX <37 && ev.clientY <300 ){	// サイドバー周辺にある程度近づいた
 				if( !animate )
 					animate = $sidebar.animate({width:65},'fast');
 			}
@@ -1159,7 +1154,6 @@ function setEvents(){
 		option.autoshot( $('#autoshot').attr('checked')? true:false );
 	});
 	// パネル設定ダイアログ
-	// TODO:行間の広さも設定あるとよし
 	$('#optionico').click(function(){
 		// ページタイトル
 		$('#page_title').val( option.page.title() )
@@ -1565,6 +1559,7 @@ function setEvents(){
 			}
 		});
 		// 消去
+		// TODO:削除後に次エントリか前エントリを選択状態にする
 		$('#shotdel').click(function(){
 			var $btn = $(this);
 			var item = null;
@@ -1711,6 +1706,33 @@ function setEvents(){
 				$shots.find('div').width( maxWidth );
 			}
 		}
+	});
+	// 検索
+	// TODO:単なるダイアログボックスじゃないもっといいUIはないか
+	// 画面隅の邪魔にならない領域にposition:fixなかんじで
+	$('#findico').click(function(){
+		$('#find').dialog({
+			title	:'検索'
+			,width	:480
+			,height	:420
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
+		// フォルダ配列生成・URL総数カウント
+		// フォルダ1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
+		var folderList = [];
+		var urlTotal = 0;
+		function callee( node ){
+			folderList.push( node );
+			urlTotal += node.child.length;
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( node.child[i].child ){
+					callee( node.child[i] );
+					urlTotal--;
+				}
+			}
+		}
+		callee( tree.top() );
+		callee( tree.trash() );
 	});
 	// パネル並べ替え
 	Sortable({
@@ -2248,10 +2270,6 @@ function modifySave( arg ){
 	}
 }
 // favicon解析してから移行データ取り込み
-// TODO:IE8はブックマーク数が1万くらいになると「スクリプトに時間がかかっています」ダイアログや、
-// 謎のスクリプトエラーが発生してまともに動かない。Chrome直接インポートでは8千程度でも発生する。
-// IE8以外は1万件でも動くし、IE8も3千程度なら動くので、IE8の問題でおｋ？回避できる実装があれば
-// いいけど…面倒くさい。
 // TODO:Chromeで解析件数が多いとスキップしてもajax通信がいつまでたっても終わらず続いてしまう。
 // abort()がぜんぜん効いていないかのよう…Chrome以外はわりとすぐ終わってくれるのに…
 function analyzer( nodeTop ){
