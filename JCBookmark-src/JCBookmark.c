@@ -619,6 +619,24 @@ WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
 	}
 	return NULL;
 }
+// IEお気に入り(.url)ファイルURL文字列複製(JSON出力用)
+// - 改行文字以降を削除
+// - 先頭の連続するダブルクォート文字をスキップ、対応する閉ダブルクォートが存在すれば併せて削除
+//   (もし閉ダブルクォートだけが存在しても無視)
+// - JSON用エスケープ
+UCHAR* urldupJSON( UCHAR* s )
+{
+	if( s ){
+		size_t n = strlen(chomp(s));
+		while( *s=='"' ){
+			UCHAR* p = s + n -1;
+			if( *p=='"' ){ *p = '\0'; n--; }
+			s++; n--;
+		}
+		return strndupJSON(s,n);
+	}
+	return s;
+}
 
 
 
@@ -1472,15 +1490,12 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 										UCHAR line[1024];
 										while( fgets( line, sizeof(line), fp ) ){
 											if( strnicmp(line,"URL=",4)==0 ){
-												url = strdup(chomp(line+4));
-												if( !url ) LogW(L"L%u:strdupエラー",__LINE__);
-												else if( icon ) break;
+												url = urldupJSON(line+4);
 											}
 											else if( strnicmp(line,"IconFile=",9)==0 ){
-												icon = strdup(chomp(line+9));
-												if( !icon ) LogW(L"L%u:strdupエラー",__LINE__);
-												else if( url ) break;
+												icon = urldupJSON(line+9);
 											}
+											if( url && icon ) break;
 										}
 										fclose( fp );
 									}
