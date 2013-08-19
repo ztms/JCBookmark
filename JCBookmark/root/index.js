@@ -2247,7 +2247,7 @@ function panelEdit( pid ){
 						var title = $this.find('input').val();
 						tree.nodeAttr( nid, 'title', title );
 						tree.moveChild( [nid], pnode );
-						$('#'+nid).prependTo( $panelbox ).find('span').text( title );
+						$('#'+nid).prependTo( $panelbox ).attr('title',title).find('span').text( title );
 					}
 					else{
 						// 新規登録
