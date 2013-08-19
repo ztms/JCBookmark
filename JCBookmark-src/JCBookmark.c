@@ -5952,6 +5952,8 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				_snwprintf(wtxt,sizeof(wtxt)/sizeof(WCHAR),
 						L"%s\r\n\r\n" L"%s\r\n\r\n" L"Windows%s %u.%u"
 						,APPNAME, wlibs
+						// Windowsバージョン情報の取得
+						// http://www.westbrook.jp/Tips/Win/OSVersion.html
 						,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
 						,os.dwMajorVersion, os.dwMinorVersion
 				);
