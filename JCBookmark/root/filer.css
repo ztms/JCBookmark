@@ -42,7 +42,6 @@ body {
 	padding:1px;
 	line-height:1.5;
 	font-size:13px;
-	font-family:"MS PGothic",sans-serif;
 }
 #modified {
 	float:left;
@@ -52,7 +51,6 @@ body {
 	line-height:1.5;
 	font-size:14px;
 	font-weight:bold;
-	font-family:"MS PGothic",sans-serif;
 }
 #modified img {
 	float:none;
@@ -128,7 +126,6 @@ body {
 	cursor:default;
 	line-height:1.5;
 	font-size:13px;
-	font-family:"MS PGothic",sans-serif;
 }
 #itemhead .title {
 	padding:0 0 0 7px;
@@ -172,7 +169,6 @@ body {
 	height:20px;
 	line-height:1.5;
 	font-size:13px;
-	font-family:"MS PGothic",sans-serif;
 	border:1px dotted #000;
 	background:#ddf;
 	filter:alpha(opacity=40);
@@ -190,7 +186,6 @@ body {
 	height:19px;
 	line-height:1.5;
 	font-size:13px;
-	font-family:"MS PGothic",sans-serif;
 }
 /* マウス矩形選択ボックス */
 #selectbox {
@@ -225,7 +220,6 @@ body {
 	padding:3px 0 3px 9px;
 	font-size:13px;
 	line-height:17px;
-	font-family:"MS PGothic",sans-serif;
 }
 #contextmenu a:hover {
 	color:#fff;

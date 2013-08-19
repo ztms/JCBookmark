@@ -304,7 +304,7 @@ var option = {
 		page	:{ title:null }
 		,color	:{ css	:'' }
 		,wall	:{ margin:'' }
-		,font	:{ size	:-1 }
+		,font	:{ size	:-1, css:'' }
 		,icon	:{ size	:-1 }
 		,column	:{ count:-1 }
 		,panel	:{
@@ -332,7 +332,10 @@ var option = {
 		if( 'page' in data && 'title' in data.page ) od.page.title = data.page.title;
 		if( 'color' in data && 'css' in data.color ) od.color.css = data.color.css;
 		if( 'wall' in data && 'margin' in data.wall ) od.wall.margin = data.wall.margin;
-		if( 'font' in data && 'size' in data.font ) od.font.size = data.font.size;
+		if( 'font' in data ){
+			if( 'size' in data.font ) od.font.size = data.font.size;
+			if( 'css' in data.font ) od.font.css = data.font.css;
+		}
 		if( 'icon' in data && 'size' in data.icon ) od.icon.size = data.icon.size;
 		if( 'column' in data && 'count' in data.column ) od.column.count = data.column.count;
 		if( 'panel' in data ){
@@ -361,7 +364,10 @@ var option = {
 		if( 'page' in data && 'title' in data.page ) option.page.title( data.page.title );
 		if( 'color' in data && 'css' in data.color ) option.color.css( data.color.css );
 		if( 'wall' in data && 'margin' in data.wall ) option.wall.margin( data.wall.margin );
-		if( 'font' in data && 'size' in data.font ) option.font.size( data.font.size );
+		if( 'font' in data ){
+			if( 'size' in data.font ) option.font.size( data.font.size );
+			if( 'css' in data.font ) option.font.css( data.font.css );
+		}
 		if( 'icon' in data && 'size' in data.icon ) option.icon.size( data.icon.size );
 		if( 'column' in data && 'count' in data.column ) option.column.count( data.column.count );
 		if( 'panel' in data ){
@@ -390,6 +396,7 @@ var option = {
 		if( od.color.css !='' ) option.color.css('');
 		if( od.wall.margin !='' ) option.wall.margin('');
 		if( od.font.size != -1 ) option.font.size(-1);
+		if( od.font.css !='' ) option.font.css('');
 		if( od.icon.size != -1 ) option.icon.size(-1);
 		if( od.column.count != -1 ) option.column.count(-1);
 		if( od.panel.layout !={} ) option.panel.layout({});
@@ -450,6 +457,17 @@ var option = {
 			// 一度目の参照時に規定値を設定
 			if( font.size<0 ) font.size = 13;	// px
 			return font.size;
+		}
+		,css:function( val ){
+			if( arguments.length ){
+				option.data.font.css = val;
+				option.modified(true);
+				return option;
+			}
+			var font = option.data.font;
+			// 一度目の参照時に規定値を設定
+			if( font.css=='' ) font.css = 'gothic.css';
+			return font.css;
 		}
 	}
 	,icon:{
@@ -658,6 +676,7 @@ var paneler = function(){
 		clearTimeout( timer ); // 古いのキャンセル
 		document.title = option.page.title();
 		$('#colorcss').attr('href',option.color.css());
+		$('#fontcss').attr('href',option.font.css());
 		var fontSize = option.font.size();
 		var iconSize = option.icon.size();
 		var panelWidth = option.panel.width();
@@ -1001,7 +1020,7 @@ function setEvents(){
 					$('#ieico').click(function(){
 						Confirm({
 							msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
-							,width:385
+							,width:390
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
@@ -1283,6 +1302,24 @@ function setEvents(){
 				$('#column_count').val( val );
 			}
 		});
+		// アイコン拡大
+		$('#icon_size').val( option.icon.size() )
+		.next().off().click(function(){
+			var val = option.icon.size();
+			if( val <24 ){
+				option.icon.size( ++val );
+				optionApply();
+				$('#icon_size').val( val );
+			}
+		})
+		.next().off().click(function(){
+			var val = option.icon.size();
+			if( val >0 ){
+				option.icon.size( --val );
+				optionApply();
+				$('#icon_size').val( val );
+			}
+		});
 		// フォントサイズ
 		$('#font_size').val( option.font.size() )
 		.next().off().click(function(){
@@ -1301,30 +1338,24 @@ function setEvents(){
 				$('#font_size').val( val );
 			}
 		});
-		// アイコンサイズ
-		$('#icon_size').val( option.icon.size() )
-		.next().off().click(function(){
-			var val = option.icon.size();
-			if( val <24 ){
-				option.icon.size( ++val );
-				optionApply();
-				$('#icon_size').val( val );
-			}
+		// フォント - フォント種類ぶんのCSSファイルを切り替える方式。
+		// CSSルール書き換えはブラウザ互換が心配＋面倒な感じするので却下。
+		// http://pointofviewpoint.air-nifty.com/blog/2012/11/jquerycss-7530.html
+		// http://d.hatena.ne.jp/ofk/20090716/1247719727
+		$('input[name=fontcss]').each(function(){
+			if( this.value==option.font.css() )
+				$(this).attr('checked','checked');
 		})
-		.next().off().click(function(){
-			var val = option.icon.size();
-			if( val >0 ){
-				option.icon.size( --val );
-				optionApply();
-				$('#icon_size').val( val );
-			}
+		.off().change(function(){
+			option.font.css( this.value );
+			$('#fontcss').attr('href',option.font.css());
 		});
 		// ダイアログ表示
 		$('#option').dialog({
 			title	:'パネル設定'
 			,modal	:true
-			,width	:390
-			,height	:360
+			,width	:420
+			,height	:410
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
@@ -1349,7 +1380,8 @@ function setEvents(){
 			gotoFiler();
 		}
 		else Confirm({
-			msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+			msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+			,width:380
 			,no	:function(){ gotoFiler(); }
 			,yes:function(){ modifySave({ success:gotoFiler }); }
 		});
@@ -1475,7 +1507,7 @@ function setEvents(){
 			title	:'HTMLインポート・エクスポート'
 			,modal	:true
 			,width	:460
-			,height	:320
+			,height	:330
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 	});
@@ -1532,7 +1564,8 @@ function setEvents(){
 					shotView();
 				}
 				else Confirm({
-					msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+					msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+					,width:380
 					,no	:function(){ shotView(); }
 					// TODO:"はい"で保存してからshotViewが実行されるまでのわずかな間、復元ボタンが
 					// wait.gifにならずダイアログも閉じているのでまたクリックできてしまう。
@@ -1594,7 +1627,7 @@ function setEvents(){
 		$('#snap').dialog({
 			title	:'スナップショット'
 			,modal	:true
-			,width	:480
+			,width	:500
 			,height	:420
 			,close	:function(){
 				// メモを保存
@@ -1757,7 +1790,7 @@ function setEvents(){
 					.addClass('paneldrop')
 					.css('marginLeft',$panel.css('marginLeft'))
 					.css('marginTop',$panel.css('marginTop'))
-					.height( option.font.size() +5 );
+					.height( option.font.size() +option.icon.size() +5 );
 		}
 		,onDrag:function( ev, $panel, $place ){ // ドラッグ中
 			if( ev.target.id=='wall' ){
@@ -2188,7 +2221,7 @@ function panelEdit( pid ){
 		title	:'パネル編集（パネル名・アイテム編集）'
 		,modal	:true
 		,width	:480
-		,height	:420
+		,height	:425
 		,close	:close
 		,buttons:{
 			' O K ':function(){
@@ -2655,11 +2688,7 @@ function HTMLdec( html ){
 	return dec;
 }
 // 型判定
-function isString( v ){
-	return (Object.prototype.toString.call(v)==='[object String]');
-}
-function isObject( v ){
-	return (Object.prototype.toString.call(v)==='[object Object]');
-}
+function isString( v ){ return (Object.prototype.toString.call(v)==='[object String]'); }
+function isObject( v ){ return (Object.prototype.toString.call(v)==='[object Object]'); }
 
 }($));

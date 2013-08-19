@@ -339,9 +339,27 @@ var tree = {
 		}
 	}
 };
+// index.json読取のみ
+var option = {
+	autoshot:false
+	,font:{
+		css:'gothic.css'
+	}
+};
+$.ajax({
+	dataType:'json'
+	,url	:'index.json'
+	,success:function(data){
+		if( 'autoshot' in data ){ option.autoshot = data.autoshot; }
+		if( 'font' in data ){
+			if( 'css' in data.font ) option.font.css = data.font.css;
+		}
+	}
+});
 // ブックマークデータ取得
 tree.load(function(){
 	$(window).resize();
+	$('#fontcss').attr('href',option.font.css);
 	$('body').css('visibility','visible');
 	folderTree({ click0:true });
 });
@@ -657,7 +675,8 @@ if( IE && IE<9 ){
 $('#exit').click(function(){
 	if( tree.modified() ){
 		Confirm({
-			msg	:'変更が保存されていません。いま保存して次に進みますか？ 「いいえ」で変更を破棄して次に進みます。'
+			msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+			,width:380
 			,yes:function(){ treeSave({ success:reload }); }
 			,no :reload
 		});
@@ -668,6 +687,10 @@ $('#exit').click(function(){
 });
 // 保存
 $('#save').click(function(){ treeSave(); });
+if( option.autoshot ) $('#save').attr({
+	title:'変更を保存＋スナップショット'
+	,src:'saveshot.png'
+});
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
@@ -929,52 +952,36 @@ $('#itembox').mousedown(function(ev){
 	}
 });
 // ノードツリー保存
-var treeSave = function(){
-	var autoshot = false;
-	$.ajax({
-		dataType:'json'
-		,url	:'index.json'
-		,success:function(data){
-			if( 'autoshot' in data ){
-				autoshot = data.autoshot;
-				if( autoshot ) $('#save').attr({
-					title:'変更を保存＋スナップショット'
-					,src:'saveshot.png'
+var treeSave = function( arg ){
+	$('#wait').show();
+	$('#save').hide();
+	tree.save({
+		error	:err
+		,success:function(){
+			if( option.autoshot ){
+				$.ajax({
+					url		:':snapshot'
+					,error	:function(xhr){
+						Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText);
+						err();
+					}
+					,success:suc
 				});
 			}
+			else suc();
 		}
 	});
-	return function( arg ){
-		$('#wait').show();
-		$('#save').hide();
-		tree.save({
-			error	:err
-			,success:function(){
-				if( autoshot ){
-					$.ajax({
-						url		:':snapshot'
-						,error	:function(xhr){
-							Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText);
-							err();
-						}
-						,success:suc
-					});
-				}
-				else suc();
-			}
-		});
-		function err(){
-			$('#wait').hide();
-			$('#save').show();
-		}
-		function suc(){
-			$('#wait').hide();
-			$('#save').show();
-			$('#modified').hide();
-			if( arg && arg.success ) arg.success();
-		}
+	function err(){
+		$('#wait').hide();
+		$('#save').show();
 	}
-}();
+	function suc(){
+		$('#wait').hide();
+		$('#save').show();
+		$('#modified').hide();
+		if( arg && arg.success ) arg.success();
+	}
+}
 // マウスイベント
 function itemSelfClick( ev, shiftKey ){
 	if( IE && IE<9 ){
@@ -988,6 +995,7 @@ function itemSelfClick( ev, shiftKey ){
 		$(this).trigger('mousedown',shiftKey).mouseup().click().focus();
 	}
 }
+// TODO:未選択のアイテムをドラッグした場合は矩形選択モードに
 function itemMouseDown( ev, shiftKey ){
 	// 変更を反映
 	$('#editbox').trigger('decide');

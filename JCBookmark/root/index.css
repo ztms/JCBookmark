@@ -20,12 +20,11 @@
 }
 #modified {
 	display:none;
-	font-family:"MS PGothic",sans-serif;
 	font-weight:bold;
 	font-size:14px;
+	line-height:1.5;
 	cursor:pointer;
 	text-align:center;
-	line-height:1.5;
 	white-space:nowrap;
 }
 #modified:hover {
@@ -53,8 +52,8 @@
 	padding-bottom:30px;
 }
 .panel {
-	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
+	line-height:1;
 	border-radius:3px;
 	cursor:move;
 }
@@ -89,6 +88,7 @@
 .panel .newurl {
 	width:98%;
 	padding:1px;
+	height:17px;
 }
 .panel .commit {
 	width:98%;
@@ -104,7 +104,7 @@
 .panel .item {
 	display:block;
 	border:2px solid transparent;
-	border-radius:3px;
+	border-radius:2px;
 	white-space:nowrap;
 	text-decoration:none;
 	overflow:hidden;
@@ -153,9 +153,11 @@
 	margin:auto;
 }
 #option th {
-	padding:5px 10px;
+	padding:0 10px;
 	text-align:right;
 	white-space:nowrap;
+	height:29px;
+	line-height:20px;
 }
 #option td {
 	text-align:left;
@@ -165,6 +167,7 @@
 	border:1px solid gray;
 	border-radius:2px;
 	padding-left:2px;
+	height:18px;
 }
 #option input:focus {
 	border-color:#e70;
@@ -202,7 +205,7 @@
 	display:none;
 	position:absolute;
 	left:0; top:0;
-	width:270px;
+	width:280px;
 	border:1px solid #999;
 	background:#e7e7e7;
 }
@@ -215,7 +218,6 @@
 }
 #contextmenu a {
 	display:block;
-	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
 	line-height:17px;
 	padding:3px 0 3px 9px;
@@ -243,11 +245,11 @@
 }
 #editbox {
 	display:none;
-	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
+	line-height:1;
 }
 #editbox input {
-	font-family:"MS PGothic",sans-serif;
+	height:16px;
 }
 #editbox div {
 	/* アイテムボックス */
@@ -289,6 +291,7 @@
 	/* パネル名・URLアイテム */
 	display:block;
 	border:1px solid transparent;
+	height:18px;
 }
 #editbox div .edit:hover {
 	/* URLアイテム */
@@ -300,7 +303,6 @@
 }
 #editbox .edit input {
 	width:380px;
-	height:14px;
 	padding:1px;
 	background:transparent;
 	border:1px solid transparent;
@@ -345,8 +347,8 @@
 .edragi {
 	position:absolute;
 	background:#fff;
-	font-family:"MS PGothic",sans-serif;
 	font-size:13px;
+	line-height:1;
 	border:1px solid #ddd;
 	padding:1px;
 	width:400px;

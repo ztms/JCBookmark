@@ -53,10 +53,8 @@ body {
 	border-color:#d84;
 }
 .panel .itembox {
-	color:#000;
 	background:#fafafc;
 	background:linear-gradient(#fcfcfe,#f5f5f7);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fcfcfe,endcolorstr=#f5f5f7)";
 }
 .itempop {
 	border:1px solid #aac;
@@ -68,17 +66,15 @@ body {
 .panel .item:hover {
 	color:#600020;
 	border-color:#dcb9b9;
-	background:#f7f0f5;
+	background:#f9f0f5;
 	background:linear-gradient(#fffafc,#f3e5ec);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fffafc,endcolorstr=#f3e5ec)";
 }
 .panel .item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#a00020;
 	border-color:#eca9a9;
-	background:#e7e0e5;
+	background:#f9ecf2;
 	background:linear-gradient(#fff8fa,#f3e0e7);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#fff8fa,endcolorstr=#ff3e0e7)";
 }
 .paneldrop {
 	border:1px dashed #d55;
