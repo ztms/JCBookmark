@@ -3,11 +3,11 @@
 <head>
 <meta charset=utf-8>
 <title>ブックマーク</title>
+<link rel=stylesheet href="jquery/ui.css">
+<link rel=stylesheet href=index.css title=indexcss>
+<link rel=stylesheet id=colorcss>
 <script src="jquery/jquery.js"></script>
 <script src="jquery/ui.js"></script>
-<link rel=stylesheet href="jquery/ui.css">
-<link rel=stylesheet href=index.css>
-<link rel=stylesheet id=colorcss>
 </head>
 <body style="visibility:hidden;">
 <div id=wall></div>
@@ -63,19 +63,30 @@
     <td><input id=column_count><button>▲</button><button>▼</button> (1-30)</td>
   </tr>
   <tr>
+    <th>アイコン拡大</th>
+    <td><input id=icon_size readonly><button>▲</button><button>▼</button> (0-24px)</td>
+  </tr>
+  <tr>
     <th>フォントサイズ</th>
     <td><input id=font_size readonly><button>▲</button><button>▼</button> (9-24px)</td>
   </tr>
   <tr>
-    <th>アイコン拡大</th>
-    <td><input id=icon_size readonly><button>▲</button><button>▼</button> (0-24px)</td>
+    <th>フォント</th>
+    <td>
+      <select id=font_family>
+        <option value="MS PGothic">MS Pゴシック</option>
+        <option value="MS UI Gothic">MS UIゴシック</option>
+        <option value="Meiryo">メイリオ</option>
+        <option value="Meiryo UI">メイリオUI</option>
+      </select>
+    </td>
   </tr>
   </table>
 </div>
 <div id=contextmenu><div></div></div>
 <div id=editbox></div>
 <div id=impexp>
-  ブックマーク形式HTMLファイル(NETSCAPE-Bookmark-file-1)からインポートします。ファイルを選択して、インポートをクリックしてください。<br>データ量が多いと時間がかかります。
+  ブックマーク形式HTMLファイル(NETSCAPE-Bookmark-file-1)からインポートします。ファイルを選択して、インポートをクリックしてください。データ量が多いと時間がかかります。
   <form target=uploader method=post action=import.html enctype="multipart/form-data">
     <input type=file name=file size=50>
   </form>
