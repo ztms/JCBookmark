@@ -41,7 +41,6 @@ body {
 	margin:7px 10px 0 3px;
 	padding:1px;
 	line-height:1.5;
-	font-size:13px;
 }
 #modified {
 	float:left;
@@ -125,7 +124,6 @@ body {
 	height:19px;
 	cursor:default;
 	line-height:1.5;
-	font-size:13px;
 }
 #itemhead .title {
 	padding:0 0 0 7px;
@@ -168,7 +166,6 @@ body {
 	width:128px;
 	height:20px;
 	line-height:1.5;
-	font-size:13px;
 	border:1px dotted #000;
 	background:#ddf;
 	filter:alpha(opacity=40);
@@ -185,7 +182,6 @@ body {
 	border:1px solid #ea0;
 	height:19px;
 	line-height:1.5;
-	font-size:13px;
 }
 /* マウス矩形選択ボックス */
 #selectbox {

@@ -339,30 +339,70 @@ var tree = {
 		}
 	}
 };
-// index.json読取のみ
+// index.json読取のみ最小限
 var option = {
-	autoshot:false
-	,font:{
-		css:'gothic.css'
+	data:{
+		font	:{ css:'' }
+		,autoshot:false
 	}
-};
-$.ajax({
-	dataType:'json'
-	,url	:'index.json'
-	,success:function(data){
-		if( 'autoshot' in data ){ option.autoshot = data.autoshot; }
-		if( 'font' in data ){
-			if( 'css' in data.font ) option.font.css = data.font.css;
+	,font:{
+		css:function(){
+			var font = option.data.font;
+			// 一度目の参照時に規定値を設定
+			if( font.css=='' ) font.css = 'gothic.css';
+			return font.css;
 		}
 	}
-});
+	,autoshot:function(){ return option.data.autoshot; }
+	,init:function( data ){
+		var od = option.data;
+		if( 'font' in data ){
+			if( 'css' in data.font ) od.font.css = data.font.css;
+		}
+		if( 'autoshot' in data ) od.autoshot = data.autoshot;
+		return option;
+	}
+	,load:function( onComplete ){
+		$.ajax({
+			dataType:'json'
+			,url	:'index.json'
+			,success:function(data){ option.init( data ); }
+			,complete:onComplete
+		});
+	}
+};
+// CSSルール追加
+// http://d.hatena.ne.jp/ofk/20090716/1247719727
+$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
 // ブックマークデータ取得
-tree.load(function(){
-	$(window).resize();
-	$('#fontcss').attr('href',option.font.css);
-	$('body').css('visibility','visible');
-	folderTree({ click0:true });
-});
+(function(){
+	var option_ok = false;
+	var tree_ok = false;
+	tree.load(function(){
+		tree_ok = true;
+		if( option_ok ) filer();
+	});
+	option.load(function(){
+		option_ok = true;
+		if( tree_ok ) filer();
+	});
+	function filer(){
+		// フォントサイズCSSルール追加(meiryoは-1px)
+		var fontSize = (option.font.css()=='gothic.css')? 13 : 12;
+		$.css.add('#toolbar input, #folders span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
+		// フォント
+		$('#fontcss').attr('href',option.font.css());
+		// 保存ボタン
+		if( option.autoshot() ) $('#save').attr({
+			title:'変更を保存＋スナップショット'
+			,src:'saveshot.png'
+		});
+		// 表示描画
+		$(window).resize();
+		$('body').css('visibility','visible');
+		folderTree({ click0:true });
+	}
+})();
 // フォルダツリー生成
 // folderTree({
 //   click0		: true/false 最初のフォルダをクリックするかどうか
@@ -687,10 +727,6 @@ $('#exit').click(function(){
 });
 // 保存
 $('#save').click(function(){ treeSave(); });
-if( option.autoshot ) $('#save').attr({
-	title:'変更を保存＋スナップショット'
-	,src:'saveshot.png'
-});
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
@@ -910,9 +946,9 @@ $('.itemborder').mousedown(function(ev){
 	});
 });
 // アイテム欄でマウス矩形選択
-// TODO:下の余白からしか選択できないのがイマイチ使いづらい。やはりアイテム名の右方余白から
-// ドラッグ矩形選択できたほうがいいかな？いまはアイテムのドラッグ移動になってしまう。移動は
-// アイテム名とアイコンで行い、余白は矩形選択にすべきか…？
+// TODO:下の余白からしか選択できないのがイマイチ。アイテム欄に上下左右など余白をつくって
+// そこからドラッグ矩形選択するか？もしくは未選択のアイテムをドラッグした場合に矩形選択
+// (Vistaからのエクスプローラ方式)するか？
 $('#itembox').mousedown(function(ev){
 	var downX = ev.pageX;
 	var downY = ev.pageY;
@@ -958,7 +994,7 @@ var treeSave = function( arg ){
 	tree.save({
 		error	:err
 		,success:function(){
-			if( option.autoshot ){
+			if( option.autoshot() ){
 				$.ajax({
 					url		:':snapshot'
 					,error	:function(xhr){
