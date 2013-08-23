@@ -955,25 +955,38 @@ $('#itembox').mousedown(function(ev){
 		downY < offset.top + this.clientHeight &&
 		downY > $items.offset().top + $items.height()
 	){
-		if( !ev.ctrlKey ) selectItemClear();
+		// 選択フォルダ非アクティブ
+		$(selectFolder).addClass('inactive');
+		if( ev.ctrlKey ){
+			// 選択アイテムをアクティブに
+			$items.children().each(function(){
+				$(this).removeClass('inactive');
+			});
+		}else{
+			// 選択なし
+			selectItemClear();
+		}
 		itemSelectStart( null, downX, downY );
 	}
 });
 // 矩形選択
+// TODO:アイテム欄の上下自動スクロール
 function itemSelectStart( element, downX, downY ){
-	var $items = $('#items');
 	// 変更を反映
 	$('#editbox').trigger('decide');
 	// 矩形表示
 	$('#selectbox').css({ left:downX, top:downY, width:1, height:1 }).show();
-	// 選択フォルダ非アクティブ
-	$(selectFolder).addClass('inactive');
-	// ドラッグ選択イベント
-	$items = $items.children();
-	var hadSelect = [];
-	$items.each(function(i){
-		hadSelect[i] = $(this).hasClass('select')? true:false;
+	// アイテム状態保持
+	var items = [];
+	$('#items').children().each(function(){
+		if( this!=element ){
+			items.push({
+				$: $(this)
+				,selected: $(this).hasClass('select')? true:false
+			});
+		}
 	});
+	// ドラッグイベント
 	$(document).on('mousemove.selectbox',function(ev){
 		// 矩形表示
 		var rect = $.extend(
@@ -982,20 +995,19 @@ function itemSelectStart( element, downX, downY ){
 		);
 		var rectBottom = rect.top + rect.height;
 		$('#selectbox').css( rect );
-		// アイテム選択
-		$items.each(function(i){
-			if( this!=element ){
-				var offset = $(this).offset();
-				if( offset.top >= rect.top-15 && offset.top <= rectBottom-4 ){
-					// 矩形内
-					hadSelect[i]? $(this).removeClass('select') : $(this).addClass('select');
-				}
-				else{
-					// 矩形外
-					hadSelect[i]? $(this).addClass('select') : $(this).removeClass('select');
-				}
+		// 選択切り替え
+		for( var i=0, n=items.length; i<n; i++ ){
+			var item = items[i];
+			var offset = item.$.offset();
+			if( offset.top >= rect.top-15 && offset.top <= rectBottom-4 ){
+				// 矩形内は選択逆転
+				item.selected? item.$.removeClass('select') : item.$.addClass('select');
 			}
-		});
+			else{
+				// 矩形外は元通り
+				item.selected? item.$.addClass('select') : item.$.removeClass('select');
+			}
+		}
 	})
 	.one('mouseup',function(){
 		$(document).off('mousemove.selectbox');
