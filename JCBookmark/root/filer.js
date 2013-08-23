@@ -386,7 +386,7 @@ $.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,
 		if( tree_ok ) filer();
 	});
 	function filer(){
-		// フォントサイズCSSルール追加(meiryoは-1px)
+		// フォントサイズ(meiryoは-1px)
 		var fontSize = (option.font.css()=='gothic.css')? 13 : 12;
 		$.css.add('#toolbar input, #folders span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
 		// フォント
@@ -944,10 +944,7 @@ $('.itemborder').mousedown(function(ev){
 		// TODO:位置保存する…？
 	});
 });
-// アイテム欄でマウス矩形選択
-// TODO:下の余白からしか選択できないのがイマイチ。アイテム欄に上下左右など余白をつくって
-// そこからドラッグ矩形選択するか？もしくは未選択のアイテムをドラッグした場合に矩形選択
-// (Vistaからのエクスプローラ方式)するか？
+// アイテム欄下余白から矩形選択
 $('#itembox').mousedown(function(ev){
 	var downX = ev.pageX;
 	var downY = ev.pageY;
@@ -958,34 +955,40 @@ $('#itembox').mousedown(function(ev){
 		downY < offset.top + this.clientHeight &&
 		downY > $items.offset().top + $items.height()
 	){
-		// 変更を反映
-		$('#editbox').trigger('decide');
-		// 矩形表示
-		$('#selectbox').css({ left:downX, top:downY, width:1, height:1 }).show();
-		// 選択フォルダ非アクティブ
-		$(selectFolder).addClass('inactive');
-		// ドラッグ選択イベント
-		$items = $items.children();
-		$(document).on('mousemove.selectbox',function(ev){
-			// 矩形表示
-			var rect = $.extend(
-				(ev.pageX > downX)? { left:downX, width:ev.pageX -downX } :{ left:ev.pageX, width:downX -ev.pageX },
-				(ev.pageY > downY)? { top:downY, height:ev.pageY -downY } :{ top:ev.pageY, height:downY -ev.pageY }
-			);
-			$('#selectbox').css( rect );
-			// 矩形内アイテム選択
-			selectItemClear();
-			$items.each(function(){
-				offset = $(this).removeClass('inactive').offset();
-				if( offset.top >= rect.top-10 ) $(select=selectItemLast=this).addClass('select').focus();
-			});
-		})
-		.one('mouseup',function(){
-			$(document).off('mousemove.selectbox');
-			$('#selectbox').hide();
-		});
+		itemSelectStart( downX, downY );
 	}
 });
+// 矩形選択
+function itemSelectStart( downX, downY ){
+	var $items = $('#items');
+	// 変更を反映
+	$('#editbox').trigger('decide');
+	// 矩形表示
+	$('#selectbox').css({ left:downX, top:downY, width:1, height:1 }).show();
+	// 選択フォルダ非アクティブ
+	$(selectFolder).addClass('inactive');
+	// ドラッグ選択イベント
+	$items = $items.children();
+	$(document).on('mousemove.selectbox',function(ev){
+		// 矩形表示
+		var rect = $.extend(
+			(ev.pageX > downX)? { left:downX, width:ev.pageX -downX } :{ left:ev.pageX, width:downX -ev.pageX },
+			(ev.pageY > downY)? { top:downY, height:ev.pageY -downY } :{ top:ev.pageY, height:downY -ev.pageY }
+		);
+		var rectBottom = rect.top + rect.height;
+		$('#selectbox').css( rect );
+		// 矩形内アイテム選択
+		$items.each(function(){
+			var offset = $(this).offset();
+			if( offset.top >= rect.top-15 && offset.top <= rectBottom-5 )
+				$(select=selectItemLast=this).removeClass('inactive').addClass('select').focus();
+		});
+	})
+	.one('mouseup',function(){
+		$(document).off('mousemove.selectbox');
+		$('#selectbox').hide();
+	});
+}
 // ノードツリー保存
 var treeSave = function( arg ){
 	$('#wait').show();
@@ -1030,7 +1033,6 @@ function itemSelfClick( ev, shiftKey ){
 		$(this).trigger('mousedown',shiftKey).mouseup().click().focus();
 	}
 }
-// TODO:未選択のアイテムをドラッグした場合は矩形選択モードに
 function itemMouseDown( ev, shiftKey ){
 	// 変更を反映
 	$('#editbox').trigger('decide');
@@ -1069,9 +1071,13 @@ function itemMouseDown( ev, shiftKey ){
 				isTarget? $(this).addClass('select') :$(this).removeClass('select');
 				if( this.id==id.end ) isTarget = false;
 			});
+			// ドラッグ開始
+			itemDragStart( this, ev.pageX, ev.pageY );
 		}else{
 			// なにも選択されてないので単選択
 			$(select=selectItemLast=this).addClass('select').focus();
+			// 矩形選択
+			itemSelectStart( ev.pageX, ev.pageY );
 		}
 	}else if( ev.ctrlKey ){
 		// 単選択(選択追加)
@@ -1082,6 +1088,8 @@ function itemMouseDown( ev, shiftKey ){
 		}else{
 			// 未選択は選択
 			$(select=selectItemLast=this).addClass('select').focus();
+			// 矩形選択
+			itemSelectStart( ev.pageX, ev.pageY );
 		}
 	}else{
 		// 単選択(差し替え)
@@ -1099,14 +1107,16 @@ function itemMouseDown( ev, shiftKey ){
 			// (ここで選択解除するとドラッグできなくなるダメ)
 			// 単選択だった場合、mouseup(click)で名前変更。
 			ev.data.itemNotify = ( selectCount >1 )? 'select1' :'edit';
+			// ドラッグ開始
+			itemDragStart( this, ev.pageX, ev.pageY );
 		}else{
 			// 未選択はここで差し替え単選択
 			selectItemClear();
 			$(select=selectItemLast=this).addClass('select').focus();
+			// 矩形選択
+			itemSelectStart( ev.pageX, ev.pageY );
 		}
 	}
-	// ドラッグ開始
-	itemDragStart( this, ev.pageX, ev.pageY );
 	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
 	// ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
 	// 他に適切な対策はないのか？
