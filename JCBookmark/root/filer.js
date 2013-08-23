@@ -955,11 +955,12 @@ $('#itembox').mousedown(function(ev){
 		downY < offset.top + this.clientHeight &&
 		downY > $items.offset().top + $items.height()
 	){
-		itemSelectStart( downX, downY );
+		if( !ev.ctrlKey ) selectItemClear();
+		itemSelectStart( null, downX, downY );
 	}
 });
 // 矩形選択
-function itemSelectStart( downX, downY ){
+function itemSelectStart( element, downX, downY ){
 	var $items = $('#items');
 	// 変更を反映
 	$('#editbox').trigger('decide');
@@ -969,6 +970,10 @@ function itemSelectStart( downX, downY ){
 	$(selectFolder).addClass('inactive');
 	// ドラッグ選択イベント
 	$items = $items.children();
+	var hadSelect = [];
+	$items.each(function(i){
+		hadSelect[i] = $(this).hasClass('select')? true:false;
+	});
 	$(document).on('mousemove.selectbox',function(ev){
 		// 矩形表示
 		var rect = $.extend(
@@ -977,11 +982,19 @@ function itemSelectStart( downX, downY ){
 		);
 		var rectBottom = rect.top + rect.height;
 		$('#selectbox').css( rect );
-		// 矩形内アイテム選択
-		$items.each(function(){
-			var offset = $(this).offset();
-			if( offset.top >= rect.top-15 && offset.top <= rectBottom-5 )
-				$(select=selectItemLast=this).removeClass('inactive').addClass('select').focus();
+		// アイテム選択
+		$items.each(function(i){
+			if( this!=element ){
+				var offset = $(this).offset();
+				if( offset.top >= rect.top-15 && offset.top <= rectBottom-4 ){
+					// 矩形内
+					hadSelect[i]? $(this).removeClass('select') : $(this).addClass('select');
+				}
+				else{
+					// 矩形外
+					hadSelect[i]? $(this).addClass('select') : $(this).removeClass('select');
+				}
+			}
 		});
 	})
 	.one('mouseup',function(){
@@ -1077,7 +1090,7 @@ function itemMouseDown( ev, shiftKey ){
 			// なにも選択されてないので単選択
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( ev.pageX, ev.pageY );
+			itemSelectStart( this, ev.pageX, ev.pageY );
 		}
 	}else if( ev.ctrlKey ){
 		// 単選択(選択追加)
@@ -1089,7 +1102,7 @@ function itemMouseDown( ev, shiftKey ){
 			// 未選択は選択
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( ev.pageX, ev.pageY );
+			itemSelectStart( this, ev.pageX, ev.pageY );
 		}
 	}else{
 		// 単選択(差し替え)
@@ -1114,7 +1127,7 @@ function itemMouseDown( ev, shiftKey ){
 			selectItemClear();
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( ev.pageX, ev.pageY );
+			itemSelectStart( this, ev.pageX, ev.pageY );
 		}
 	}
 	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
