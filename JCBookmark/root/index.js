@@ -128,12 +128,11 @@ var tree = {
 		}
 		return 0;
 	}
-	,path:'tree.json'
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
 			dataType:'json'
-			,url	:tree.path
+			,url	:'tree.json'
 			,error	:function(xhr){ Alert('データ取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){
 				tree.replace( data );
@@ -145,7 +144,7 @@ var tree = {
 	,save:function( arg ){
 		$.ajax({
 			type	:'put'
-			,url	:tree.path
+			,url	:'tree.json'
 			,data	:JSON.stringify( tree.root )
 			,error	:function(xhr){
 				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
@@ -581,13 +580,12 @@ var option = {
 		}
 		return option.data.autoshot;
 	}
-	,path:'index.json'
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
 		$.ajax({
 			dataType:'json'
-			,url	 :option.path
-			,success :function(data){ option.init( data ); }
+			,url	:'index.json'
+			,success:function(data){ option.init( data ); }
 			,complete:onComplete
 		});
 		return option;
@@ -596,7 +594,7 @@ var option = {
 	,save:function( arg ){
 		$.ajax({
 			type	:'put'
-			,url	:option.path
+			,url	:'index.json'
 			,data	:JSON.stringify( option.data )
 			,error	:function(xhr){
 				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
@@ -614,21 +612,13 @@ var option = {
 (function(){
 	var option_ok = false;
 	var tree_ok = false;
-	var paneler_ok = false;
-	// 並列通信して後に終わった方がpaneler()実行する
-	option.load(function(){
-		option_ok = true;
-		if( tree_ok && !paneler_ok ){
-			paneler_ok = true;
-			paneler( tree.top(), setEvents );
-		}
-	});
 	tree.load(function(){
 		tree_ok = true;
-		if( option_ok && !paneler_ok ){
-			paneler_ok = true;
-			paneler( tree.top(), setEvents );
-		}
+		if( option_ok ) paneler( tree.top(), setEvents );
+	});
+	option.load(function(){
+		option_ok = true;
+		if( tree_ok ) paneler( tree.top(), setEvents );
 	});
 })();
 // カラム生成関数
