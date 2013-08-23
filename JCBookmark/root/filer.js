@@ -150,12 +150,11 @@ var tree = {
 		}
 		return 0;
 	}
-	,path:'tree.json'
 	// ノードツリー取得
 	,load:function( onSuccess ){
 		$.ajax({
 			dataType:'json'
-			,url	:tree.path
+			,url	:'tree.json'
 			,error	:function(xhr){ Alert('データ取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){
 				tree.replace( data );
@@ -167,7 +166,7 @@ var tree = {
 	,save:function( arg ){
 		$.ajax({
 			type	:'put'
-			,url	:tree.path
+			,url	:'tree.json'
 			,data	:JSON.stringify( tree.root )
 			,error	:function(xhr){
 				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
