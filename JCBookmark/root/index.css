@@ -251,9 +251,8 @@
 #editbox input {
 	height:16px;
 }
-#editbox div {
-	/* アイテムボックス */
-	width:445px;
+#editbox div { /* アイテムボックス */
+	width:100%;/*445px;*/
 	height:280px;
 	margin-top:2px;
 	padding:2px;
@@ -261,7 +260,7 @@
 	overflow-y:scroll;
 }
 #editbox .newurl {
-	width:423px;
+	width:98%;/*423px;*/
 	border:1px solid #ddd;
 	padding:1px;
 }
@@ -272,7 +271,7 @@
 	border-color:#eb0;
 }
 #editbox .commit {
-	width:421px;
+	width:97%;/*421px;*/
 	padding:1px;
 	text-align:center;
 	cursor:pointer;
@@ -287,14 +286,13 @@
 #editbox .commit:active {
 	background:#ffe5d3;
 }
-#editbox .edit {
-	/* パネル名・URLアイテム */
+#editbox .edit { /* パネル名・URLアイテム */
 	display:block;
 	border:1px solid transparent;
 	height:18px;
+	white-space:nowrap;
 }
-#editbox div .edit:hover {
-	/* URLアイテム */
+#editbox div .edit:hover { /* URLアイテム */
 	background:#f7f7f7;
 	border-color:#ddd;
 }
@@ -302,7 +300,7 @@
 	cursor:n-resize;
 }
 #editbox .edit input {
-	width:380px;
+	width:390px;
 	padding:1px;
 	background:transparent;
 	border:1px solid transparent;
@@ -314,8 +312,7 @@
 	border-color:#eb0;
 	font-weight:bold;
 }
-#editbox .edit .idel {
-	/* 削除ボタン */
+#editbox .edit .idel { /* 削除ボタン */
 	float:right;
 	border:1px solid transparent;
 	width:16px;
@@ -339,10 +336,12 @@
 	background:#fdd;
 }
 #editbox textarea {
-	width:445px;
+	width:100%;/*445px;*/
 	height:300px;
 	padding:2px;
 	border:1px solid #888;
+	line-height:1.3;
+	resize:none;
 }
 .edragi {
 	position:absolute;
@@ -444,8 +443,45 @@
 	display:none;
 	margin:0 50px 0 46px;
 }
+#find {
+	display:none;
+	line-height:1.5;
+}
+#findtab.ui-tabs {
+	padding:0;
+	border:0;
+}
+#findtab .ui-tabs-nav {
+	padding:0;
+	border:0;
+	background:transparent;
+}
+#findtab .ui-tabs-panel {
+	border-width:1px;
+}
+#findtab a {
+	outline:0;
+}
+#keyword input {
+	width:270px;
+	height:20px;
+}
+#findtab img {
+	width:18px;
+	height:18px;
+	vertical-align:top;
+}
+#findtab .found {
+	width:100%;
+	height:265px;
+	border:1px solid #ccc;
+	margin-top:10px;
+}
 .ui-dialog {
 	font-size:14px;
+}
+.ui-dialog-content {
+	overflow:hidden !important;
 }
 .ui-button-text {
 	color:#555;

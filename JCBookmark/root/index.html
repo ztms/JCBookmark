@@ -17,7 +17,7 @@
   ★ 変更を保存するにはここをクリックしてください ★
   <input type=checkbox id=autoshot><label for=autoshot><img src=camera.png>スナップショットも作成</label>
 </div>
-<div id=sidebar>
+<div id=sidebar style="clear:both;">
   <img class=barico id=optionico src=option.png title="パネル設定" tabindex=0>
   <img class=barico id=filerico src=filer.png title="ブックマークの整理" tabindex=0>
   <img class=barico id=chromeico src=chrome.png title="Google Chrome ブックマークのインポート" tabindex=0>
@@ -25,8 +25,7 @@
   <img class=barico id=firefoxico src=firefox.png title="Firefox ブックマークのインポート" tabindex=0>
   <img class=barico id=impexpico src=impexp.png title="HTMLインポート・エクスポート" tabindex=0>
   <img class=barico id=snapico src=camera.png title="スナップショット" tabindex=0>
-  <img class=barico id=findico src=find.png title="検索" tabindex=0>
-  <br class=clear>
+  <img class=barico id=findico src=find.png title="ブックマーク検索" tabindex=0>
 </div>
 <div id=option>
   <table>
@@ -106,6 +105,20 @@
   </div>
 </div>
 <div id=find>
+  <div id=findtab>
+    <ul>
+      <li><a href="#keyword">キーワード検索</a></li>
+      <li><a href="#httpres">HTTP応答確認</a></li>
+    </ul>
+    <div id=keyword>
+      <input>&nbsp;&nbsp;<button>検 索 <img src=find.png></button>
+      <div class=found></div>
+    </div>
+    <div id=httpres>
+      ブックマークURLのHTTP応答確認を行います。&nbsp;&nbsp;<button>実 行 <img src=find.png></button>
+      <div class=found></div>
+    </div>
+  </div>
 </div>
 <div id=dialog></div>
 <script src=index.js></script>

@@ -1111,6 +1111,25 @@ function setEvents(){
 				,width	:480
 				,height	:360
 				,close	:function(){ $(this).dialog('destroy'); }
+				,resize	:function(){
+					// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
+					// 表示が崩れてしまい回避策がわからないので、ここでリサイズイベント処理する。
+					// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
+					// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
+					// setTimeoutで適当に溜めて処理する。マウスが止まってから少し遅れて高さ方向が
+					// 調節される感じで表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れも
+					// なく追従性もよいので、できればCSSでやりたいのだが…。
+					var timer = null;
+					var $box = $('#editbox');
+					var $area = $box.find('textarea');
+					return function(){
+						clearTimeout(timer);
+						timer = setTimeout(function(){
+							// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+							$area.height( $box.height() -$box.prev().height() +15 );
+						},20);
+					};
+				}()
 			});
 		}));
 		// TODO:開く/閉じる、全パネルを閉じる、全パネルを開く
@@ -1706,17 +1725,18 @@ function setEvents(){
 				// メモ欄の文字列横幅最大を算出
 				var maxWidth = 0;
 				var $span = $('<span></span>').css({
-						visibility		:'hidden'
-						,position		:'absolute'
+						position		:'absolute'
+						,visibility		:'hidden'
 						,'white-space'	:'nowrap'
 						,'font-weight'	:'bold'
 					}).appendTo(document.body);
 				for( var i=0, n=list.length; i<n; i++ ){
-					var width = $span.text(list[i].memo||'').width();
-					if( width > maxWidth ) maxWidth = width;
+					if( list[i].memo || list[i].memo.length>0 ){
+						var width = $span.text(list[i].memo).width();
+						if( width > maxWidth ) maxWidth = width;
+					}
 				}
 				$span.remove();
-				maxWidth *= 1.25;	// 余白適当
 				// 横幅小さすぎ修正
 				var dateWidth = $shots.find('.memo').position().left;
 				var minWidth = $('#shotbox').width() - dateWidth -17;	// -17pxスクロールバー
@@ -1733,19 +1753,30 @@ function setEvents(){
 	// 検索
 	// TODO:単なるダイアログボックスじゃないもっといいUIはないか
 	// 画面隅の邪魔にならない領域にposition:fixなかんじで
+	// jQuery UI Tabs
+	$('#findtab').tabs({
+		select:function( ev, ui ){
+			if( ui.tab.href.match(/#keyword$/) ){
+				// キーワードのテキストボックスにフォーカス移動
+				setTimeout(function(){ $('#keyword').find('input').focus(); },0);
+			}
+		}
+	}).find('button').button();
 	$('#findico').click(function(){
 		$('#find').dialog({
-			title	:'検索'
+			title	:'ブックマーク検索'
+			,modal	:true
 			,width	:480
-			,height	:420
+			,height	:430
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
+		$('#keyword').find('input').focus();
 		// フォルダ配列生成・URL総数カウント
 		// フォルダ1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
-		var folderList = [];
+		var folders = [];
 		var urlTotal = 0;
 		function callee( node ){
-			folderList.push( node );
+			folders.push( node );
 			urlTotal += node.child.length;
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].child ){
@@ -1756,6 +1787,13 @@ function setEvents(){
 		}
 		callee( tree.top() );
 		callee( tree.trash() );
+		// イベント
+		$('#keyword').find('button').click(function(){
+			alert('keyword');
+		});
+		$('#httpres').find('button').click(function(){
+			alert('httpres');
+		});
 	});
 	// パネル並べ替え
 	Sortable({
@@ -2067,10 +2105,10 @@ function panelEdit( pid ){
 					if( this.value.length ){
 						var $item = $('<a class=edit></a>').attr('title',this.value);
 						var $icon = $('<img class=icon src=item.png>');
-						var $edit = $('<input>').val( this.value.replace(/^https?:\/\//,'') );
+						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.replace(/^https?:\/\//,'') );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// 新規登録ボタンの次に挿入
-						$commit.after( $item.append($icon).append($edit).append($idel) );
+						$commit.after( $item.append($idel).append($icon).append($edit) );
 						// URLタイトル、favicon取得
 						$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
@@ -2109,7 +2147,7 @@ function panelEdit( pid ){
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
-	var $itembase = $('<a class=edit><img class=icon><input><img class=idel src=delete.png title="削除（ごみ箱）"></a>');
+	var $itembase = $('<a class=edit><img class=idel src=delete.png title="削除（ごみ箱）"><img class=icon><input></a>');
 	(function callee(){
 		var count=5;
 		while( index < length && count>0 ){
@@ -2253,6 +2291,17 @@ function panelEdit( pid ){
 			}
 			,'キャンセル':close
 		}
+		,resize:function(){
+			var timer = null;
+			return function(){
+				clearTimeout(timer);
+				timer = setTimeout(function(){
+					// $editbox.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+					$itembox.height( $editbox.height() -$editbox.prev().height() -5 );
+					$editbox.find('.edit input').width( $itembox.width() -64 );
+				},20);
+			};
+		}()
 	});
 	function close(){
 		clearTimeout(timer);
