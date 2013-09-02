@@ -1791,8 +1791,8 @@ function setEvents(){
 		$('#keyword').find('button').click(function(){
 			alert('keyword');
 		});
-		$('#httpres').find('button').click(function(){
-			alert('httpres');
+		$('#deadlink').find('button').click(function(){
+			alert('deadlink');
 		});
 	});
 	// パネル並べ替え

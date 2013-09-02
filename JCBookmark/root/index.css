@@ -464,7 +464,8 @@
 }
 #keyword input {
 	width:270px;
-	height:20px;
+	height:22px;
+	padding:1px 3px;
 }
 #findtab img {
 	width:18px;
