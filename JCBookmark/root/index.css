@@ -46,10 +46,10 @@
 }
 #wall {
 	margin:auto;
+	padding-bottom:50px;
 }
 .column {
 	float:left;
-	padding-bottom:30px;
 }
 .panel {
 	font-size:13px;
@@ -205,7 +205,6 @@
 	display:none;
 	position:absolute;
 	left:0; top:0;
-	width:280px;
 	border:1px solid #999;
 	background:#e7e7e7;
 }

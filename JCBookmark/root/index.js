@@ -504,8 +504,8 @@ var option = {
 			}
 			return option.data.panel.layout;
 		}
-		,layoutSave:function(){
-			// パネル配置(どのカラム=段にどのパネルが入っているか)保存
+		,layouted:function(){
+			// パネル配置(どのカラム=段にどのパネルが入っているか)記憶
 			// 形式：JSON形式で、キーがカラム(段)ID、値がパネルIDの配列
 			// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
 			var layout = {};
@@ -1061,11 +1061,57 @@ function setEvents(){
 			}
 		};
 	}())
-	// パネルタイトルダブルクリックで開閉
-	.on('dblclick','.title',function(ev){
-		// ＋－ボタン上の場合は何もしない
-		if( $(ev.target).hasClass('plusminus') ) return;
-		$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
+	// ウォール右クリック新規パネル作成メニュー
+	.on('contextmenu','#wall',function(ev){
+		var column = null;	// 新規パネルが入るカラム
+		var above = null;	// 新規パネルの上のパネル
+		var below = null;	// 新規パネルの下のパネル
+		$('.column').each(function(){
+			if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
+				var $panels = $(this).children('.panel');
+				if( $panels.length ){
+					if( ev.pageX < $panels[0].offsetLeft ) return false;		// パネル左右余白クリック無視
+					if( ev.pageY < $panels[0].offsetTop ) below = $panels[0];	// 一番上に新規パネル
+					else $panels.each(function(){								// 既存パネルの下に新規パネル
+						if( this.offsetTop +this.offsetHeight < ev.pageY )
+							above = this;
+						else
+							return false;
+					});
+				}
+				else column = this; // 空カラムに新規パネル
+				return false;
+			}
+		});
+		if( column || above || below ){
+			var $menu = $('#contextmenu');
+			var $box = $menu.children('div').empty();
+			$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
+				$menu.hide();
+				// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
+				// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
+				InputDialog({
+					title:'新規パネル作成'
+					,text:'パネル名'
+					,ok:function( name ){
+						var node = tree.newFolder( name ||'新規パネル' );
+						var $p = $newPanel( node );
+						if( column ) $(column).append( $p );
+						else if( above ) $(above).after( $p );
+						else if( below ) $(below).before( $p );
+						option.panel.layouted();
+					}
+				});
+			}));
+			// メニュー表示
+			$menu.css({
+				left: (($window.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+				,top: (($window.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+			})
+			.width(190).show();
+			return false;
+		}
+		return true; // 既定右クリックメニュー
 	})
 	// パネル右クリックメニュー
 	.on('contextmenu','.title',function(ev){
@@ -1077,7 +1123,7 @@ function setEvents(){
 		}
 		var $menu = $('#contextmenu');
 		var $box = $menu.children('div').empty();
-		$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a><hr>').click(function(){
+		$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
 			$menu.hide();
 			// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
 			// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
@@ -1088,15 +1134,16 @@ function setEvents(){
 					var node = tree.newFolder( name ||'新規パネル' );
 					var $p = $newPanel( node );
 					$(panel).before( $p );
-					option.panel.layoutSave();
+					option.panel.layouted();
 				}
 			});
-		}));
-		$box.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
+		}))
+		.append('<hr>')
+		.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
 			$menu.hide();
 			panelEdit( panel.id );
-		}));
-		$box.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
+		}))
+		.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
 			var text='';
 			var child = tree.node( panel.id ).child;
@@ -1139,14 +1186,15 @@ function setEvents(){
 				$menu.hide();
 				tree.moveChild( [panel.id], tree.trash() );
 				$(panel).remove();
-				option.panel.layoutSave();
+				option.panel.layouted();
 			}));
 		}
-		// 表示
+		// メニュー表示
 		$menu.css({
 			left: (($window.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
 			,top: (($window.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
-		}).show();
+		})
+		.width(280).show();
 		return false;	// 既定右クリックメニュー出さない
 	})
 	.on('mousedown',function(ev){
@@ -1168,6 +1216,12 @@ function setEvents(){
 			status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
 		});
 		option.panel.status( status );
+	})
+	// パネルタイトルダブルクリックで開閉
+	.on('dblclick','.title',function(ev){
+		// ＋－ボタン上の場合は何もしない
+		if( $(ev.target).hasClass('plusminus') ) return;
+		$(this).find('.plusminus').trigger('click',[ ev.pageX, ev.pageY ]);
 	})
 	// 編集アイコンクリックでパネル編集
 	.on('click','.pen',function(){
@@ -1840,8 +1894,7 @@ function setEvents(){
 				$panel.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });
 				panelOpenClose( $panel[0].id );
 			}
-			// 配置保存
-			option.panel.layoutSave();
+			option.panel.layouted();
 		}
 	});
 	// パネルアイテム並べ替え
