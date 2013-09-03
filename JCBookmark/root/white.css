@@ -65,8 +65,8 @@ body {
 }
 .panel .item:hover {
 	color:#600020;
-	border-color:#dcb9b9;
 	background:#f9f0f5;
+	border-color:#dcb9b9;
 	background:linear-gradient(#fffafc,#f3e5ec);
 }
 .panel .item:active {

@@ -445,6 +445,7 @@
 #find {
 	display:none;
 	line-height:1.5;
+	font-size:13px;
 }
 #findtab.ui-tabs {
 	padding:0;
@@ -461,21 +462,44 @@
 #findtab a {
 	outline:0;
 }
-#keyword input {
-	width:270px;
-	height:22px;
-	padding:1px 3px;
-}
-#findtab img {
+#findtab button img {
 	width:18px;
 	height:18px;
 	vertical-align:top;
+}
+#findtab .stop, #findtab .wait {
+	display:none;
+}
+#findtab .progress {
+	height:10px;
+	border:0;
+	border-radius:0;
 }
 #findtab .found {
 	width:100%;
 	height:265px;
 	border:1px solid #ccc;
-	margin-top:10px;
+	overflow:auto;
+}
+#findtab .found a {
+	display:block;
+	white-space:nowrap;
+	text-decoration:none;
+	border:1px solid transparent;
+	color:#03c;
+}
+#findtab .found a:hover {
+	color:#602;
+	background:#f9f0f5;
+	border-color:#dbb;
+}
+#findtab .found div {
+	white-space:nowrap;
+}
+#keyword input {
+	width:270px;
+	height:22px;
+	padding:1px 3px;
 }
 .ui-dialog {
 	font-size:14px;

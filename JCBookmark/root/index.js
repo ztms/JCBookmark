@@ -205,9 +205,9 @@ var tree = {
 		if( isString(dst) ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-			for( var i=0; i<ids.length; i++ ){
+			for( var i=ids.length-1; i>=0; i-- ){
 				if( ids[i]==dst.id || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dst) )
-					ids.splice(i--,1);
+					ids.splice(i,1);
 			}
 			if( ids.length ){
 				// 切り取り
@@ -240,9 +240,9 @@ var tree = {
 	// ids:ノードID配列、dstid:ノードID、isAfter:boolean
 	,moveSibling:function( ids, dstid, isAfter ){
 		// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-		for( var i=0; i<ids.length; i++ ){
+		for( var i=ids.length-1; i>=0; i-- ){
 			if( ids[i]==dstid || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dstid) )
-				ids.splice(i--,1);
+				ids.splice(i,1);
 		}
 		if( ids.length ){
 			// 移動先の親ノード
@@ -1166,6 +1166,7 @@ function setEvents(){
 					// setTimeoutで適当に溜めて処理する。マウスが止まってから少し遅れて高さ方向が
 					// 調節される感じで表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れも
 					// なく追従性もよいので、できればCSSでやりたいのだが…。
+					// TODO:メイリオだとよいがMSPゴシックで高さがイマイチ
 					var timer = null;
 					var $box = $('#editbox');
 					var $area = $box.find('textarea');
@@ -1213,7 +1214,7 @@ function setEvents(){
 		var status = {};
 		$('.plusminus').each(function(){
 			//srcはURL('http://localhost:XXX/plus.png'など)文字列
-			status[this.id] = (this.src.match(/\/plus.png$/))? 1 : 0;
+			status[this.id] = (this.src.search(/\/plus.png$/)>=0)? 1 : 0;
 		});
 		option.panel.status( status );
 	})
@@ -1266,7 +1267,7 @@ function setEvents(){
 		// パネル幅
 		$('#panel_width').val( option.panel.width() )
 		.off().on('input keyup paste',function(){
-			if( !this.value.match(/^\d{3,4}$/) || this.value <100 || this.value >1000 ) return;
+			if( this.value.search(/^\d{3,4}$/)<0 || this.value <100 || this.value >1000 ) return;
 			if( this.value !=option.panel.width() ){
 				option.panel.width( this.value );
 				optionApply();
@@ -1291,7 +1292,7 @@ function setEvents(){
 		// パネル余白
 		$('#panel_marginV').val( option.panel.margin.top() )
 		.off().on('input keyup paste',function(){
-			if( !this.value.match(/^\d{1,3}$/) || this.value <0 || this.value >50 ) return;
+			if( this.value.search(/^\d{1,3}$/)<0 || this.value <0 || this.value >50 ) return;
 			if( this.value !=option.panel.margin.top() ){
 				option.panel.margin.top( this.value );
 				optionApply();
@@ -1315,7 +1316,7 @@ function setEvents(){
 		});
 		$('#panel_marginH').val( option.panel.margin.left() )
 		.off().on('input keyup paste',function(){
-			if( !this.value.match(/^\d{1,3}$/) || this.value <0 || this.value >50 ) return;
+			if( this.value.search(/^\d{1,3}$/)<0 || this.value <0 || this.value >50 ) return;
 			if( this.value !=option.panel.margin.left() ){
 				option.panel.margin.left( this.value );
 				optionApply();
@@ -1340,7 +1341,7 @@ function setEvents(){
 		// 列数
 		$('#column_count').val( option.column.count() )
 		.off().on('input keyup paste',function(){
-			if( !this.value.match(/^\d{1,2}$/) || this.value < 1 || this.value > 30 ) return;
+			if( this.value.search(/^\d{1,2}$/)<0 || this.value < 1 || this.value > 30 ) return;
 			if( this.value !=option.column.count() ){
 				columnCountChange( { prev:option.column.count(), next:this.value } );
 				option.column.count( this.value );
@@ -1784,8 +1785,8 @@ function setEvents(){
 						,'white-space'	:'nowrap'
 						,'font-weight'	:'bold'
 					}).appendTo(document.body);
-				for( var i=0, n=list.length; i<n; i++ ){
-					if( list[i].memo || list[i].memo.length>0 ){
+				for( var i=list.length-1; i>=0; i-- ){
+					if( list[i].memo && list[i].memo.length>0 ){
 						var width = $span.text(list[i].memo).width();
 						if( width > maxWidth ) maxWidth = width;
 					}
@@ -1810,42 +1811,110 @@ function setEvents(){
 	// jQuery UI Tabs
 	$('#findtab').tabs({
 		select:function( ev, ui ){
-			if( ui.tab.href.match(/#keyword$/) ){
+			if( ui.tab.href.search(/#keyword$/)>=0 ){
 				// キーワードのテキストボックスにフォーカス移動
 				setTimeout(function(){ $('#keyword').find('input').focus(); },0);
 			}
 		}
-	}).find('button').button();
+	})
+	.find('button').button().end()
+	.find('.progress').progressbar();
+	// キーワードテキストボックスEnterで検索開始
+	$('#keyword').find('input').keypress(function(ev){
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: $('#keyword').find('.start').click(); return false;
+		}
+	});
 	$('#findico').click(function(){
 		$('#find').dialog({
 			title	:'ブックマーク検索'
 			,modal	:true
-			,width	:480
+			,width	:560
 			,height	:430
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 		$('#keyword').find('input').focus();
-		// フォルダ配列生成・URL総数カウント
-		// フォルダ1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
-		var folders = [];
-		var urlTotal = 0;
+		// パネル(フォルダ)配列生成・URL総数カウント
+		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
+		var panels = [];	// パネルノード配列
+		var nodeTotal = 0;	// URL数＋パネル数
 		function callee( node ){
-			folders.push( node );
-			urlTotal += node.child.length;
+			panels.push( node );
+			nodeTotal += node.child.length;
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].child ){
 					callee( node.child[i] );
-					urlTotal--;
+					nodeTotal--;
 				}
 			}
 		}
 		callee( tree.top() );
 		callee( tree.trash() );
+		nodeTotal += panels.length;
 		// イベント
-		$('#keyword').find('button').click(function(){
-			alert('keyword');
+		$('#keyword').find('.start').off().click(function(){
+				var $my = $('#keyword');
+				var words = $my.find('input').val().split(/[ 　]+/); // 空白文字で分割
+				for( var i=words.length-1; i>=0; i-- ) if( words[i].length<=0 ) words.splice(i,1);
+				if( words.length ){
+					var $wait = $('<img src=wait.gif>').appendTo( $my.find('.found').empty() );
+					var $pgbar = $my.find('.progress').progressbar('value',0);
+					var $url = $('<a target="_blank"><img class=icon><span></span></a>');
+					var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
+					var timer = null;
+					$my.find('.stop').off().click(function(){
+						clearTimeout( timer );
+						$(this).hide();
+						$pgbar.progressbar('value',0);
+						$wait.remove();
+						$url.remove();
+						$pnl.remove();
+					}).show();
+					var index = 0;
+					var total = 0;
+					(function callee(){
+						function found( text ){
+							// AND検索
+							// TODO:OR検索、数字/カタカナの全角半角の区別、大小文字区別
+							for( var i=words.length-1; i>=0; i-- ){
+								if( text.indexOf(words[i])<0 ) return false;
+							}
+							return true;
+						}
+						var limit = total +21; // 20個以上ずつ
+						while( index < panels.length && total<limit ){
+							// パネル名
+							if( found( panels[index].title ) ){
+								$wait.before(
+									$pnl.clone()
+										.find('span').text(panels[index].title).end()
+								);
+							}
+							total++;
+							// ブックマーク(タイトルとURL)
+							var child = panels[index].child;
+							for( var i=0, n=child.length; i<n; i++ ){
+								if( child[i].url ){
+									if( found( child[i].title ) || found( child[i].url ) ){
+										$wait.before(
+											$url.clone()
+												.attr('href',child[i].url)
+												.find('img').attr('src',child[i].icon).end()
+												.find('span').text(child[i].title).end()
+										);
+									}
+									total++;
+								}
+							}
+							index++;
+						}
+						$pgbar.progressbar('value',total*100/nodeTotal);
+						if( index < panels.length ) timer = setTimeout(callee,0);
+						else $my.find('.stop').click();
+					}());
+				}
 		});
-		$('#deadlink').find('button').click(function(){
+		$('#deadlink').find('.start').off().click(function(){
 			alert('deadlink');
 		});
 	});
@@ -2127,7 +2196,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr({ src:'minus.png', title:'閉じる' });
 		// アイテム追加
-		for( var i=0, child=tree.node( nodeID ).child, n=child.length; i<n; i++ ){
+		for( var child=tree.node( nodeID ).child, i=0, n=child.length; i<n; i++ ){
 			if( !child[i].child )
 				$box.append( $newItem( child[i] ) );
 		}
@@ -2316,7 +2385,7 @@ function panelEdit( pid ){
 				var idelsJSON = JSON.stringify(idels);	// JSON複製保持
 				tree.moveChild( idels, tree.trash() );	// idelsは空になる
 				idels = $.parseJSON(idelsJSON)			// 復元
-				for( var i=0, n=idels.length; i<n; i++ ) $('#'+idels[i]).remove();
+				for( var i=idels.length-1; i>=0; i-- ) $('#'+idels[i]).remove();
 				// アイテム変更
 				var $panelbox = $panel.find('.itembox');
 				$($itembox.children('.edit').get().reverse()).each(function(){
@@ -2345,6 +2414,7 @@ function panelEdit( pid ){
 			,'キャンセル':close
 		}
 		,resize:function(){
+			// TODO:メイリオとMSPゴシックで高さがイマイチ
 			var timer = null;
 			return function(){
 				clearTimeout(timer);
@@ -2403,7 +2473,7 @@ function analyzer( nodeTop ){
 	var skipped = false;	// スキップフラグ
 	function skip(){
 		skipped = true;
-		for( var i=0, n=ajaxs.length; i<n; i++ ){
+		for( var i=ajaxs.length-1; i>=0; i-- ){
 			ajaxs[i].xhr.abort();
 			ajaxs[i].done = true;
 		}
@@ -2414,7 +2484,7 @@ function analyzer( nodeTop ){
 	var $msg = $('<span></span>').text('ブックマークを解析しています...');
 	var $pgbar = $('<div></div>').progressbar();
 	var $count = $('<span></span>');
-	$('#dialog').dialog('destroy').empty().append($msg).append($count).append('<br>').append($pgbar)
+	$('#dialog').empty().append($msg).append($count).append('<br>').append($pgbar)
 	.dialog({
 		title	:'情報'
 		,modal	:true
@@ -2451,7 +2521,7 @@ function analyzer( nodeTop ){
 	(function waiter(){
 		if( skipped ) return;
 		var waiting=0;
-		for( var i=0, n=ajaxs.length; i<n; i++ ){
+		for( var i=ajaxs.length-1; i>=0; i-- ){
 			if( !ajaxs[i].done ) waiting++;
 		}
 		if( waiting ){
@@ -2694,7 +2764,7 @@ function InputDialog( arg ){
 		case 13: ok(); return false; // Enterで反映
 		}
 	});
-	$('#dialog').dialog('destroy').text(arg.text+' ').append($input).dialog({
+	$('#dialog').empty().text(arg.text+' ').append($input).dialog({
 		title	:arg.title
 		,modal	:true
 		,width	:365
@@ -2735,11 +2805,11 @@ function Confirm( arg ){
 		opt.height = arg.height;
 	}
 
-	$('#dialog').dialog('destroy').html( HTMLenc(arg.msg).replace(/#BR#/g,'<br>') ).dialog( opt );
+	$('#dialog').empty().html( HTMLenc(arg.msg).replace(/#BR#/g,'<br>') ).dialog( opt );
 }
 // 警告ダイアログ
 function Alert( msg ){
-	$('#dialog').dialog('destroy').html( HTMLenc(''+msg).replace(/#BR#/g,'<br>') ).dialog({
+	$('#dialog').empty().html( HTMLenc(''+msg).replace(/#BR#/g,'<br>') ).dialog({
 		title	:'通知'
 		,modal	:true
 		,width	:360
@@ -2750,7 +2820,7 @@ function Alert( msg ){
 }
 // メッセージボックス
 function MsgBox( msg ){
-	$('#dialog').dialog('destroy').empty().text(msg).dialog({
+	$('#dialog').empty().text(msg).dialog({
 		title	:'情報'
 		,modal	:true
 		,width	:300

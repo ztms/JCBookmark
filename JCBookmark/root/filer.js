@@ -246,9 +246,9 @@ var tree = {
 		if( isString(dst) ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-			for( var i=0; i<ids.length; i++ ){
+			for( var i=ids.length-1; i>=0; i-- ){
 				if( ids[i]==dst.id || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dst) )
-					ids.splice(i--,1);
+					ids.splice(i,1);
 			}
 			if( ids.length ){
 				// 切り取り
@@ -282,9 +282,9 @@ var tree = {
 	// ids:ノードID配列、dstid:ノードID、isAfter:boolean
 	,moveSibling:function( ids, dstid, isAfter ){
 		// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-		for( var i=0; i<ids.length; i++ ){
+		for( var i=ids.length-1; i>=0; i-- ){
 			if( ids[i]==dstid || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dstid) )
-				ids.splice(i--,1);
+				ids.splice(i,1);
 		}
 		if( ids.length ){
 			// 移動先の親ノード
@@ -545,7 +545,7 @@ var itemTable = function(){
 					var $f = $fol.clone(true).attr('id','item'+node.id);
 					$f.find('.title').text( node.title );
 					$f.find('.summary').text(function(){
-						for(var smry='',i=0,n=node.child.length; i<n; i++) smry+='.';
+						for(var smry='', i=node.child.length-1; i>=0; i--) smry+='.';
 						return smry;
 					}());
 					$f.find('.date').text( myFmt(date,nowTime) );
@@ -811,7 +811,7 @@ $('#selectall').click(function(){
 // 削除
 // TODO:削除後に選択フォルダ選択アイテムが初期化されてしまう。近いエントリを選択すべきか。
 $('#delete').click(function(){
-	if( select.id.match(/^item/) ){
+	if( select.id.indexOf('item')==0 ){
 		// アイテム欄
 		var hasFolder=false, titles='', count=0, ids=[];
 		$('#items').children().each(function(){
@@ -996,7 +996,7 @@ function itemSelectStart( element, downX, downY ){
 		var rectBottom = rect.top + rect.height;
 		$('#selectbox').css( rect );
 		// 選択切り替え
-		for( var i=0, n=items.length; i<n; i++ ){
+		for( var i=items.length-1; i>=0; i-- ){
 			var item = items[i];
 			var offset = item.$.offset();
 			if( offset.top >= rect.top-15 && offset.top <= rectBottom-4 ){
@@ -1123,7 +1123,7 @@ function itemMouseDown( ev, shiftKey ){
 			// 選択済みアイテムの数
 			var selectCount = function(children){
 				var count=0;
-				for( var i=0, n=children.length; i<n; i++ ){
+				for( var i=children.length-1; i>=0; i-- ){
 					if( $(children[i]).hasClass('select') ) count++;
 				}
 				return count;
@@ -1208,7 +1208,7 @@ function itemDragStart( element, downX, downY ){
 			// ある程度カーソル移動したらドラッグ開始
 			draggie = element;
 			// ドラッグ中スタイル適用
-			if( draggie.id.match(/^item/) ){
+			if( draggie.id.indexOf('item')==0 ){
 				// アイテム欄でドラッグ
 				dragitem = { ids:[], itemcount:0, foldercount:0 };
 				$('#items').children().each(function(){
@@ -1291,7 +1291,7 @@ function itemDragStart( element, downX, downY ){
 		// ドラッグ解除
 		$('#dragbox').hide();
 		if( draggie ){
-			if( draggie.id.match(/^item/) ){
+			if( draggie.id.indexOf('item')==0 ){
 				// アイテム欄でドラッグ
 				$('#items').children().each(function(){
 					$(this).removeClass('draggie');
@@ -1311,16 +1311,16 @@ function itemMouseMove(ev){
 		if( draggie.id==this.id ) return;
 		var $this = $(this);
 		// 複数選択ドラッグアイテムどうしは何もしない(ドロップ不可)
-		if( draggie.id.match(/^item/) && this.id.match(/^item/) && $this.hasClass('select') ) return;
+		if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
 		// ドロップ要素スタイル適用
 		$this.removeClass('dropTop dropBottom dropIN');
 		// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
 		var Y = ev.pageY - $this.offset().top;
-		if( draggie.id.match(/^item/) ){
+		if( draggie.id.indexOf('item')==0 ){
 			// アイテム欄から…
 			if( dragitem.itemcount ){
 				// アイテム(ブックマーク)を含む単選択か複数選択を…
-				if( this.id.match(/^item/) ){
+				if( this.id.indexOf('item')==0 ){
 					// アイテム欄の…
 					if( $this.hasClass('folder') ) SiblingAndChild(); // フォルダへドラッグ
 					else SiblingOnly(); // アイテムへドラッグ
@@ -1330,7 +1330,7 @@ function itemMouseMove(ev){
 				}
 			}else if( dragitem.foldercount ){
 				// フォルダのみを…
-				if( this.id.match(/^item/) ){
+				if( this.id.indexOf('item')==0 ){
 					// アイテム欄の…
 					if( $this.hasClass('folder') ) SiblingAndChild(); // フォルダへドラッグ
 					else SiblingOnly(); // アイテムへドラッグ
@@ -1342,7 +1342,7 @@ function itemMouseMove(ev){
 			}
 		}else{
 			// フォルダツリーから…
-			if( this.id.match(/^item/) ){
+			if( this.id.indexOf('item')==0 ){
 				// アイテム欄の…
 				if( $this.hasClass('folder') ) SiblingAndChild(); // フォルダへドラッグ
 				else SiblingOnly(); // アイテムへドラッグ
@@ -1383,7 +1383,7 @@ function itemMouseUp(ev){
 		if( draggie.id==this.id ) return;
 		var $this = $(this);
 		// ドラッグ中アイテムどうしは何もしない(ドロップ不可)
-		if( draggie.id.match(/^item/) && this.id.match(/^item/) && $this.hasClass('select') ) return;
+		if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
 		// ドロップ処理
 		if( $this.hasClass('dropTop') ){
 			//$debug.text(dragitem.ids+' が、'+this.id+' にdropTopされました');
@@ -1726,7 +1726,7 @@ function edit( element, opt ){
 			setTimeout(function(){
 				var $e = $(element);
 				var offset = $e.offset();
-				var isFolderTree = element.parentNode.id.match(/^folder/);
+				var isFolderTree = (element.parentNode.id.indexOf('folder')==0)? true:false;
 				$editbox.css({
 					left			:offset.left -1
 					,top			:offset.top -1
@@ -1844,8 +1844,8 @@ function edit( element, opt ){
 function viewScroll( element ){
 	// スクロール対象ボックス確認
 	var boxid = element.parentNode.id;
-	if( boxid.match(/^item/) ) boxid = 'items';
-	else if( boxid.match(/^folder/) ) boxid = 'folders';
+	if( boxid.indexOf('item')==0 ) boxid = 'items';
+	else if( boxid.indexOf('folder')==0 ) boxid = 'folders';
 	else return;
 	var box = document.getElementById( boxid );
 	// 要素の相対座標
