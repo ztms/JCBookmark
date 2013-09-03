@@ -1070,14 +1070,25 @@ function setEvents(){
 			if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
 				var $panels = $(this).children('.panel');
 				if( $panels.length ){
-					if( ev.pageX < $panels[0].offsetLeft ) return false;		// パネル左右余白クリック無視
-					if( ev.pageY < $panels[0].offsetTop ) below = $panels[0];	// 一番上に新規パネル
-					else $panels.each(function(){								// 既存パネルの下に新規パネル
-						if( this.offsetTop +this.offsetHeight < ev.pageY )
-							above = this;
-						else
+					if( ev.pageX < $panels[0].offsetLeft ){
+						return false;			// パネル左右余白クリック無視
+					}
+					if( ev.pageY < $panels[0].offsetTop ){
+						below = $panels[0];		// 一番上に新規パネル
+						return false;
+					}
+					var panel = $panels[$panels.length-1];
+					if( panel.offsetTop +panel.offsetHeight < ev.pageY ){
+						above = panel;			// 一番下に新規パネル
+						return false;
+					}
+					for( var i=$panels.length-1; i>0; i-- ){
+						if( ev.pageY < $panels[i].offsetTop &&
+							$panels[i-1].offsetTop +$panels[i-1].offsetHeight < ev.pageY ){
+							below = $panels[i]; // パネルとパネルの間
 							return false;
-					});
+						}
+					}
 				}
 				else column = this; // 空カラムに新規パネル
 				return false;
@@ -1830,7 +1841,7 @@ function setEvents(){
 			title	:'ブックマーク検索'
 			,modal	:true
 			,width	:560
-			,height	:430
+			,height	:480
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 		$('#keyword').find('input').focus();
@@ -1851,69 +1862,74 @@ function setEvents(){
 		callee( tree.top() );
 		callee( tree.trash() );
 		nodeTotal += panels.length;
-		// イベント
+		// キーワード検索
 		$('#keyword').find('.start').off().click(function(){
-				var $my = $('#keyword');
-				var words = $my.find('input').val().split(/[ 　]+/); // 空白文字で分割
-				for( var i=words.length-1; i>=0; i-- ) if( words[i].length<=0 ) words.splice(i,1);
-				if( words.length ){
-					var $wait = $('<img src=wait.gif>').appendTo( $my.find('.found').empty() );
-					var $pgbar = $my.find('.progress').progressbar('value',0);
-					var $url = $('<a target="_blank"><img class=icon><span></span></a>');
-					var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
-					var timer = null;
-					$my.find('.stop').off().click(function(){
-						clearTimeout( timer );
-						$(this).hide();
-						$pgbar.progressbar('value',0);
-						$wait.remove();
-						$url.remove();
-						$pnl.remove();
-					}).show();
-					var index = 0;
-					var total = 0;
-					(function callee(){
-						function found( text ){
-							// AND検索
-							// TODO:OR検索、数字/カタカナの全角半角の区別、大小文字区別
-							for( var i=words.length-1; i>=0; i-- ){
-								if( text.indexOf(words[i])<0 ) return false;
-							}
-							return true;
-						}
-						var limit = total +21; // 20個以上ずつ
-						while( index < panels.length && total<limit ){
-							// パネル名
-							if( found( panels[index].title ) ){
-								$wait.before(
-									$pnl.clone()
-										.find('span').text(panels[index].title).end()
-								);
-							}
-							total++;
-							// ブックマーク(タイトルとURL)
-							var child = panels[index].child;
-							for( var i=0, n=child.length; i<n; i++ ){
-								if( child[i].url ){
-									if( found( child[i].title ) || found( child[i].url ) ){
-										$wait.before(
-											$url.clone()
-												.attr('href',child[i].url)
-												.find('img').attr('src',child[i].icon).end()
-												.find('span').text(child[i].title).end()
-										);
-									}
-									total++;
-								}
-							}
-							index++;
-						}
-						$pgbar.progressbar('value',total*100/nodeTotal);
-						if( index < panels.length ) timer = setTimeout(callee,0);
-						else $my.find('.stop').click();
-					}());
+			var $my = $('#keyword');
+			// 検索ワード
+			var words = $my.find('input').val().split(/[ 　]+/); // 空白文字で分割
+			for( var i=words.length-1; i>=0; i-- ) if( words[i].length<=0 ) words.splice(i,1);
+			if( words.length<=0 ) return;
+			// 検索中表示・準備
+			var $wait = $('<img src=wait.gif>').appendTo( $my.find('.found').empty() );
+			var $pgbar = $my.find('.progress').progressbar('value',0);
+			var $url = $('<a target="_blank"><img class=icon><span></span></a>');
+			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
+			var timer = null;
+			$my.find('.stop').off().click(function(){
+				// キャンセル
+				clearTimeout( timer );
+				$(this).hide();
+				$pgbar.progressbar('value',0);
+				$wait.remove();
+				$url.remove();
+				$pnl.remove();
+			}).show();
+			// 検索実行
+			var index = 0;
+			var total = 0;
+			(function callee(){
+				function found( text ){
+					// AND検索
+					// TODO:OR検索、数字/カタカナの全角半角の区別、大小文字区別
+					for( var i=words.length-1; i>=0; i-- ){
+						if( text.indexOf(words[i])<0 ) return false;
+					}
+					return true;
 				}
+				var limit = total +21; // 20ノード以上ずつ
+				while( index < panels.length && total<limit ){
+					// パネル名
+					if( found( panels[index].title ) ){
+						$wait.before(
+							$pnl.clone()
+								.find('span').text(panels[index].title).end()
+						);
+					}
+					total++;
+					// ブックマークタイトルとURL
+					var child = panels[index].child;
+					for( var i=0, n=child.length; i<n; i++ ){
+						if( child[i].child ) continue;
+						if( found( child[i].title ) || found( child[i].url ) ){
+							$wait.before(
+								$url.clone()
+									.attr('href',child[i].url)
+									.find('img').attr('src',child[i].icon).end()
+									.find('span').text(child[i].title).end()
+							);
+						}
+						total++;
+					}
+					index++;
+				}
+				// 進捗バー
+				$pgbar.progressbar('value',total*100/nodeTotal);
+				// 次
+				if( index < panels.length ) timer = setTimeout(callee,0);
+				else $my.find('.stop').click();
+			}());
 		});
+		// リンク切れ調査
 		$('#deadlink').find('.start').off().click(function(){
 			alert('deadlink');
 		});
