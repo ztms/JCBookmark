@@ -692,6 +692,7 @@ var paneler = function(){
 		$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
 		$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 		// カラム(段)生成
+		// TODO:createDocumentFlagmentで速くなる？
 		var columnList = {};
 		for( var i=0; i<columnCount; i++ ){
 			columnList['co'+i] = {
@@ -758,10 +759,10 @@ var paneler = function(){
 				.on({
 					// 新規登録
 					commit:function(){
-					   var node = tree.newURL( tree.top(), this.value, this.value.replace(/^https?:\/\//,'') );
-					   if( node ){
-						   // DOM要素追加
-						   $(this.parentNode).find('.itembox').prepend( $newItem( node ) );
+						var node = tree.newURL( tree.top(), this.value, this.value.replace(/^https?:\/\//,'') );
+						if( node ){
+							// DOM要素追加
+							var $item = $newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							// URLタイトル、favicon取得
 							// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
 							// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
@@ -782,11 +783,11 @@ var paneler = function(){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+										$item.attr('title',data.title).find('span').text(data.title);
 								}
 								if( data.icon.length )
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-										$('#'+node.id).find('img').attr('src',data.icon);
+										$item.find('img').attr('src',data.icon);
 							});
 							$('#commit').remove();
 							this.value = '';
@@ -839,6 +840,7 @@ var paneler = function(){
 			}
 			else{
 				// 開パネルアイテム追加
+				// TODO:createDocumentFlagmentで速くなる？
 				var $box = $p.find('.itembox').empty();
 				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
 					if( !child[i].child )
@@ -1150,6 +1152,41 @@ function setEvents(){
 			});
 		}))
 		.append('<hr>')
+		.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
+			$menu.hide();
+			$.get(':clipboard.txt',function(data){
+				// 一行一URLとして解析
+				var lines = data.split(/[\r\n]+/);
+				var index = lines.length -1;
+				(function callee(){
+					var count = 10;													// 10個ずつ
+					while( index >=0 && count>0 ){
+						var url = lines[index].replace(/^\s+|\s+$/g,'');			// 前後の空白削除
+						if( url.search(/^[A-Za-z]+:\/\/.+$/)>=0 ) itemAdd( url );	// URLなら登録
+						index--; count--;
+					}
+					// 次
+					if( index >=0 ) setTimeout(callee,0);
+				}());
+				function itemAdd( url ){
+					// ノード作成
+					var node = tree.newURL( tree.node(panel.id), url, url.replace(/^https?:\/\//,'') );
+					// DOM操作
+					var $item = $newItem( node ).prependTo( $(panel).find('.itembox') );
+					// タイトル・ファビコン取得
+					$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
+						if( data.title.length ){
+							data.title = HTMLdec( data.title );
+							if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+								$item.attr('title',data.title).find('span').text(data.title);
+						}
+						if( data.icon.length )
+							if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+								$item.find('img').attr('src',data.icon);
+					});
+				}
+			});
+		}))
 		.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
 			$menu.hide();
 			panelEdit( panel.id );
@@ -1841,7 +1878,7 @@ function setEvents(){
 			title	:'ブックマーク検索'
 			,modal	:true
 			,width	:560
-			,height	:480
+			,height	:380
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 		$('#keyword').find('input').focus();
@@ -1867,7 +1904,9 @@ function setEvents(){
 			var $my = $('#keyword');
 			// 検索ワード
 			var words = $my.find('input').val().split(/[ 　]+/); // 空白文字で分割
-			for( var i=words.length-1; i>=0; i-- ) if( words[i].length<=0 ) words.splice(i,1);
+			for( var i=words.length-1; i>=0; i-- ){
+				if( words[i].length<=0 ) words.splice(i,1);
+			}
 			if( words.length<=0 ) return;
 			// 検索中表示・準備
 			var $wait = $('<img src=wait.gif>').appendTo( $my.find('.found').empty() );
@@ -1891,11 +1930,17 @@ function setEvents(){
 				function found( text ){
 					// AND検索
 					// TODO:OR検索、数字/カタカナの全角半角の区別、大小文字区別
+					// http://logicalerror.seesaa.net/article/275434211.html
+					// http://distraid.co.jp/demo/js_codeconv.html
+					text.replace(/[！-～]/g, function(s){
+						return String.fromCharCode(s.charCodeAt(0)-0xFEE0);
+					});
 					for( var i=words.length-1; i>=0; i-- ){
 						if( text.indexOf(words[i])<0 ) return false;
 					}
 					return true;
 				}
+				// TODO:createDocumentFlagmentで速くなる？
 				var limit = total +21; // 20ノード以上ずつ
 				while( index < panels.length && total<limit ){
 					// パネル名
@@ -2149,6 +2194,7 @@ var panelPopper = function(){
 			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
+					// TODO:createDocumentFlagmentで速くなる？
 					if( !child[index].child ) $box.append( $newItem( child[index] ) );
 					index++; count--;
 				}
@@ -2212,6 +2258,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr({ src:'minus.png', title:'閉じる' });
 		// アイテム追加
+		// TODO:createDocumentFlagmentで速くなる？
 		for( var child=tree.node( nodeID ).child, i=0, n=child.length; i<n; i++ ){
 			if( !child[i].child )
 				$box.append( $newItem( child[i] ) );
@@ -2282,6 +2329,7 @@ function panelEdit( pid ){
 		$(this.parentNode).remove();
 	});
 	// アイテムループ
+	// TODO:createDocumentFlagmentで速くなる？
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;

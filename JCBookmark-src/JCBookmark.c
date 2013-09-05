@@ -4346,6 +4346,47 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							ClientSend(cp,"}",1);
 							goto send_ready;
 						}
+						else if( stricmp(file,":clipboard.txt")==0 ){
+							// クリップボードテキスト取得
+							WCHAR* u16 = NULL;
+							if( OpenClipboard(MainForm) ){
+								HGLOBAL cb = GetClipboardData( CF_UNICODETEXT );
+								if( cb ){
+									u16 = malloc( GlobalSize(cb) );
+									if( u16 ){
+										WCHAR* p = GlobalLock(cb);
+										if( p ){
+											wcscpy( u16, p );
+											GlobalUnlock(cb);
+										}
+										else LogW(L"[%u]GlobalLockエラー%u",Num(cp),GetLastError());
+									}
+									else LogW(L"L%u:malloc(%u)エラー",__LINE__,GlobalSize(cb));
+								}
+								CloseClipboard();
+							}
+							else LogW(L"[%u]OpenClipboardエラー%u",Num(cp),GetLastError());
+							// 返却
+							if( u16 ){
+								UCHAR* u8 = WideCharToUTF8alloc( u16 ); free(u16), u16=NULL;
+								if( u8 ){
+									size_t bytes = strlen( u8 );
+									ClientSendf(cp,
+										"HTTP/1.0 200 OK\r\n"
+										"Content-Type: text/plain; charset=utf-8\r\n"
+										"Content-Length: %u\r\n"
+										"Connection: close\r\n"
+										"\r\n"
+										,bytes
+									);
+									ClientSend(cp, u8, bytes);
+									free( u8 );
+								}
+								else ClientSendErr(cp,"500 Internal Server Error");
+							}
+							else ClientSendErr(cp,"404 Not Found");
+							goto send_ready;
+						}
 						else if( stricmp(file,":snapshot")==0 ){
 							// スナップショット作成
 							// ファイル名に年月日時分秒ミリ秒のタイムスタンプをつけて作成。
