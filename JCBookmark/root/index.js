@@ -761,8 +761,8 @@ var paneler = function(){
 					commit:function(){
 						var node = tree.newURL( tree.top(), this.value, this.value.replace(/^https?:\/\//,'') );
 						if( node ){
-							// DOM要素追加
-							var $item = $newItem(node).prependTo( $(this.parentNode).find('.itembox') );
+							// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
+							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							// URLタイトル、favicon取得
 							// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
 							// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
@@ -783,11 +783,11 @@ var paneler = function(){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-										$item.attr('title',data.title).find('span').text(data.title);
+										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
 								}
 								if( data.icon.length )
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-										$item.find('img').attr('src',data.icon);
+										$('#'+node.id).find('img').attr('src',data.icon);
 							});
 							$('#commit').remove();
 							this.value = '';
@@ -1171,19 +1171,21 @@ function setEvents(){
 				function itemAdd( url ){
 					// ノード作成
 					var node = tree.newURL( tree.node(panel.id), url, url.replace(/^https?:\/\//,'') );
-					// DOM操作
-					var $item = $newItem( node ).prependTo( $(panel).find('.itembox') );
-					// タイトル・ファビコン取得
-					$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
-						if( data.title.length ){
-							data.title = HTMLdec( data.title );
-							if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-								$item.attr('title',data.title).find('span').text(data.title);
-						}
-						if( data.icon.length )
-							if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-								$item.find('img').attr('src',data.icon);
-					});
+					if( node ){
+						// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
+						$newItem(node).prependTo( $(panel).find('.itembox') );
+						// タイトル・favicon取得
+						$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
+							if( data.title.length ){
+								data.title = HTMLdec( data.title );
+								if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+									$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+							}
+							if( data.icon.length )
+								if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+									$('#'+node.id).find('img').attr('src',data.icon);
+						});
+					}
 				}
 			});
 		}))
