@@ -701,7 +701,9 @@ $(document).on({
 	}
 	// テキスト選択キャンセル
 	,selectstart:function(ev){
-		if( ev.target.tagName=='INPUT' ) return true;
+		switch( ev.target.tagName ){
+		case 'INPUT': case 'TEXTAREA': return true;
+		}
 		return false;
 	}
 });

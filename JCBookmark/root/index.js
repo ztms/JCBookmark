@@ -2111,7 +2111,12 @@ function setEvents(){
 		,blur:function(){ $sidebar.width(34); }
 	});
 	// IE8テキスト選択キャンセル
-	if( IE && IE<9 ) $document.on('selectstart',function(ev){ if( ev.target.tagName !='INPUT' ) return false; });
+	if( IE && IE<9 ) $document.on('selectstart',function(ev){
+		switch( ev.target.tagName ){
+		case 'INPUT': case 'TEXTAREA': return true;
+		}
+		return false;
+	});
 }
 // 独自フォーマット時刻文字列
 function myFmt( date, nowTime ){
