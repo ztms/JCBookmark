@@ -692,7 +692,6 @@ var paneler = function(){
 		$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
 		$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 		// カラム(段)生成
-		// TODO:createDocumentFlagmentで速くなる？
 		var columnList = {};
 		for( var i=0; i<columnCount; i++ ){
 			columnList['co'+i] = {
@@ -840,7 +839,6 @@ var paneler = function(){
 			}
 			else{
 				// 開パネルアイテム追加
-				// TODO:createDocumentFlagmentで速くなる？
 				var $box = $p.find('.itembox').empty();
 				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
 					if( !child[i].child )
@@ -1158,11 +1156,12 @@ function setEvents(){
 				// 一行一URLとして解析
 				var lines = data.split(/[\r\n]+/);
 				var index = lines.length -1;
+				var pat = /^[A-Za-z]+:\/\/.+$/;
 				(function callee(){
-					var count = 10;													// 10個ずつ
+					var count = 10;											// 10個ずつ
 					while( index >=0 && count>0 ){
-						var url = lines[index].replace(/^\s+|\s+$/g,'');			// 前後の空白削除
-						if( url.search(/^[A-Za-z]+:\/\/.+$/)>=0 ) itemAdd( url );	// URLなら登録
+						var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除
+						if( pat.test(url) ) itemAdd( url );					// URLなら登録
 						index--; count--;
 					}
 					// 次
@@ -1262,9 +1261,10 @@ function setEvents(){
 		// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
 		// 例) { btn1:1, btn9:0, btn45:0, ... }
 		var status = {};
+		var pat = /\/plus.png$/;
 		$('.plusminus').each(function(){
 			//srcはURL('http://localhost:XXX/plus.png'など)文字列
-			status[this.id] = (this.src.search(/\/plus.png$/)>=0)? 1 : 0;
+			status[this.id] = pat.test(this.src)? 1 : 0;
 		});
 		option.panel.status( status );
 	})
@@ -1317,7 +1317,7 @@ function setEvents(){
 		// パネル幅
 		$('#panel_width').val( option.panel.width() )
 		.off().on('input keyup paste',function(){
-			if( this.value.search(/^\d{3,4}$/)<0 || this.value <100 || this.value >1000 ) return;
+			if( !/^\d{3,4}$/.test(this.value) || this.value <100 || this.value >1000 ) return;
 			if( this.value !=option.panel.width() ){
 				option.panel.width( this.value );
 				optionApply();
@@ -1342,7 +1342,7 @@ function setEvents(){
 		// パネル余白
 		$('#panel_marginV').val( option.panel.margin.top() )
 		.off().on('input keyup paste',function(){
-			if( this.value.search(/^\d{1,3}$/)<0 || this.value <0 || this.value >50 ) return;
+			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >50 ) return;
 			if( this.value !=option.panel.margin.top() ){
 				option.panel.margin.top( this.value );
 				optionApply();
@@ -1366,7 +1366,7 @@ function setEvents(){
 		});
 		$('#panel_marginH').val( option.panel.margin.left() )
 		.off().on('input keyup paste',function(){
-			if( this.value.search(/^\d{1,3}$/)<0 || this.value <0 || this.value >50 ) return;
+			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >50 ) return;
 			if( this.value !=option.panel.margin.left() ){
 				option.panel.margin.left( this.value );
 				optionApply();
@@ -1391,7 +1391,7 @@ function setEvents(){
 		// 列数
 		$('#column_count').val( option.column.count() )
 		.off().on('input keyup paste',function(){
-			if( this.value.search(/^\d{1,2}$/)<0 || this.value < 1 || this.value > 30 ) return;
+			if( !/^\d{1,2}$/.test(this.value) || this.value < 1 || this.value > 30 ) return;
 			if( this.value !=option.column.count() ){
 				columnCountChange( { prev:option.column.count(), next:this.value } );
 				option.column.count( this.value );
@@ -1741,7 +1741,7 @@ function setEvents(){
 		$('#snap').dialog({
 			title	:'スナップショット'
 			,modal	:true
-			,width	:500
+			,width	:540
 			,height	:420
 			,close	:function(){
 				// メモを保存
@@ -1857,11 +1857,13 @@ function setEvents(){
 	});
 	// 検索
 	// TODO:単なるダイアログボックスじゃないもっといいUIはないか
-	// 画面隅の邪魔にならない領域にposition:fixなかんじで
+	// 上下左右のいずれか選択できるposition:fixな領域にしたい。
+	// あと検索結果のURLアイテムはドラッグ＆ドロップでパネルに。
+	// 検索結果のフォルダ(パネル)は動かせなくてもいいかな。
 	// jQuery UI Tabs
 	$('#findtab').tabs({
 		select:function( ev, ui ){
-			if( ui.tab.href.search(/#keyword$/)>=0 ){
+			if( /#keyword$/.test(ui.tab.href) ){
 				// キーワードのテキストボックスにフォーカス移動
 				setTimeout(function(){ $('#keyword').find('input').focus(); },0);
 			}
@@ -1878,7 +1880,6 @@ function setEvents(){
 	$('#findico').click(function(){
 		$('#find').dialog({
 			title	:'ブックマーク検索'
-			,modal	:true
 			,width	:560
 			,height	:380
 			,close	:function(){ $(this).dialog('destroy'); }
@@ -1887,20 +1888,19 @@ function setEvents(){
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
-		var nodeTotal = 0;	// URL数＋パネル数
+		var urlTotal = 0;	// URL数
 		function callee( node ){
 			panels.push( node );
-			nodeTotal += node.child.length;
+			urlTotal += node.child.length;
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].child ){
 					callee( node.child[i] );
-					nodeTotal--;
+					urlTotal--;
 				}
 			}
 		}
 		callee( tree.top() );
 		callee( tree.trash() );
-		nodeTotal += panels.length;
 		// キーワード検索
 		$('#keyword').find('.start').off().click(function(){
 			var $my = $('#keyword');
@@ -1926,6 +1926,7 @@ function setEvents(){
 				$pnl.remove();
 			}).show();
 			// 検索実行
+			var nodeTotal = urlTotal + panels.length;
 			var index = 0;
 			var total = 0;
 			(function callee(){
@@ -1942,7 +1943,6 @@ function setEvents(){
 					}
 					return true;
 				}
-				// TODO:createDocumentFlagmentで速くなる？
 				var limit = total +21; // 20ノード以上ずつ
 				while( index < panels.length && total<limit ){
 					// パネル名
@@ -1978,7 +1978,7 @@ function setEvents(){
 		});
 		// リンク切れ調査
 		$('#deadlink').find('.start').off().click(function(){
-			alert('deadlink');
+			var $my = $('#deadlink');
 		});
 	});
 	// パネル並べ替え
@@ -2201,7 +2201,6 @@ var panelPopper = function(){
 			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
-					// TODO:createDocumentFlagmentで速くなる？
 					if( !child[index].child ) $box.append( $newItem( child[index] ) );
 					index++; count--;
 				}
@@ -2265,7 +2264,6 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$box.off().css({position:'',width:''}).removeClass('itempop').empty().show();
 		$btn.attr({ src:'minus.png', title:'閉じる' });
 		// アイテム追加
-		// TODO:createDocumentFlagmentで速くなる？
 		for( var child=tree.node( nodeID ).child, i=0, n=child.length; i<n; i++ ){
 			if( !child[i].child )
 				$box.append( $newItem( child[i] ) );
@@ -2336,7 +2334,6 @@ function panelEdit( pid ){
 		$(this.parentNode).remove();
 	});
 	// アイテムループ
-	// TODO:createDocumentFlagmentで速くなる？
 	var child = pnode.child;
 	var index = 0, length = child.length;
 	var timer = null;
