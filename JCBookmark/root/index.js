@@ -1156,12 +1156,11 @@ function setEvents(){
 				// 一行一URLとして解析
 				var lines = data.split(/[\r\n]+/);
 				var index = lines.length -1;
-				var pat = /^[A-Za-z]+:\/\/.+$/;
 				(function callee(){
-					var count = 10;											// 10個ずつ
+					var count = 10;												// 10個ずつ
 					while( index >=0 && count>0 ){
-						var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除
-						if( pat.test(url) ) itemAdd( url );					// URLなら登録
+						var url = lines[index].replace(/^\s+|\s+$/g,'');		// 前後の空白削除
+						if( /^[A-Za-z]+:\/\/.+$/.test(url) ) itemAdd( url );	// URLなら登録
 						index--; count--;
 					}
 					// 次
@@ -1261,10 +1260,9 @@ function setEvents(){
 		// 開閉状態保存: キーがボタンID、値が 0(開) または 1(閉)
 		// 例) { btn1:1, btn9:0, btn45:0, ... }
 		var status = {};
-		var pat = /\/plus.png$/;
 		$('.plusminus').each(function(){
 			//srcはURL('http://localhost:XXX/plus.png'など)文字列
-			status[this.id] = pat.test(this.src)? 1 : 0;
+			status[this.id] = /\/plus.png$/.test(this.src)? 1 : 0;
 		});
 		option.panel.status( status );
 	})
