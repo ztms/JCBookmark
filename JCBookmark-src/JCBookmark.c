@@ -2754,14 +2754,14 @@ unsigned __stdcall analyze( void* p )
 	_endthreadex(0);
 	return 0;
 }
-// URLの死活確認を行うスレッド関数
-// クライアントからの要求 GET /:poke?URL HTTP/1.x で開始され、
+// 指定URL死活確認を行うスレッド関数
+// クライアントからの要求 GET /:alive?URL HTTP/1.x で開始され、
 // - 調査URLに接続しGETリクエストを送った応答一行目(例：HTTP/1.0 200 OK)を取得する。
 // - 名前解決エラー、接続タイムアウトなどはその旨の短文テキストを生成する。
 // - クライアントへの応答は基本「200 OK」で本文に調査結果を記載する。
 // - ただし内部エラーやリクエスト不正についてはクライアントに「500」や「400」を返却する。
 // プロキシ的な動作だがプロキシではない。
-unsigned __stdcall poke( void* p )
+unsigned __stdcall alive( void* p )
 {
 	TClient*	cp			= p;
 	UCHAR*		url			= cp->req.param;
@@ -2770,7 +2770,7 @@ unsigned __stdcall poke( void* p )
 
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
-
+	// プロトコル
 	if( !url || !*url ){
 		ClientSendErr(cp,"400 Bad Request"); goto fin;
 	}
@@ -2792,7 +2792,7 @@ unsigned __stdcall poke( void* p )
 	else{
 		strcpy(text,"不明なプロトコル"); goto fin;
 	}
-
+	// ホスト名
 	if( *url ){
 		UCHAR* path = strchr(url,'/');
 		UCHAR* host = NULL;
@@ -4543,10 +4543,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							Sleep(50);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
-						else if( stricmp(file,":poke")==0 && cp->req.param ){
+						else if( stricmp(file,":alive")==0 && cp->req.param ){
 							// URL死活確認
 							URLfix( cp->req.param );
-							cp->thread = (HANDLE)_beginthreadex( NULL, 0, poke, (void*)cp, 0, NULL );
+							cp->thread = (HANDLE)_beginthreadex( NULL, 0, alive, (void*)cp, 0, NULL );
 							Sleep(50);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
