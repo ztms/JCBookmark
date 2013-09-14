@@ -12,13 +12,14 @@ var $debug = $('<div></div>').css({
 	,padding:'0'
 }).appendTo(document.body);
 */
-// ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+var oStr = Object.prototype.toString;						// 型判定
+var IE = window.ActiveXObject ? document.documentMode :0;	// IE判定
 $.ajaxSetup({
+	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	beforeSend:function(xhr){
 		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 	}
 });
-var IE = window.ActiveXObject ? document.documentMode :0; //$debug.text('IE='+IE);
 var select = null;				// 選択フォルダorアイテム
 var selectFolder = null;		// 選択フォルダ
 var selectItemLast = null;		// 最後に単選択(通常クリックおよびCtrl+クリック)したアイテム
@@ -82,7 +83,7 @@ var tree = {
 	// ノードAの子孫にノードBが存在したらtrueを返す
 	// A,BはノードIDまたはノードオブジェクトどちらでも
 	,nodeAhasB:function( A, B ){
-		if( isString(A) ) A = tree.node(A);
+		if( oStr.call(A)==='[object String]' ) A = tree.node(A);
 		if( A && A.child ){
 			return function callee( child ){
 				for( var i=0, n=child.length; i<n; i++ ){
@@ -130,7 +131,7 @@ var tree = {
 			,icon		:icon || ''
 		};
 		// 引数ノードのchild先頭に追加する
-		if( isString(pnode) ) pnode = tree.node(pnode);
+		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
 		( pnode || tree.top() ).child.unshift( node );
 		tree.modified(true);
 		return node;
@@ -243,7 +244,7 @@ var tree = {
 	// ノード移動(childに)
 	// ids:ノードID配列、dst:フォルダノードIDまたはノードオブジェクト
 	,moveChild:function( ids, dst ){
-		if( isString(dst) ) dst = tree.node( dst );
+		if( oStr.call(dst)==='[object String]' ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
 			for( var i=ids.length-1; i>=0; i-- ){
@@ -778,7 +779,7 @@ $('#newitem').click(function(){
 	setTimeout(function(){
 		$item.mouseup();
 		if( url.length ){
-			$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
+			$.get(':analyze?'+url.myURLenc(),function(data){
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1542,7 +1543,7 @@ function itemContextMenu(ev){
 			function analyze(){
 				var url = $(item).find('.url').text();
 				$.ajax({
-					url:':analyze?'+url.replace(/#!/g,'%23!')
+					url:':analyze?'+url.myURLenc()
 					,error:function(){
 						if( url==$(item).find('.url').text() ){
 							$title.val('');
@@ -1758,7 +1759,7 @@ function edit( element, opt ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nodeid );
 									if( node.title=='新規ブックマーク' ){
-										$.get(':analyze?'+value.replace(/#!/g,'%23!'),function(data){
+										$.get(':analyze?'+value.myURLenc(),function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLdec( data.title );
 												if( tree.nodeAttr( nodeid, 'title', data.title ) >1 )
@@ -1929,9 +1930,7 @@ function HTMLdec( html ){
 	$a.remove();
 	return dec;
 }
-// 引数が文字列かどうか判定
-function isString( s ){
-	return (Object.prototype.toString.call(s)==='[object String]');
-}
+// index.js参照
+String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
 
 })($);

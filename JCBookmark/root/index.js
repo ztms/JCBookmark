@@ -7,8 +7,7 @@
 'use strict';
 /*
 var $debug = $('<div></div>').css({
-		id:'debug'
-		,position:'fixed'
+		position:'fixed'
 		,left:'0'
 		,top:'0'
 		,width:'200px'
@@ -19,13 +18,14 @@ var $debug = $('<div></div>').css({
 }).appendTo(document.body);
 var start = new Date(); // 測定
 */
-// ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
+var oStr = Object.prototype.toString;						// 型判定
+var IE = window.ActiveXObject ? document.documentMode : 0;	// IE判定
 $.ajaxSetup({
+	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	beforeSend:function(xhr){
 		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 	}
 });
-var IE = window.ActiveXObject ? document.documentMode : 0;
 var $window = $(window);
 var $document = $(document);
 var $wall = $('#wall');
@@ -109,7 +109,7 @@ var tree = {
 			,icon		:icon || ''
 		};
 		// 引数ノードのchild先頭に追加する
-		if( isString(pnode) ) pnode = tree.node(pnode);
+		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
 		( pnode || tree.top() ).child.unshift( node );
 		tree.modified(true);
 		return node;
@@ -168,7 +168,7 @@ var tree = {
 	// ノードAの子孫にノードBが存在したらtrueを返す
 	// A,BはノードIDまたはノードオブジェクトどちらでも
 	,nodeAhasB:function( A, B ){
-		if( isString(A) ) A = tree.node(A);
+		if( oStr.call(A)==='[object String]' ) A = tree.node(A);
 		if( A && A.child ){
 			return function callee( child ){
 				for( var i=0, n=child.length; i<n; i++ ){
@@ -203,7 +203,7 @@ var tree = {
 	// ノード移動(childに)
 	// ids:ノードID配列、dst:フォルダノードIDまたはノードオブジェクト
 	,moveChild:function( ids, dst ){
-		if( isString(dst) ) dst = tree.node( dst );
+		if( oStr.call(dst)==='[object String]' ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
 			for( var i=ids.length-1; i>=0; i-- ){
@@ -342,7 +342,7 @@ var option = {
 			if( 'layout' in data.panel ) od.panel.layout = data.panel.layout;
 			if( 'status' in data.panel ) od.panel.status = data.panel.status;
 			if( 'margin' in data.panel ){
-				if( isObject(data.panel.margin) ){
+				if( oStr.call(data.panel.margin)==='[object Object]' ){
 					// v1.8
 					if( 'top' in data.panel.margin ) od.panel.margin.top = data.panel.margin.top;
 					if( 'left' in data.panel.margin ) od.panel.margin.left = data.panel.margin.left;
@@ -374,7 +374,7 @@ var option = {
 			if( 'layout' in data.panel ) option.panel.layout( data.panel.layout );
 			if( 'status' in data.panel ) option.panel.status( data.panel.status );
 			if( 'margin' in data.panel ){
-				if( isObject(data.panel.margin) ){
+				if( oStr.call(data.panel.margin)==='[object Object]' ){
 					// v1.8
 					if( 'top' in data.panel.margin ) option.panel.margin.top( data.panel.margin.top );
 					if( 'left' in data.panel.margin ) option.panel.margin.left( data.panel.margin.left );
@@ -2908,9 +2908,6 @@ function HTMLdec( html ){
 	$a.remove();
 	return dec;
 }
-// 型判定
-function isString( v ){ return (Object.prototype.toString.call(v)==='[object String]'); }
-function isObject( v ){ return (Object.prototype.toString.call(v)==='[object Object]'); }
 // Twitterで昔http://twitter.com/#!/hogeなど'#'が含まれるURLがあり、$.get()で
 // '#'以降の文字列が消えてリクエストされてしまっていた。'#'がページ内リンクと
 // みなされて消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'に
