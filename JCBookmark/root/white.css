@@ -7,7 +7,7 @@ body {
 	border:1px solid #d0d0d0;
 	background:#f3f3f5;
 }
-.panel .title {
+.title {
 	color:#335;
 	background:#dadae0;
 	background:linear-gradient(#e7e7f7,#dddde7);
@@ -20,11 +20,11 @@ body {
 	background:linear-gradient(#f5f5ff,#d5d5dd);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#f5f5ff,endcolorstr=#d5d5dd)";
 }
-.panel .pen:hover, .panel .plusminus:hover {
+.pen:hover, .plusminus:hover {
 	border-color:#bbb;
 	background:#fff;
 }
-.panel .pen:active, .panel .plusminus:active {
+.pen:active, .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#aaa;
 	background:#eee;
@@ -52,7 +52,7 @@ body {
 	background:#fff5e3;
 	border-color:#d84;
 }
-.panel .itembox {
+.itembox {
 	background:#fafafc;
 	background:linear-gradient(#fcfcfe,#f5f5f7);
 }
@@ -60,16 +60,16 @@ body {
 	border:1px solid #aac;
 	box-shadow:0 0 10px 3px #aac;
 }
-.panel .item {
+.item {
 	color:#14d;
 }
-.panel .item:hover {
+.item:hover {
 	color:#600020;
 	background:#f9f0f5;
 	border-color:#dcb9b9;
 	background:linear-gradient(#fffafc,#f3e5ec);
 }
-.panel .item:active {
+.item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#a00020;
 	border-color:#eca9a9;

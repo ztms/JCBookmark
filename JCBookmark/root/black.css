@@ -7,7 +7,7 @@ body {
 	border:1px solid #444;
 	background:#222;
 }
-.panel .title {
+.title {
 	color:#fff;
 	background:#332;
 	background:linear-gradient(#414130,#393928);
@@ -20,11 +20,11 @@ body {
 	background:linear-gradient(#555544,#2e2e1d);
 	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#555544,endcolorstr=#2e2e1d)";
 }
-.panel .pen:hover, .panel .plusminus:hover {
+.pen:hover, .plusminus:hover {
 	border-color:#bbb;
 	background:#111;
 }
-.panel .pen:active, .panel .plusminus:active {
+.pen:active, .plusminus:active {
 	/* Firefox19,20で効かないなぜ */
 	border-color:#ccc;
 	background:#555;
@@ -52,7 +52,7 @@ body {
 	background:#754;
 	border-color:#f98;
 }
-.panel .itembox {
+.itembox {
 	background:#111;
 	background:linear-gradient(#1c1c1c,#111111);
 }
@@ -60,16 +60,16 @@ body {
 	border:1px solid #776;
 	box-shadow:0 0 12px 4px #776;
 }
-.panel .item {
+.item {
 	color:#ec4;
 }
-.panel .item:hover {
+.item:hover {
 	color:#afd;
 	border-color:#366;
 	background:#051e09;
 	background:linear-gradient(#17271f,#011a05);
 }
-.panel .item:active {
+.item:active {
 	/* Firefox19,20で効かないなぜ */
 	color:#9fd;
 	border-color:#477;
