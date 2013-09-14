@@ -105,19 +105,11 @@
   </div>
 </div>
 <div id=find>
-  <div id=findtab>
-    <ul>
-      <li><a href="#keyword">キーワード検索</a></li>
-      <li><a href="#deadlink">リンク切れ調査</a></li>
-    </ul>
-    <div id=keyword>
-      <input>&nbsp;&nbsp;<button class=start>検 索 <img src=find.png></button><button class=stop>ｷｬﾝｾﾙ <img src=delete.png></button>
-      <div class=progress></div><div class=found></div>
-    </div>
-    <div id=deadlink>
-      リンク切れのブックマークを探します。&nbsp;&nbsp;<button class=start>実 行 <img src=find.png></button><button class=stop>ｷｬﾝｾﾙ <img src=delete.png></button>
-      <div class=progress></div><div class=found></div>
-    </div>
+  <div class=tab>
+    <input placeholder="キーワード"><button class=start>検 索 <img src=find.png></button><button class=stop>ｷｬﾝｾﾙ <img src=delete.png></button> <img class=close src=delete.png title="閉じる">
+  </div>
+  <div class=tabbox>
+    <div class=progress></div><div class=found></div>
   </div>
 </div>
 <div id=dialog></div>

@@ -94,7 +94,7 @@
 	width:98%;
 	cursor:pointer;
 	text-align:center;
-	border-radius:3px;
+	border-radius:2px;
 	padding:1px;
 }
 .itembox {
@@ -259,7 +259,7 @@
 	overflow-y:scroll;
 }
 #editbox .newurl {
-	width:98%;/*423px;*/
+	width:98%;
 	border:1px solid #ddd;
 	padding:1px;
 }
@@ -270,13 +270,13 @@
 	border-color:#eb0;
 }
 #editbox .commit {
-	width:97%;/*421px;*/
+	width:97%;
 	padding:1px;
 	text-align:center;
 	cursor:pointer;
 	background:#eee;
 	border:1px solid #aaa;
-	border-radius:3px;
+	border-radius:2px;
 }
 #editbox .commit:hover {
 	border-color:#e70;
@@ -335,7 +335,7 @@
 	background:#fdd;
 }
 #editbox textarea {
-	width:100%;/*445px;*/
+	width:100%;
 	height:300px;
 	padding:2px;
 	border:1px solid #888;
@@ -425,9 +425,9 @@
 }
 #shotbox .memo {
 	left:228px; top:0;
-	border:0;
-	background:transparent;
 	line-height:20px;
+	background:transparent;
+	border:0;
 }
 #shotitem {
 	text-align:right;
@@ -444,67 +444,98 @@
 }
 #find {
 	display:none;
+	position:fixed;
+	left:0; top:0;
+	width:1; height:1;
+	font-size:14px;
 	line-height:1;
-	font-size:13px;
 }
-#findtab.ui-tabs {
-	padding:0;
-	border:0;
+#find .tab {
+	width:470px;
+	background:#fff;
+	border:1px solid #999;
+	border-bottom:1px solid #fff;
+	border-radius:7px 7px 0 0;
+	padding:7px 5px 0 10px;
+	position:relative;
+	left:0; top:1px;
 }
-#findtab .ui-tabs-nav {
-	padding:0;
-	border:0;
-	background:transparent;
+#find .tabbox {
+	width:100%;
+	background:#fff;
+	border:1px solid #999;
+	border-radius:1px; /* Firefoxメイリオ劣化対策 */
 }
-#findtab .ui-tabs-panel {
-	border-width:1px;
-	padding:10px;
+#find input {
+	width:250px;
+	height:23px;
+	line-height:20px;
+	border:1px solid #ccc;
+	padding:1px 0 0 5px;
+	margin:0;
+	vertical-align:top;
 }
-#findtab a {
-	outline:0;
+#find button {
+	color:#333;
+	height:26px;
+	line-height:20px;
+	border:1px solid #aaa;
+	background:#e7e7e7;
+	padding:2px 10px;
+	font-weight:bold;
+	border-radius:3px;
 }
-#findtab button img {
+#find button:hover {
+	background:#ddd;
+	border-color:#666;
+}
+#find button:active {
+	background:#fafafa;
+	border-color:#aaa;
+}
+#find button img {
 	width:18px;
 	height:18px;
 	vertical-align:top;
 }
-#findtab .stop, #findtab .wait {
-	display:none;
+#find .stop {
+	visibility:hidden;
 }
-#findtab .progress {
+#find .close {
+	float:right;
+	width:20px; height:20px;
+	margin:0 3px 0 0;
+	background:#fff;
+	filter:alpha(opacity=15);
+	opacity:0.15;
+}
+#find .close:hover {
+	filter:alpha(opacity=100);
+	opacity:1;
+}
+#find .progress {
+	width:100%;
 	height:10px;
 	border:0;
 	border-radius:0;
 }
-#findtab .found {
+#find .found {
 	width:100%;
-	height:230px;
-	border:1px solid #ddd;
-	overflow:auto;
+	height:120px;
+	padding:2px 1px;
+	overflow-x:hidden;
+	overflow-y:scroll;
 }
-#findtab .found a {
-	display:block;
-	white-space:nowrap;
-	text-decoration:none;
-	border:2px solid transparent;
-	color:#03c;
+#find .item {
+	float:left;
 }
-#findtab .found a:hover {
-	color:#602;
-	background:#fff6fb;
-	border-color:#dbb;
-}
-#findtab .found div {
+#find .found div { /* パネル */
 	color:#707070;
+	padding:2px;
 	font-weight:bold;
 	white-space:nowrap;
-	padding:2px;
-}
-#keyword input {
-	width:270px;
-	height:22px;
-	padding:1px 3px;
-	font-size:13px;
+	overflow:hidden;
+	float:left;
 }
 .ui-dialog {
 	font-size:14px;

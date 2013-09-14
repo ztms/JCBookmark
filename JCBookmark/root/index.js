@@ -688,7 +688,7 @@ var paneler = function(){
 		$columnBase.width( columnWidth );
 		// パネル元要素
 		$panelBase.width( panelWidth ).css({
-			'font-size': fontSize +'px'
+			'font-size': fontSize
 			,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 		});
 		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
@@ -1491,121 +1491,8 @@ function setEvents(){
 		});
 		function gotoFiler(){ location.href = 'filer.html'; }
 	});
-	// * HTMLエクスポート
-	//   クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
-	//   クライアント側で生成する場合、それを単純にダウンロードできればよいが、
-	//   HTML5のFileAPIを使う必要がありそう。こんな↓トリッキーな方法もあるようだが、
-	//     [JavaScriptでテキストファイルを生成してダウンロードさせる]
-	//     http://piro.sakura.ne.jp/latest/blosxom.cgi/webtech/javascript/2005-10-05_download.htm
-	//   トリッキーなだけに動いたり動かなかったりといった懸念がある。
-	//     http://productforums.google.com/forum/#!topic/chrome-ja/q5QdYQVZctM
-	//   そうするとやはり一旦サーバ側にアップロードして、それをダウンロードするのが適切？
-	//   サーバ側ではファイル保存ではなくメモリ保持もありうるが…、実装が面倒くさいのでファイル保存。
-	//   エクスポートボタン押下でサーバに PUT bookmarks.html 後、GET bookmarks.html に移動する。
-	//   この場合、クライアント側で保持しているノードツリーがHTML化される。つまりまだ保存していない
-	//   データならそれがHTML化される。
-	//   サーバ側でHTML生成する場合は、ブラウザが持ってる未保存データは無視して保存済みtree.json
-	//   をHTML化することになる。CでJSONパースコードを書くか、適当なライブラリを導入してパースする。
-	//   これは単にサーバ側で /bookmarks.html のリクエストに対応してリアルタイムにJSON→HTML変換して
-	//   応答を返せばいいので、サーバ側で無駄にファイル作ることもない。その方が単純かなぁ？
-	//   どっちでもいい気がするが、とりあえず実装が楽な方、クライアント側でのHTML生成にしてみよう。
-	// * HTMLインポート
-	//   NETSCAPE-Bookmark-file-1をパースしてJSONに変換する処理を、JavaScriptで書くかCで書くか。
-	//   JavaScriptのが楽かな。…と思ったら、<input type=file>のファイルデータをJavaScriptで取得
-	//   できないのか。HTML5のFileAPIでできるようになったと…。なんだじゃあサーバに一旦アップする
-	//   しかないか。そしてサーバ側でJSONに変換するか、無加工で取得してクライアント側で変換するか？
-	//   HTMLのパースをCで書くかJavaScriptで書くか…。どっちも手間そうだから動作軽そうなCにしよう。
-	//   画面遷移せずにアップロードできるというトリッキーな方法。
-	//   [Ajax的に画像などのファイルをアップロードする方法]
-	//   http://havelog.ayumusato.com/develop/javascript/e171-ajax-file-upload.html
-	//   [画面遷移なしでファイルアップロードする方法 と Safariの注意点]
-	//   http://groundwalker.com/blog/2007/02/file_uploader_and_safari.html
-	//   TODO:Firefoxはインポートしたブックマークタイトルで&#39;がそのまま表示されてしまう…
-	//   TODO:FirefoxダイレクトインポートとHTML経由インポートとでツリー構造が異なる。
-	//   独自ダイレクトインポートのJSONを、Firefoxが生成するHTMLにあわせればよいのだが…。
-	//
+	// インポート・エクスポート
 	$('#impexpico').click(function(){
-		// なぜかbutton()だけだとhover動作が起きないので自力hover()。
-		// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
-		$('#import,#export').off().button().hover(
-			function(){ $(this).addClass('ui-state-hover'); },
-			function(){ $(this).removeClass('ui-state-hover'); }
-		);
-		$('#import').click(function(){
-			var $impexp = $('#impexp');
-			if( $impexp.find('input').val().length ){
-				$impexp.find('form').off().submit(function(){
-					$impexp.find('iframe').off().one('load',function(){
-						var jsonText = $(this).contents().text();
-						if( jsonText.length ){
-							try{ analyzer( $.parseJSON(jsonText) ); }
-							catch( e ){ Alert(e); }
-						}
-						$(this).empty();
-						$impexp.dialog('destroy');
-					});
-					MsgBox('処理中です...');
-				}).submit();
-			}
-		});
-		$('#export').click(function(){
-			// ブックマーク形式HTML(NETSCAPE-Bookmark-file-1)フォーマット
-			// [Netscape Bookmark File Format]
-			// http://msdn.microsoft.com/en-us/library/aa753582%28v=vs.85%29.aspx
-			// [Netscape 4/6のブックマークファイルの形式]
-			// http://homepage3.nifty.com/Tatsu_syo/Devroom/NS_BM.txt
-			var html ='<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
-					+'<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
-					+'<TITLE>Bookmarks</TITLE>\n'
-					+'<H1>'+tree.top().title+'</H1>\n'
-					+'<DL><p>\n';
-			(function callee( child, depth ){
-				var indent='';
-				for(var i=0,n=depth*4; i<n; i++ ) indent +=' ';
-				for(var i=0,n=child.length; i<n; i++ ){
-					var node = child[i];
-					// 日付時刻情報は、ADD_DATE=,LAST_MODIFIED=,LAST_VISIT=があるようだが、
-					// ADD_DATE=しか持ってないからそれだけでいいかな…。10桁なので1970/1/1
-					// からの秒数(UnixTime)かな？そういうことにしておこう。。
-					var add_date = ' ADD_DATE="' +parseInt( (node.dateAdded||0) /1000 ) +'"';
-					if( node.child ){
-						// フォルダ
-						html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
-						html += indent +'<DL><p>\n';
-						callee( node.child, depth+1 );
-						html += indent +'</DL><p>\n';
-					}
-					else{
-						// ブックマーク
-						// faviconの情報が、Chromeが生成したものはICON=に画像のPNG形式+Base64データ。
-						//   <DT><A HREF="xxx" ICON="data:image/png;base64,iVBOR...">タイトル</A>
-						// IEが生成したものはICON_URI=にfaviconアドレス。
-						//   <DT><A HREF="xxx" ICON_URI="http://xxx.ico" >タイトル</A>
-						// Firefoxが生成したものはICON=とICON_URI=と両方入ってるもよう。
-						// faviconの生データは保持してないから、IE方式でいくかな…。
-						// TODO:エクスポートしたHTMLをChrome,Firefoxにインポートすると、やはり
-						// favicon情報が欠落したような状態。ICON=を記述しないとダメなのか…。
-						// 画像データを独自保持したり、時間かかるけどエクスポート時に取得してもよいが、
-						// Chromeにあわせるなら画像形式をPNGに変換しないといけないので手間がかかる…。
-						// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
-						// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
-						// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
-						var href = ' HREF="' +encodeURI(node.url||'') +'"';
-						var icon_uri = ' ICON_URI="' +encodeURI(node.icon||'') +'"';
-						html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
-					}
-				}
-			}( tree.top().child, 1 ));
-			html += '</DL><p>\n';
-			// アップロード＆ダウンロード
-			$.ajax({
-				type	:'put'
-				,url	:'export.html'
-				,data	:html
-				,error	:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
-				,success:function(){ location.href = 'export.html'; }
-			});
-		});
 		// ダイアログ表示
 		$('#impexp').dialog({
 			title	:'HTMLインポート・エクスポート'
@@ -1615,117 +1502,121 @@ function setEvents(){
 			,close	:function(){ $(this).dialog('destroy'); }
 		});
 	});
+	// HTMLインポート
+	// NETSCAPE-Bookmark-file-1をパースしてJSONに変換する処理を、JavaScriptで書くかCで書くか。
+	// JavaScriptのが楽かな。…と思ったら、<input type=file>のファイルデータをJavaScriptで取得
+	// できないのか。HTML5のFileAPIでできるようになったと…。なんだじゃあサーバに一旦アップする
+	// しかないか。そしてサーバ側でJSONに変換するか、無加工で取得してクライアント側で変換するか？
+	// HTMLのパースをCで書くかJavaScriptで書くか…。どっちも手間そうだから動作軽そうなCにしよう。
+	// 画面遷移せずにアップロードできるというトリッキーな方法。
+	// [Ajax的に画像などのファイルをアップロードする方法]
+	// http://havelog.ayumusato.com/develop/javascript/e171-ajax-file-upload.html
+	// [画面遷移なしでファイルアップロードする方法 と Safariの注意点]
+	// http://groundwalker.com/blog/2007/02/file_uploader_and_safari.html
+	// TODO:Firefoxはインポートしたブックマークタイトルで&#39;がそのまま表示されてしまう…
+	// TODO:FirefoxダイレクトインポートとHTML経由インポートとでツリー構造が異なる。
+	// 独自ダイレクトインポートのJSONを、Firefoxが生成するHTMLにあわせればよいのだが…。
+	$('#import').click(function(){
+		var $impexp = $('#impexp');
+		if( $impexp.find('input').val().length ){
+			$impexp.find('form').off().submit(function(){
+				$impexp.find('iframe').off().one('load',function(){
+					var jsonText = $(this).contents().text();
+					if( jsonText.length ){
+						try{ analyzer( $.parseJSON(jsonText) ); }
+						catch( e ){ Alert(e); }
+					}
+					$(this).empty();
+					$impexp.dialog('destroy');
+				});
+				MsgBox('処理中です...');
+			}).submit();
+		}
+	});
+	// HTMLエクスポート
+	// クライアント側でHTML生成するか、サーバ側でHTML生成するか悩む。
+	// クライアント側で生成する場合、それを単純にダウンロードできればよいが、
+	// HTML5のFileAPIを使う必要がありそう。こんな↓トリッキーな方法もあるようだが、
+	//   [JavaScriptでテキストファイルを生成してダウンロードさせる]
+	//   http://piro.sakura.ne.jp/latest/blosxom.cgi/webtech/javascript/2005-10-05_download.htm
+	// トリッキーなだけに動いたり動かなかったりといった懸念がある。
+	//   http://productforums.google.com/forum/#!topic/chrome-ja/q5QdYQVZctM
+	// そうするとやはり一旦サーバ側にアップロードして、それをダウンロードするのが適切？
+	// サーバ側ではファイル保存ではなくメモリ保持もありうるが…、実装が面倒くさいのでファイル保存。
+	// エクスポートボタン押下でサーバに PUT bookmarks.html 後、GET bookmarks.html に移動する。
+	// この場合、クライアント側で保持しているノードツリーがHTML化される。つまりまだ保存していない
+	// データならそれがHTML化される。
+	// サーバ側でHTML生成する場合は、ブラウザが持ってる未保存データは無視して保存済みtree.json
+	// をHTML化することになる。CでJSONパースコードを書くか、適当なライブラリを導入してパースする。
+	// これは単にサーバ側で /bookmarks.html のリクエストに対応してリアルタイムにJSON→HTML変換して
+	// 応答を返せばいいので、サーバ側で無駄にファイル作ることもない。その方が単純かなぁ？
+	// どっちでもいい気がするが、とりあえず実装が楽な方、クライアント側でのHTML生成にしてみよう。
+	$('#export').click(function(){
+		// ブックマーク形式HTML(NETSCAPE-Bookmark-file-1)フォーマット
+		// [Netscape Bookmark File Format]
+		// http://msdn.microsoft.com/en-us/library/aa753582%28v=vs.85%29.aspx
+		// [Netscape 4/6のブックマークファイルの形式]
+		// http://homepage3.nifty.com/Tatsu_syo/Devroom/NS_BM.txt
+		var html ='<!DOCTYPE NETSCAPE-Bookmark-file-1>\n'
+				+'<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n'
+				+'<TITLE>Bookmarks</TITLE>\n'
+				+'<H1>'+tree.top().title+'</H1>\n'
+				+'<DL><p>\n';
+		(function callee( child, depth ){
+			var indent='';
+			for(var i=0,n=depth*4; i<n; i++ ) indent +=' ';
+			for(var i=0,n=child.length; i<n; i++ ){
+				var node = child[i];
+				// 日付時刻情報は、ADD_DATE=,LAST_MODIFIED=,LAST_VISIT=があるようだが、
+				// ADD_DATE=しか持ってないからそれだけでいいかな…。10桁なので1970/1/1
+				// からの秒数(UnixTime)かな？そういうことにしておこう。。
+				var add_date = ' ADD_DATE="' +parseInt( (node.dateAdded||0) /1000 ) +'"';
+				if( node.child ){
+					// フォルダ
+					html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
+					html += indent +'<DL><p>\n';
+					callee( node.child, depth+1 );
+					html += indent +'</DL><p>\n';
+				}
+				else{
+					// ブックマーク
+					// faviconの情報が、Chromeが生成したものはICON=に画像のPNG形式+Base64データ。
+					//   <DT><A HREF="xxx" ICON="data:image/png;base64,iVBOR...">タイトル</A>
+					// IEが生成したものはICON_URI=にfaviconアドレス。
+					//   <DT><A HREF="xxx" ICON_URI="http://xxx.ico" >タイトル</A>
+					// Firefoxが生成したものはICON=とICON_URI=と両方入ってるもよう。
+					// faviconの生データは保持してないから、IE方式でいくかな…。
+					// TODO:エクスポートしたHTMLをChrome,Firefoxにインポートすると、やはり
+					// favicon情報が欠落したような状態。ICON=を記述しないとダメなのか…。
+					// 画像データを独自保持したり、時間かかるけどエクスポート時に取得してもよいが、
+					// Chromeにあわせるなら画像形式をPNGに変換しないといけないので手間がかかる…。
+					// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
+					// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
+					// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
+					var href = ' HREF="' +encodeURI(node.url||'') +'"';
+					var icon_uri = ' ICON_URI="' +encodeURI(node.icon||'') +'"';
+					html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
+				}
+			}
+		}( tree.top().child, 1 ));
+		html += '</DL><p>\n';
+		// アップロード＆ダウンロード
+		$.ajax({
+			type	:'put'
+			,url	:'export.html'
+			,data	:html
+			,error	:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
+			,success:function(){ location.href = 'export.html'; }
+		});
+	});
 	// スナップショット
 	$('#snapico').click(function(){
-		// なぜかbutton()だけだとhover動作が起きないので自力hover()。
-		// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
-		$('#shot a,#shotview,#shotdel').off().button().hover(
-			function(){ $(this).addClass('ui-state-hover'); },
-			function(){ $(this).removeClass('ui-state-hover'); }
-		);
 		// 一覧取得表示
 		var $shots = $('#shots').text('...取得中...');
 		$.ajax({
 			url		:':shotlist'
 			,error	:function(xhr){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){ shotlist( data ); }
-		});
-		// 作成ボタン
-		$('#shot a').click(function(){
-			var $btn = $(this).hide();	// ボタン隠して
-			$btn.next().show();			// 処理中画像(wait.gif)表示
-			// メモを編集した状態からいきなり作成ボタンを押すと、inputのblurイベント(メモ保存ajax)
-			// とこのクリックイベントのajaxが同時発生する。ブラウザではblurの方が先のようだが、
-			// サーバ側で逆転する場合があるのか、メモ保存前にsnapshotが実行されてしまい、メモが
-			// まだない状態の一覧が表示されて、メモが消えたような感じになる。再表示すればメモは
-			// 保存されているが、問題だ。どうしよう…setTimeoutでいいかな？サーバ側での実行順序
-			// を保証できるわけではないが、とりあえず…。
-			setTimeout(function(){
-				$.ajax({
-					url		:':snapshot'
-					,error	:function(xhr){
-						Alert('作成できません:'+xhr.status+' '+xhr.statusText);
-						$btn.next().hide();
-						$btn.show();
-					}
-					,success:function(data){
-						shotlist( data );
-						$btn.next().hide();
-						$btn.show();
-					}
-				});
-			},100);
-		});
-		// 復元
-		$('#shotview').click(function(){
-			var $btn = $(this);
-			var item = null;
-			$shots.find('div').each(function(){
-				if( $(this).hasClass('select') ){ item=this; return false; }
-			});
-			if( item ){
-				if( !tree.modified() && !option.modified() ){
-					shotView();
-				}
-				else Confirm({
-					msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
-					,width:380
-					,no	:function(){ shotView(); }
-					// TODO:"はい"で保存してからshotViewが実行されるまでのわずかな間、復元ボタンが
-					// wait.gifにならずダイアログも閉じているのでまたクリックできてしまう。
-					,yes:function(){ modifySave({ success:shotView }); }
-				});
-			}
-			function shotView(){
-				$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
-				$.ajax({
-					url		:':shotget?'+item.id
-					,error	:function(xhr){
-						Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
-						$btn.next().hide();
-						$btn.show();
-					}
-					,success:function(data){
-						if( 'index.json' in data ) option.merge( data['index.json'] );
-						else option.clear();
-						paneler( tree.replace(data['tree.json']).top() );
-						$btn.next().hide();
-						$btn.show();
-					}
-				});
-			}
-		});
-		// 消去
-		// TODO:削除後に次エントリか前エントリを選択状態にする
-		$('#shotdel').click(function(){
-			var $btn = $(this);
-			var item = null;
-			$shots.find('div').each(function(){
-				if( $(this).hasClass('select') ){ item=this; return false; }
-			});
-			if( item ){
-				Confirm({
-					msg:$(item).find('.date').text()+'　のスナップショットを#BR#ディスクから完全に消去します。'
-					,ok:function(){
-						$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
-						$.ajax({
-							url		:':shotdel?'+item.id
-							,error	:function(xhr){
-								Alert('消去できません:'+xhr.status+' '+xhr.statusText);
-								$btn.next().hide();
-								$btn.show();
-							}
-							,success:function(data){
-								// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
-								// 成功しても毎回一覧を更新することで削除できなかったことを判断
-								shotlist( data );
-								$btn.next().hide();
-								$btn.show();
-							}
-						});
-					}
-				});
-			}
 		});
 		// ダイアログ表示
 		$('#snap').dialog({
@@ -1736,145 +1627,234 @@ function setEvents(){
 			,close	:function(){
 				// メモを保存
 				$shots.find('div').each(function(){
-					if( $(this).hasClass('select') ){
-						$(this).find('.memo').blur();
-						return false;
-					}
+					if( $(this).hasClass('select') ){ $(this).find('.memo').blur(); return false; }
 				});
 				$(this).dialog('destroy');
 			}
 		});
-		// スナップショット一覧(再)表示
-		// パネル生成と同様$.clone()で高速化できるけど…そんな遅くないしまあいいか…
-		function shotlist( list ){
-			$shots.empty();
-			var date = new Date();
-			var nowTime = (new Date()).getTime();
-			for( var i=0, n=list.length; i<n; i++ ){
-				date.setTime( list[i].date||0 );
-				var $item = $('<div id="' + list[i].id + '"></div>');
-				var $date = $('<span class=date>' + myFmt(date,nowTime) + '</span>');
-				var $memo = $('<input class=memo value="' + (list[i].memo||'') + '">');
-				// アイテムクリック選択
-				$item.click(function(ev){
-					$shots.find('div').removeClass('select');
-					$(this).addClass('select');
-				});
-				// メモ欄イベント
-				$memo.on({
-					// フォーカス失う時、変更があればサーバに保存
-					// TODO:.cabファイルはサーバ側で管理しておりブラウザはファイルパスを認識しなくてもよいが
-					// メモファイルはブラウザがサーバ側のパス(snapフォルダ内とか)を意識してPUTしているので、
-					// ちょっと仕様が汚い。でもサーバ側のPOST実装対応が面倒でPUTのが楽だったので…(；´Д｀)
-					blur:function(){
-						var id = this.parentNode.id;
-						var text = this.value;
-						var item = null;
-						for( var i=0, n=list.length; i<n; i++ ){
-							if( list[i].id==id && list[i].memo!=text ){
-								// 変更あり
-								item = list[i];
-								break;
-							}
-						}
-						if( item ){
-							var opt = {
-								type	:text.length? 'put' : 'del'
-								,url	:'snap/'+id.replace(/cab$/,'txt')
-								,error	:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
-								,success:function(){ item.memo=text; widthAdjust(); }
-							};
-							if( text.length ) opt.data = text;
-							$.ajax(opt);
-						}
-					}
-					// メモ欄Enterで次アイテム選択
-					,keypress:function(ev){
-						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 13:
-							$(this.parentNode).next().click().find('.memo').focus();
-							return false;
-						}
-					}
-					// メモ欄↑↓キーでアイテム選択移動
-					,keydown:function(ev){
-						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 38: // ↑
-							$(this.parentNode).prev().click().find('.memo').focus();
-							return false;
-						case 40: // ↓
-							$(this.parentNode).next().click().find('.memo').focus();
-							return false;
-						}
-					}
-				});
-				// 新しいアイテムほど上に。新しいとはタイムスタンプ比較ではなく
-				// 単に配列の後の方が新しい(サーバからそう返却されるはず…)。
-				$shots.prepend( $item.append($date).append($memo) );
+	});
+	// スナップショット作成
+	$('#shot a').click(function(){
+		var $btn = $(this).hide();	// ボタン隠して
+		$btn.next().show();			// 処理中画像(wait.gif)表示
+		// メモを編集した状態からいきなり作成ボタンを押すと、inputのblurイベント(メモ保存ajax)
+		// とこのクリックイベントのajaxが同時発生する。ブラウザではblurの方が先のようだが、
+		// サーバ側で逆転する場合があるのか、メモ保存前にsnapshotが実行されてしまい、メモが
+		// まだない状態の一覧が表示されて、メモが消えたような感じになる。再表示すればメモは
+		// 保存されているが、問題だ。どうしよう…setTimeoutでいいかな？サーバ側での実行順序
+		// を保証できるわけではないが、とりあえず…。
+		setTimeout(function(){
+			$.ajax({
+				url		:':snapshot'
+				,error	:function(xhr){
+					Alert('作成できません:'+xhr.status+' '+xhr.statusText);
+					$btn.next().hide();
+					$btn.show();
+				}
+				,success:function(data){
+					shotlist( data );
+					$btn.next().hide();
+					$btn.show();
+				}
+			});
+		},100);
+	});
+	// スナップショット復元
+	$('#shotview').click(function(){
+		var $btn = $(this);
+		var item = null;
+		$('#shots').find('div').each(function(){
+			if( $(this).hasClass('select') ){ item=this; return false; }
+		});
+		if( item ){
+			if( !tree.modified() && !option.modified() ){
+				shotView();
 			}
-			widthAdjust();
-
-			// 一欄の横幅を計算してセットする。<span>を使って文字列描画幅を算出。
-			// http://qiita.com/items/1b3802db80eadf864633
-			function widthAdjust(){
-				// メモ欄の文字列横幅最大を算出
-				var maxWidth = 0;
-				var $span = $('<span></span>').css({
-						position		:'absolute'
-						,visibility		:'hidden'
-						,'white-space'	:'nowrap'
-						,'font-weight'	:'bold'
-					}).appendTo(document.body);
-				for( var i=list.length-1; i>=0; i-- ){
-					if( list[i].memo && list[i].memo.length>0 ){
-						var width = $span.text(list[i].memo).width();
-						if( width > maxWidth ) maxWidth = width;
+			else Confirm({
+				msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+				,width:380
+				,no	:function(){ shotView(); }
+				// TODO:"はい"で保存してからshotViewが実行されるまでのわずかな間、復元ボタンが
+				// wait.gifにならずダイアログも閉じているのでまたクリックできてしまう。
+				,yes:function(){ modifySave({ success:shotView }); }
+			});
+		}
+		function shotView(){
+			$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
+			$.ajax({
+				url		:':shotget?'+item.id
+				,error	:function(xhr){
+					Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
+					$btn.next().hide();
+					$btn.show();
+				}
+				,success:function(data){
+					if( 'index.json' in data ) option.merge( data['index.json'] );
+					else option.clear();
+					paneler( tree.replace(data['tree.json']).top() );
+					$btn.next().hide();
+					$btn.show();
+				}
+			});
+		}
+	});
+	// スナップショット消去
+	// TODO:削除後に次エントリか前エントリを選択状態にする
+	$('#shotdel').click(function(){
+		var $btn = $(this);
+		var item = null;
+		$('#shots').find('div').each(function(){
+			if( $(this).hasClass('select') ){ item=this; return false; }
+		});
+		if( item ){
+			Confirm({
+				msg:$(item).find('.date').text()+'　のスナップショットを#BR#ディスクから完全に消去します。'
+				,ok:function(){
+					$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
+					$.ajax({
+						url		:':shotdel?'+item.id
+						,error	:function(xhr){
+							Alert('消去できません:'+xhr.status+' '+xhr.statusText);
+							$btn.next().hide();
+							$btn.show();
+						}
+						,success:function(data){
+							// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
+							// 成功しても毎回一覧を更新することで削除できなかったことを判断
+							shotlist( data );
+							$btn.next().hide();
+							$btn.show();
+						}
+					});
+				}
+			});
+		}
+	});
+	// スナップショット一覧(再)表示
+	// パネル生成と同様$.clone()で高速化できるけど…そんな遅くないしまあいいか…
+	function shotlist( list ){
+		var $shots = $('#shots').empty();
+		var date = new Date();
+		var nowTime = (new Date()).getTime();
+		for( var i=0, n=list.length; i<n; i++ ){
+			date.setTime( list[i].date||0 );
+			var $item = $('<div id="' + list[i].id + '"></div>');
+			var $date = $('<span class=date>' + myFmt(date,nowTime) + '</span>');
+			var $memo = $('<input class=memo value="' + (list[i].memo||'') + '">');
+			// アイテムクリック選択
+			$item.click(function(ev){
+				$shots.find('div').removeClass('select');
+				$(this).addClass('select');
+			});
+			// メモ欄イベント
+			$memo.on({
+				// フォーカス失う時、変更があればサーバに保存
+				// TODO:.cabファイルはサーバ側で管理しておりブラウザはファイルパスを認識しなくてもよいが
+				// メモファイルはブラウザがサーバ側のパス(snapフォルダ内とか)を意識してPUTしているので、
+				// ちょっと仕様が汚い。でもサーバ側のPOST実装対応が面倒でPUTのが楽だったので…(；´Д｀)
+				blur:function(){
+					var id = this.parentNode.id;
+					var text = this.value;
+					var item = null;
+					for( var i=0, n=list.length; i<n; i++ ){
+						if( list[i].id==id && list[i].memo!=text ){
+							// 変更あり
+							item = list[i];
+							break;
+						}
+					}
+					if( item ){
+						var opt = {
+							type	:text.length? 'put' : 'del'
+							,url	:'snap/'+id.replace(/cab$/,'txt')
+							,error	:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
+							,success:function(){ item.memo=text; widthAdjust(); }
+						};
+						if( text.length ) opt.data = text;
+						$.ajax(opt);
 					}
 				}
-				$span.remove();
-				// 横幅小さすぎ修正
-				var dateWidth = $shots.find('.memo').position().left;
-				var minWidth = $('#shotbox').width() - dateWidth -17;	// -17pxスクロールバー
-				if( minWidth > maxWidth ) maxWidth = minWidth;
-				// メモ欄INPUTを最大幅にセット
-				$shots.find('.memo').width( maxWidth -5 );	// なぜかはみ出るので適当調節
-				// 全体幅セット
-				maxWidth += dateWidth;
-				$('#shothead').width( maxWidth );
-				$shots.find('div').width( maxWidth );
-			}
+				// メモ欄Enterで次アイテム選択
+				,keypress:function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 13:
+						$(this.parentNode).next().click().find('.memo').focus();
+						return false;
+					}
+				}
+				// メモ欄↑↓キーでアイテム選択移動
+				,keydown:function(ev){
+					switch( ev.which || ev.keyCode || ev.charCode ){
+					case 38: // ↑
+						$(this.parentNode).prev().click().find('.memo').focus();
+						return false;
+					case 40: // ↓
+						$(this.parentNode).next().click().find('.memo').focus();
+						return false;
+					}
+				}
+			});
+			// 新しいアイテムほど上に。新しいとはタイムスタンプ比較ではなく
+			// 単に配列の後の方が新しい(サーバからそう返却されるはず…)。
+			$shots.prepend( $item.append($date).append($memo) );
 		}
-	});
+		// 一欄の横幅を計算してセットする。<span>を使って文字列描画幅を算出。
+		// http://qiita.com/items/1b3802db80eadf864633
+		(function widthAdjust(){
+			// メモ欄の文字列横幅最大を算出
+			var maxWidth = 0;
+			var $span = $('<span></span>').css({
+					position		:'absolute'
+					,visibility		:'hidden'
+					,'white-space'	:'nowrap'
+					,'font-weight'	:'bold'
+				}).appendTo(document.body);
+			for( var i=list.length-1; i>=0; i-- ){
+				if( list[i].memo && list[i].memo.length>0 ){
+					var width = $span.text(list[i].memo).width();
+					if( width > maxWidth ) maxWidth = width;
+				}
+			}
+			$span.remove();
+			// 横幅小さすぎ修正
+			var dateWidth = $shots.find('.memo').position().left;
+			var minWidth = $('#shotbox').width() - dateWidth -17;	// -17pxスクロールバー
+			if( minWidth > maxWidth ) maxWidth = minWidth;
+			// メモ欄INPUTを最大幅にセット
+			$shots.find('.memo').width( maxWidth -5 );	// なぜかはみ出るので適当調節
+			// 全体幅セット
+			maxWidth += dateWidth;
+			$('#shothead').width( maxWidth );
+			$shots.find('div').width( maxWidth );
+		}());
+	}
+	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
+	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
+	$('#import,#export,#shot a,#shotview,#shotdel').button().hover(
+		function(){ $(this).addClass('ui-state-hover'); },
+		function(){ $(this).removeClass('ui-state-hover'); }
+	);
 	// 検索
-	// TODO:単なるダイアログボックスじゃないもっといいUIはないか
-	// 上下左右のいずれか選択できるposition:fixな領域にしたい。
-	// あと検索結果のURLアイテムはドラッグ＆ドロップでパネルに。
-	// 検索結果のフォルダ(パネル)は動かせなくてもいいかな。
-	// jQuery UI Tabs
-	$('#findtab').tabs({
-		select:function( ev, ui ){
-			if( /#keyword$/.test(ui.tab.href) ){
-				// キーワードのテキストボックスにフォーカス移動
-				setTimeout(function(){ $('#keyword').find('input').focus(); },0);
+	$('#find')
+		.find('.progress').progressbar().end()
+		// 閉じる
+		.find('.close').click(function(){
+			$('#find').hide().find('.start').off();
+			$wall.css('padding-bottom','50px');
+		}).end()
+		// Enterで検索実行
+		.find('input').keypress(function(ev){
+			switch( ev.which || ev.keyCode || ev.charCode ){
+			case 13: $('#find').find('.start').click(); return false;
 			}
-		}
-	})
-	.find('button').button().end()
-	.find('.progress').progressbar();
-	// キーワードテキストボックスEnterで検索開始
-	$('#keyword').find('input').keypress(function(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 13: $('#keyword').find('.start').click(); return false;
-		}
-	});
-	$('#findico').click(function(){
-		$('#find').dialog({
-			title	:'ブックマーク検索'
-			,width	:560
-			,height	:380
-			,close	:function(){ $(this).dialog('destroy'); }
 		});
-		$('#keyword').find('input').focus();
+	$('#findico').click(function(){
+		var $find = $('#find');
+		if( $find.css('display')=='block' ){
+			$find.find('input').focus(); return;
+		}
+		$find.width( $window.width()-2 ).css('top',$window.height()-$find.height()).show().find('input').focus();
+		$wall.css('padding-bottom','220px');
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
@@ -1892,29 +1872,34 @@ function setEvents(){
 		callee( tree.top() );
 		callee( tree.trash() );
 		// キーワード検索
-		$('#keyword').find('.start').off().click(function(){
-			var $my = $('#keyword');
+		$find.find('.start').click(function(){
 			// 検索ワード
-			var words = $my.find('input').val().split(/[ 　]+/); // 空白文字で分割
+			var words = $find.find('input').val().split(/[ 　]+/); // 空白文字で分割
 			for( var i=words.length-1; i>=0; i-- ){
 				if( words[i].length<=0 ) words.splice(i,1);
 			}
 			if( words.length<=0 ) return;
 			// 検索中表示・準備
-			var $wait = $('<img src=wait.gif>').appendTo( $my.find('.found').empty() );
-			var $pgbar = $my.find('.progress').progressbar('value',0);
-			var $url = $('<a target="_blank"><img class=icon><span></span></a>');
+			var $box = $find.find('.found').empty().css('font-size',fontSize);
+			var $pgbar = $find.find('.progress').progressbar('value',0);
+			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
 			var timer = null;
-			$my.find('.stop').off().click(function(){
+			var fontSize = option.font.size();
+			var iconSize = fontSize + 3 +option.icon.size();
+			var width = ~~($box.width() / ~~($box.width() /490)) -12;
+			$box.css('font-size',fontSize);
+			$url.width(width).find('img').width(iconSize).height(iconSize);
+			$pnl.width(width).find('img').width(iconSize).height(iconSize);
+			$find.find('.stop').off().click(function(){
 				// キャンセル
 				clearTimeout( timer );
-				$(this).hide();
+				$(this).css('visibility','hidden');
 				$pgbar.progressbar('value',0);
-				$wait.remove();
 				$url.remove();
 				$pnl.remove();
-			}).show();
+				if( $box[0].childNodes.length==0 ) $box.text('見つかりません');
+			}).css('visibility','visible');
 			// 検索実行
 			var nodeTotal = urlTotal + panels.length;
 			var index = 0;
@@ -1937,7 +1922,7 @@ function setEvents(){
 				while( index < panels.length && total<limit ){
 					// パネル名
 					if( found( panels[index].title ) ){
-						$wait.before(
+						$box.append(
 							$pnl.clone()
 								.find('span').text(panels[index].title).end()
 						);
@@ -1948,7 +1933,7 @@ function setEvents(){
 					for( var i=0, n=child.length; i<n; i++ ){
 						if( child[i].child ) continue;
 						if( found( child[i].title ) || found( child[i].url ) ){
-							$wait.before(
+							$box.append(
 								$url.clone()
 									.attr('href',child[i].url)
 									.find('img').attr('src',child[i].icon).end()
@@ -1963,12 +1948,8 @@ function setEvents(){
 				$pgbar.progressbar('value',total*100/nodeTotal);
 				// 次
 				if( index < panels.length ) timer = setTimeout(callee,0);
-				else $my.find('.stop').click();
+				else $find.find('.stop').click();
 			}());
-		});
-		// リンク切れ調査
-		$('#deadlink').find('.start').off().click(function(){
-			var $my = $('#deadlink');
 		});
 	});
 	// パネル並べ替え
@@ -2041,7 +2022,7 @@ function setEvents(){
 					return $('<div class=panel></div>')
 							.css({
 								position: 'absolute'
-								,'font-size': option.font.size() +'px'
+								,'font-size': option.font.size()// +'px'
 							})
 							.width( $item.width() )
 							.append( $('<a class=item></a>').append( $item.children().clone() ) )
@@ -2767,7 +2748,7 @@ function optionApply(){
 	});
 	$('.column').width( columnWidth );
 	$('.panel').width( panelWidth ).css({
-		'font-size': fontSize +'px'
+		'font-size': fontSize
 		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$('.title span').css('vertical-align',(iconSize/2)|0);
@@ -2775,9 +2756,10 @@ function optionApply(){
 	$('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 	$('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
 	$('#newurl').css('font-size',fontSize);
+	$('#find .found').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
-		'font-size': fontSize +'px'
+		'font-size': fontSize
 		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
