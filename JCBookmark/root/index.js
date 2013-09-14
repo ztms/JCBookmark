@@ -6,7 +6,6 @@
 (function($){
 'use strict';
 /*
-var start = new Date(); // 測定
 var $debug = $('<div></div>').css({
 		id:'debug'
 		,position:'fixed'
@@ -18,6 +17,7 @@ var $debug = $('<div></div>').css({
 		,padding:'2px'
 		,'font-size':'12px'
 }).appendTo(document.body);
+var start = new Date(); // 測定
 */
 // ブラウザ(主にIE)キャッシュ対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 $.ajaxSetup({
@@ -41,6 +41,9 @@ var tree = {
 			if( on ){
 				$('#modified').show();
 				$wall.css('padding-top','22px');
+				$('.itempop').each(function(){
+					if( this.offsetTop<22 ){ $(this).css('top',22); return false; }
+				});
 			}
 			return tree;
 		}
@@ -676,14 +679,14 @@ var paneler = function(){
 		var columnWidth = panelWidth + panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
 		$wall.empty().width( columnWidth * columnCount ).css({
 			'padding-right': panelMarginLeft +'px'
-			,'margin': option.wall.margin()
+			,margin: option.wall.margin()
 		});
 		// カラム元要素
 		$columnBase.width( columnWidth );
 		// パネル元要素
 		$panelBase.width( panelWidth ).css({
 			'font-size': fontSize +'px'
-			,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+			,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 		});
 		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 		$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
@@ -692,11 +695,11 @@ var paneler = function(){
 		$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
 		$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 		// カラム(段)生成
-		var columnList = {};
+		var columns = {};
 		for( var i=0; i<columnCount; i++ ){
-			columnList['co'+i] = {
+			columns['co'+i] = {
 				$e: $column( 'co'+i ).appendTo( $wall )
-					,height: 0
+				,height: 0
 			};
 		}
 		// float解除
@@ -725,8 +728,44 @@ var paneler = function(){
 				index++; count--;
 			}
 			while( layoutSeek && count>0 );
-			if( layoutSeek ) timer = setTimeout(layouter,1); else afterLayout();
+			if( layoutSeek ) timer = setTimeout(layouter,0); else afterLayout();
 		}());
+		// パネル１つ生成配置
+		function panelCreate( node, coID ){
+			var column = ( arguments.length >1 )? columns[coID] : lowestColumn();
+			var $p = $newPanel( node ).appendTo( column.$e );
+			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
+			// 例) { btn1:1, btn9:0, btn45:0, ... }
+			// パネルID=XXX は、ボタンID=btnXXX に対応
+			var btnID = 'btn'+node.id;
+			if( btnID in panelStatus && panelStatus[btnID]==1 ){
+				// 閉パネル閉じ
+				panelOpenClose( $p );
+			}
+			else{
+				// 開パネルアイテム追加
+				var $box = $p.find('.itembox').empty();
+				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
+					if( !child[i].child )
+						$box.append( $newItem( child[i] ) );
+				}
+			}
+			// カラム高さ
+			column.height += $p.height();
+			// 完了
+			placeList[node.id] = true;
+		}
+		// 高さがいちばん低いカラムオブジェクトを返す
+		function lowestColumn(){
+			var target = null;
+			for( var id in columns ){
+				if( !target )
+					target = columns[id];
+				else if( target.height > columns[id].height )
+					target = columns[id];
+			}
+			return target;
+		}
 		// レイアウト反映後、残りのパネル配置
 		function afterLayout(){
 			var nodeList = [];	// 未配置ノードオブジェクト配列
@@ -747,7 +786,7 @@ var paneler = function(){
 					panelCreate( nodeList[index] );
 					index++; count--;
 				}
-				if( index < length ) timer = setTimeout(placer,1); else afterPlaced();
+				if( index < length ) timer = setTimeout(placer,0); else afterPlaced();
 			}());
 		}
 		// 全パネル配置後
@@ -824,42 +863,6 @@ var paneler = function(){
 			if( postEvent ) postEvent();
 			// 測定
 			//$debug.text('paneler='+((new Date()).getTime() -start.getTime())+'ms');
-		}
-		// パネル１つ生成配置
-		function panelCreate( node, coID ){
-			var column = ( arguments.length >1 )? columnList[coID] : lowestColumn();
-			var $p = $newPanel( node ).appendTo( column.$e );
-			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
-			// 例) { btn1:1, btn9:0, btn45:0, ... }
-			// パネルID=XXX は、ボタンID=btnXXX に対応
-			var btnID = 'btn'+node.id;
-			if( btnID in panelStatus && panelStatus[btnID]==1 ){
-				// 閉パネル閉じ
-				panelOpenClose( $p );
-			}
-			else{
-				// 開パネルアイテム追加
-				var $box = $p.find('.itembox').empty();
-				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-					if( !child[i].child )
-						$box.append( $newItem( child[i] ) );
-				}
-			}
-			// カラム高さ
-			column.height += $p.height();
-			// 完了
-			placeList[node.id] = true;
-		}
-		// 高さがいちばん低いカラムオブジェクトを返す
-		function lowestColumn(){
-			var target = null;
-			for( var id in columnList ){
-				if( !target )
-					target = columnList[id];
-				else if( target.height > columnList[id].height )
-					target = columnList[id];
-			}
-			return target;
 		}
 	};
 }();
@@ -2213,7 +2216,7 @@ var panelPopper = function(){
 					}
 				}
 				// 次
-				if( index < length ) itemTimer = setTimeout(callee,1);
+				if( index < length ) itemTimer = setTimeout(callee,0);
 			}());
 			// カーソル移動方向と停止時間を監視
 			$document.on('mousemove.itempop',function(ev){
@@ -2348,7 +2351,7 @@ function panelEdit( pid ){
 			}
 			index++; count--;
 		}
-		if( index < length ) timer = setTimeout(callee,1); else itemSortable();
+		if( index < length ) timer = setTimeout(callee,0); else itemSortable();
 	}());
 	// ファビコンD&Dでアイテム並べ替え(TODO:Sortableとかぶる)
 	function itemSortable(){
@@ -2775,7 +2778,7 @@ function optionApply(){
 	$('.column').width( columnWidth );
 	$('.panel').width( panelWidth ).css({
 		'font-size': fontSize +'px'
-		,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$('.title span').css('vertical-align',(iconSize/2)|0);
 	$('.item span').css('vertical-align',(iconSize/2)|0);
@@ -2785,7 +2788,7 @@ function optionApply(){
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size': fontSize +'px'
-		,'margin': panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 	$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
