@@ -41,9 +41,7 @@ var tree = {
 			if( on ){
 				$('#modified').show();
 				$wall.css('padding-top','22px');
-				$('.itempop').each(function(){
-					if( this.offsetTop<22 ){ $(this).css('top',22); return false; }
-				});
+				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
 			}
 			return tree;
 		}
@@ -626,7 +624,11 @@ var option = {
 })();
 // カラム生成関数
 var $columnBase = $('<div class=column></div>');
-function $column( id ){ return $columnBase.clone().attr('id',id); }
+function $column( id ){
+	var $e = $columnBase.clone();
+	$e[0].id = id;
+	return $e;
+}
 // パネル生成関数
 var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 	.prepend(
@@ -635,9 +637,10 @@ var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 		.prepend( $('<img class=plusminus src=minus.png title="閉じる">') )
 	);
 function $newPanel( node ){
-	var $p = $panelBase.clone(true).attr('id',node.id);
+	var $p = $panelBase.clone(true);
+	$p[0].id = node.id;
 	$p.find('span').text( node.title );
-	$p.find('.plusminus').attr('id','btn'+node.id);
+	$p.find('.plusminus')[0].id = 'btn'+node.id;
 	return $p;
 }
 // パネルアイテム生成関数
@@ -797,27 +800,12 @@ var paneler = function(){
 				.on({
 					// 新規登録
 					commit:function(){
-						var node = tree.newURL( tree.top(), this.value, this.value.replace(/^https?:\/\//,'') );
+						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
 							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							// URLタイトル、favicon取得
-							// TwitterのURLでhttp://twitter.com/#!/hogeなど'#'が含まれる場合があるが、
-							// '#'以降の文字列が消えてリクエストされてしまう。'#'がページ内リンクとみなされ
-							// て消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'にエンコード
-							// できるが、他にもいっぱいエンコードされてサーバ側のデコード処理がたいへん。'#'
-							// 以外は$.get()が自動でエンコードしてくれる内容で問題なさそうなのでそうしたい。
-							// とりあえず'#'だけ'%23'に置換して送信する。Twitterサーバは'#'が'%23'になって
-							// ると404を返すので、サーバ側で'#'に戻してリクエストを送る。が、Twitterはいま
-							// は/#!/の応答では200を返すけどタイトルは単なる「Twitter」で、結局/#!/無しURL
-							// にリダイレクトされるようだ。他のサイトで悪影響が出ないといいけど・・
-							// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
-							// まあいいかとりあえず動いてるし…。
-							// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
-							// と思ったが、http://homepage1.nifty.com/herumi/diary/1303.html#15 がエラーに
-							// なってしまうので、#! を %23! に置換することにした。これで通常のページ内リンク
-							// は削除されたURLがリクエストされることに。だいじょぶかな？
-							$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
+							$.get(':analyze?'+this.value.myURLenc(),function(data){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -844,7 +832,7 @@ var paneler = function(){
 					setTimeout(function(){
 						var $newurl = $('#newurl');
 						if( $newurl.val().length ){
-							if( $newurl.next().attr('id')!='commit' )
+							if( $newurl.next()[0].id !='commit' )
 								$newurl.after(
 									$('<div id=commit class=commit tabindex=0>↓↓↓新規登録↓↓↓</div>').on({
 										click:function(){ $newurl.trigger('commit'); }
@@ -1156,13 +1144,14 @@ function setEvents(){
 		.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			$.get(':clipboard.txt',function(data){
+				var $itembox = $(panel).find('.itembox');
 				// 一行一URLとして解析
 				var lines = data.split(/[\r\n]+/);
 				var index = lines.length -1;
 				(function callee(){
 					var count = 10;												// 10個ずつ
 					while( index >=0 && count>0 ){
-						var url = lines[index].replace(/^\s+|\s+$/g,'');		// 前後の空白削除
+						var url = lines[index].replace(/^\s+|\s+$/g,'');		// 前後の空白削除(trim()はIE8ダメ)
 						if( /^[A-Za-z]+:\/\/.+$/.test(url) ) itemAdd( url );	// URLなら登録
 						index--; count--;
 					}
@@ -1171,12 +1160,12 @@ function setEvents(){
 				}());
 				function itemAdd( url ){
 					// ノード作成
-					var node = tree.newURL( tree.node(panel.id), url, url.replace(/^https?:\/\//,'') );
+					var node = tree.newURL( tree.node(panel.id), url, url.noProto() );
 					if( node ){
 						// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
-						$newItem(node).prependTo( $(panel).find('.itembox') );
+						$newItem(node).prependTo( $itembox );
 						// タイトル・favicon取得
-						$.get(':analyze?'+url.replace(/#!/g,'%23!'),function(data){
+						$.get(':analyze?'+url.myURLenc(),function(data){
 							if( data.title.length ){
 								data.title = HTMLdec( data.title );
 								if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -2296,12 +2285,12 @@ function panelEdit( pid ){
 					if( this.value.length ){
 						var $item = $('<a class=edit></a>').attr('title',this.value);
 						var $icon = $('<img class=icon src=item.png>');
-						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.replace(/^https?:\/\//,'') );
+						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// 新規登録ボタンの次に挿入
 						$commit.after( $item.append($idel).append($icon).append($edit) );
 						// URLタイトル、favicon取得
-						$.get(':analyze?'+this.value.replace(/#!/g,'%23!'),function(data){
+						$.get(':analyze?'+this.value.myURLenc(),function(data){
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
 						});
@@ -2344,7 +2333,8 @@ function panelEdit( pid ){
 		while( index < length && count>0 ){
 			var node = child[index];
 			if( !node.child ){
-				var $e = $itembase.clone().attr('id','ed'+node.id);
+				var $e = $itembase.clone();
+				$e[0].id = 'ed'+node.id;
 				$e.find('.icon').attr('src', node.icon ||'item.png');
 				$e.find('input').val( node.title );
 				$itembox.append( $e );
@@ -2574,7 +2564,7 @@ function analyzer( nodeTop ){
 				ajaxs[index] = {
 					done: false
 					,xhr: $.ajax({
-						url		 :':analyze?'+node.url.replace(/#!/g,'%23!')
+						url		 :':analyze?'+node.url.myURLenc()
 						,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
 						,complete:function(){ ajaxs[index].done = true; }
 					})
@@ -2921,5 +2911,22 @@ function HTMLdec( html ){
 // 型判定
 function isString( v ){ return (Object.prototype.toString.call(v)==='[object String]'); }
 function isObject( v ){ return (Object.prototype.toString.call(v)==='[object Object]'); }
+// Twitterで昔http://twitter.com/#!/hogeなど'#'が含まれるURLがあり、$.get()で
+// '#'以降の文字列が消えてリクエストされてしまっていた。'#'がページ内リンクと
+// みなされて消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'に
+// エンコードできるが、他にもいっぱいエンコードされてサーバ側のデコード処理が
+// たいへん。'#'以外は$.get()が自動でエンコードしてくれる内容で問題なさそうな
+// のでそうしたい。とりあえず'#'だけ'%23'に置換して送信する。Twitterサーバは
+// '#'が'%23'になってると404を返すので、サーバ側で'#'に戻してリクエストを送る。
+// が、Twitterはいまは/#!/の応答では200を返すけどタイトルは単なる「Twitter」で、
+// 結局/#!/無しURLにリダイレクトされるようだ。他サイトで悪影響が出ないといいが…
+// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
+// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
+// まあいいかとりあえず動いてるし…。と思ったが、http://homepage1.nifty.com/herumi/diary/1303.html#15
+// がエラーになってしまうので、#! を %23! に置換することにした。これで通常の
+// ページ内リンクは削除されたURLがリクエストされることに。だいじょぶかな？
+String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
+//
+String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 
 }($));
