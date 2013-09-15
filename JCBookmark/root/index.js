@@ -1854,10 +1854,10 @@ function setEvents(){
 	$('#findtab')
 		.find('.close').click(function(){
 			// 閉じる
-			$window.off('resize.findbox');
-			$('#findbox').hide().find('.start').off();
-			$('#findtab').hide();
+			$('#findtab').hide().find('.start').off();
+			$('#findbox').hide();
 			$wall.css('padding-bottom',50);
+			$window.off('resize.findbox');
 		}).end()
 		.find('input').keypress(function(ev){
 			// Enterで検索実行
