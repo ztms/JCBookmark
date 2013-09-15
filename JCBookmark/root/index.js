@@ -1902,6 +1902,7 @@ function setEvents(){
 			var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
 			for( var i=words.length-1; i>=0; i-- ){
 				if( words[i].length<=0 ) words.splice(i,1);
+				else words[i] = words[i].myNormal();
 			}
 			if( words.length<=0 ) return;
 			// 検索中表示・準備
@@ -1929,27 +1930,21 @@ function setEvents(){
 				if( $found[0].childNodes.length==0 ) $found.text('見つかりません');
 			}).css('visibility','visible');
 			// 検索実行
+			String.prototype.myFound = function(){
+				// AND検索(TODO:OR検索・大小文字区別対応する？)
+				for( var i=words.length-1; i>=0; i-- ){
+					if( this.indexOf(words[i])<0 ) return false;
+				}
+				return true;
+			};
 			var nodeTotal = urlTotal + panels.length;
 			var index = 0;
 			var total = 0;
 			(function callee(){
-				function found( text ){
-					// AND検索
-					// TODO:OR検索、数字/カタカナの全角半角の区別、大小文字区別
-					// http://logicalerror.seesaa.net/article/275434211.html
-					// http://distraid.co.jp/demo/js_codeconv.html
-					text.replace(/[！-～]/g, function(s){
-						return String.fromCharCode(s.charCodeAt(0)-0xFEE0);
-					});
-					for( var i=words.length-1; i>=0; i-- ){
-						if( text.indexOf(words[i])<0 ) return false;
-					}
-					return true;
-				}
 				var limit = total +21; // 20ノード以上ずつ
 				while( index < panels.length && total<limit ){
 					// パネル名
-					if( found( panels[index].title ) ){
+					if( panels[index].title.myNormal().myFound() ){
 						$found.append(
 							$pnl.clone().find('span').text(panels[index].title).end()
 						);
@@ -1959,7 +1954,7 @@ function setEvents(){
 					var child = panels[index].child;
 					for( var i=0, n=child.length; i<n; i++ ){
 						if( child[i].child ) continue;
-						if( found( child[i].title ) || found( child[i].url ) ){
+						if( child[i].title.myNormal().myFound() || child[i].url.myNormal().myFound() ){
 							$found.append(
 								$url.clone()
 									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
@@ -2961,5 +2956,64 @@ function HTMLdec( html ){
 String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
 //
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
+// 文字列を半角小文字に変換
+// http://logicalerror.seesaa.net/article/275434211.html
+// http://www.openspc2.org/reibun/javascript/business/003/
+String.prototype.myNormal = function(){
+	// カナ変換用
+	//var regZen = /[アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォャュョッ、。ー「」]/g;
+	var regHan = /[ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝｧｨｩｪｫｬｭｮｯ､｡ｰ｢｣ﾞﾟ]/g;
+	var regHanDak = /ｶﾞ|ｷﾞ|ｸﾞ|ｹﾞ|ｺﾞ|ｻﾞ|ｼﾞ|ｽﾞ|ｾﾞ|ｿﾞ|ﾀﾞ|ﾁﾞ|ﾂﾞ|ﾃﾞ|ﾄﾞ|ﾊﾞ|ﾋﾞ|ﾌﾞ|ﾍﾞ|ﾎﾞ|ﾊﾟ|ﾋﾟ|ﾌﾟ|ﾍﾟ|ﾎﾟ/g;
+	/*
+	var mZenHan = {
+			'ア':'ｱ', 'イ':'ｲ', 'ウ':'ｳ', 'エ':'ｴ', 'オ':'ｵ',
+			'カ':'ｶ', 'キ':'ｷ', 'ク':'ｸ', 'ケ':'ｹ', 'コ':'ｺ',
+			'サ':'ｻ', 'シ':'ｼ', 'ス':'ｽ', 'セ':'ｾ', 'ソ':'ｿ',
+			'タ':'ﾀ', 'チ':'ﾁ', 'ツ':'ﾂ', 'テ':'ﾃ', 'ト':'ﾄ',
+			'ナ':'ﾅ', 'ニ':'ｲ', 'ヌ':'ﾇ', 'ネ':'ﾈ', 'ノ':'ﾉ',
+			'ハ':'ﾊ', 'ヒ':'ﾋ', 'フ':'ﾌ', 'ヘ':'ﾍ', 'ホ':'ﾎ',
+			'マ':'ﾏ', 'ミ':'ﾐ', 'ム':'ﾑ', 'メ':'ﾒ', 'モ':'ﾓ',
+			'ヤ':'ﾔ', 'ユ':'ﾕ', 'ヨ':'ﾖ',
+			'ラ':'ﾗ', 'リ':'ﾘ', 'ル':'ﾙ', 'レ':'ﾚ', 'ロ':'ﾛ',
+			'ワ':'ﾜ', 'ヲ':'ｦ', 'ン':'ﾝ',
+			'ガ':'ｶﾞ', 'ギ':'ｷﾞ', 'グ':'ｸﾞ', 'ゲ':'ｹﾞ', 'ゴ':'ｺﾞ',
+			'ザ':'ｻﾞ', 'ジ':'ｼﾞ', 'ズ':'ｽﾞ', 'ゼ':'ｾﾞ', 'ゾ':'ｿﾞ',
+			'ダ':'ﾀﾞ', 'ヂ':'ﾁﾞ', 'ヅ':'ﾂﾞ', 'デ':'ﾃﾞ', 'ド':'ﾄﾞ',
+			'バ':'ﾊﾞ', 'ビ':'ﾋﾞ', 'ブ':'ﾌﾞ', 'ベ':'ﾍﾞ', 'ボ':'ﾎﾞ',
+			'パ':'ﾊﾟ', 'ピ':'ﾋﾟ', 'プ':'ﾌﾟ', 'ペ':'ﾍﾟ', 'ポ':'ﾎﾟ',
+			'ァ':'ｧ', 'ィ':'ｨ', 'ゥ':'ｩ', 'ェ':'ｪ', 'ォ':'ｫ',
+			'ャ':'ｬ', 'ュ':'ｭ', 'ョ':'ｮ', 'ッ':'ｯ',
+			'、':'､', '。':'｡', 'ー':'ｰ', '「':'｢', '」':'｣'
+	};
+	*/
+	var mHanZen = {
+			'ｱ':'ア', 'ｲ':'イ', 'ｳ':'ウ', 'ｴ':'エ', 'ｵ':'オ',
+			'ｶ':'カ', 'ｷ':'キ', 'ｸ':'ク', 'ｹ':'ケ', 'ｺ':'コ',
+			'ｻ':'サ', 'ｼ':'シ', 'ｽ':'ス', 'ｾ':'セ', 'ｿ':'ソ',
+			'ﾀ':'タ', 'ﾁ':'チ', 'ﾂ':'ツ', 'ﾃ':'テ', 'ﾄ':'ト',
+			'ﾅ':'ナ', 'ﾆ':'ニ', 'ﾇ':'ヌ', 'ﾈ':'ネ', 'ﾉ':'ノ',
+			'ﾊ':'ハ', 'ﾋ':'ヒ', 'ﾌ':'フ', 'ﾍ':'ヘ', 'ﾎ':'ホ',
+			'ﾏ':'マ', 'ﾐ':'ミ', 'ﾑ':'ム', 'ﾒ':'メ', 'ﾓ':'モ',
+			'ﾔ':'ヤ', 'ﾕ':'ユ', 'ﾖ':'ヨ',
+			'ﾗ':'ラ', 'ﾘ':'リ', 'ﾙ':'ル', 'ﾚ':'レ', 'ﾛ':'ロ',
+			'ﾜ':'ワ', 'ｦ':'ヲ', 'ﾝ':'ン',
+			'ｶﾞ':'ガ', 'ｷﾞ':'ギ', 'ｸﾞ':'グ', 'ｹﾞ':'ゲ', 'ｺﾞ':'ゴ',
+			'ｻﾞ':'ザ', 'ｼﾞ':'ジ', 'ｽﾞ':'ズ', 'ｾﾞ':'ゼ', 'ｿﾞ':'ゾ',
+			'ﾀﾞ':'ダ', 'ﾁﾞ':'ヂ', 'ﾂﾞ':'ヅ', 'ﾃﾞ':'デ', 'ﾄﾞ':'ド',
+			'ﾊﾞ':'バ', 'ﾋﾞ':'ビ', 'ﾌﾞ':'ブ', 'ﾍﾞ':'ベ', 'ﾎﾞ':'ボ',
+			'ﾊﾟ':'パ', 'ﾋﾟ':'ピ', 'ﾌﾟ':'プ', 'ﾍﾟ':'ペ', 'ﾎﾟ':'ポ',
+			'ｧ':'ァ', 'ｨ':'ィ', 'ｩ':'ゥ', 'ｪ':'ェ', 'ｫ':'ォ',
+			'ｬ':'ャ', 'ｭ':'ュ', 'ｮ':'ョ', 'ｯ':'ッ',
+			'､':'、', '｡':'。', 'ｰ':'ー', '｢':'「', '｣':'」'
+	};
+	return function(){
+		return this.replace(/[！-～]/g,function(m){
+			return String.fromCharCode( m.charCodeAt(0) -0xFEE0 );
+		})
+		.toLowerCase()
+		.replace(regHanDak,function(m){ return mHanZen[m]; })
+		.replace(regHan,function(m){ return mHanZen[m]; });
+	};
+}();
 
 }($));
