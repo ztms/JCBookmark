@@ -451,7 +451,7 @@
 	line-height:1;
 }
 #find .tab {
-	width:470px;
+	width:450px;
 	background:#fff;
 	border:1px solid #999;
 	border-bottom:1px solid #fff;
@@ -518,6 +518,7 @@
 	height:10px;
 	border:0;
 	border-radius:0;
+	cursor:n-resize;
 }
 #find .found {
 	width:100%;

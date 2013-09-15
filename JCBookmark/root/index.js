@@ -8,13 +8,13 @@
 /*
 var $debug = $('<div></div>').css({
 		position:'fixed'
-		,left:'0'
-		,top:'0'
-		,width:'200px'
+		,left:0
+		,top:0
+		,width:200
 		,background:'#fff'
 		,border:'1px solid #000'
-		,padding:'2px'
-		,'font-size':'12px'
+		,padding:2
+		,'font-size':12
 }).appendTo(document.body);
 var start = new Date(); // 測定
 */
@@ -321,7 +321,7 @@ var option = {
 			option._modified = on;
 			if( on ){
 				$('#modified').show();
-				$wall.css('padding-top','22px');
+				$wall.css('padding-top',22);
 			}
 			return option;
 		}
@@ -491,8 +491,11 @@ var option = {
 				return option;
 			}
 			var column = option.data.column;
-			// 一度目の参照時に規定値を設定
-			if( column.count<0 ) column.count = ($window.width() /230)|0;
+			if( column.count<0 ){
+				// 一度目の参照時に規定値を設定
+				column.count = $window.width() /230 |0;
+				if( column.count==0 ) column.count = 1;
+			}
 			return column.count;
 		}
 	}
@@ -647,9 +650,9 @@ function $newPanel( node ){
 var $itemBase = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 function $newItem( node ){
 	var $i = $itemBase.clone().attr({
-		id		: node.id
-		,href	: node.url
-		,title	: node.title
+		id		:node.id
+		,href	:node.url
+		,title	:node.title
 	});
 	$i.find('img').attr('src', node.icon ||'item.png');
 	$i.find('span').text( node.title );
@@ -681,15 +684,15 @@ var paneler = function(){
 		var columnCount = option.column.count();
 		var columnWidth = panelWidth + panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
 		$wall.empty().width( columnWidth * columnCount ).css({
-			'padding-right': panelMarginLeft +'px'
-			,margin: option.wall.margin()
+			'padding-right':panelMarginLeft
+			,margin:option.wall.margin()
 		});
 		// カラム元要素
 		$columnBase.width( columnWidth );
 		// パネル元要素
 		$panelBase.width( panelWidth ).css({
-			'font-size': fontSize
-			,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+			'font-size':fontSize
+			,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 		});
 		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 		$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
@@ -1836,11 +1839,29 @@ function setEvents(){
 	);
 	// 検索
 	$('#find')
-		.find('.progress').progressbar().end()
+		.find('.progress').progressbar().mousedown(function(ev){
+			// D&D検索ボックス高さ変更
+			var $find = $('#find');
+			var $box = $find.find('.found');
+			var boxHeight = $box.height();
+			var downY = ev.clientY;
+			$document.on('mousemove.findbox',function(ev){
+				var h = boxHeight +(downY - ev.clientY);
+				$box.height( (h<1)? 1:h );
+				h = $find.height();
+				$find.css('top', $window.height() -h );
+				$wall.css('padding-bottom', 50 +h );
+			})
+			.one('mouseup',function(){
+				$document.off('mousemove.findbox mouseleave.findbox');
+			});
+			if( IE && IE<9 ) $document.on('mouseleave.findbox',function(){ $document.mouseup(); });
+		}).end()
 		// 閉じる
 		.find('.close').click(function(){
+			$window.off('resize.findbox');
 			$('#find').hide().find('.start').off();
-			$wall.css('padding-bottom','50px');
+			$wall.css('padding-bottom',50);
 		}).end()
 		// Enterで検索実行
 		.find('input').keypress(function(ev){
@@ -1853,8 +1874,11 @@ function setEvents(){
 		if( $find.css('display')=='block' ){
 			$find.find('input').focus(); return;
 		}
-		$find.width( $window.width()-2 ).css('top',$window.height()-$find.height()).show().find('input').focus();
-		$wall.css('padding-bottom','220px');
+		$window.on('resize.findbox',function(){
+			$find.width( $window.width()-2 ).css('top', $window.height() -$find.height() );
+		}).trigger('resize.findbox');
+		$wall.css('padding-bottom', 50 +$find.height() );
+		$find.show().find('input').focus();
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
@@ -1880,19 +1904,22 @@ function setEvents(){
 			}
 			if( words.length<=0 ) return;
 			// 検索中表示・準備
-			var $box = $find.find('.found').empty().css('font-size',fontSize);
+			var $box = $find.find('.found').empty();
 			var $pgbar = $find.find('.progress').progressbar('value',0);
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
 			var timer = null;
+			// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
 			var fontSize = option.font.size();
 			var iconSize = fontSize + 3 +option.icon.size();
-			var width = ~~($box.width() / ~~($box.width() /490)) -12;
+			var width = $box.width() -17;
+			var count = width /460 |0;
+			width = width /(count?count:1) -4 |0;
 			$box.css('font-size',fontSize);
 			$url.width(width).find('img').width(iconSize).height(iconSize);
 			$pnl.width(width).find('img').width(iconSize).height(iconSize);
+			// 中止ボタン
 			$find.find('.stop').off().click(function(){
-				// キャンセル
 				clearTimeout( timer );
 				$(this).css('visibility','hidden');
 				$pgbar.progressbar('value',0);
@@ -1935,7 +1962,7 @@ function setEvents(){
 						if( found( child[i].title ) || found( child[i].url ) ){
 							$box.append(
 								$url.clone()
-									.attr('href',child[i].url)
+									.attr({ href:child[i].url, title:child[i].title })
 									.find('img').attr('src',child[i].icon).end()
 									.find('span').text(child[i].title).end()
 							);
@@ -2021,8 +2048,8 @@ function setEvents(){
 					// カーソルと共に移動する要素は新規作成して返却
 					return $('<div class=panel></div>')
 							.css({
-								position: 'absolute'
-								,'font-size': option.font.size()// +'px'
+								position:'absolute'
+								,'font-size':option.font.size()
 							})
 							.width( $item.width() )
 							.append( $('<a class=item></a>').append( $item.children().clone() ) )
@@ -2081,8 +2108,8 @@ function setEvents(){
 		,focus:function(){ $sidebar.width(65); }
 		,blur:function(){ $sidebar.width(34); }
 	});
-	// IE8テキスト選択キャンセル
-	if( IE && IE<9 ) $document.on('selectstart',function(ev){
+	// テキスト選択キャンセル
+	$document.on('selectstart',function(ev){
 		switch( ev.target.tagName ){
 		case 'INPUT': case 'TEXTAREA': return true;
 		}
@@ -2744,12 +2771,12 @@ function optionApply(){
 	var panelMarginLeft = option.panel.margin.left();
 	var columnWidth = panelWidth +panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
 	$wall.width( columnWidth *option.column.count() ).css({
-		'padding-right': panelMarginLeft +'px'
+		'padding-right':panelMarginLeft
 	});
 	$('.column').width( columnWidth );
 	$('.panel').width( panelWidth ).css({
-		'font-size': fontSize
-		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+		'font-size':fontSize
+		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$('.title span').css('vertical-align',(iconSize/2)|0);
 	$('.item span').css('vertical-align',(iconSize/2)|0);
@@ -2759,8 +2786,8 @@ function optionApply(){
 	$('#find .found').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
-		'font-size': fontSize
-		,margin: panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+		'font-size':fontSize
+		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
 	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
 	$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
