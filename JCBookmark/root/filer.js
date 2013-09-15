@@ -4,12 +4,12 @@
 /*
 var $debug = $('<div></div>').css({
 	position:'fixed'
-	,left:'0'
-	,top:'0'
-	,width:'100px'
+	,left:0
+	,top:0
+	,width:100
 	,background:'#fff'
 	,border:'1px solid #000'
-	,padding:'0'
+	,padding:0
 }).appendTo(document.body);
 */
 var oStr = Object.prototype.toString;						// 型判定
@@ -422,7 +422,7 @@ var folderTree = function(){
 			var $e = $('<div class=folder tabindex=0><img class=icon><span class=title></span><br class=clear></div>')
 					.on('mouseleave',itemMouseLeave);
 			return function( id, title, icon, depth ){
-				var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 +'px');
+				var $f = $e.clone(true).attr('id','folder'+id).css('padding-left', depth *16 );
 				$f.find('img').attr('src',icon);
 				$f.find('span').text( title );
 				return $f;
