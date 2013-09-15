@@ -71,7 +71,7 @@ var tree = {
 		return tree;
 	}
 	// 指定ノードIDを持つノードオブジェクト(ごみ箱は探さない)
-	,node:function( id ){
+	,node:function( id, root ){
 		return function callee( node ){
 			if( node.id==id ){
 				// 見つけた
@@ -84,7 +84,7 @@ var tree = {
 				}
 			}
 			return null;
-		}( tree.top() );
+		}( root || tree.top() );
 	}
 	// 新規フォルダ作成
 	,newFolder:function( title, pid ){
@@ -1831,54 +1831,55 @@ function setEvents(){
 			$shots.find('div').width( maxWidth );
 		}());
 	}
-	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
-	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
-	$('#import,#export,#shot a,#shotview,#shotdel').button().hover(
-		function(){ $(this).addClass('ui-state-hover'); },
-		function(){ $(this).removeClass('ui-state-hover'); }
-	);
 	// 検索
-	$('#find')
+	$('#findbox')
 		.find('.progress').progressbar().mousedown(function(ev){
-			// D&D検索ボックス高さ変更
-			var $find = $('#find');
-			var $box = $find.find('.found');
-			var boxHeight = $box.height();
+			// プログレスバーをD&Dで検索領域高さ変更
+			var $box = $('#findbox');
+			var $tab = $('#findtab');
+			var $found = $box.find('.found');
+			var foundHeight = $found.height();
 			var downY = ev.clientY;
 			$document.on('mousemove.findbox',function(ev){
-				var h = boxHeight +(downY - ev.clientY);
-				$box.height( (h<1)? 1:h );
-				h = $find.height();
-				$find.css('top', $window.height() -h );
-				$wall.css('padding-bottom', 50 +h );
+				var h = foundHeight +(downY - ev.clientY);
+				$found.height( (h<1)? 1:h );
+				$window.trigger('resize.findbox');
+				$wall.css('padding-bottom', 50 +$box.height() +$tab.height() );
 			})
 			.one('mouseup',function(){
 				$document.off('mousemove.findbox mouseleave.findbox');
 			});
 			if( IE && IE<9 ) $document.on('mouseleave.findbox',function(){ $document.mouseup(); });
-		}).end()
-		// 閉じる
+		});
+	$('#findtab')
 		.find('.close').click(function(){
+			// 閉じる
 			$window.off('resize.findbox');
-			$('#find').hide().find('.start').off();
+			$('#findbox').hide().find('.start').off();
+			$('#findtab').hide();
 			$wall.css('padding-bottom',50);
 		}).end()
-		// Enterで検索実行
 		.find('input').keypress(function(ev){
+			// Enterで検索実行
 			switch( ev.which || ev.keyCode || ev.charCode ){
-			case 13: $('#find').find('.start').click(); return false;
+			case 13: $('#findtab').find('.start').click(); return false;
 			}
 		});
 	$('#findico').click(function(){
-		var $find = $('#find');
-		if( $find.css('display')=='block' ){
-			$find.find('input').focus(); return;
+		var $box = $('#findbox');
+		var $tab = $('#findtab');
+		if( $tab.css('display')=='block' ){
+			$tab.find('input').focus(); return;
 		}
 		$window.on('resize.findbox',function(){
-			$find.width( $window.width()-2 ).css('top', $window.height() -$find.height() );
-		}).trigger('resize.findbox');
-		$wall.css('padding-bottom', 50 +$find.height() );
-		$find.show().find('input').focus();
+			var h = $window.height() - $box.height();
+			$box.css('top', h -2 ).width( $window.width() -5 );	// -2px,-5px適当微調整
+			$tab.css('top', h -$tab.height() -10 );				// -10px適当微調整
+		})
+		.trigger('resize.findbox');
+		$box.show();
+		$tab.show().find('input').focus();
+		$wall.css('padding-bottom', 50 +$box.height() +$tab.height() );
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
@@ -1896,36 +1897,36 @@ function setEvents(){
 		callee( tree.top() );
 		callee( tree.trash() );
 		// キーワード検索
-		$find.find('.start').click(function(){
+		$tab.find('.start').click(function(){
 			// 検索ワード
-			var words = $find.find('input').val().split(/[ 　]+/); // 空白文字で分割
+			var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
 			for( var i=words.length-1; i>=0; i-- ){
 				if( words[i].length<=0 ) words.splice(i,1);
 			}
 			if( words.length<=0 ) return;
 			// 検索中表示・準備
-			var $box = $find.find('.found').empty();
-			var $pgbar = $find.find('.progress').progressbar('value',0);
+			var $found = $box.find('.found').empty();
+			var $pgbar = $box.find('.progress').progressbar('value',0);
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
 			var timer = null;
 			// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
 			var fontSize = option.font.size();
 			var iconSize = fontSize + 3 +option.icon.size();
-			var width = $box.width() -17;
+			var width = $found.width() -17;
 			var count = width /460 |0;
 			width = width /(count?count:1) -4 |0;
-			$box.css('font-size',fontSize);
+			$found.css('font-size',fontSize);
 			$url.width(width).find('img').width(iconSize).height(iconSize);
 			$pnl.width(width).find('img').width(iconSize).height(iconSize);
 			// 中止ボタン
-			$find.find('.stop').off().click(function(){
+			$tab.find('.stop').off().click(function(){
 				clearTimeout( timer );
 				$(this).css('visibility','hidden');
 				$pgbar.progressbar('value',0);
 				$url.remove();
 				$pnl.remove();
-				if( $box[0].childNodes.length==0 ) $box.text('見つかりません');
+				if( $found[0].childNodes.length==0 ) $found.text('見つかりません');
 			}).css('visibility','visible');
 			// 検索実行
 			var nodeTotal = urlTotal + panels.length;
@@ -1949,9 +1950,8 @@ function setEvents(){
 				while( index < panels.length && total<limit ){
 					// パネル名
 					if( found( panels[index].title ) ){
-						$box.append(
-							$pnl.clone()
-								.find('span').text(panels[index].title).end()
+						$found.append(
+							$pnl.clone().find('span').text(panels[index].title).end()
 						);
 					}
 					total++;
@@ -1960,9 +1960,9 @@ function setEvents(){
 					for( var i=0, n=child.length; i<n; i++ ){
 						if( child[i].child ) continue;
 						if( found( child[i].title ) || found( child[i].url ) ){
-							$box.append(
+							$found.append(
 								$url.clone()
-									.attr({ href:child[i].url, title:child[i].title })
+									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
 									.find('img').attr('src',child[i].icon).end()
 									.find('span').text(child[i].title).end()
 							);
@@ -1975,12 +1975,18 @@ function setEvents(){
 				$pgbar.progressbar('value',total*100/nodeTotal);
 				// 次
 				if( index < panels.length ) timer = setTimeout(callee,0);
-				else $find.find('.stop').click();
+				else $tab.find('.stop').click();
 			}());
 		});
 	});
+	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
+	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
+	$('#import,#export,#shot a,#shotview,#shotdel,#findtab button').button().hover(
+		function(){ $(this).addClass('ui-state-hover'); },
+		function(){ $(this).removeClass('ui-state-hover'); }
+	);
 	// パネル並べ替え
-	Sortable({
+	DragDrop({
 		itemClass:'panel'
 		,boxClass:'column'
 		,distance:30
@@ -2027,20 +2033,30 @@ function setEvents(){
 			option.panel.layouted();
 		}
 	});
-	// パネルアイテム並べ替え
+	// アイテム移動
 	// TODO:閉パネルアイテムをドラッグして外に出て（ポップアップ消えて）、また戻る（ポップアップする）と
 	// ドラッグアイテムの半透明化が解除されている。ポップアップ処理の方でアイテムがドラッグ中かどうか判別
 	// しないとダメかな・・面倒くさそう・・。
 	(function(){
 		var node = null;
-		Sortable({
+		var isFindBox = false;
+		DragDrop({
 			itemClass:'item'
 			,boxClass:'itembox'
 			,distance:20
 			,start:function( item ){ // 並べ替えドラッグ開始
 				// item==アイテム要素は閉パネルポップアップで削除される事があるので、
-				// 要素の元ノード情報を保持して、
-				node = tree.node( item.id );
+				// 要素の元ノード情報を保持、
+				if( /^fd\d+$/.test(item.id) ){
+					// 検索ボックスアイテム
+					// TODO:検索ボックスから出たら移動キャンセルできない
+					isFindBox = true;
+					node = tree.node( item.id.slice(2), tree.root );
+				}
+				else{
+					// パネルアイテム
+					node = tree.node( item.id );
+				}
 				if( node ){
 					var $item = $(item);
 					// 元の要素は半透明にして、
@@ -2086,6 +2102,10 @@ function setEvents(){
 						}
 						$('#'+node.id).remove();
 						$place.after( $newItem(node) );
+					}
+					if( isFindBox ){
+						$('#fd'+node.id).css('opacity',1);
+						isFindBox = false;
 					}
 					node = null;
 				}
@@ -2158,7 +2178,7 @@ var panelPopper = function(){
 				panelPopper( nextPanel, ev.pageX, ev.pageY );
 			}
 		}
-		// IE8でなぜかこのあとmouseupが発生してSortableのドラッグが解除されてしまう問題の回避
+		// IE8でなぜかこのあとmouseupが発生してDragDropのドラッグが解除されてしまう問題の回避
 		if( IE && IE<9 && ev.stopPropagation ) ev.stopPropagation();
 	}
 	return function( panel, prevX, prevY ){
@@ -2351,7 +2371,7 @@ function panelEdit( pid ){
 		}
 		if( index < length ) timer = setTimeout(callee,0); else itemSortable();
 	}());
-	// ファビコンD&Dでアイテム並べ替え(TODO:Sortableとかぶる)
+	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
 	function itemSortable(){
 		$document.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
@@ -2660,8 +2680,8 @@ var scroller = function(){
 		}
 	};
 }();
-// D&D並べ替え
-function Sortable( sort ){
+// ドラッグ＆ドロップ並べ替え
+function DragDrop( sort ){
 	var isDrag = false;
 	$document.on('mousedown', '.'+sort.itemClass, function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
@@ -2684,10 +2704,12 @@ function Sortable( sort ){
 					// ドラッグ物
 					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
 					// ドロップ場所
+					/*
 					if( ev.pageY <= element.offsetTop + element.offsetHeight/2 )
 						$(element).before( $place );
 					else
 						$(element).after( $place );
+						*/
 					// ドラッグ中イベント
 					$document.off('mousemove.sortable')
 					.on('mousemove.sortable',function(ev){
@@ -2698,7 +2720,7 @@ function Sortable( sort ){
 						// スクロール制御
 						scroller(ev);
 					})
-					.on('mousemove.sortable', '.'+sort.itemClass+', .'+sort.boxClass, function(ev){
+					.on('mousemove.sortable', '.'+sort.boxClass+', .'+sort.boxClass+' .'+sort.itemClass, function(ev){
 						// ドロップ場所
 						if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
 						if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
