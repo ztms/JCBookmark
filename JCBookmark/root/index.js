@@ -2049,7 +2049,6 @@ function setEvents(){
 				// 要素の元ノード情報を保持、
 				if( /^fd\d+$/.test(item.id) ){
 					// 検索ボックスアイテム
-					// TODO:検索ボックスから出たら移動キャンセルできない
 					isFindBox = true;
 					node = tree.node( item.id.slice(2), tree.root );
 				}
@@ -2076,10 +2075,20 @@ function setEvents(){
 				// item==アイテム要素
 				return $('<div></div>').addClass('itemdrop');
 			}
-			,stop:function( $item, $place ){ // 並べ替え終了
+			,stop:function( $item, $place, ev ){ // 並べ替え終了
 				// $item==start()戻り値、$place==place()戻り値
 				if( node ){
-					if( $place.parent().hasClass('itembox') ){
+					var cancel = false;
+					if( isFindBox ){
+						// 検索ボックスアイテムは検索ボックスでmouseupしたら移動キャンセル
+						if( elementHasXY( document.querySelector('#findbox'), ev.clientX, ev.clientY ) ||
+							elementHasXY( document.querySelector('#findtab'), ev.clientX, ev.clientY ) ){
+							cancel = true;
+						}
+						$('#fd'+node.id).css('opacity',1);
+						isFindBox = false;
+					}
+					if( !cancel && $place.parent().hasClass('itembox') ){
 						var $prev = $place.prev();
 						var $next = $place.next();
 						if( $prev.hasClass('item') ){
@@ -2102,10 +2111,6 @@ function setEvents(){
 						}
 						$('#'+node.id).remove();
 						$place.after( $newItem(node) );
-					}
-					if( isFindBox ){
-						$('#fd'+node.id).css('opacity',1);
-						isFindBox = false;
 					}
 					node = null;
 				}
@@ -2772,7 +2777,7 @@ function DragDrop( sort ){
 			$document.off('mousemove.sortable mouseleave.sortable');
 			// ドロップ
 			if( isDrag ){
-				sort.stop( $dragi, $place );
+				sort.stop( $dragi, $place, ev );
 				isDrag = false;
 			}
 		})
