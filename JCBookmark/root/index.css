@@ -468,8 +468,11 @@
 	line-height:25px;
 	border:1px solid #ccc;
 	padding:1px 0 0 7px;
-	margin:0;
+	margin:0 1px 0 0;
 	vertical-align:top;
+}
+#findtab input:focus {
+	border-color:#e92;
 }
 #findtab button img {
 	width:18px;
