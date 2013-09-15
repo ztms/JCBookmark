@@ -460,7 +460,7 @@
 #findbox {
 	width:100%;
 	padding:0 2px 0 1px;
-	border-radius:1px; /* Firefoxメイリオ劣化対策 */
+	border-radius:0; /* Firefoxメイリオ劣化対策 */
 }
 #findtab input {
 	width:250px;
