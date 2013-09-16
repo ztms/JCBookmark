@@ -1832,6 +1832,7 @@ function setEvents(){
 		}());
 	}
 	// 検索
+	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利か？
 	$('#findbox')
 		.find('.progress').progressbar().mousedown(function(ev){
 			// プログレスバーをD&Dで検索領域高さ変更
@@ -2126,8 +2127,20 @@ function setEvents(){
 		// 子要素(ボタン)がフォーカスした時(:focus)に親要素(サイドバー)のスタイル変更って
 		// どうやって書くの？書けない？しょうがないのでJSで…このピクセル値とindex.cssの
 		// #sidebarは同期必要。
-		,focus:function(){ $sidebar.width(65); }
-		,blur:function(){ $sidebar.width(34); }
+		// TABによるフォーカス移動中はサイドバーを出したり引っ込めたりしたいが、マウスで
+		// ボタンクリック後やカーソルがサイドバー上にある場合は引っ込めないようにしたい。
+		// TODO:TABでサイドバー出した後マウスでボタンクリックすると引っ込んでしまう。
+		// TABだけで操作あるいはマウスだけで操作なら問題ないが…
+		,focus:function(){
+			// フォーカス来た時に
+			if( $sidebar.width()<=34 ){
+				// サイドバーが引っ込んでいたら出して
+				$sidebar.width(65);
+				// フォーカス消えた時に引っ込める
+				$(this).one('blur',function(){ $sidebar.width(34); });
+			}
+		}
+		//,blur:function(){ $sidebar.width(34); }
 	});
 	// テキスト選択キャンセル
 	$document.on('selectstart',function(ev){
