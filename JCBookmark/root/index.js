@@ -40,7 +40,7 @@ var tree = {
 			tree._modified = on;
 			if( on ){
 				$('#modified').show();
-				$wall.css('padding-top','22px');
+				$wall.css('padding-top',22);
 				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
 			}
 			return tree;
@@ -2546,7 +2546,7 @@ function modifySave( arg ){
 	}
 	function suc(){
 		$('#progress').hide();
-		$wall.css('padding-top','0');
+		$wall.css('padding-top',0);
 		if( option.autoshot() ){
 			$.ajax({
 				url		 :':snapshot'
