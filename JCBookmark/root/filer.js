@@ -33,7 +33,6 @@ var tree = {
 	,modified:function( on ){
 		if( arguments.length ){
 			tree._modified = on;
-			//if( on ) $('#modified').css('display','inline-block');
 			if( on ){
 				$('#modified').show();
 				$(document.body).css('padding-top',22);
@@ -397,13 +396,6 @@ $.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,
 		$.css.add('#toolbar input, #folders span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
 		// フォント
 		$('#fontcss').attr('href',option.font.css());
-		// 保存ボタン
-		/*
-		if( option.autoshot() ) $('#save').attr({
-			title:'変更を保存＋スナップショット'
-			,src:'saveshot.png'
-		});
-		*/
 		// 表示描画
 		$(window).resize();
 		$('body').css('visibility','visible');
@@ -650,9 +642,7 @@ $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var windowWidth = $(window).width() -1; // 適当-1px
 	var folderboxWidth = (windowWidth /5.3)|0;
-	//var folderboxHeight = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
 	var folderboxHeight = $(window).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
-	//var itemboxWidth = windowWidth -folderboxWidth -$('#border').width() -2;	// borderぶん適当-2px
 	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
 	var titleWidth = (itemsWidth /3)|0;										// 割合適当
@@ -723,7 +713,7 @@ if( IE && IE<9 ){
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
 // 変更保存リンク
-$('#modified').click(function(ev){ treeSave(); });
+$('#modified').click(function(){ treeSave(); });
 // 終了
 $('#exit').click(function(){
 	if( tree.modified() ){
@@ -738,8 +728,6 @@ $('#exit').click(function(){
 
 	function reload(){ location.href = 'index.html'; }
 });
-// 保存
-//$('#save').click(function(){ treeSave(); });
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
@@ -1029,45 +1017,21 @@ function itemSelectStart( element, downX, downY ){
 	});
 }
 // ノードツリー保存
-var treeSave = function( arg ){
-	//$('#wait').show();
-	//$('#save').hide();
+function treeSave( arg ){
 	$('#modified').hide();
 	$('#progress').show();
 	tree.save({
-		error	:err
-		/*
-		,success:function(){
-			if( option.autoshot() ){
-				$.ajax({
-					url		:':snapshot'
-					,error	:function(xhr){
-						Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText);
-						err();
-					}
-					,success:suc
-				});
-			}
-			else suc();
+		error:function(){
+			$('#progress').hide();
+			$('#modified').show();
 		}
-		*/
-		,success:suc
+		,success:function(){
+			$('#progress').hide();
+			$(document.body).css('padding-top',0);
+			$(window).resize();
+			if( arg && arg.success ) arg.success();
+		}
 	});
-	function err(){
-		//$('#wait').hide();
-		//$('#save').show();
-		$('#progress').hide();
-		$('#modified').show();
-	}
-	function suc(){
-		//$('#wait').hide();
-		//$('#save').show();
-		//$('#modified').hide();
-		$('#progress').hide();
-		$(document.body).css('padding-top',0);
-		$(window).resize();
-		if( arg && arg.success ) arg.success();
-	}
 }
 // マウスイベント
 function itemSelfClick( ev, shiftKey ){

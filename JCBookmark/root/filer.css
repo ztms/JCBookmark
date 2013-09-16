@@ -30,9 +30,6 @@ body {
 	border-color:#da7;
 	background:#fff5f0;
 }
-#wait {
-	display:none;
-}
 #toolbar input {
 	float:left;
 	width:144px;
@@ -42,24 +39,7 @@ body {
 	padding:1px;
 	line-height:1.5;
 }
-/*
-#modified {
-	float:left;
-	display:none;
-	margin:7px 0 0 7px;
-	color:#d55;
-	line-height:1.5;
-	font-size:14px;
-	font-weight:bold;
-}
-#modified img {
-	float:none;
-	width:19px;
-	height:19px;
-	border:0;
-	vertical-align:top;
-}
-*/
+/* 変更保存リンクバー */
 #progress {
 	display:none;
 	text-align:center;
