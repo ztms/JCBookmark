@@ -1872,6 +1872,7 @@ function setEvents(){
 			$tab.find('input').focus(); return;
 		}
 		$window.on('resize.findbox',function(){
+			// TODO:設定でパネル幅を変更してウィンドウ横スクロールバーが出たり消えたりするのに追従できない
 			var h = $window.height() - $box.outerHeight();
 			$box.css('top', h ).width( $window.width() -5 );	// -5px適当微調整
 			$tab.css('top', h -$tab.outerHeight() +1 );			// +1px下にずらして枠線を消す
@@ -1958,7 +1959,7 @@ function setEvents(){
 							$found.append(
 								$url.clone()
 									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
-									.find('img').attr('src',child[i].icon).end()
+									.find('img').attr('src',child[i].icon ||'item.png').end()
 									.find('span').text(child[i].title).end()
 							);
 						}
