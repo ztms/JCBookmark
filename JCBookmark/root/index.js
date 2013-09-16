@@ -1844,7 +1844,7 @@ function setEvents(){
 				var h = foundHeight +(downY - ev.clientY);
 				$found.height( (h<1)? 1:h );
 				$window.trigger('resize.findbox');
-				$wall.css('padding-bottom', 50 +$box.height() +$tab.height() );
+				$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
 			})
 			.one('mouseup',function(){
 				$document.off('mousemove.findbox mouseleave.findbox');
@@ -1856,7 +1856,7 @@ function setEvents(){
 			// 閉じる
 			$('#findtab').hide().find('.start').off();
 			$('#findbox').hide();
-			$wall.css('padding-bottom',50);
+			$wall.css('padding-bottom',50); // 50px初期値
 			$window.off('resize.findbox');
 		}).end()
 		.find('input').keypress(function(ev){
@@ -1872,14 +1872,14 @@ function setEvents(){
 			$tab.find('input').focus(); return;
 		}
 		$window.on('resize.findbox',function(){
-			var h = $window.height() - $box.height();
-			$box.css('top', h -2 ).width( $window.width() -5 );	// -2px,-5px適当微調整
-			$tab.css('top', h -$tab.height() -10 );				// -10px適当微調整
+			var h = $window.height() - $box.outerHeight();
+			$box.css('top', h ).width( $window.width() -5 );	// -5px適当微調整
+			$tab.css('top', h -$tab.outerHeight() +1 );			// +1px下にずらして枠線を消す
 		})
 		.trigger('resize.findbox');
 		$box.show();
 		$tab.show().find('input').focus();
-		$wall.css('padding-bottom', 50 +$box.height() +$tab.height() );
+		$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
@@ -2211,11 +2211,20 @@ var panelPopper = function(){
 			var child = tree.node( panel.id ).child;
 			var length = child.length;
 			var index = 0;
-			var winScrollBottom = $window.scrollTop() + $window.height();
+			var bottomLine = $window.scrollTop() + $window.height();
 			var boxTopLimit = $window.scrollTop();
 			var boxTop = $box.offset().top;
 			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').height();
 			if( boxTopLimit > boxTop ) boxTopLimit = boxTop;
+			// 検索ボックスに被らないように上に
+			if( $('#findbox').css('display')=='block' ){
+				bottomLine -= $('#findbox').outerHeight();
+				if( $box[0].offsetLeft -$window.scrollLeft() < $('#findtab').outerWidth() )
+					bottomLine -= $('#findtab').outerHeight();
+			}
+			// パネル下段より上にいかないように
+			if( bottomLine < panel.offsetTop + $(panel).outerHeight() )
+				bottomLine = panel.offsetTop + $(panel).outerHeight();
 			(function callee(){
 				var count=10;
 				while( index < length && count>0 ){
@@ -2223,9 +2232,9 @@ var panelPopper = function(){
 					index++; count--;
 				}
 				// 下に隠れる場合は上に移動
-				var hidden = boxTop + $box.height() - winScrollBottom;
+				var hidden = boxTop + $box.outerHeight() - bottomLine;
 				if( hidden >0 ){
-					var newTop = boxTop - hidden -7; // -7pxなぜかもうちょい上
+					var newTop = boxTop - hidden;
 					if( newTop < boxTopLimit ) newTop = boxTopLimit;
 					if( newTop != boxTop ){
 						$box.css('top', newTop );
@@ -2704,6 +2713,7 @@ function DragDrop( sort ){
 					// ドラッグ物
 					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
 					// ドロップ場所
+					// 検索ボックスからの移動で問題ありコメントアウト
 					/*
 					if( ev.pageY <= element.offsetTop + element.offsetHeight/2 )
 						$(element).before( $place );
