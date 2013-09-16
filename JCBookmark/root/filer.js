@@ -540,7 +540,7 @@ var itemTable = function(){
 				.append( $br );
 			var date = new Date();
 			return function( node, nowTime ){
-				date.setTime( node.dateAdded||0 );
+				date.setTime( node.dateAdded ||0 );
 				if( node.child ){
 					var $f = $fol.clone(true).attr('id','item'+node.id);
 					$f.find('.title').text( node.title );

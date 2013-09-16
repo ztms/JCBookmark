@@ -298,6 +298,9 @@ var tree = {
 	}
 };
 // パネルオプション
+// TODO:v1.8でpanel.marginをtop,leftに分けたので、v1.7以前のバージョンでこのindex.jsonを読み込んだら
+// 正常動作しなそう。古いバージョンに戻しても問題ないかこれまで確認してきていない。戻したい人がいる
+// かもだが、動作確認や開発効率的に面倒くさい…どうしよう…。
 var option = {
 	data:{
 		// 空(規定値ではない)を設定
@@ -641,7 +644,7 @@ var $panelBase = $('<div class=panel><div class=itembox></div></div>')
 		.prepend( $('<img class=plusminus src=minus.png title="閉じる">') )
 	);
 function $newPanel( node ){
-	var $p = $panelBase.clone(true);
+	var $p = $panelBase.clone();
 	$p[0].id = node.id;
 	$p.find('span').text( node.title );
 	$p.find('.plusminus')[0].id = 'btn'+node.id;
@@ -728,7 +731,7 @@ var paneler = function(){
 					var coN = panelLayout[coID];
 					if( index < coN.length ){
 						var node = tree.node( coN[index] );
-						if( node ) panelCreate( node, coID );
+						if( node ) panelCreate( node, columns[coID] );
 						layoutSeek = true;
 					}
 				}
@@ -738,8 +741,7 @@ var paneler = function(){
 			if( layoutSeek ) timer = setTimeout(layouter,0); else afterLayout();
 		}());
 		// パネル１つ生成配置
-		function panelCreate( node, coID ){
-			var column = ( arguments.length >1 )? columns[coID] : lowestColumn();
+		function panelCreate( node, column ){
 			var $p = $newPanel( node ).appendTo( column.$e );
 			// パネル開閉状態反映: キーがボタンID、値が 0(開) または 1(閉)
 			// 例) { btn1:1, btn9:0, btn45:0, ... }
@@ -790,7 +792,7 @@ var paneler = function(){
 			(function placer(){
 				var count=5;
 				while( index < length && count>0 ){
-					panelCreate( nodeList[index] );
+					panelCreate( nodeList[index], lowestColumn() );
 					index++; count--;
 				}
 				if( index < length ) timer = setTimeout(placer,0); else afterPlaced();
