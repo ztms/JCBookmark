@@ -72,16 +72,6 @@ body {
 #modified:active {
 	background:#fff399;
 }
-#modified input {
-	width:17px;
-	height:17px;
-	vertical-align:middle;
-}
-#modified img {
-	width:22px;
-	height:22px;
-	vertical-align:top;
-}
 /* フォルダ欄、アイテム欄 */
 #folderbox, #border, #itembox {
 	float:left;

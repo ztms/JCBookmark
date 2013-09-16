@@ -322,6 +322,7 @@ var option = {
 			if( on ){
 				$('#modified').show();
 				$wall.css('padding-top',22);
+				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
 			}
 			return option;
 		}
