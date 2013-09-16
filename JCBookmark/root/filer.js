@@ -645,9 +645,9 @@ $(window).on('resize',function(){
 	var folderboxHeight = $(window).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
 	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
-	var titleWidth = (itemsWidth /3)|0;										// 割合適当
-	var urlWidth = ((itemsWidth -titleWidth) /2.5)|0;						// 割合適当
-	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.8)|0;			// 割合適当
+	var titleWidth = (itemsWidth /2.3)|0;									// 割合適当
+	var urlWidth = ((itemsWidth -titleWidth) /2.6)|0;						// 割合適当
+	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
 	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
 
 	$('#toolbar') // 昔の#modifiedがfloatで下にいかないよう1040px以上必要だった
@@ -763,8 +763,8 @@ $('#newname').keypress(function(ev){
 });
 // 新規ブックマークアイテム
 $('#newitem').click(function(){
-	// 選択フォルダID=folderXXならノードID=XX
 	var url = $('#newurl').val();
+	// 選択フォルダID=folderXXならノードID=XX
 	var node = tree.newURL( selectFolder.id.slice(6), url );
 	// DOM再構築
 	$(selectFolder).removeClass('select').click();
@@ -799,6 +799,27 @@ $('#newitem').click(function(){
 $('#newurl').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 13: $('#newitem').click(); return false;
+	}
+});
+// 検索
+$('#find').click(function(){
+	// 検索ワード
+	var words = $('#keyword').val().split(/[ 　]+/); // 空白文字で分割
+	for( var i=words.length-1; i>=0; i-- ){
+		if( words[i].length<=0 ) words.splice(i,1);
+		else words[i] = words[i].myNormal();
+	}
+	if( words.length<=0 ) return;
+	// TODO:フォルダツリーに「検索」を表示。階層はトップ、ごみ箱の次。
+	// TODO:ツリーが大きいとアレなのでやはりフォルダ折りたたみできるようにしたい
+	// TODO:検索結果フォルダはアイテムを保持して、別のフォルダを表示してもまた表示できるように
+	// TODO:検索アイコンクリック時の挙動は、検索実行か？それとも検索結果フォルダ表示か？
+	// TODO:検索結果アイテムは「どのフォルダ」かわかるとよいが、アイテム欄の改造が必要…右クリックメニューに「フォルダを開く」があればいいかな？でもそれ実行するまでフォルダ名が不明なのがイマイチか…。
+	//
+});
+$('#keyword').keypress(function(ev){
+	switch( ev.which || ev.keyCode || ev.charCode ){
+	case 13: $('#find').click(); return false;
 	}
 });
 // すべて選択
@@ -1917,5 +1938,45 @@ function HTMLdec( html ){
 }
 // index.js参照
 String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
+String.prototype.myNormal = function(){
+	// 変換用キャッシュ
+	var reg2 = /ｶﾞ|ｷﾞ|ｸﾞ|ｹﾞ|ｺﾞ|ｻﾞ|ｼﾞ|ｽﾞ|ｾﾞ|ｿﾞ|ﾀﾞ|ﾁﾞ|ﾂﾞ|ﾃﾞ|ﾄﾞ|ﾊﾞ|ﾋﾞ|ﾌﾞ|ﾍﾞ|ﾎﾞ|ﾊﾟ|ﾋﾟ|ﾌﾟ|ﾍﾟ|ﾎﾟ/g;
+	var reg1 = /[ぁぃぅぇぉゃゅょっァィゥェォャュョッヵｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝｧｨｩｪｫｬｭｮｯ､｡ｰ｢｣ﾞﾟ]/g;
+	var map = {
+			// ひらがな小→大
+			'ぁ':'あ', 'ぃ':'い', 'ぅ':'う', 'ぇ':'え', 'ぉ':'お',
+			'ゃ':'や', 'ゅ':'ゆ', 'ょ':'よ', 'っ':'つ',
+			// 全角カナ小→大
+			'ァ':'ア', 'ィ':'イ', 'ゥ':'ウ', 'ェ':'エ', 'ォ':'オ',
+			'ャ':'ヤ', 'ュ':'ユ', 'ョ':'ヨ', 'ッ':'ツ', 'ヵ':'カ',
+			// 半角カナ→全角カナ
+			'ｱ':'ア', 'ｲ':'イ', 'ｳ':'ウ', 'ｴ':'エ', 'ｵ':'オ',
+			'ｶ':'カ', 'ｷ':'キ', 'ｸ':'ク', 'ｹ':'ケ', 'ｺ':'コ',
+			'ｻ':'サ', 'ｼ':'シ', 'ｽ':'ス', 'ｾ':'セ', 'ｿ':'ソ',
+			'ﾀ':'タ', 'ﾁ':'チ', 'ﾂ':'ツ', 'ﾃ':'テ', 'ﾄ':'ト',
+			'ﾅ':'ナ', 'ﾆ':'ニ', 'ﾇ':'ヌ', 'ﾈ':'ネ', 'ﾉ':'ノ',
+			'ﾊ':'ハ', 'ﾋ':'ヒ', 'ﾌ':'フ', 'ﾍ':'ヘ', 'ﾎ':'ホ',
+			'ﾏ':'マ', 'ﾐ':'ミ', 'ﾑ':'ム', 'ﾒ':'メ', 'ﾓ':'モ',
+			'ﾔ':'ヤ', 'ﾕ':'ユ', 'ﾖ':'ヨ',
+			'ﾗ':'ラ', 'ﾘ':'リ', 'ﾙ':'ル', 'ﾚ':'レ', 'ﾛ':'ロ',
+			'ﾜ':'ワ', 'ｦ':'ヲ', 'ﾝ':'ン',
+			'ｶﾞ':'ガ', 'ｷﾞ':'ギ', 'ｸﾞ':'グ', 'ｹﾞ':'ゲ', 'ｺﾞ':'ゴ',
+			'ｻﾞ':'ザ', 'ｼﾞ':'ジ', 'ｽﾞ':'ズ', 'ｾﾞ':'ゼ', 'ｿﾞ':'ゾ',
+			'ﾀﾞ':'ダ', 'ﾁﾞ':'ヂ', 'ﾂﾞ':'ヅ', 'ﾃﾞ':'デ', 'ﾄﾞ':'ド',
+			'ﾊﾞ':'バ', 'ﾋﾞ':'ビ', 'ﾌﾞ':'ブ', 'ﾍﾞ':'ベ', 'ﾎﾞ':'ボ',
+			'ﾊﾟ':'パ', 'ﾋﾟ':'ピ', 'ﾌﾟ':'プ', 'ﾍﾟ':'ペ', 'ﾎﾟ':'ポ',
+			'ｧ':'ア', 'ｨ':'イ', 'ｩ':'ウ', 'ｪ':'エ', 'ｫ':'オ',		// 小→大
+			'ｬ':'ヤ', 'ｭ':'ユ', 'ｮ':'ヨ', 'ｯ':'ツ',					// 小→大
+			'､':'、', '｡':'。', 'ｰ':'ー', '｢':'「', '｣':'」'
+	};
+	return function(){
+		return this.replace(/[！-～]/g,function(m){
+			return String.fromCharCode( m.charCodeAt(0) -0xFEE0 );	// 英数全角→半角
+		})
+		.replace(reg2,function(m){ return map[m]; })				// 先に文字列を1文字に変換(半角カナ濁音)
+		.replace(reg1,function(m){ return map[m]; })				// 1文字→1文字
+		.toUpperCase();												// 英数小→大
+	};
+}();
 
 })($);
