@@ -42,6 +42,7 @@ body {
 	padding:1px;
 	line-height:1.5;
 }
+/*
 #modified {
 	float:left;
 	display:none;
@@ -56,6 +57,49 @@ body {
 	width:19px;
 	height:19px;
 	border:0;
+	vertical-align:top;
+}
+*/
+#progress {
+	display:none;
+	text-align:center;
+	padding-top:2px;
+}
+#proress img {
+	border:0;
+}
+#progress, #modified {
+	position:fixed;
+	left:0; top:0;
+	width:100%;
+	color:#c00;
+	background:#ffc;
+	border-bottom:1px solid #dda;
+}
+#modified {
+	display:none;
+	font-weight:bold;
+	font-size:14px;
+	line-height:1.5;
+	cursor:pointer;
+	text-align:center;
+	white-space:nowrap;
+}
+#modified:hover {
+	color:#f00;
+	background:#ff9;
+}
+#modified:active {
+	background:#fff399;
+}
+#modified input {
+	width:17px;
+	height:17px;
+	vertical-align:middle;
+}
+#modified img {
+	width:22px;
+	height:22px;
 	vertical-align:top;
 }
 /* フォルダ欄、アイテム欄 */

@@ -33,7 +33,12 @@ var tree = {
 	,modified:function( on ){
 		if( arguments.length ){
 			tree._modified = on;
-			if( on ) $('#modified').css('display','inline-block');
+			//if( on ) $('#modified').css('display','inline-block');
+			if( on ){
+				$('#modified').show();
+				$(document.body).css('padding-top',22);
+				$(window).resize();
+			}
 			return tree;
 		}
 		return tree._modified;
@@ -343,7 +348,7 @@ var tree = {
 var option = {
 	data:{
 		font	:{ css:'' }
-		,autoshot:false
+		//,autoshot:false
 	}
 	,font:{
 		css:function(){
@@ -353,13 +358,13 @@ var option = {
 			return font.css;
 		}
 	}
-	,autoshot:function(){ return option.data.autoshot; }
+	//,autoshot:function(){ return option.data.autoshot; }
 	,init:function( data ){
 		var od = option.data;
 		if( 'font' in data ){
 			if( 'css' in data.font ) od.font.css = data.font.css;
 		}
-		if( 'autoshot' in data ) od.autoshot = data.autoshot;
+		//if( 'autoshot' in data ) od.autoshot = data.autoshot;
 		return option;
 	}
 	,load:function( onComplete ){
@@ -393,10 +398,12 @@ $.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,
 		// フォント
 		$('#fontcss').attr('href',option.font.css());
 		// 保存ボタン
+		/*
 		if( option.autoshot() ) $('#save').attr({
 			title:'変更を保存＋スナップショット'
 			,src:'saveshot.png'
 		});
+		*/
 		// 表示描画
 		$(window).resize();
 		$('body').css('visibility','visible');
@@ -643,15 +650,17 @@ $(window).on('resize',function(){
 	$('#editbox').trigger('decide');
 	var windowWidth = $(window).width() -1; // 適当-1px
 	var folderboxWidth = (windowWidth /5.3)|0;
-	var folderboxHeight = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
-	var itemboxWidth = windowWidth -folderboxWidth -$('#border').width() -2;	// borderぶん適当-2px
+	//var folderboxHeight = $(window).height() -$('#toolbar').height() -1;		// borderぶん適当-1px
+	var folderboxHeight = $(window).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
+	//var itemboxWidth = windowWidth -folderboxWidth -$('#border').width() -2;	// borderぶん適当-2px
+	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
 	var titleWidth = (itemsWidth /3)|0;										// 割合適当
 	var urlWidth = ((itemsWidth -titleWidth) /2.5)|0;						// 割合適当
 	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.8)|0;			// 割合適当
 	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
 
-	$('#toolbar') // #modifiedがfloatで下にいかないよう1040px以上必要
+	$('#toolbar') // 昔の#modifiedがfloatで下にいかないよう1040px以上必要だった
 		.width( (windowWidth <1040)? 1040 : windowWidth );
 	$('#folderbox')
 		.width( folderboxWidth )
@@ -713,6 +722,8 @@ if( IE && IE<9 ){
 	// ウィンドウ外に出たらドラッグやめたことにする。
 	$(document).mouseleave(function(){ $(this).mouseup(); } );
 }
+// 変更保存リンク
+$('#modified').click(function(ev){ treeSave(); });
 // 終了
 $('#exit').click(function(){
 	if( tree.modified() ){
@@ -728,7 +739,7 @@ $('#exit').click(function(){
 	function reload(){ location.href = 'index.html'; }
 });
 // 保存
-$('#save').click(function(){ treeSave(); });
+//$('#save').click(function(){ treeSave(); });
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX
@@ -1019,10 +1030,13 @@ function itemSelectStart( element, downX, downY ){
 }
 // ノードツリー保存
 var treeSave = function( arg ){
-	$('#wait').show();
-	$('#save').hide();
+	//$('#wait').show();
+	//$('#save').hide();
+	$('#modified').hide();
+	$('#progress').show();
 	tree.save({
 		error	:err
+		/*
 		,success:function(){
 			if( option.autoshot() ){
 				$.ajax({
@@ -1036,15 +1050,22 @@ var treeSave = function( arg ){
 			}
 			else suc();
 		}
+		*/
+		,success:suc
 	});
 	function err(){
-		$('#wait').hide();
-		$('#save').show();
+		//$('#wait').hide();
+		//$('#save').show();
+		$('#progress').hide();
+		$('#modified').show();
 	}
 	function suc(){
-		$('#wait').hide();
-		$('#save').show();
-		$('#modified').hide();
+		//$('#wait').hide();
+		//$('#save').show();
+		//$('#modified').hide();
+		$('#progress').hide();
+		$(document.body).css('padding-top',0);
+		$(window).resize();
 		if( arg && arg.success ) arg.success();
 	}
 }
