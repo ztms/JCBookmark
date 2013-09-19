@@ -1959,7 +1959,7 @@ function setEvents(){
 					var child = panels[index].child;
 					for( var i=0, n=child.length; i<n; i++ ){
 						if( child[i].child ) continue;
-						if( child[i].title.myNormal().myFound() || child[i].url.myNormal().myFound() ){
+						if( (child[i].title +child[i].url).myNormal().myFound() ){
 							$found.append(
 								$url.clone()
 									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
