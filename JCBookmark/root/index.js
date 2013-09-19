@@ -2080,9 +2080,11 @@ function setEvents(){
 				if( node ){
 					var cancel = false;
 					if( isFindBox ){
-						// 検索ボックスアイテムは検索ボックスでmouseupしたら移動キャンセル
-						if( elementHasXY( document.querySelector('#findbox'), ev.clientX, ev.clientY ) ||
-							elementHasXY( document.querySelector('#findtab'), ev.clientX, ev.clientY ) ){
+						// 検索ボックスアイテムは、検索ボックスor画面外でmouseupしたら移動キャンセル
+						if( elementHasXY( document.getElementById('findbox'), ev.clientX, ev.clientY ) ||
+							elementHasXY( document.getElementById('findtab'), ev.clientX, ev.clientY ) ||
+							!elementHasXY( $wall[0], ev.pageX, ev.pageY )
+						){
 							cancel = true;
 						}
 						$('#fd'+node.id).css('opacity',1);
