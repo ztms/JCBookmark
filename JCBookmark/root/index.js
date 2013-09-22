@@ -70,7 +70,7 @@ var tree = {
 		tree.modified(true);
 		return tree;
 	}
-	// 指定ノードIDを持つノードオブジェクト(ごみ箱は探さない)
+	// 指定ノードIDを持つノードオブジェクト(既定はごみ箱は探さない)
 	,node:function( id, root ){
 		return function callee( node ){
 			if( node.id==id ){
@@ -1888,19 +1888,20 @@ function setEvents(){
 		// パネル(フォルダ)配列生成・URL総数カウント
 		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
 		var panels = [];	// パネルノード配列
-		var urlTotal = 0;	// URL数
-		function callee( node ){
+		var nodeTotal = 0;	// URL＋パネル数
+		function panelist( node ){
 			panels.push( node );
-			urlTotal += node.child.length;
+			nodeTotal += node.child.length;
 			for( var i=0, n=node.child.length; i<n; i++ ){
 				if( node.child[i].child ){
-					callee( node.child[i] );
-					urlTotal--;
+					panelist( node.child[i] );
+					nodeTotal--;
 				}
 			}
 		}
-		callee( tree.top() );
-		callee( tree.trash() );
+		panelist( tree.top() );
+		panelist( tree.trash() );
+		nodeTotal += panels.length;
 		// キーワード検索
 		$tab.find('.start').click(function(){
 			// 検索ワード
@@ -1942,7 +1943,6 @@ function setEvents(){
 				}
 				return true;
 			};
-			var nodeTotal = urlTotal + panels.length;
 			var index = 0;
 			var total = 0;
 			(function callee(){
@@ -1972,7 +1972,7 @@ function setEvents(){
 					index++;
 				}
 				// 進捗バー
-				$pgbar.progressbar('value',total*100/nodeTotal);
+				$pgbar.progressbar('value',total *100 /nodeTotal);
 				// 次
 				if( index < panels.length ) timer = setTimeout(callee,0);
 				else $tab.find('.stop').click();
@@ -2048,12 +2048,12 @@ function setEvents(){
 				// item==アイテム要素は閉パネルポップアップで削除される事があるので、
 				// 要素の元ノード情報を保持、
 				if( /^fd\d+$/.test(item.id) ){
-					// 検索ボックスアイテム
+					// 検索ボックスアイテム(ごみ箱も含む)
 					isFindBox = true;
 					node = tree.node( item.id.slice(2), tree.root );
 				}
 				else{
-					// パネルアイテム
+					// パネルアイテム(ごみ箱は含まない)
 					node = tree.node( item.id );
 				}
 				if( node ){
