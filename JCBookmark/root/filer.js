@@ -1583,7 +1583,8 @@ function itemContextMenu(ev){
 				,height	:230
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
-			(function analyze(){
+			analyze();
+			function analyze(){
 				var url = $(item).find('.url').text();
 				$.ajax({
 					url:':analyze?'+url.myURLenc()
@@ -1602,7 +1603,7 @@ function itemContextMenu(ev){
 						}
 					}
 				});
-			})();
+			}
 			function itemmove(){
 				setTimeout(function(){ $(item).mousedown(); },0);
 				setTimeout(function(){
