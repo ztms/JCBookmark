@@ -2658,7 +2658,7 @@ function importer( nodeTop ){
 	.dialog({
 		title	:'データ取り込み方法の確認'
 		,modal	:true
-		,width	:410
+		,width	:430
 		,height	:180
 		,close	:function(){ $(this).dialog('destroy'); }
 		,buttons:{
