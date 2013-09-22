@@ -52,7 +52,7 @@ var tree = {
 	,top:function(){ return tree.root.child[0]; }
 	// ごみ箱ノード取得
 	,trash:function(){ return tree.root.child[1]; }
-	// 指定ノードIDのノードオブジェクト
+	// 指定ノードIDのノードオブジェクト(ごみ箱も探す)
 	,node:function( id ){
 		return function callee( node ){
 			if( node.id==id ){
@@ -60,7 +60,7 @@ var tree = {
 				return node;
 			}
 			if( node.child ){
-				for( var i=0, n=node.child.length; i<n; i++ ){
+				for( var i=node.child.length-1; i>=0; i-- ){
 					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
@@ -126,7 +126,9 @@ var tree = {
 		return node;
 	}
 	// 新規ブックマーク作成
-	,newURL:function( pnode, url, title, icon ){
+	// pnode: 親フォルダノード
+	// index: 挿入位置配列インデックス
+	,newURL:function( pnode, url, title, icon, index ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
@@ -134,9 +136,12 @@ var tree = {
 			,url		:url || ''
 			,icon		:icon || ''
 		};
-		// 引数ノードのchild先頭に追加する
-		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
-		( pnode || tree.top() ).child.unshift( node );
+		if( !pnode || !pnode.child ){
+			pnode = tree.top();
+			index = 0;
+		}
+		else if( !index ) index = 0;
+		pnode.child.splice( index, 0, node );
 		tree.modified(true);
 		return node;
 	}
@@ -578,42 +583,40 @@ var itemTable = function(){
 	};
 }();
 // フォルダツリーアイテムクリック
-var folderClick = function(){
-	return function(ev){
-		if( $(this).hasClass('select') ){
-			// 選択済みの場合アクティブに
-			$(select=this).removeClass('inactive').focus();
-			// 選択アイテムを非アクティブに
-			$('#items').children().each(function(){
-				if( $(this).hasClass('select') ) $(this).addClass('inactive');
-			});
-			// 名前編集
-			//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
-			// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
-			// inline-blockにしたら文字上クリックでしか編集できなくなった
-			// ので、自力判定でblock要素のように文字上じゃなくても編集で
-			// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
-			// らしい。
-			//var elm = $(this).find('.title')[0];
-			//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
-			// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
-			// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
-			var $e = $(this).find('.title');
-			if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
+function folderClick(ev){
+	if( $(this).hasClass('select') ){
+		// 選択済みの場合アクティブに
+		$(select=this).removeClass('inactive').focus();
+		// 選択アイテムを非アクティブに
+		$('#items').children().each(function(){
+			if( $(this).hasClass('select') ) $(this).addClass('inactive');
+		});
+		// 名前編集
+		//edit( document.elementFromPoint( ev.pageX, ev.pageY ) );
+		// なぜかIE8でelementFromPointが動作せず、さらに.title要素を
+		// inline-blockにしたら文字上クリックでしか編集できなくなった
+		// ので、自力判定でblock要素のように文字上じゃなくても編集で
+		// きるように変えた。jQueryオブジェクトの[0]がDOMエレメント
+		// らしい。
+		//var elm = $(this).find('.title')[0];
+		//if( ev.pageX+3 >= elm.offsetLeft ) edit( elm );
+		// フォルダツリーで横にスクロールした状態だと編集ボックスが出る
+		// クリック領域がスクロール量だけ右にズレてしまうので以下に変更。
+		var $e = $(this).find('.title');
+		if( ev.pageX+3 >= $e.offset().left ) edit( $e[0] );
+	}
+	else{
+		// ノード取得:自身ID=folderXXならノードID=XX
+		var node = tree.node( this.id.slice(6) );
+		if( node ){
+			// クリックをフォルダ選択状態に
+			$(selectFolder).removeClass('select inactive');
+			$(select=selectFolder=this).addClass('select').focus();
+			// アイテム欄作成
+			itemTable( node );
 		}
-		else{
-			// ノード取得:自身ID=folderXXならノードID=XX
-			var node = tree.node( this.id.slice(6) );
-			if( node ){
-				// クリックをフォルダ選択状態に
-				$(selectFolder).removeClass('select inactive');
-				$(select=selectFolder=this).addClass('select').focus();
-				// アイテム欄作成
-				itemTable( node );
-			}
-		}
-	};
-}();
+	}
+}
 // フォルダイベント
 $('#folders')
 .on('click','.folder',folderClick)
@@ -762,21 +765,11 @@ $('#newname').keypress(function(ev){
 	}
 });
 // 新規ブックマークアイテム
-$('#newitem').click(function(){
-	var url = $('#newurl').val();
-	// 選択フォルダID=folderXXならノードID=XX
-	var node = tree.newURL( selectFolder.id.slice(6), url );
-	// DOM再構築
-	$(selectFolder).removeClass('select').click();
-	// アイテム選択 ノードID=XXXならアイテムボックスID=itemXXX
-	var $item = $('#item'+node.id);
-	// $item.mousedown().mouseup();と書きたいところだが、
-	// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-	// mouseup()およびその先の処理も実行されないもよう。
-	// 仕方がないのでsetTimeoutを使う。
-	setTimeout(function(){ $item.mousedown(); },0);
-	setTimeout(function(){
-		$item.mouseup();
+$('#newitem').on({
+	click:function(){
+		var url = $('#newurl').val();
+		// 選択フォルダID=folderXXならノードID=XX
+		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
 		if( url.length ){
 			$.get(':analyze?'+url.myURLenc(),function(data){
 				if( data.title.length ){
@@ -789,12 +782,38 @@ $('#newitem').click(function(){
 						$('#item'+node.id).find('img').attr('src',data.icon).end().find('.iconurl').text(data.icon);
 				}
 			});
-		}else{
-			// URL編集
-			edit( $item.children('.url')[0] );
 		}
-	},1);
-	$('#newurl').val('');
+		// DOM再構築
+		$(selectFolder).removeClass('select').click();
+		// アイテム選択 ノードID=XXXならアイテムボックスID=itemXXX
+		var $item = $('#item'+node.id);
+		// $item.mousedown().mouseup();と書きたいところだが、
+		// IE8はmousedown()でエラー発生する仕様なのが影響してか、
+		// mouseup()およびその先の処理も実行されないもよう。
+		// 仕方がないのでsetTimeoutを使う。
+		setTimeout(function(){ $item.mousedown(); },0);
+		setTimeout(function(){
+			$item.mouseup();
+			if( !url.length ) edit( $item.children('.url')[0] ); // URL編集
+		},1);
+		$('#newurl').val('');
+	}
+	,contextmenu:function(ev){
+		var $menu = $('#contextmenu').width(250);
+		var $box = $menu.children('div').empty();
+		// クリップボードから登録
+		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+			$menu.hide();
+			// 選択フォルダ先頭に登録
+			clipboardTo( tree.node( selectFolder.id.slice(6) ), 0 );
+		}));
+		// 表示
+		$menu.css({
+			left: (($(window).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
+			,top: (($(window).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
+		}).show();
+		return false;	// 既定右クリックメニュー出さない
+	}
 });
 $('#newurl').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
@@ -968,28 +987,47 @@ $('.itemborder').mousedown(function(ev){
 	});
 });
 // アイテム欄下余白から矩形選択
-$('#itembox').mousedown(function(ev){
-	var downX = ev.pageX;
-	var downY = ev.pageY;
-	var offset = $(this).offset();
-	var $items = $('#items');
-	// スクロールバー上でない、かつ(IE8で必要)アイテム上でない
-	if( downX < offset.left + this.clientWidth &&
-		downY < offset.top + this.clientHeight &&
-		downY > $items.offset().top + $items.height()
-	){
-		// 選択フォルダ非アクティブ
-		$(selectFolder).addClass('inactive');
-		if( ev.ctrlKey ){
-			// 選択アイテムをアクティブに
-			$items.children().each(function(){
-				$(this).removeClass('inactive');
-			});
-		}else{
-			// 選択なし
-			selectItemClear();
+$('#itembox').on({
+	mousedown:function(ev){
+		var downX = ev.pageX;
+		var downY = ev.pageY;
+		var offset = $(this).offset();
+		var $items = $('#items');
+		// スクロールバー上でない、かつ(IE8で必要)アイテム上でない
+		if( downX < offset.left + this.clientWidth &&
+			downY < offset.top + this.clientHeight &&
+			downY > $items.offset().top + $items.height()
+		){
+			// 選択フォルダ非アクティブ
+			$(selectFolder).addClass('inactive');
+			if( ev.ctrlKey ){
+				// 選択アイテムをアクティブに
+				$items.children().each(function(){
+					$(this).removeClass('inactive');
+				});
+			}else{
+				// 選択なし
+				selectItemClear();
+			}
+			itemSelectStart( null, downX, downY );
 		}
-		itemSelectStart( null, downX, downY );
+	}
+	,contextmenu:function(ev){
+		var $menu = $('#contextmenu').width(250);
+		var $box = $menu.children('div').empty();
+		// クリップボードから登録
+		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+			$menu.hide();
+			// 選択フォルダ末尾に登録
+			var pnode = tree.node( selectFolder.id.slice(6) );
+			clipboardTo( pnode, pnode.child.length );
+		}));
+		// 表示
+		$menu.css({
+			left: (($(window).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
+			,top: (($(window).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
+		}).show();
+		return false;	// 既定右クリックメニュー出さない
 	}
 });
 // 矩形選択
@@ -1159,10 +1197,8 @@ function itemMouseDown( ev, shiftKey ){
 function folderMouseDown(ev){
 	// 変更を反映
 	$('#editbox').trigger('decide');
-	if( tree.movable( this.id.slice(6) ) ){
-		// ドラッグ開始
-		itemDragStart( this, ev.pageX, ev.pageY );
-	}
+	// ドラッグ開始
+	if( tree.movable( this.id.slice(6) ) ) itemDragStart( this, ev.pageX, ev.pageY );
 	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
 	// ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
 	// 他に適切な対策はないのか？
@@ -1469,25 +1505,27 @@ function itemContextMenu(ev){
 		if( !item.parentNode ) return;
 		item = item.parentNode;
 	}
-	var $menu = $('#contextmenu').width(200);
+	var nid = item.id.slice(4);	// ノードID
+	var $menu = $('#contextmenu').width(250);
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).find('img').attr('src');
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
-		$box.append($('<a><img src='+iopen+'>フォルダを開く</a><hr>').click(function(){
+		$box.append($('<a><img src='+iopen+'>フォルダを開く</a>').click(function(){
 			$menu.hide();
 			$(item).dblclick();
-		}));
+		}))
+		.append('<hr>');
 	}
 	else{
 		// ブックマーク
-		$box.append($('<a><img src='+iopen+'>URLを開く</a><hr>').click(function(){
+		$box.append($('<a><img src='+iopen+'>URLを開く</a>').click(function(){
 			$menu.hide();
 			var url = $(item).find('.url').text();
 			if( url.length ) window.open( url );
 		}));
-		$box.append($('<a><img src=question.png>タイトル/アイコンを取得</a><hr>').click(function(){
+		$box.append($('<a><img src=question.png>タイトル/アイコンを取得</a>').click(function(){
 			$menu.hide();
 			var $title = $('<input id=antitle>');
 			var $icon = $('<img src=wait.gif class=icon>');
@@ -1499,7 +1537,7 @@ function itemContextMenu(ev){
 					).append(
 						$('<th></th>').append(
 							$('<a>反映</a>').button().click(function(){
-								if( tree.nodeAttr( item.id.slice(4), 'title', $title.val() ) >1 )
+								if( tree.nodeAttr( nid, 'title', $title.val() ) >1 )
 									$(item).find('.title').text( $title.val() );
 							})
 						)
@@ -1510,7 +1548,7 @@ function itemContextMenu(ev){
 					).append(
 						$('<th></th>').append(
 							$('<a>反映</a>').button().click(function(){
-								if( tree.nodeAttr( item.id.slice(4), 'icon', $iconurl.val() ) >1 )
+								if( tree.nodeAttr( nid, 'icon', $iconurl.val() ) >1 )
 									$(item).find('img').attr('src',$icon.attr('src')).end().find('.iconurl').text($iconurl.val());
 							})
 						)
@@ -1542,11 +1580,10 @@ function itemContextMenu(ev){
 				title	:'タイトル/アイコンを取得'
 				,modal	:true
 				,width	:560
-				,height	:220
+				,height	:230
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
-			analyze();
-			function analyze(){
+			(function analyze(){
 				var url = $(item).find('.url').text();
 				$.ajax({
 					url:':analyze?'+url.myURLenc()
@@ -1565,7 +1602,7 @@ function itemContextMenu(ev){
 						}
 					}
 				});
-			}
+			})();
 			function itemmove(){
 				setTimeout(function(){ $(item).mousedown(); },0);
 				setTimeout(function(){
@@ -1576,10 +1613,22 @@ function itemContextMenu(ev){
 					analyze(item);
 				},1);
 			}
-		}));
+		}))
+		.append('<hr>');
 	}
+	// クリップボードから登録
+	$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+		$menu.hide();
+		// 選択アイテム位置に登録
+		var pnode = tree.nodeParent( nid );
+		for( var index=pnode.child.length-1; index>=0; index-- ){
+			if( pnode.child[index].id==nid ) break;
+		}
+		clipboardTo( pnode, index );
+	}))
+	.append('<hr>');
 	// 削除
-	var idelete = tree.trashHas( item.id.slice(4) )? 'delete.png' : 'trash.png';
+	var idelete = tree.trashHas( nid )? 'delete.png' : 'trash.png';
 	$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
 		$menu.hide();
 		$('#delete').click();
@@ -1602,10 +1651,18 @@ function folderContextMenu(ev){
 		folder = folder.parentNode;
 	}
 	var nid = folder.id.slice(6); // ノードID
-	var $menu = $('#contextmenu');
+	var $menu = $('#contextmenu').width(250);
 	var $box = $menu.children('div').empty();
+	// クリップボードから登録
+	$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+		$menu.hide();
+		onContextHide();
+		// クリックフォルダ先頭に登録
+		clipboardTo( tree.node( nid ), 0 );
+	}));
 	if( nid==tree.trash().id ){
-		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
+		$box.append('<hr>')
+		.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
 			onContextHide();
 			Confirm({
@@ -1620,9 +1677,9 @@ function folderContextMenu(ev){
 				}
 			});
 		}));
-		$menu.width(150);
 	}
 	else if( tree.movable(nid) ){
+		$box.append('<hr>');
 		if( tree.trashHas(nid) ){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide();
@@ -1647,9 +1704,7 @@ function folderContextMenu(ev){
 				folderTree({ clickID:selectFolder.id.slice(6) });
 			}));
 		}
-		$menu.width(100);
 	}
-	else return; // ルートノード
 	// ターゲットフォルダ色つけ
 	$(folder).addClass('contexted');
 	onContextHide = function(){
@@ -1874,6 +1929,54 @@ function viewScroll( element ){
 	if( pos.bottom >= box.clientHeight )
 		box.scrollTop += pos.bottom - box.clientHeight +5;
 }
+// クリップボードのURLを新規登録
+// pnode :登録先フォルダノード
+// index :登録位置インデックス
+// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
+// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
+// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの
+// プログレスバー出した方がよいか？そうするなら、先にDOM更新した後タイトル変更
+// ではなく、先にタイトル取得して最後にDOM更新でいいような気もする。
+function clipboardTo( pnode, index ){
+	$('#dialog').empty().text('処理中です...').dialog({
+		title	:'情報'
+		,width	:300
+		,height	:100
+	});
+	$.ajax({
+		url:':clipboard.txt'
+		,complete:function(){ $('#dialog').dialog('destroy'); }
+		,success:function(data){
+			var lines = data.split(/[\r\n]+/);			// 一行一URLとして解析
+			var regTrim = /^\s+|\s+$/g;
+			var regUrl = /^[A-Za-z]+:\/\/.+$/;
+			for( var i=lines.length-1; i>=0; i-- ){
+				var url = lines[i].replace(regTrim,'');	// 前後の空白削除(trim()はIE8ダメ)
+				if( regUrl.test(url) ) itemAdd( url );	// URLなら登録
+			}
+			// 表示更新
+			$('#folder'+pnode.id).removeClass('select').click();
+		}
+	});
+	function itemAdd( url ){
+		// ノード作成
+		var node = tree.newURL( pnode, url, url.noProto(), '', index );
+		if( node ){
+			// タイトル/favicon取得
+			$.get(':analyze?'+url.myURLenc(),function(data){
+				if( data.title.length ){
+					data.title = HTMLdec( data.title );
+					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+						$('#item'+node.id).find('.title').text( data.title );
+				}
+				if( data.icon.length ){
+					if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+						$('#item'+node.id).find('img').attr('src',data.icon).end().find('.iconurl').text(data.icon);
+				}
+			});
+		}
+	}
+}
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
 // 独自改行コードを導入。Chrome/Firefoxは単純に \n でうまくいくのにIE8だけまた・・
@@ -1938,6 +2041,7 @@ function HTMLdec( html ){
 }
 // index.js参照
 String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
+String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 String.prototype.myNormal = function(){
 	// 変換用キャッシュ
 	var reg2 = /ｶﾞ|ｷﾞ|ｸﾞ|ｹﾞ|ｺﾞ|ｻﾞ|ｼﾞ|ｽﾞ|ｾﾞ|ｿﾞ|ﾀﾞ|ﾁﾞ|ﾂﾞ|ﾃﾞ|ﾄﾞ|ﾊﾞ|ﾋﾞ|ﾌﾞ|ﾍﾞ|ﾎﾞ|ﾊﾟ|ﾋﾟ|ﾌﾟ|ﾍﾟ|ﾎﾟ/g;
