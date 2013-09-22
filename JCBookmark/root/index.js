@@ -53,10 +53,6 @@ var tree = {
 		tree.root = data;
 		return tree;
 	}
-	// トップノード取得
-	,top:function(){ return tree.root.child[0]; }
-	// ごみ箱ノード取得
-	,trash:function(){ return tree.root.child[1]; }
 	// 指定IDのchildに接ぎ木
 	,mount:function( subtree ){
 		// ノードIDつけて
@@ -70,6 +66,10 @@ var tree = {
 		tree.modified(true);
 		return tree;
 	}
+	// トップノード取得
+	,top:function(){ return tree.root.child[0]; }
+	// ごみ箱ノード取得
+	,trash:function(){ return tree.root.child[1]; }
 	// 指定ノードIDを持つノードオブジェクト(既定はごみ箱は探さない)
 	,node:function( id, root ){
 		return function callee( node ){
@@ -78,7 +78,7 @@ var tree = {
 				return node;
 			}
 			if( node.child ){
-				for( var i=0, n=node.child.length; i<n; i++ ){
+				for( var i=node.child.length-1; i>=0; i-- ){
 					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
@@ -100,7 +100,9 @@ var tree = {
 		return node;
 	}
 	// 新規アイテム作成
-	,newURL:function( pnode, url, title, icon ){
+	// pnode: 親フォルダノード
+	// index: 挿入位置配列インデックス
+	,newURL:function( pnode, url, title, icon, index ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
@@ -108,9 +110,12 @@ var tree = {
 			,url		:url || ''
 			,icon		:icon || ''
 		};
-		// 引数ノードのchild先頭に追加する
-		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
-		( pnode || tree.top() ).child.unshift( node );
+		if( !pnode || !pnode.child ){
+			pnode = tree.top();
+			index = 0;
+		}
+		else if( !index ) index = 0;
+		pnode.child.splice( index, 0, node );
 		tree.modified(true);
 		return node;
 	}
@@ -739,7 +744,7 @@ var paneler = function(){
 			}
 			while( layoutSeek && count>0 );
 			if( layoutSeek ) timer = setTimeout(layouter,0); else afterLayout();
-		}());
+		})();
 		// パネル１つ生成配置
 		function panelCreate( node, column ){
 			var $p = $newPanel( node ).appendTo( column.$e );
@@ -796,7 +801,7 @@ var paneler = function(){
 					index++; count--;
 				}
 				if( index < length ) timer = setTimeout(placer,0); else afterPlaced();
-			}());
+			})();
 		}
 		// 全パネル配置後
 		function afterPlaced(){
@@ -808,9 +813,7 @@ var paneler = function(){
 					commit:function(){
 						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
-							// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
-							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
-							// URLタイトル、favicon取得
+							// URLタイトル/favicon取得
 							$.get(':analyze?'+this.value.myURLenc(),function(data){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
@@ -821,6 +824,8 @@ var paneler = function(){
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
 										$('#'+node.id).find('img').attr('src',data.icon);
 							});
+							// DOM増加
+							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							$('#commit').remove();
 							this.value = '';
 						}
@@ -1042,7 +1047,7 @@ function setEvents(){
 				else $('#firefoxico').hide();
 			}
 		});
-	}());
+	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
 	$document.on('mousemove',function(){
@@ -1148,11 +1153,16 @@ function setEvents(){
 		}))
 		.append('<hr>')
 		.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
+			// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
+			// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
+			// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの
+			// プログレスバー出した方がよいか？そうするなら、先にDOM更新した後タイトル変更
+			// ではなく、先にタイトル取得して最後にDOM更新でいいような気もする。
 			$menu.hide();
 			$.get(':clipboard.txt',function(data){
+				var pnode = tree.node( panel.id );
 				var $itembox = $(panel).find('.itembox');
-				// 一行一URLとして解析
-				var lines = data.split(/[\r\n]+/);
+				var lines = data.split(/[\r\n]+/);								// 一行一URLとして解析
 				var index = lines.length -1;
 				(function callee(){
 					var count = 10;												// 10個ずつ
@@ -1163,14 +1173,12 @@ function setEvents(){
 					}
 					// 次
 					if( index >=0 ) setTimeout(callee,0);
-				}());
+				})();
 				function itemAdd( url ){
 					// ノード作成
-					var node = tree.newURL( tree.node(panel.id), url, url.noProto() );
+					var node = tree.newURL( pnode, url, url.noProto() );
 					if( node ){
-						// DOM操作(閉パネルポップアップがあるのでDOM要素キャッシュしない)
-						$newItem(node).prependTo( $itembox );
-						// タイトル・favicon取得
+						// タイトル/favicon取得
 						$.get(':analyze?'+url.myURLenc(),function(data){
 							if( data.title.length ){
 								data.title = HTMLdec( data.title );
@@ -1181,6 +1189,8 @@ function setEvents(){
 								if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
 									$('#'+node.id).find('img').attr('src',data.icon);
 						});
+						// DOM増加
+						$newItem(node).prependTo( $itembox );
 					}
 				}
 			});
@@ -1832,7 +1842,7 @@ function setEvents(){
 			maxWidth += dateWidth;
 			$('#shothead').width( maxWidth );
 			$shots.find('div').width( maxWidth );
-		}());
+		})();
 	}
 	// 検索
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利か？
@@ -1976,7 +1986,7 @@ function setEvents(){
 				// 次
 				if( index < panels.length ) timer = setTimeout(callee,0);
 				else $tab.find('.stop').click();
-			}());
+			})();
 		});
 	});
 	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
@@ -2120,7 +2130,7 @@ function setEvents(){
 				$place.remove();
 			}
 		});
-	}());
+	})();
 	// サイドバーボタンキー入力
 	$('.barico').on({
 		keypress:function(ev){
@@ -2262,7 +2272,7 @@ var panelPopper = function(){
 				}
 				// 次
 				if( index < length ) itemTimer = setTimeout(callee,0);
-			}());
+			})();
 			// カーソル移動方向と停止時間を監視
 			$document.on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
@@ -2343,14 +2353,13 @@ function panelEdit( pid ){
 						var $icon = $('<img class=icon src=item.png>');
 						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
-						// 新規登録ボタンの次に挿入
-						$commit.after( $item.append($idel).append($icon).append($edit) );
 						// URLタイトル、favicon取得
 						$.get(':analyze?'+this.value.myURLenc(),function(data){
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
 						});
-						$commit.hide();
+						// 新規登録ボタンの次に挿入
+						$commit.after( $item.append($idel).append($icon).append($edit) ).hide();
 						this.value = '';
 					}
 				})
@@ -2398,7 +2407,7 @@ function panelEdit( pid ){
 			index++; count--;
 		}
 		if( index < length ) timer = setTimeout(callee,0); else itemSortable();
-	}());
+	})();
 	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
 	function itemSortable(){
 		$document.on('mousedown.paneledit','#editbox div .icon',function(ev){
@@ -2650,7 +2659,7 @@ function analyzer( nodeTop ){
 		// 完了
 		$('#dialog').dialog('destroy');
 		importer( nodeTop );
-	}());
+	})();
 }
 // 移行データ取り込み
 function importer( nodeTop ){
@@ -2703,7 +2712,7 @@ var scroller = function(){
 					if( $window.scrollLeft()!=oldLeft || $window.scrollTop()!=oldTop ){
 						timer = setTimeout(callee,100);
 					}
-				}());
+				})();
 			}
 		}
 	};
@@ -2983,7 +2992,7 @@ function HTMLdec( html ){
 // がエラーになってしまうので、#! を %23! に置換することにした。これで通常の
 // ページ内リンクは削除されたURLがリクエストされることに。だいじょぶかな？
 String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
-//
+// URL先頭プロトコル文字列除去
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 // 検索用に文字列を正規化
 // http://logicalerror.seesaa.net/article/275434211.html
