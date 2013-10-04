@@ -4457,8 +4457,8 @@ void SocketWrite( SOCKET sock )
 				rsp->readfh = INVALID_HANDLE_VALUE;
 			}
 			// ぜんぶ送信したら切断
-			LogW(L"[%u]切断",Num(cp));
-			ClientShutdown( cp );
+			//LogW(L"[%u]切断",Num(cp)); ClientShutdown( cp );
+			PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
 			break;
 
 		default:// 何もしない
@@ -5178,7 +5178,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					ClientSendErr(cp,"400 Bad Request");
 				send_ready:
 					cp->status = CLIENT_SEND_READY;
-					SocketWrite( sock );
+					//SocketWrite( sock );
+					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
 				}
 			}
 			else{
@@ -6197,14 +6198,20 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		if( Shell_NotifyIconW( NIM_MODIFY, &ni ) ){
 			// 数秒でバルーン消す
 			// timeSetEvent(TIME_ONESHOT)で指定時間後に一発だけ実行できるようだが、まあいいか…。
-			SetTimer( hwnd, TIMER_BALOON, 1000, NULL );
+			// Win7でメッセージ読めないのでVista以降はちょい長めに表示する。
+			UINT msec = 1000;
+			OSVERSIONINFOA os;
+			memset( &os, 0, sizeof(os) );
+			os.dwOSVersionInfoSize = sizeof(os);
+			GetVersionExA( &os );
+			if( os.dwMajorVersion>=6 ) msec = 1500; // Vista以降
+			SetTimer( hwnd, TIMER_BALOON, msec, NULL );
 			return TRUE;
 		}
 		return FALSE;
 
 	case NIM_MODIFY:
 		ni.uFlags = NIF_TIP |NIF_INFO;
-		//GetWindowTextW( hwnd, ni.szTip, sizeof(ni.szTip) );
 		wcscpy( ni.szTip, APPNAME );
 
 	case NIM_DELETE:
