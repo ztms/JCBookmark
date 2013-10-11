@@ -10,6 +10,7 @@ body {
 }
 /* ツールバー */
 #toolbar {
+	position:relative;
 	width:1024px;
 	background:#eee;
 	border-bottom:1px solid #777;
@@ -31,36 +32,49 @@ body {
 	background:#fff5f0;
 }
 #toolbar input {
+	position:relative;
 	float:left;
 	width:144px;
 	height:16px;
 	border:1px solid #bbb;
 	margin:7px 10px 0 3px;
 	padding:1px;
-	line-height:1.5;
+}
+#findstop {
+	display:none;
+}
+#finding {
+	position:absolute;
+	width:148px;
+	height:20px;
+	border:0;
+	border-radius:0;
+}
+#keyword {
+	background:transparent;
 }
 /* 変更保存リンクバー */
-#progress {
-	display:none;
-	text-align:center;
-	padding-top:2px;
-}
-#proress img {
-	border:0;
-}
 #progress, #modified {
 	position:fixed;
 	left:0; top:0;
 	width:100%;
 	color:#c00;
+	font-size:14px;
+	line-height:1.5;
 	background:#ffc;
 	border-bottom:1px solid #dda;
+}
+#progress {
+	display:none;
+	text-align:center;
+}
+#progress img {
+	border:0;
+	vertical-align:middle;
 }
 #modified {
 	display:none;
 	font-weight:bold;
-	font-size:14px;
-	line-height:1.5;
 	cursor:pointer;
 	text-align:center;
 	white-space:nowrap;
@@ -107,6 +121,9 @@ body {
 .folder:active {
 	background:#dbe9ff;
 }
+.item {
+	padding-left:3px;
+}
 /* アイテム色つき行 */
 .bgcolor {
 	background:#f0f2ff;
@@ -120,6 +137,7 @@ body {
 }
 #items .select .url,
 #items .select .iconurl,
+#items .select .place,
 #items .select .summary,
 #items .select .date {
 	color:#fff;
@@ -137,20 +155,27 @@ body {
 	float:left;
 	height:19px;
 	cursor:default;
-	line-height:1.5;
+	line-height:20px;
 }
 #itemhead .title {
 	padding:0 0 0 7px;
 	color:#888;
 }
-#itemhead .url, #itemhead .iconurl, #itemhead .date {
+#itemhead .url,
+#itemhead .iconurl,
+#itemhead .place,
+#itemhead .date {
 	color:#888;
 	padding-left:5px;
 }
-#items .url, #items .iconurl, #items .summary, #items .date {
+#items .url,
+#items .iconurl,
+#items .place,
+#items .summary,
+#items .date {
+	color:#888;
 	padding-left:5px;
 	border-left:1px solid #ddd;
-	color:#888;
 }
 #itembox .itemborder {
 	width:3px;
@@ -162,13 +187,36 @@ body {
 /* アイコン */
 .icon {
 	float:left;
-	margin:2px 5px 0 6px;
+	margin:2px 5px 0 3px;
 	width:16px;
 	height:16px;
 }
+.sub {
+	float:left;
+	width:9px;
+	height:9px;
+	margin:3px 0 0 2px;
+	padding:1px;
+	border:1px solid transparent;
+}
+.sub:hover {
+	border-color:#bbb;
+	background:#fff;
+}
+.select .sub:hover {
+	background:#669;
+}
+.inactive .sub {
+	border-color:#ccc;
+	background:#e5e5e5;
+}
+.inactive .sub:hover {
+	border-color:#bbb;
+	background:#fff;
+}
 /* 余白 */
 .spacer {
-	height:20px;
+	height:32px;
 }
 .clear {
 	clear:both;
@@ -177,9 +225,9 @@ body {
 #dragbox {
 	display:none;
 	position:absolute;
-	width:128px;
+	width:160px;
 	height:20px;
-	line-height:1.5;
+	line-height:20px;
 	border:1px dotted #000;
 	background:#ddf;
 	filter:alpha(opacity=40);
@@ -195,7 +243,7 @@ body {
 	left:0; top:-50px;
 	border:1px solid #ea0;
 	height:19px;
-	line-height:1.5;
+	line-height:20px;
 }
 /* マウス矩形選択ボックス */
 #selectbox {
