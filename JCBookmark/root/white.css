@@ -29,12 +29,12 @@ body {
 	border-color:#aaa;
 	background:#eee;
 }
-.panel .newurl {
+#newurl {
 	color:#000;
 	border:1px solid #ccc;
 	background:#fff;
 }
-.panel .newurl:hover {
+#newurl:hover {
 	border-color:#fa3;
 }
 .panel .commit {
@@ -61,7 +61,7 @@ body {
 	box-shadow:0 0 10px 3px #aac;
 }
 .item {
-	color:#14d;
+	color:#14b;
 }
 .item:hover {
 	color:#600020;

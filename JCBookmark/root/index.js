@@ -3,7 +3,7 @@
 // TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
 // TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
 // TODO:一括でパネル開閉
-(function($){
+(function( $, $win, $doc, oStr, IE, $wall, $sidebar ){
 'use strict';
 /*
 var $debug = $('<div></div>').css({
@@ -18,18 +18,12 @@ var $debug = $('<div></div>').css({
 }).appendTo(document.body);
 var start = new Date(); // 測定
 */
-var oStr = Object.prototype.toString;						// 型判定
-var IE = window.ActiveXObject ? document.documentMode : 0;	// IE判定
 $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	beforeSend:function(xhr){
 		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 	}
 });
-var $window = $(window);
-var $document = $(document);
-var $wall = $('#wall');
-var $sidebar = $('#sidebar');
 var tree = {
 	// ルートノード
 	root:null
@@ -305,7 +299,7 @@ var tree = {
 // パネルオプション
 // TODO:v1.8でpanel.marginをtop,leftに分けたので、v1.7以前のバージョンでこのindex.jsonを読み込んだら
 // 正常動作しなそう。古いバージョンに戻しても問題ないかこれまで確認してきていない。戻したい人がいる
-// かもだが、動作確認や開発効率的に面倒くさい…どうしよう…。
+// かもだが、動作確認たいへんだし制約が増えるのはやだなぁ…。
 var option = {
 	data:{
 		// 空(規定値ではない)を設定
@@ -502,7 +496,7 @@ var option = {
 			var column = option.data.column;
 			if( column.count<0 ){
 				// 一度目の参照時に規定値を設定
-				column.count = $window.width() /230 |0;
+				column.count = $win.width() /230 |0;
 				if( column.count==0 ) column.count = 1;
 			}
 			return column.count;
@@ -580,7 +574,7 @@ var option = {
 			}
 			var panel = option.data.panel;
 			// 一度目の参照時に規定値を設定(px)
-			if( panel.width<0 ) panel.width = (($window.width() -27) /option.column.count() -option.panel.margin.left())|0;
+			if( panel.width<0 ) panel.width = (($win.width() -27) /option.column.count() -option.panel.margin.left())|0;
 			return panel.width;
 		}
 	}
@@ -807,7 +801,8 @@ var paneler = function(){
 		function afterPlaced(){
 			// 新規URL投入BOX作成
 			$('#'+nodeTop.id).find('.itembox').before(
-				$('<input id=newurl class=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
+				$('<input id=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
+				.css('font-size',fontSize).height( fontSize +3 )
 				.on({
 					// 新規登録
 					commit:function(){
@@ -824,7 +819,7 @@ var paneler = function(){
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
 										$('#'+node.id).find('img').attr('src',data.icon);
 							});
-							// DOM増加
+							// DOM
 							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							$('#commit').remove();
 							this.value = '';
@@ -1050,7 +1045,7 @@ function setEvents(){
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	$document.on('mousemove',function(){
+	$doc.on('mousemove',function(){
 		var animate = null;
 		return function(ev){
 			if( ev.clientX <37 && ev.clientY <300 ){	// サイドバー周辺にある程度近づいた
@@ -1118,8 +1113,8 @@ function setEvents(){
 			}));
 			// メニュー表示
 			$menu.css({
-				left: (($window.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-				,top: (($window.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+				left: (($win.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+				,top: (($win.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 			})
 			.width(190).show();
 			return false;
@@ -1162,13 +1157,13 @@ function setEvents(){
 			$.get(':clipboard.txt',function(data){
 				var pnode = tree.node( panel.id );
 				var $itembox = $(panel).find('.itembox');
-				var lines = data.split(/[\r\n]+/);								// 一行一URLとして解析
+				var lines = data.split(/[\r\n]+/);							// 一行一URLとして解析
 				var index = lines.length -1;
 				(function callee(){
-					var count = 10;												// 10個ずつ
+					var count = 10;											// 10個ずつ
 					while( index >=0 && count>0 ){
-						var url = lines[index].replace(/^\s+|\s+$/g,'');		// 前後の空白削除(trim()はIE8ダメ)
-						if( /^[A-Za-z]+:\/\/.+$/.test(url) ) itemAdd( url );	// URLなら登録
+						var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
+						if( /^[A-Za-z]+:.+/.test(url) ) itemAdd( url );		// URLなら登録
 						index--; count--;
 					}
 					// 次
@@ -1208,38 +1203,37 @@ function setEvents(){
 					text += child[i].title + '\r' + child[i].url + '\r';
 				}
 			}
-			$('#editbox').empty().append($('<textarea></textarea>').text(text)).dialog({
+			var $box = $('#editbox').empty().append($('<textarea></textarea>').text(text))
+			.dialog({
 				title	:'アイテムをテキストで取得'
 				,modal	:true
 				,width	:480
 				,height	:360
 				,close	:function(){ $(this).dialog('destroy'); }
-				,resize	:function(){
-					// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
-					// 表示が崩れてしまい回避策がわからないので、ここでリサイズイベント処理する。
-					// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
-					// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
-					// setTimeoutで適当に溜めて処理する。マウスが止まってから少し遅れて高さ方向が
-					// 調節される感じで表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れも
-					// なく追従性もよいので、できればCSSでやりたいのだが…。
-					// TODO:メイリオだとよいがMSPゴシックで高さがイマイチ
-					var timer = null;
-					var $box = $('#editbox');
-					var $area = $box.find('textarea');
-					return function(){
-						clearTimeout(timer);
-						timer = setTimeout(function(){
-							// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-							$area.height( $box.height() -$box.prev().height() +15 );
-						},20);
-					};
-				}()
+				,resize	:resize
 			});
+			// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
+			// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
+			// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
+			// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
+			// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
+			// 表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れもなく追従性もよいので、
+			// できればCSSで高さ調節もしたいが…。
+			var timer = null;
+			var $area = $box.find('textarea');
+			function resize(){
+				clearTimeout(timer);
+				timer = setTimeout(function(){
+					// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+					$area.height( $box.parent().height() -$box.prev().outerHeight() -20 );
+				},20);
+			}
+			resize();
 		}));
-		// TODO:開く/閉じる、全パネルを閉じる、全パネルを開く
+		// TODO:全パネルを閉じる、全パネルを開く
 		if( tree.movable( panel.id ) ){
 			$box.append('<hr>')
-			.append($('<a><img src=delete.png>このパネルを削除</a>').click(function(){
+			.append($('<a><img src=delete.png>このパネルを削除（ごみ箱）</a>').click(function(){
 				$menu.hide();
 				tree.moveChild( [panel.id], tree.trash() );
 				$(panel).remove();
@@ -1248,8 +1242,8 @@ function setEvents(){
 		}
 		// メニュー表示
 		$menu.css({
-			left: (($window.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
-			,top: (($window.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
+			left: (($win.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
+			,top: (($win.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 		})
 		.width(280).show();
 		return false;	// 既定右クリックメニュー出さない
@@ -1532,7 +1526,7 @@ function setEvents(){
 	// TODO:Firefoxはインポートしたブックマークタイトルで&#39;がそのまま表示されてしまう…
 	// TODO:FirefoxダイレクトインポートとHTML経由インポートとでツリー構造が異なる。
 	// 独自ダイレクトインポートのJSONを、Firefoxが生成するHTMLにあわせればよいのだが…。
-	$('#import').click(function(){
+	$('#import').button().click(function(){
 		var $impexp = $('#impexp');
 		if( $impexp.find('input').val().length ){
 			$impexp.find('form').off().submit(function(){
@@ -1567,7 +1561,7 @@ function setEvents(){
 	// これは単にサーバ側で /bookmarks.html のリクエストに対応してリアルタイムにJSON→HTML変換して
 	// 応答を返せばいいので、サーバ側で無駄にファイル作ることもない。その方が単純かなぁ？
 	// どっちでもいい気がするが、とりあえず実装が楽な方、クライアント側でのHTML生成にしてみよう。
-	$('#export').click(function(){
+	$('#export').button().click(function(){
 		// ブックマーク形式HTML(NETSCAPE-Bookmark-file-1)フォーマット
 		// [Netscape Bookmark File Format]
 		// http://msdn.microsoft.com/en-us/library/aa753582%28v=vs.85%29.aspx
@@ -1650,7 +1644,7 @@ function setEvents(){
 		});
 	});
 	// スナップショット作成
-	$('#shot a').click(function(){
+	$('#shot a').button().click(function(){
 		var $btn = $(this).hide();	// ボタン隠して
 		$btn.next().show();			// 処理中画像(wait.gif)表示
 		// メモを編集した状態からいきなり作成ボタンを押すと、inputのblurイベント(メモ保存ajax)
@@ -1676,7 +1670,7 @@ function setEvents(){
 		},100);
 	});
 	// スナップショット復元
-	$('#shotview').click(function(){
+	$('#shotview').button().click(function(){
 		var $btn = $(this);
 		var item = null;
 		$('#shots').find('div').each(function(){
@@ -1716,7 +1710,7 @@ function setEvents(){
 	});
 	// スナップショット消去
 	// TODO:削除後に次エントリか前エントリを選択状態にする
-	$('#shotdel').click(function(){
+	$('#shotdel').button().click(function(){
 		var $btn = $(this);
 		var item = null;
 		$('#shots').find('div').each(function(){
@@ -1847,154 +1841,157 @@ function setEvents(){
 	// 検索
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利か？
 	$('#findbox')
-		.find('.progress').progressbar().mousedown(function(ev){
-			// プログレスバーをD&Dで検索領域高さ変更
-			var $box = $('#findbox');
-			var $tab = $('#findtab');
-			var $found = $box.find('.found');
-			var foundHeight = $found.height();
-			var downY = ev.clientY;
-			$document.on('mousemove.findbox',function(ev){
-				var h = foundHeight +(downY - ev.clientY);
-				$found.height( (h<1)? 1:h );
-				$window.trigger('resize.findbox');
-				$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
-			})
-			.one('mouseup',function(){
-				$document.off('mousemove.findbox mouseleave.findbox');
-			});
-			if( IE && IE<9 ) $document.on('mouseleave.findbox',function(){ $document.mouseup(); });
+	.find('.progress').progressbar().mousedown(function(ev){
+		// プログレスバーをD&Dで検索領域高さ変更
+		var $box = $('#findbox');
+		var $tab = $('#findtab');
+		var $found = $box.find('.found');
+		var foundHeight = $found.height();
+		var downY = ev.clientY;
+		$doc.on('mousemove.findbox',function(ev){
+			var h = foundHeight +(downY - ev.clientY);
+			$found.height( (h<1)? 1:h );
+			$win.trigger('resize.findbox');
+			$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
+		})
+		.one('mouseup',function(){
+			$doc.off('mousemove.findbox mouseleave.findbox');
 		});
+		if( IE && IE<9 ) $doc.on('mouseleave.findbox',function(){ $doc.mouseup(); });
+	});
 	$('#findtab')
-		.find('.close').click(function(){
-			// 閉じる
-			$('#findtab').hide().find('.start').off();
-			$('#findbox').hide();
-			$wall.css('padding-bottom',50); // 50px初期値
-			$window.off('resize.findbox');
-		}).end()
-		.find('input').keypress(function(ev){
-			// Enterで検索実行
-			switch( ev.which || ev.keyCode || ev.charCode ){
-			case 13: $('#findtab').find('.start').click(); return false;
-			}
-		});
+	.find('.close').click(function(){
+		// 閉じる
+		$('#findtab').hide().find('.start').off('click').end().find('.stop').click('click').off();
+		$('#findbox').hide();
+		$wall.css('padding-bottom',50); // 50px初期値
+		$win.off('resize.findbox');
+	}).end()
+	.find('button').button().end()
+	.find('input').keypress(function(ev){
+		// Enterで検索実行
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: $('#findtab').find('.start').click(); return false;
+		}
+	});
 	$('#findico').click(function(){
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
-		if( $tab.css('display')=='block' ){
-			$tab.find('input').focus(); return;
-		}
-		$window.on('resize.findbox',function(){
+		if( $tab.css('display')=='block' ){ $tab.find('input').focus(); return; }
+		$win.on('resize.findbox',function(){
 			// TODO:設定でパネル幅を変更してウィンドウ横スクロールバーが出たり消えたりするのに追従できない
-			var h = $window.height() - $box.outerHeight();
-			$box.css('top', h ).width( $window.width() -5 );	// -5px適当微調整
+			var h = $win.height() - $box.outerHeight();
+			$box.css('top', h ).width( $win.width() -5 );	// -5px適当微調整
 			$tab.css('top', h -$tab.outerHeight() +1 );			// +1px下にずらして枠線を消す
 		})
 		.trigger('resize.findbox');
 		$box.show();
 		$tab.show().find('input').focus();
 		$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
-		// パネル(フォルダ)配列生成・URL総数カウント
-		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
-		var panels = [];	// パネルノード配列
-		var nodeTotal = 0;	// URL＋パネル数
-		function panelist( node ){
-			panels.push( node );
-			nodeTotal += node.child.length;
-			for( var i=0, n=node.child.length; i<n; i++ ){
-				if( node.child[i].child ){
-					panelist( node.child[i] );
-					nodeTotal--;
-				}
-			}
-		}
-		panelist( tree.top() );
-		panelist( tree.trash() );
-		nodeTotal += panels.length;
-		// キーワード検索
-		$tab.find('.start').click(function(){
-			// 検索ワード
-			var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
-			for( var i=words.length-1; i>=0; i-- ){
-				if( words[i].length<=0 ) words.splice(i,1);
-				else words[i] = words[i].myNormal();
-			}
-			if( words.length<=0 ) return;
-			// 検索中表示・準備
-			var $found = $box.find('.found').empty();
-			var $pgbar = $box.find('.progress').progressbar('value',0);
-			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
-			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
-			var timer = null;
-			// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
-			var fontSize = option.font.size();
-			var iconSize = fontSize + 3 +option.icon.size();
-			var width = $found.width() -17;
-			var count = width /460 |0;
-			width = width /(count?count:1) -4 |0;
-			$found.css('font-size',fontSize);
-			$url.width(width).find('img').width(iconSize).height(iconSize);
-			$pnl.width(width).find('img').width(iconSize).height(iconSize);
-			// 中止ボタン
-			$tab.find('.stop').off().click(function(){
-				clearTimeout( timer );
-				$(this).css('visibility','hidden');
-				$pgbar.progressbar('value',0);
-				$url.remove();
-				$pnl.remove();
-				if( $found[0].childNodes.length==0 ) $found.text('見つかりません');
-			}).css('visibility','visible');
-			// 検索実行
-			String.prototype.myFound = function(){
-				// AND検索(TODO:OR検索・大小文字区別対応する？)
-				for( var i=words.length-1; i>=0; i-- ){
-					if( this.indexOf(words[i])<0 ) return false;
-				}
-				return true;
-			};
-			var index = 0;
-			var total = 0;
-			(function callee(){
-				var limit = total +21; // 20ノード以上ずつ
-				while( index < panels.length && total<limit ){
-					// パネル名
-					if( panels[index].title.myNormal().myFound() ){
-						$found.append(
-							$pnl.clone().find('span').text(panels[index].title).end()
-						);
+		setTimeout(function(){
+			// パネル(フォルダ)配列生成・URL総数カウント
+			// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
+			// 基本画面ではノード完全削除はできないので、検索実行毎にフォルダ配列を作らなくてもよいが、
+			// 検索ボックスを表示したままノードをごみ箱に移動するとノードツリーが変わるため、検索結果の
+			// 順序に影響する、つまり一度検索ボックスを閉じて再表示すると検索結果の順序が変わってくる。
+			var panels = [];	// パネルノード配列
+			var nodeTotal = 0;	// URL＋パネル数
+			function panelist( node ){
+				panels.push( node );
+				nodeTotal += node.child.length;
+				for( var i=0, n=node.child.length; i<n; i++ ){
+					if( node.child[i].child ){
+						panelist( node.child[i] );
+						nodeTotal--;
 					}
-					total++;
-					// ブックマークタイトルとURL
-					var child = panels[index].child;
-					for( var i=0, n=child.length; i<n; i++ ){
-						if( child[i].child ) continue;
-						if( (child[i].title +child[i].url).myNormal().myFound() ){
+				}
+			}
+			panelist( tree.top() );
+			panelist( tree.trash() );
+			nodeTotal += panels.length;
+			// キーワード検索
+			var timer = null;
+			$tab.find('.start').off('click').click(function(){
+				clearTimeout( timer );
+				// 検索ワード
+				var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
+				for( var i=words.length-1; i>=0; i-- ){
+					if( words[i].length<=0 ) words.splice(i,1);
+					else words[i] = words[i].myNormal();
+				}
+				if( words.length<=0 ) return;
+				// 検索中表示・準備
+				// wait.gifは黒背景で見た目が汚いので使えない…
+				var $found = $box.find('.found').empty();
+				var $pgbar = $box.find('.progress').progressbar('value',0);
+				var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+				var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
+				// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
+				var fontSize = option.font.size();
+				var iconSize = fontSize + 3 +option.icon.size();
+				var width = $found.width() -17;
+				var count = width /460 |0;
+				width = width /(count?count:1) -4 |0;
+				$found.css('font-size',fontSize);
+				$url.width(width).find('img').width(iconSize).height(iconSize);
+				$pnl.width(width).find('img').width(iconSize).height(iconSize);
+				$(this).hide();
+				$tab.find('.stop').off('click').click(function(){
+					clearTimeout( timer );
+					$(this).hide();
+					$tab.find('.start').show();
+					$pgbar.progressbar('value',0);
+					$url.remove();
+					$pnl.remove();
+				}).show();
+				// 検索実行
+				String.prototype.myFound = function(){
+					// AND検索(TODO:OR検索・大小文字区別対応する？)
+					for( var i=words.length-1; i>=0; i-- ){
+						if( this.indexOf(words[i])<0 ) return false;
+					}
+					return true;
+				};
+				var index = 0;
+				var total = 0;
+				(function callee(){
+					var limit = total +21; // 20ノード以上ずつ
+					while( index < panels.length && total<limit ){
+						// パネル名
+						if( panels[index].title.myNormal().myFound() ){
 							$found.append(
-								$url.clone()
-									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
-									.find('img').attr('src',child[i].icon ||'item.png').end()
-									.find('span').text(child[i].title).end()
+								$pnl.clone().find('span').text(panels[index].title).end()
 							);
 						}
 						total++;
+						// ブックマークタイトルとURL
+						var child = panels[index].child;
+						for( var i=0, n=child.length; i<n; i++ ){
+							if( child[i].child ) continue;
+							if( (child[i].title +child[i].url).myNormal().myFound() ){
+								$found.append(
+									$url.clone()
+									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
+									.find('img').attr('src',child[i].icon ||'item.png').end()
+									.find('span').text(child[i].title).end()
+								);
+							}
+							total++;
+						}
+						index++;
 					}
-					index++;
-				}
-				// 進捗バー
-				$pgbar.progressbar('value',total *100 /nodeTotal);
-				// 次
-				if( index < panels.length ) timer = setTimeout(callee,0);
-				else $tab.find('.stop').click();
-			})();
-		});
+					// 進捗バー
+					$pgbar.progressbar('value',total*100/nodeTotal);
+					// 次
+					if( index < panels.length ) timer = setTimeout(callee,0);
+					else{
+						$tab.find('.stop').click();
+						if( $found[0].childNodes.length<=0 ) $found.text('見つかりません');
+					}
+				})();
+			});
+		},0);
 	});
-	// なぜかbutton()だけだとhover動作が起きないので自力hover()。
-	// dialog()で作ったボタンはhoverするから同じにしてくれればいいのに…。
-	$('#import,#export,#shot a,#shotview,#shotdel,#findtab button').button().hover(
-		function(){ $(this).addClass('ui-state-hover'); },
-		function(){ $(this).removeClass('ui-state-hover'); }
-	);
 	// パネル並べ替え
 	DragDrop({
 		itemClass:'panel'
@@ -2072,10 +2069,7 @@ function setEvents(){
 					$item.css('opacity',0.4);
 					// カーソルと共に移動する要素は新規作成して返却
 					return $('<div class=panel></div>')
-							.css({
-								position:'absolute'
-								,'font-size':option.font.size()
-							})
+							.css({ position:'absolute', 'font-size':option.font.size() })
 							.width( $item.width() )
 							.append( $('<a class=item></a>').append( $item.children().clone() ) )
 							.appendTo( document.body );
@@ -2158,7 +2152,7 @@ function setEvents(){
 		//,blur:function(){ $sidebar.width(34); }
 	});
 	// テキスト選択キャンセル
-	$document.on('selectstart',function(ev){
+	$doc.on('selectstart',function(ev){
 		switch( ev.target.tagName ){
 		case 'INPUT': case 'TEXTAREA': return true;
 		}
@@ -2214,7 +2208,7 @@ var panelPopper = function(){
 		if( panel==false ){
 			// ポップアップ解除
 			clearTimeout( itemTimer );
-			$document.off('mousemove.itempop');
+			$doc.off('mousemove.itempop');
 			$box.hide().off().empty();
 			$box = null;
 		}
@@ -2228,7 +2222,7 @@ var panelPopper = function(){
 			$box = $(panel).find('.itembox');
 			var left = panel.offsetLeft + panel.offsetWidth -2;	// -2ちょい左
 			// 右端にはみ出る場合は左側に出す
-			if( left + panel.offsetWidth > $window.scrollLeft() + $window.width() )
+			if( left + panel.offsetWidth > $win.scrollLeft() + $win.width() )
 				left = panel.offsetLeft - panel.offsetWidth +20;
 			$box.addClass('itempop').css({
 				left	:left
@@ -2240,15 +2234,15 @@ var panelPopper = function(){
 			var child = tree.node( panel.id ).child;
 			var length = child.length;
 			var index = 0;
-			var bottomLine = $window.scrollTop() + $window.height();
-			var boxTopLimit = $window.scrollTop();
+			var bottomLine = $win.scrollTop() + $win.height();
+			var boxTopLimit = $win.scrollTop();
 			var boxTop = $box.offset().top;
 			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').height();
 			if( boxTopLimit > boxTop ) boxTopLimit = boxTop;
 			// 検索ボックスに被らないように上に
 			if( $('#findbox').css('display')=='block' ){
 				bottomLine -= $('#findbox').outerHeight();
-				if( $box[0].offsetLeft -$window.scrollLeft() < $('#findtab').outerWidth() )
+				if( $box[0].offsetLeft -$win.scrollLeft() < $('#findtab').outerWidth() )
 					bottomLine -= $('#findtab').outerHeight();
 			}
 			// パネル下段より上にいかないように
@@ -2274,7 +2268,7 @@ var panelPopper = function(){
 				if( index < length ) itemTimer = setTimeout(callee,0);
 			})();
 			// カーソル移動方向と停止時間を監視
-			$document.on('mousemove.itempop',function(ev){
+			$doc.on('mousemove.itempop',function(ev){
 				// 範囲外で一定時間カーソルが止まったら消す
 				clearTimeout( mouseTimer );
 				mouseTimer = setTimeout(function(){ nextpop(ev); },200);
@@ -2383,7 +2377,7 @@ function panelEdit( pid ){
 	}
 	// 削除ボタン
 	var idels = [];
-	$document.on('click.paneledit','#editbox .idel',function(){
+	$doc.on('click.paneledit','#editbox .idel',function(){
 		// 削除アイテムノードID配列
 		if( this.parentNode.id ) idels.push( this.parentNode.id.slice(2) );
 		$(this.parentNode).remove();
@@ -2410,14 +2404,14 @@ function panelEdit( pid ){
 	})();
 	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
 	function itemSortable(){
-		$document.on('mousedown.paneledit','#editbox div .icon',function(ev){
+		$doc.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
 			var downX = ev.pageX;
 			var downY = ev.pageY;
 			var $dragi = null;
 			var $place = null;
 			var scroll = null;
-			$document.on('mousemove.paneledit',function(ev){
+			$doc.on('mousemove.paneledit',function(ev){
 				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >10 ){
 					// ドラッグ開始
 					var $item = $(item);
@@ -2434,8 +2428,8 @@ function panelEdit( pid ){
 					var scrollTop = $itembox.offset().top +30;
 					var scrollBottom = scrollTop + $itembox.height() -60;
 					var speed = 0;
-					$document.off('mousemove.paneledit');
-					$document.on('mousemove.paneledit',function(ev){
+					$doc.off('mousemove.paneledit');
+					$doc.on('mousemove.paneledit',function(ev){
 						// ドラッグ物移動
 						$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
 						// スクロール
@@ -2459,7 +2453,7 @@ function panelEdit( pid ){
 							},100);
 						}
 					});
-					$document.on('mousemove.paneledit','#editbox div .edit',function(ev){
+					$doc.on('mousemove.paneledit','#editbox div .edit',function(ev){
 						// ドロップ場所移動
 						var $this = $(this);
 						if( ev.pageY < $this.offset().top + $this.height()/2 )
@@ -2469,9 +2463,9 @@ function panelEdit( pid ){
 					});
 				}
 			});
-			$document.one('mouseup',function(){
+			$doc.one('mouseup',function(){
 				clearInterval( scroll );
-				$document.off('mousemove.paneledit mouseleave.paneledit');
+				$doc.off('mousemove.paneledit mouseleave.paneledit');
 				if( $dragi ) $dragi.remove();
 				if( $place ){
 					$place.after( item );
@@ -2480,9 +2474,9 @@ function panelEdit( pid ){
 				$(item).css('opacity',1);
 			});
 			if( IE && IE<9 ){
-				$document.on('mouseleave.paneledit',function(){
+				$doc.on('mouseleave.paneledit',function(){
 					$place.remove(); $place=null;
-					$document.mouseup();
+					$doc.mouseup();
 				});
 				// IE8はなぜかエラー発生させればドラッグ可能になる…
 				xxxxx;
@@ -2537,25 +2531,31 @@ function panelEdit( pid ){
 			}
 			,'キャンセル':close
 		}
-		,resize:function(){
-			// TODO:メイリオとMSPゴシックで高さがイマイチ
-			var timer = null;
-			return function(){
-				clearTimeout(timer);
-				timer = setTimeout(function(){
-					// $editbox.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-					$itembox.height( $editbox.height() -$editbox.prev().height() -5 );
-					$editbox.find('.edit input').width( $itembox.width() -64 );
-				},20);
-			};
-		}()
+		,resize:resize
 	});
 	function close(){
 		clearTimeout(timer);
 		$itembase.remove();
-		$document.off('click.paneledit mousedown.paneledit');
+		$doc.off('click.paneledit mousedown.paneledit');
 		$editbox.dialog('destroy');
 	}
+	// CSSで高さを調節したいが、ダイアログリサイズでタイトルバーが２行になった時に
+	// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
+	// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
+	// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
+	// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
+	// 表示の追従性が悪いのが難点。CSSなら追従性もよいのだが…。
+	var timer = null;
+	function resize(){
+		clearTimeout(timer);
+		timer = setTimeout(function(){
+			// $editbox.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+			var h = $editbox.parent().height() -$editbox.prev().outerHeight();
+			$editbox.height( h -77 ).find('.edit input').width( $itembox.width() -64 );
+			$itembox.height( h -99 );
+		},20);
+	}
+	resize();
 }
 // 変更保存
 function modifySave( arg ){
@@ -2695,21 +2695,21 @@ var scroller = function(){
 			if( ev.clientX <=40 ){
 				dx = ev.clientX -40;
 			}
-			else if( ev.clientX >=$window.width() -40 ){
-				dx = 40 -($window.width() -ev.clientX);
+			else if( ev.clientX >=$win.width() -40 ){
+				dx = 40 -($win.width() -ev.clientX);
 			}
 			if( ev.clientY <=40 ){
 				dy = ev.clientY -40;
 			}
-			else if( ev.clientY >=$window.height() -40 ){
-				dy = 40 -($window.height() -ev.clientY);
+			else if( ev.clientY >=$win.height() -40 ){
+				dy = 40 -($win.height() -ev.clientY);
 			}
 			if( dx!=0 || dy!=0 ){
 				(function callee(){
-					var oldLeft = $window.scrollLeft();
-					var oldTop = $window.scrollTop();
+					var oldLeft = $win.scrollLeft();
+					var oldTop = $win.scrollTop();
 					scrollTo( oldLeft + dx, oldTop + dy );
-					if( $window.scrollLeft()!=oldLeft || $window.scrollTop()!=oldTop ){
+					if( $win.scrollLeft()!=oldLeft || $win.scrollTop()!=oldTop ){
 						timer = setTimeout(callee,100);
 					}
 				})();
@@ -2720,7 +2720,7 @@ var scroller = function(){
 // ドラッグ＆ドロップ並べ替え
 function DragDrop( sort ){
 	var isDrag = false;
-	$document.on('mousedown', '.'+sort.itemClass, function(ev){
+	$doc.on('mousedown', '.'+sort.itemClass, function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
 		// TODO:.panelだけで必要(.itemは不要)な処理だけどまあいいか…
 		if( ev.target.id=='newurl' ) return;
@@ -2731,7 +2731,7 @@ function DragDrop( sort ){
 		var $dragi = null;	// ドラッグ物
 		var $place = null;	// ドロップ場所
 		// ドラッグ判定イベント
-		$document.on('mousemove.sortable',function(ev){
+		$doc.on('mousemove.sortable',function(ev){
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) > sort.distance ){
 				// ある程度カーソル移動したらドラッグ開始
 				$dragi = sort.start( element );
@@ -2749,7 +2749,7 @@ function DragDrop( sort ){
 						$(element).after( $place );
 						*/
 					// ドラッグ中イベント
-					$document.off('mousemove.sortable')
+					$doc.off('mousemove.sortable')
 					.on('mousemove.sortable',function(ev){
 						// ドラッグ物
 						$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
@@ -2789,15 +2789,15 @@ function DragDrop( sort ){
 						//   return this._mouseUp(event);
 						// }
 						// これを真似して、mousemoveの先頭で
-						// if( IE && IE<9 && !ev.button ) return $document.mouseup();
+						// if( IE && IE<9 && !ev.button ) return $doc.mouseup();
 						// としてみたところ、ドラッグ開始後にその要素が元あった場所に入るとなぜかmouseup
 						// が発生してドラッグ終了してしまうイヤな挙動になった。なぜ？？？わからないので、
 						// IE8はウィンドウ外に出たらドラッグ中止する。
 						// ちなみにjQueryでも、ウィンドウ外でボタンを離したあと、また押した状態で戻って
 						// きた場合は、ドラッグが中断したまま動かない表示になる。
-						$document.on('mouseleave.sortable',function(){
+						$doc.on('mouseleave.sortable',function(){
 							$(element).after($place);	// 元の場所で
-							$document.mouseup();		// ドロップ
+							$doc.mouseup();		// ドロップ
 						});
 					}
 				}
@@ -2807,7 +2807,7 @@ function DragDrop( sort ){
 			// スクロール停止
 			scroller(false);
 			// イベント解除
-			$document.off('mousemove.sortable mouseleave.sortable');
+			$doc.off('mousemove.sortable mouseleave.sortable');
 			// ドロップ
 			if( isDrag ){
 				sort.stop( $dragi, $place, ev );
@@ -2833,17 +2833,17 @@ function optionApply(){
 	$wall.width( columnWidth *option.column.count() ).css({
 		'padding-right':panelMarginLeft
 	});
-	$('.column').width( columnWidth );
-	$('.panel').width( panelWidth ).css({
+	$wall.find('.column').width( columnWidth );
+	$wall.find('.panel').width( panelWidth ).css({
 		'font-size':fontSize
 		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
 	});
-	$('.title span').css('vertical-align',(iconSize/2)|0);
+	$wall.find('.title span').css('vertical-align',(iconSize/2)|0);
 	$('.item span').css('vertical-align',(iconSize/2)|0);
 	$('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 	$('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
-	$('#newurl').css('font-size',fontSize);
-	$('#find .found').css('font-size',fontSize);
+	$('#newurl').css('font-size',fontSize).height( fontSize +3 );
+	$('#findbox .found').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size':fontSize
@@ -2921,13 +2921,13 @@ function Confirm( arg ){
 	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
 
 	if( arg.width ){
-		var maxWidth = $window.width() -100;
+		var maxWidth = $win.width() -100;
 		if( arg.width > maxWidth ) arg.width = maxWidth;
 		else if( arg.width < 300 ) arg.width = 300;
 		opt.width = arg.width;
 	}
 	if( arg.height ){
-		var maxHeight = $window.height() -100;
+		var maxHeight = $win.height() -100;
 		if( arg.height > maxHeight ) arg.height = maxHeight;
 		else if( arg.height < 150 ) arg.height = 150;
 		opt.height = arg.height;
@@ -3038,4 +3038,9 @@ String.prototype.myNormal = function(){
 	};
 }();
 
-}($));
+})( $
+	,$(window), $(document)
+	,Object.prototype.toString						// 型判定用
+	,window.ActiveXObject? document.documentMode:0	// IE判定用
+	,$('#wall'), $('#sidebar')
+);

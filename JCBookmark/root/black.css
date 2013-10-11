@@ -29,12 +29,12 @@ body {
 	border-color:#ccc;
 	background:#555;
 }
-.panel .newurl {
+#newurl {
 	color:#fff;
 	border:1px solid #777;
 	background:#000;
 }
-.panel .newurl:hover {
+#newurl:hover {
 	border-color:#fa3;
 }
 .panel .commit {
