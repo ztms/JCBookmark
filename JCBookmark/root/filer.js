@@ -1293,9 +1293,7 @@ function folderDblClick(ev){
 	if( ev.target.className=='sub' ) return;
 	// サブツリー展開
 	for( var e=this.childNodes, i=0, n=e.length; i<n; i++ ){
-		if( e[i].className=='sub' ){
-			return subTreeIcon.call( e[i] );
-		}
+		if( e[i].className=='sub' ) return subTreeIcon.call( e[i] );
 	}
 }
 function itemSelfClick( ev, shiftKey ){
@@ -1758,9 +1756,10 @@ function itemDblClick(){
 			pnode && pnode != tree.root;
 			pnode = tree.nodeParent(pnode.id)
 		){
-			$('#folder'+pnode.id).show();
+			var sub = $('#folder'+pnode.id+' .sub')[0];
+			if( /plus.png$/.test(sub.src) ) subTreeIcon.call( sub );
 		}
-		$('#folder'+nid).show().click();
+		$('#folder'+nid).click();
 	}
 	else{
 		// ブックマークならURL開く
