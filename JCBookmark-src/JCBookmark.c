@@ -6530,8 +6530,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			MainFormTimer1000();
 			break;
 		case TIMER_BALOON: // タスクトレイバルーン消去
-			TrayIconNotify( hwnd, NIM_MODIFY );
 			KillTimer( hwnd, TIMER_BALOON );
+			TrayIconNotify( hwnd, NIM_MODIFY );
 			break;
 		}
 		return 0;
