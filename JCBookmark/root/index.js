@@ -2017,7 +2017,7 @@ function setEvents(){
 					.css('marginTop',$panel.css('marginTop'))
 					.height( option.font.size() +option.icon.size() +5 );
 		}
-		,onDrag:function( ev, $panel, $place ){ // ドラッグ中
+		,drag:function( ev, $panel, $place ){ // ドラッグ中
 			if( ev.target.id=='wall' ){
 				$('.column').each(function(){
 					if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
@@ -2082,19 +2082,24 @@ function setEvents(){
 			,stop:function( $item, $place, ev ){ // 並べ替え終了
 				// $item==start()戻り値、$place==place()戻り値
 				if( node ){
-					var cancel = false;
+					var apply = true;
 					if( isFindBox ){
-						// 検索ボックスアイテムは、検索ボックスor画面外でmouseupしたら移動キャンセル
+						// 検索ボックスアイテムは検索ボックス上or画面外ドロップでキャンセル
 						if( elementHasXY( document.getElementById('findbox'), ev.clientX, ev.clientY ) ||
 							elementHasXY( document.getElementById('findtab'), ev.clientX, ev.clientY ) ||
 							!elementHasXY( $wall[0], ev.pageX, ev.pageY )
 						){
-							cancel = true;
+							apply = false;
 						}
 						$('#fd'+node.id).css('opacity',1);
 						isFindBox = false;
 					}
-					if( !cancel && $place.parent().hasClass('itembox') ){
+					if( apply && !$place.parent().hasClass('itembox') ){
+						// ドロップ場所未定キャンセル
+						apply = false;
+						$('#'+node.id).css('opacity',1);
+					}
+					if( apply ){
 						var $prev = $place.prev();
 						var $next = $place.next();
 						if( $prev.hasClass('item') ){
@@ -2400,10 +2405,11 @@ function panelEdit( pid ){
 			}
 			index++; count--;
 		}
-		if( index < length ) timer = setTimeout(callee,0); else itemSortable();
+		if( index < length ) timer = setTimeout(callee,0); else itemDragDrop();
 	})();
 	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
-	function itemSortable(){
+	// TODO:マウスダウンで色を変えた方が「移動できる」事がわかりやすい
+	function itemDragDrop(){
 		$doc.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
 			var downX = ev.pageX;
@@ -2718,9 +2724,9 @@ var scroller = function(){
 	};
 }();
 // ドラッグ＆ドロップ並べ替え
-function DragDrop( sort ){
+function DragDrop( opt ){
 	var isDrag = false;
-	$doc.on('mousedown', '.'+sort.itemClass, function(ev){
+	$doc.on('mousedown', '.'+opt.itemClass, function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
 		// TODO:.panelだけで必要(.itemは不要)な処理だけどまあいいか…
 		if( ev.target.id=='newurl' ) return;
@@ -2731,11 +2737,11 @@ function DragDrop( sort ){
 		var $dragi = null;	// ドラッグ物
 		var $place = null;	// ドロップ場所
 		// ドラッグ判定イベント
-		$doc.on('mousemove.sortable',function(ev){
-			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) > sort.distance ){
+		$doc.on('mousemove.dragdrop',function(ev){
+			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) > opt.distance ){
 				// ある程度カーソル移動したらドラッグ開始
-				$dragi = sort.start( element );
-				$place = sort.place( element );
+				$dragi = opt.start( element );
+				$place = opt.place( element );
 				if( $dragi instanceof jQuery && $place instanceof jQuery ){
 					isDrag = true;
 					// ドラッグ物
@@ -2749,21 +2755,21 @@ function DragDrop( sort ){
 						$(element).after( $place );
 						*/
 					// ドラッグ中イベント
-					$doc.off('mousemove.sortable')
-					.on('mousemove.sortable',function(ev){
+					$doc.off('mousemove.dragdrop')
+					.on('mousemove.dragdrop',function(ev){
 						// ドラッグ物
 						$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
 						// 個別処理
-						if( sort.onDrag ) sort.onDrag( ev, $dragi, $place );
+						if( opt.drag ) opt.drag( ev, $dragi, $place );
 						// スクロール制御
 						scroller(ev);
 					})
-					.on('mousemove.sortable', '.'+sort.boxClass+', .'+sort.boxClass+' .'+sort.itemClass, function(ev){
+					.on('mousemove.dragdrop', '.'+opt.boxClass+', .'+opt.boxClass+' .'+opt.itemClass, function(ev){
 						// ドロップ場所
 						if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
 						if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
 						var $this = $(this);
-						if( $this.hasClass( sort.itemClass ) ){
+						if( $this.hasClass( opt.itemClass ) ){
 							// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
 							if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
 								if( $this.prev() != $place ) $this.before( $place );
@@ -2772,7 +2778,7 @@ function DragDrop( sort ){
 								if( $this.next() != $place ) $this.after( $place );
 							}
 						}
-						else if( $this.hasClass( sort.boxClass ) ){
+						else if( $this.hasClass( opt.boxClass ) ){
 							if( !this.childNodes.length ) $this.append( $place );
 						}
 					});
@@ -2795,7 +2801,7 @@ function DragDrop( sort ){
 						// IE8はウィンドウ外に出たらドラッグ中止する。
 						// ちなみにjQueryでも、ウィンドウ外でボタンを離したあと、また押した状態で戻って
 						// きた場合は、ドラッグが中断したまま動かない表示になる。
-						$doc.on('mouseleave.sortable',function(){
+						$doc.on('mouseleave.dragdrop',function(){
 							$(element).after($place);	// 元の場所で
 							$doc.mouseup();		// ドロップ
 						});
@@ -2807,10 +2813,10 @@ function DragDrop( sort ){
 			// スクロール停止
 			scroller(false);
 			// イベント解除
-			$doc.off('mousemove.sortable mouseleave.sortable');
+			$doc.off('mousemove.dragdrop mouseleave.dragdrop');
 			// ドロップ
 			if( isDrag ){
-				sort.stop( $dragi, $place, ev );
+				opt.stop( $dragi, $place, ev );
 				isDrag = false;
 			}
 		})
