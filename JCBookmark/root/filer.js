@@ -1200,7 +1200,7 @@ function itemSelectStart( element, downX, downY ){
 		}
 	});
 	// ドラッグイベント
-	$(doc).on('mousemove.selectbox',function(ev){
+	$(doc).on('mousemove.select',function(ev){
 		// 矩形表示
 		var rect = $.extend(
 			(ev.pageX > downX)? { left:downX, width:ev.pageX -downX } :{ left:ev.pageX, width:downX -ev.pageX },
@@ -1225,7 +1225,7 @@ function itemSelectStart( element, downX, downY ){
 		}
 	})
 	.one('mouseup',function(){
-		$(doc).off('mousemove.selectbox');
+		$(doc).off('mousemove.select');
 		$('#selectbox').hide();
 	});
 }
@@ -1777,6 +1777,9 @@ function itemDblClick(){
 	setTimeout(function(){$('#editbox').trigger('decide');},3);
 	return false;
 }
+// TODO:Opera12で未選択アイテムのコンテキストメニューが出ない。選択アイテムは出る。
+// itemMouseDown()のitemSelectStart()をやめたら出た。Opera以外は問題ない。うーむ
+// ブラウザ判定はIEしかしてないし、右クリック判定もしてないし、あとまわし…。
 // TODO:左ボタンドラッグと右ボタンドラッグを区別していないので、右ドラッグした時に
 // たまたまカーソル下に要素があればコンテキストメニューが出て、なければ出ないという
 // 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
