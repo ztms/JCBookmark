@@ -6169,6 +6169,11 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// タイマー起動
 	MainFormTimer1000();
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
+	// v1.8で無くなったファイル削除
+	_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\save.png",DocumentRoot);
+	DeleteFileW(wpath);
+	_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\saveshot.png",DocumentRoot);
+	DeleteFileW(wpath);
 }
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
