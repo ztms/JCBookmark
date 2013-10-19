@@ -1342,7 +1342,7 @@ function setEvents(){
 		// パネル余白
 		$('#panel_marginV').val( option.panel.margin.top() )
 		.off().on('input keyup paste',function(){
-			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >50 ) return;
+			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >100 ) return;
 			if( this.value !=option.panel.margin.top() ){
 				option.panel.margin.top( this.value );
 				optionApply();
@@ -1366,7 +1366,7 @@ function setEvents(){
 		});
 		$('#panel_marginH').val( option.panel.margin.left() )
 		.off().on('input keyup paste',function(){
-			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >50 ) return;
+			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >100 ) return;
 			if( this.value !=option.panel.margin.left() ){
 				option.panel.margin.left( this.value );
 				optionApply();
@@ -1391,7 +1391,7 @@ function setEvents(){
 		// 列数
 		$('#column_count').val( option.column.count() )
 		.off().on('input keyup paste',function(){
-			if( !/^\d{1,2}$/.test(this.value) || this.value < 1 || this.value > 30 ) return;
+			if( !/^\d{1,2}$/.test(this.value) || this.value <1 || this.value >30 ) return;
 			if( this.value !=option.column.count() ){
 				columnCountChange( { prev:option.column.count(), next:this.value } );
 				option.column.count( this.value );

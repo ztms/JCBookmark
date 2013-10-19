@@ -409,7 +409,6 @@ $.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,
 //   clickID	: クリックするフォルダノードID文字列
 //   clickAfter	: クリック完了後に実行するfunction
 // });
-// TODO:フォルダツリーの＋－ボタン動作確認甘い
 // TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
 // TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
 var folderTree = function(){
