@@ -1998,7 +1998,6 @@ function setEvents(){
 	DragDrop({
 		itemClass:'panel'
 		,boxClass:'column'
-		,distance:30
 		,start:function( item ){ // 並べ替えドラッグ開始
 			// item==パネル要素
 			var $panel = $(item);
@@ -2052,7 +2051,6 @@ function setEvents(){
 		DragDrop({
 			itemClass:'item'
 			,boxClass:'itembox'
-			,distance:20
 			,start:function( item ){ // 並べ替えドラッグ開始
 				// item==アイテム要素は閉パネルポップアップで削除される事があるので、
 				// 要素の元ノード情報を保持、
@@ -2410,7 +2408,6 @@ function panelEdit( pid ){
 		if( index < length ) timer = setTimeout(callee,0); else itemDragDrop();
 	})();
 	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
-	// TODO:マウスダウンで色を変えた方が「移動できる」事がわかりやすい
 	function itemDragDrop(){
 		$doc.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
@@ -2419,10 +2416,13 @@ function panelEdit( pid ){
 			var $dragi = null;
 			var $place = null;
 			var scroll = null;
-			var $item = $(item).addClass('active');
-			$doc.on('mousemove.paneledit',function(ev){
-				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >10 ){
-					// ドラッグ開始
+			var scrollTop = $itembox.offset().top +30;
+			var scrollBottom = scrollTop + $itembox.height() -60;
+			var speed = 0;
+			var $item = $(item).addClass('active');	// ドラッグ中スタイル
+			function dragStarter( ev ){
+				// ある程度カーソル移動したらドラッグ開始
+				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 					$dragi = $('<div class=edragi></div>').css({
 								left:ev.pageX +5
 								,top:ev.pageY +5
@@ -2433,42 +2433,44 @@ function panelEdit( pid ){
 							.appendTo( document.body );
 					$place = $('<hr class=place>');
 					$item.css('opacity',0.3).after( $place );
-					var scrollTop = $itembox.offset().top +30;
-					var scrollBottom = scrollTop + $itembox.height() -60;
-					var speed = 0;
-					$doc.off('mousemove.paneledit');
-					$doc.on('mousemove.paneledit',function(ev){
-						// ドラッグ物移動
-						$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
-						// スクロール
-						speed = 0;
-						if( ev.pageY < scrollTop ){
-							speed = ev.pageY - scrollTop;
-						}
-						else if( ev.pageY > scrollBottom ){
-							speed = ev.pageY - scrollBottom;
-						}
-						if( speed==0 ){
-							clearInterval( scroll ); scroll=null;
-						}
-						else if( !scroll ){
-							scroll = setInterval(function(){
-								var old = $itembox.scrollTop();
-								$itembox.scrollTop( old + speed );
-								if( old==$itembox.scrollTop() ){
-									clearInterval( scroll ); scroll=null;
-								}
-							},100);
-						}
-					});
-					$doc.on('mousemove.paneledit','#editbox div .edit',function(ev){
-						// ドロップ場所移動
-						var $this = $(this);
-						if( ev.pageY < $this.offset().top + $this.height()/2 )
-							$this.before( $place );
-						else
-							$this.after( $place );
-					});
+				}
+			}
+			$doc.on('mousemove.paneledit',function(ev){
+				if( !$dragi ) dragStarter( ev );
+				if( $dragi ){
+					// ドラッグ物移動
+					$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
+					// スクロール
+					speed = 0;
+					if( ev.pageY < scrollTop ){
+						speed = ev.pageY - scrollTop;
+					}
+					else if( ev.pageY > scrollBottom ){
+						speed = ev.pageY - scrollBottom;
+					}
+					if( speed==0 ){
+						clearInterval( scroll ); scroll=null;
+					}
+					else if( !scroll ){
+						scroll = setInterval(function(){
+							var old = $itembox.scrollTop();
+							$itembox.scrollTop( old + speed );
+							if( old==$itembox.scrollTop() ){
+								clearInterval( scroll ); scroll=null;
+							}
+						},100);
+					}
+				}
+			})
+			.on('mousemove.paneledit','#editbox div .edit',function(ev){
+				if( !$dragi ) dragStarter( ev );
+				if( $dragi ){
+					// ドロップ場所移動
+					var $this = $(this);
+					if( ev.pageY < $this.offset().top + $this.height()/2 )
+						$this.before( $place );
+					else
+						$this.after( $place );
 				}
 			})
 			.one('mouseup',function(){
@@ -2727,7 +2729,6 @@ var scroller = function(){
 }();
 // ドラッグ＆ドロップ並べ替え
 function DragDrop( opt ){
-	var isDrag = false;
 	$doc.on('mousedown', '.'+opt.itemClass, function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
 		// TODO:.panelだけで必要(.itemは不要)な処理だけどまあいいか…
@@ -2736,47 +2737,45 @@ function DragDrop( opt ){
 		var element = this;
 		var downX = ev.pageX;
 		var downY = ev.pageY;
-		var $dragi = null;	// ドラッグ物
-		var $place = null;	// ドロップ場所
-		$(element).addClass('active');
-		// ドラッグ判定イベント
-		$doc.on('mousemove.dragdrop',function(ev){
-			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) > opt.distance ){
-				// ある程度カーソル移動したらドラッグ開始
+		var $dragi = null;				// ドラッグ物
+		var $place = null;				// ドロップ場所
+		$(element).addClass('active');	// ドラッグ中スタイル
+		function dragStarter( ev ){
+			// ある程度カーソル移動したらドラッグ開始
+			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				$dragi = opt.start( element );
 				$place = opt.place( element );
-				if( $dragi instanceof jQuery && $place instanceof jQuery ){
-					isDrag = true;
-					// ドラッグ物
-					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
-					// ドラッグ中イベント
-					$doc.off('mousemove.dragdrop')
-					.on('mousemove.dragdrop',function(ev){
-						// ドラッグ物
-						$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
-						// 個別処理
-						if( opt.drag ) opt.drag( ev, $dragi, $place );
-						// スクロール制御
-						scroller(ev);
-					})
-					.on('mousemove.dragdrop', '.'+opt.boxClass+', .'+opt.boxClass+' .'+opt.itemClass, function(ev){
-						// ドロップ場所
-						if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
-						if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
-						var $this = $(this);
-						if( $this.hasClass( opt.itemClass ) ){
-							// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
-							if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
-								if( $this.prev() != $place ) $this.before( $place );
-							}
-							else{
-								if( $this.next() != $place ) $this.after( $place );
-							}
-						}
-						else if( $this.hasClass( opt.boxClass ) ){
-							if( !this.childNodes.length ) $this.append( $place );
-						}
-					});
+			}
+		}
+		$doc.on('mousemove.dragdrop',function(ev){
+			if( !$dragi ) dragStarter( ev );
+			if( $dragi ){
+				// ドラッグ物
+				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
+				// 個別処理
+				if( opt.drag ) opt.drag( ev, $dragi, $place );
+				// スクロール制御
+				scroller(ev);
+			}
+		})
+		.on('mousemove.dragdrop', '.'+opt.boxClass+', .'+opt.boxClass+' .'+opt.itemClass, function(ev){
+			if( !$dragi ) dragStarter( ev );
+			if( $dragi ){
+				// ドロップ場所
+				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
+				if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
+				var $this = $(this);
+				if( $this.hasClass( opt.itemClass ) ){
+					// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
+					if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
+						if( $this.prev() != $place ) $this.before( $place );
+					}
+					else{
+						if( $this.next() != $place ) $this.after( $place );
+					}
+				}
+				else if( $this.hasClass( opt.boxClass ) ){
+					if( !this.childNodes.length ) $this.append( $place );
 				}
 			}
 		})
@@ -2786,10 +2785,8 @@ function DragDrop( opt ){
 			// イベント解除
 			$doc.off('mousemove.dragdrop mouseleave.dragdrop');
 			// ドロップ
-			if( isDrag ){
-				opt.stop( $dragi, $place, ev );
-				isDrag = false;
-			}
+			if( $dragi ) opt.stop( $dragi, $place, ev );
+			// スタイル解除
 			$(element).removeClass('active');
 		})
 		// 右クリックメニューが消えなくなったのでここで実行
