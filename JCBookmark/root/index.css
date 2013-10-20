@@ -508,8 +508,11 @@
 	border-radius:0;
 	cursor:n-resize;
 }
+#findbox .progress:hover {
+	background:#e5e5e5;
+}
 #findbox .progress.active {
-	background:#cdf;
+	background:#fdc;
 }
 #findbox .found {
 	width:100%;

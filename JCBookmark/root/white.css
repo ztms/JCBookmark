@@ -21,12 +21,12 @@ body {
 	background:linear-gradient(#f5f5ff,#d5d5dd);
 }
 .panel.active {
-	border-color:#dd5;
+	border-color:#dd9;
 }
 .panel.active .title {
 	color:#335;
 	background:#f0f0f0;
-	background:linear-gradient(#ffffff,#e0e0e0);
+	background:linear-gradient(#ffffff,#e3e3e3);
 }
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
