@@ -11,14 +11,22 @@ body {
 	color:#fff;
 	background:#332;
 	background:linear-gradient(#414130,#393928);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#414130,endcolorstr=#393928)";
 }
 .panel:hover {
 	border-color:#775;
 }
 .panel:hover .title {
+	color:#fff;
+	background:#443;
 	background:linear-gradient(#555544,#2e2e1d);
-	-ms-filter:"progid:DXImageTransform.Microsoft.gradient(GradientType=0,startcolorstr=#555544,endcolorstr=#2e2e1d)";
+}
+.panel.active {
+	border-color:#997;
+}
+.panel.active .title {
+	color:#fff;
+	background:#554;
+	background:linear-gradient(#666655,#3e3e2d);
 }
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
@@ -69,8 +77,7 @@ body {
 	background:#051e09;
 	background:linear-gradient(#17271f,#011a05);
 }
-.item:active {
-	/* Firefox19,20で効かないなぜ */
+.item.active {
 	color:#9fd;
 	border-color:#477;
 	background:#112a15;

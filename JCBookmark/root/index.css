@@ -295,6 +295,10 @@
 	background:#f7f7f7;
 	border-color:#ddd;
 }
+#editbox div .edit.active {
+	background:#f9f5f5;
+	border-color:#eaa;
+}
 #editbox div .icon {
 	cursor:n-resize;
 }
@@ -503,6 +507,9 @@
 	border:0;
 	border-radius:0;
 	cursor:n-resize;
+}
+#findbox .progress.active {
+	background:#cdf;
 }
 #findbox .found {
 	width:100%;

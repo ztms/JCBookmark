@@ -1843,6 +1843,7 @@ function setEvents(){
 	$('#findbox')
 	.find('.progress').progressbar().mousedown(function(ev){
 		// プログレスバーをD&Dで検索領域高さ変更
+		var $bar = $(this).addClass('active');
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
 		var $found = $box.find('.found');
@@ -1856,6 +1857,7 @@ function setEvents(){
 		})
 		.one('mouseup',function(){
 			$doc.off('mousemove.findbox mouseleave.findbox');
+			$bar.removeClass('active');
 		});
 		if( IE && IE<9 ) $doc.on('mouseleave.findbox',function(){ $doc.mouseup(); });
 	});
@@ -2417,10 +2419,10 @@ function panelEdit( pid ){
 			var $dragi = null;
 			var $place = null;
 			var scroll = null;
+			var $item = $(item).addClass('active');
 			$doc.on('mousemove.paneledit',function(ev){
 				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >10 ){
 					// ドラッグ開始
-					var $item = $(item);
 					$dragi = $('<div class=edragi></div>').css({
 								left:ev.pageX +5
 								,top:ev.pageY +5
@@ -2468,8 +2470,8 @@ function panelEdit( pid ){
 							$this.after( $place );
 					});
 				}
-			});
-			$doc.one('mouseup',function(){
+			})
+			.one('mouseup',function(){
 				clearInterval( scroll );
 				$doc.off('mousemove.paneledit mouseleave.paneledit');
 				if( $dragi ) $dragi.remove();
@@ -2477,11 +2479,11 @@ function panelEdit( pid ){
 					$place.after( item );
 					$place.remove();
 				}
-				$(item).css('opacity',1);
+				$item.css('opacity',1).removeClass('active');
 			});
 			if( IE && IE<9 ){
 				$doc.on('mouseleave.paneledit',function(){
-					$place.remove(); $place=null;
+					if( $place ) $place.remove(), $place=null;
 					$doc.mouseup();
 				});
 				// IE8はなぜかエラー発生させればドラッグ可能になる…
@@ -2736,6 +2738,7 @@ function DragDrop( opt ){
 		var downY = ev.pageY;
 		var $dragi = null;	// ドラッグ物
 		var $place = null;	// ドロップ場所
+		$(element).addClass('active');
 		// ドラッグ判定イベント
 		$doc.on('mousemove.dragdrop',function(ev){
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) > opt.distance ){
@@ -2746,14 +2749,6 @@ function DragDrop( opt ){
 					isDrag = true;
 					// ドラッグ物
 					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
-					// ドロップ場所
-					// 検索ボックスからの移動で問題ありコメントアウト
-					/*
-					if( ev.pageY <= element.offsetTop + element.offsetHeight/2 )
-						$(element).before( $place );
-					else
-						$(element).after( $place );
-						*/
 					// ドラッグ中イベント
 					$doc.off('mousemove.dragdrop')
 					.on('mousemove.dragdrop',function(ev){
@@ -2782,30 +2777,6 @@ function DragDrop( opt ){
 							if( !this.childNodes.length ) $this.append( $place );
 						}
 					});
-					// IE8
-					if( IE && IE<9 ){
-						// IE8はウィンドウ外へドラッグするとイベントが来なくなる。外でもボタンを離さず
-						// 戻ってくれば問題ないが、外でボタンを離して戻った場合、(mouseupが来ないため
-						// ドロップできず)ボタンを押してないのに表示上ドラッグしたままという変な状態に
-						// なる。jQuery(jquery.ui.mouse.js)では、mousemoveでボタンが押されていなければ
-						// ドラッグ終了にするhackがあるようだが、
-						// https://github.com/jquery/jquery-ui/blob/master/ui/jquery.ui.mouse.js
-						// IE mouseup check - mouseup happened when mouse was out of window
-						// if ($.ui.ie && ( !document.documentMode || document.documentMode < 9 ) && !event.button) {
-						//   return this._mouseUp(event);
-						// }
-						// これを真似して、mousemoveの先頭で
-						// if( IE && IE<9 && !ev.button ) return $doc.mouseup();
-						// としてみたところ、ドラッグ開始後にその要素が元あった場所に入るとなぜかmouseup
-						// が発生してドラッグ終了してしまうイヤな挙動になった。なぜ？？？わからないので、
-						// IE8はウィンドウ外に出たらドラッグ中止する。
-						// ちなみにjQueryでも、ウィンドウ外でボタンを離したあと、また押した状態で戻って
-						// きた場合は、ドラッグが中断したまま動かない表示になる。
-						$doc.on('mouseleave.dragdrop',function(){
-							$(element).after($place);	// 元の場所で
-							$doc.mouseup();		// ドロップ
-						});
-					}
 				}
 			}
 		})
@@ -2819,11 +2790,35 @@ function DragDrop( opt ){
 				opt.stop( $dragi, $place, ev );
 				isDrag = false;
 			}
+			$(element).removeClass('active');
 		})
 		// 右クリックメニューが消えなくなったのでここで実行
 		.trigger('mousedown');
-		// IE8はなぜかエラー発生させれば.itemドラッグ可能になる…
-		if( IE && IE<9 ) xxxxx;
+		if( IE && IE<9 ){
+			// IE8はウィンドウ外へドラッグするとイベントが来なくなる。外でもボタンを離さず
+			// 戻ってくれば問題ないが、外でボタンを離して戻った場合、(mouseupが来ないため
+			// ドロップできず)ボタンを押してないのに表示上ドラッグしたままという変な状態に
+			// なる。jQuery(jquery.ui.mouse.js)では、mousemoveでボタンが押されていなければ
+			// ドラッグ終了にするhackがあるようだが、
+			// https://github.com/jquery/jquery-ui/blob/master/ui/jquery.ui.mouse.js
+			// IE mouseup check - mouseup happened when mouse was out of window
+			// if ($.ui.ie && ( !document.documentMode || document.documentMode < 9 ) && !event.button) {
+			//   return this._mouseUp(event);
+			// }
+			// これを真似して、mousemoveの先頭で
+			// if( IE && IE<9 && !ev.button ) return $doc.mouseup();
+			// としてみたところ、ドラッグ開始後にその要素が元あった場所に入るとなぜかmouseup
+			// が発生してドラッグ終了してしまうイヤな挙動になった。なぜ？？？わからないので、
+			// IE8はウィンドウ外に出たらドラッグ中止する。
+			// ちなみにjQueryでも、ウィンドウ外でボタンを離したあと、また押した状態で戻って
+			// きた場合は、ドラッグが中断したまま動かない表示になる。
+			$doc.on('mouseleave.dragdrop',function(){
+				if( $place ) $(element).after( $place );	// 元の場所で
+				$doc.mouseup();								// ドロップ
+			});
+			// IE8はなぜかエラー発生させれば.itemドラッグ可能になる…
+			xxxxx;
+		}
 		// Firefoxはreturn falseしないとテキスト選択になってしまう…
 		else return false;
 	});
