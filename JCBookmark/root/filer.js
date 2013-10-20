@@ -1077,6 +1077,7 @@ $('#folderbox,#itembox').on('scroll',function(){ $('#editbox').trigger('decide')
 // ボーダードラッグ
 $('#border').mousedown(function(ev){
 	$('#editbox').trigger('decide');
+	var $border = $(this).addClass('active');
 	var $folderbox = $('#folderbox');
 	var $itembox = $('#itembox');
 	var folderboxWidth = $folderbox.width();
@@ -1093,6 +1094,7 @@ $('#border').mousedown(function(ev){
 	})
 	.one('mouseup',function(){
 		$(doc).off('mousemove.border');
+		$border.removeClass('active');
 		// TODO:位置保存する…？
 	});
 });
@@ -1108,6 +1110,7 @@ $('.itemborder').mousedown(function(ev){
 		$attr = $('#items').find('.'+$attrhead.attr('class'));
 		$smry = $('#items').find('.summary');
 	}
+	$attrhead.addClass('active');
 	var $last = $('#items').find('.'+$lasthead.attr('class'));
 	var attrheadWidth = $attrhead.width();
 	var lastheadWidth = $lasthead.width();
@@ -1132,6 +1135,7 @@ $('.itemborder').mousedown(function(ev){
 	})
 	.one('mouseup',function(){
 		$(doc).off('mousemove.itemborder');
+		$attrhead.removeClass('active');
 		// TODO:位置保存する…？
 	});
 });
