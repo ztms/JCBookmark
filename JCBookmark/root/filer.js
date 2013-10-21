@@ -1448,8 +1448,8 @@ function subTreeIcon(){
 		return $fo;
 	}
 }
-function itemDragStart( element, downX, downY ){
-	// スクロール制御準備
+// アイテムドラッグ中自動スクロール
+function itemDragScroller(){
 	var folderbox = doc.getElementById('folderbox');
 	var itembox = doc.getElementById('itembox');
 	// フォルダ欄上領域
@@ -1481,17 +1481,60 @@ function itemDragStart( element, downX, downY ){
 		,Y1	:itembox.offsetTop +itembox.clientHeight
 	};
 	// setIntervalのID
-	var scrolling = null;
+	var timer = null;
 	// スクロール関数
-	function scroller( element, value ){
-		var old = element.scrollTop;
-		element.scrollTop += value;
-		if( old==element.scrollTop ){
-			clearInterval( scrolling );
-			scrolling = null;
-		}
+	function scroller( box, value ){
+		var old = box.scrollTop;
+		box.scrollTop += value;
+		if( old==box.scrollTop ) clearInterval(timer), timer=null;
 	}
-	// イベント
+	// mousemove/mouseupイベントで呼ばれる関数返却
+	return function(ev){
+		if( ev ){
+			// ドラッグ中に上端/下端に近づいたらスクロールさせる
+			if( ev.pageX >=folderTop.X0 && ev.pageX <=folderTop.X1 ){
+				if( ev.pageY >=folderTop.Y0 && ev.pageY <=folderTop.Y1 ){
+					//$debug.text('フォルダ欄で上スクロール');
+					if( !timer ) timer = setInterval(function(){scroller(folderbox,-30);},100);
+				}
+				else if( ev.pageY >=folderBottom.Y0 && ev.pageY <=folderBottom.Y1 ){
+					//$debug.text('フォルダ欄で下スクロール');
+					if( !timer ) timer = setInterval(function(){scroller(folderbox,30);},100);
+				}
+				else{
+					//$debug.text('スクロールなし');
+					if( timer ) clearInterval(timer), timer=null;
+				}
+			}
+			else if( ev.pageX >=itemTop.X0 && ev.pageX <= itemTop.X1 ){
+				if( ev.pageY >=itemTop.Y0 && ev.pageY <=itemTop.Y1 ){
+					//$debug.text('アイテム欄で上スクロール');
+					if( !timer ) timer = setInterval(function(){scroller(itembox,-30);},100);
+				}
+				else if( ev.pageY >=itemBottom.Y0 && ev.pageY <=itemBottom.Y1 ){
+					//$debug.text('アイテム欄で下スクロール');
+					if( !timer ) timer = setInterval(function(){scroller(itembox,30);},100);
+				}
+				else{
+					//$debug.text('スクロールなし');
+					if( timer ) clearInterval(timer), timer=null;
+				}
+			}
+			else{
+				//$debug.text('スクロールなし');
+				if( timer ) clearInterval(timer), timer=null;
+			}
+		}
+		else{
+			// スクロール停止
+			if( timer ) clearInterval(timer), timer=null;
+		}
+	};
+}
+function itemDragStart( element, downX, downY ){
+	// スクロール制御関数
+	var scroller = itemDragScroller();
+	// ドラッグ開始判定関数
 	function itemDragJudge(ev){
 		if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >9 ){
 			// ある程度カーソル移動したらドラッグ開始
@@ -1521,53 +1564,14 @@ function itemDragStart( element, downX, downY ){
 			.prepend( $('<img class=icon>').attr('src', $('.icon',draggie).attr('src')) ).show();
 		}
 	}
+	// イベント
 	$(doc).on('mousemove.itemdrag',function(ev){
 		if( !draggie ) itemDragJudge(ev);
 		if( draggie ){
 			// ドラッグボックス移動
 			$('#dragbox').css({ left:ev.pageX+5, top:ev.pageY+5 });
-			// ドラッグ中に上端/下端に近づいたらスクロールさせる
-			if( ev.pageX >=folderTop.X0 && ev.pageX <=folderTop.X1 ){
-				if( ev.pageY >=folderTop.Y0 && ev.pageY <=folderTop.Y1 ){
-					//$debug.text('フォルダ欄で上スクロール');
-					if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,-30);},100);
-				}
-				else if( ev.pageY >=folderBottom.Y0 && ev.pageY <=folderBottom.Y1 ){
-					//$debug.text('フォルダ欄で下スクロール');
-					if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,30);},100);
-				}
-				else{
-					//$debug.text('スクロールなし');
-					if( scrolling ){
-						clearInterval( scrolling );
-						scrolling = null;
-					}
-				}
-			}
-			else if( ev.pageX >=itemTop.X0 && ev.pageX <= itemTop.X1 ){
-				if( ev.pageY >=itemTop.Y0 && ev.pageY <=itemTop.Y1 ){
-					//$debug.text('アイテム欄で上スクロール');
-					if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,-30);},100);
-				}
-				else if( ev.pageY >=itemBottom.Y0 && ev.pageY <=itemBottom.Y1 ){
-					//$debug.text('アイテム欄で下スクロール');
-					if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,30);},100);
-				}
-				else{
-					//$debug.text('スクロールなし');
-					if( scrolling ){
-						clearInterval( scrolling );
-						scrolling = null;
-					}
-				}
-			}
-			else{
-				//$debug.text('スクロールなし');
-				if( scrolling ){
-					clearInterval( scrolling );
-					scrolling = null;
-				}
-			}
+			// スクロール
+			scroller(ev);
 		}
 	})
 	.on('mousemove.itemdrag','.folder, .item',function(ev){
@@ -1692,11 +1696,8 @@ function itemDragStart( element, downX, downY ){
 		}
 	})
 	.one('mouseup',function(ev){
-		// スクロール制御停止
-		if( scrolling ){
-			clearInterval( scrolling );
-			scrolling = null;
-		}
+		// スクロール停止
+		scroller(false);
 		// イベント解除
 		$(doc).off('mousemove.itemdrag');
 		// ドラッグ解除
