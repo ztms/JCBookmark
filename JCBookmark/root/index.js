@@ -2420,7 +2420,7 @@ function panelEdit( pid ){
 			var scrollBottom = scrollTop + $itembox.height() -60;
 			var speed = 0;
 			var $item = $(item).addClass('active');	// ドラッグ中スタイル
-			function dragStarter( ev ){
+			function dragStarter(ev){
 				// ある程度カーソル移動したらドラッグ開始
 				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 					$dragi = $('<div class=edragi></div>').css({
@@ -2436,7 +2436,7 @@ function panelEdit( pid ){
 				}
 			}
 			$doc.on('mousemove.paneledit',function(ev){
-				if( !$dragi ) dragStarter( ev );
+				if( !$dragi ) dragStarter(ev);
 				if( $dragi ){
 					// ドラッグ物移動
 					$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
@@ -2463,7 +2463,7 @@ function panelEdit( pid ){
 				}
 			})
 			.on('mousemove.paneledit','#editbox div .edit',function(ev){
-				if( !$dragi ) dragStarter( ev );
+				if( !$dragi ) dragStarter(ev);
 				if( $dragi ){
 					// ドロップ場所移動
 					var $this = $(this);
@@ -2740,7 +2740,7 @@ function DragDrop( opt ){
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
 		$(element).addClass('active');	// ドラッグ中スタイル
-		function dragStarter( ev ){
+		function dragStarter(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				$dragi = opt.start( element );
@@ -2748,7 +2748,7 @@ function DragDrop( opt ){
 			}
 		}
 		$doc.on('mousemove.dragdrop',function(ev){
-			if( !$dragi ) dragStarter( ev );
+			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
 				// ドラッグ物
 				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
@@ -2759,7 +2759,7 @@ function DragDrop( opt ){
 			}
 		})
 		.on('mousemove.dragdrop', '.'+opt.boxClass+', .'+opt.boxClass+' .'+opt.itemClass, function(ev){
-			if( !$dragi ) dragStarter( ev );
+			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
 				// ドロップ場所
 				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;

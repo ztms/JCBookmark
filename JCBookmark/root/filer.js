@@ -759,8 +759,6 @@ $('#folders')
 .on('selfclick','.folder',itemSelfClick)
 .on('mousedown','.folder',folderMouseDown)
 .on('mousedown','.sub',subTreeIcon)
-.on('mousemove','.folder',itemMouseMove)
-.on('mouseup','.folder',itemMouseUp)
 .on('keydown','.folder',folderKeyDown)
 .on('contextmenu','.folder',folderContextMenu);
 // アイテムイベント
@@ -768,8 +766,6 @@ $('#folders')
 	var data = { itemID:'', itemNotify:'' };
 	$('#items')
 	.on('mousedown','.item',data,itemMouseDown)
-	.on('mousemove','.item',itemMouseMove)
-	.on('mouseup','.item',itemMouseUp)
 	.on('click','.item',data,itemClick)
 	.on('dblclick','.item',itemDblClick)
 	.on('selfclick','.item',itemSelfClick)
@@ -1496,7 +1492,7 @@ function itemDragStart( element, downX, downY ){
 		}
 	}
 	// イベント
-	$(doc).on('mousemove.itemdrag',function(ev){
+	function itemDragJudge(ev){
 		if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >9 ){
 			// ある程度カーソル移動したらドラッグ開始
 			draggie = element;
@@ -1522,46 +1518,23 @@ function itemDragStart( element, downX, downY ){
 			// ドラッグボックス表示
 			// <img>タグは$('img',draggie).html()で取れないの？
 			$('#dragbox').empty().text( $('.title',draggie).text() )
-			.prepend( $('<img class=icon>').attr('src', $('.icon',draggie).attr('src')) )
-			.css({ left:ev.pageX+5, top:ev.pageY+5 }).show();
-			// イベント再登録
-			$(doc).off('mousemove.itemdrag').on('mousemove.itemdrag',function(ev){
-				// ドラッグボックス移動
-				$('#dragbox').css({ left:ev.pageX+5, top:ev.pageY+5 });
-				// ドラッグ中に上端/下端に近づいたらスクロールさせる
-				if( ev.pageX >=folderTop.X0 && ev.pageX <=folderTop.X1 ){
-					if( ev.pageY >=folderTop.Y0 && ev.pageY <=folderTop.Y1 ){
-						//$debug.text('フォルダ欄で上スクロール');
-						if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,-30);},100);
-					}
-					else if( ev.pageY >=folderBottom.Y0 && ev.pageY <=folderBottom.Y1 ){
-						//$debug.text('フォルダ欄で下スクロール');
-						if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,30);},100);
-					}
-					else{
-						//$debug.text('スクロールなし');
-						if( scrolling ){
-							clearInterval( scrolling );
-							scrolling = null;
-						}
-					}
+			.prepend( $('<img class=icon>').attr('src', $('.icon',draggie).attr('src')) ).show();
+		}
+	}
+	$(doc).on('mousemove.itemdrag',function(ev){
+		if( !draggie ) itemDragJudge(ev);
+		if( draggie ){
+			// ドラッグボックス移動
+			$('#dragbox').css({ left:ev.pageX+5, top:ev.pageY+5 });
+			// ドラッグ中に上端/下端に近づいたらスクロールさせる
+			if( ev.pageX >=folderTop.X0 && ev.pageX <=folderTop.X1 ){
+				if( ev.pageY >=folderTop.Y0 && ev.pageY <=folderTop.Y1 ){
+					//$debug.text('フォルダ欄で上スクロール');
+					if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,-30);},100);
 				}
-				else if( ev.pageX >=itemTop.X0 && ev.pageX <= itemTop.X1 ){
-					if( ev.pageY >=itemTop.Y0 && ev.pageY <=itemTop.Y1 ){
-						//$debug.text('アイテム欄で上スクロール');
-						if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,-30);},100);
-					}
-					else if( ev.pageY >=itemBottom.Y0 && ev.pageY <=itemBottom.Y1 ){
-						//$debug.text('アイテム欄で下スクロール');
-						if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,30);},100);
-					}
-					else{
-						//$debug.text('スクロールなし');
-						if( scrolling ){
-							clearInterval( scrolling );
-							scrolling = null;
-						}
-					}
+				else if( ev.pageY >=folderBottom.Y0 && ev.pageY <=folderBottom.Y1 ){
+					//$debug.text('フォルダ欄で下スクロール');
+					if( !scrolling ) scrolling = setInterval(function(){scroller(folderbox,30);},100);
 				}
 				else{
 					//$debug.text('スクロールなし');
@@ -1570,7 +1543,152 @@ function itemDragStart( element, downX, downY ){
 						scrolling = null;
 					}
 				}
-			});
+			}
+			else if( ev.pageX >=itemTop.X0 && ev.pageX <= itemTop.X1 ){
+				if( ev.pageY >=itemTop.Y0 && ev.pageY <=itemTop.Y1 ){
+					//$debug.text('アイテム欄で上スクロール');
+					if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,-30);},100);
+				}
+				else if( ev.pageY >=itemBottom.Y0 && ev.pageY <=itemBottom.Y1 ){
+					//$debug.text('アイテム欄で下スクロール');
+					if( !scrolling ) scrolling = setInterval(function(){scroller(itembox,30);},100);
+				}
+				else{
+					//$debug.text('スクロールなし');
+					if( scrolling ){
+						clearInterval( scrolling );
+						scrolling = null;
+					}
+				}
+			}
+			else{
+				//$debug.text('スクロールなし');
+				if( scrolling ){
+					clearInterval( scrolling );
+					scrolling = null;
+				}
+			}
+		}
+	})
+	.on('mousemove.itemdrag','.folder, .item',function(ev){
+		if( !draggie ) itemDragJudge(ev);
+		if( draggie ){
+			// ドラッグ先が自分の時は何もしない
+			if( draggie.id==this.id ) return;
+			var $this = $(this);
+			// 複数選択ドラッグアイテムどうしは何もしない(ドロップ不可)
+			if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
+			// ドロップ要素スタイル適用
+			$this.removeClass('dropTop dropBottom dropIN');
+			// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
+			var Y = ev.pageY - $this.offset().top;
+			if( draggie.id.indexOf('item')==0 ){
+				// アイテム欄から…
+				if( dragItem.itemCount ){
+					// アイテム(ブックマーク)を含む単選択か複数選択を…
+					if( this.id.indexOf('item')==0 ){
+						// アイテム欄の…
+						if( $this.hasClass('folder') ){
+							// フォルダへドロップ
+							if( findItems ) ChildOnly();	// アイテム欄が検索結果
+							else SiblingAndChild();			// 通常
+						}
+						else{
+							// アイテムへドロップ
+							if( findItems ) return;		// 検索結果ドロップ不可
+							else SiblingOnly();			// 通常
+						}
+					}else{
+						// フォルダツリーへドロップ
+						ChildOnly();
+					}
+				}else if( dragItem.folderCount ){
+					// フォルダのみを…
+					if( this.id.indexOf('item')==0 ){
+						// アイテム欄の…
+						if( $this.hasClass('folder') ){
+							// フォルダへドロップ
+							if( findItems ) ChildOnly();	// アイテム欄が検索結果
+							else SiblingAndChild();			// 通常
+						}
+						else{
+							// アイテムへドロップ
+							if( findItems ) return;		// 検索結果ドロップ不可
+							else SiblingOnly();			// 通常
+						}
+					}else{
+						// フォルダツリーの…
+						if( tree.movable( this.id.slice(6) ) ) SiblingAndChild(); // その他フォルダへドロップ
+						else ChildOnly(); // トップフォルダ・ごみ箱へドロップ
+					}
+				}
+			}else{
+				// フォルダツリーから…
+				if( this.id.indexOf('item')==0 ){
+					// アイテム欄の…
+					if( $this.hasClass('folder') ){
+						// フォルダへドロップ
+						if( findItems ) ChildOnly();	// アイテム欄が検索結果
+						else SiblingAndChild();			// 通常
+					}
+					else{
+						// アイテムへドロップ
+						if( findItems ) return;		// 検索結果ドロップ不可
+						else SiblingOnly();			// 通常
+					}
+				}else{
+					// フォルダツリーの…
+					if( tree.movable( this.id.slice(6) ) ) SiblingAndChild(); // その他フォルダへドロップ
+					else ChildOnly(); // トップフォルダ・ごみ箱へドロップ
+				}
+			}
+		}
+		function SiblingAndChild(){
+			if( Y <6 ) $this.addClass('dropTop');
+			else if( Y >18 ) $this.addClass('dropBottom');
+			else $this.addClass('dropIN');
+		}
+		function SiblingOnly(){
+			if( Y <12 ) $this.addClass('dropTop');
+			else $this.addClass('dropBottom');
+		}
+		function ChildOnly(){ $this.addClass('dropIN'); }
+	})
+	.one('mouseup','.folder, .item',function(ev){
+		// ここはdocument.mouseupより前に実行されるみたいだけど、
+		// その挙動って前提にしちゃってもいいのかな？ダメな場合は改造が面倒だ…。
+		if( draggie ){
+			// ドラッグ先が自分の時は何もしない
+			if( draggie.id==this.id ) return;
+			var $this = $(this);
+			// ドラッグ中アイテムどうしは何もしない(ドロップ不可)
+			if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
+			// ドロップ処理
+			if( $this.hasClass('dropTop') ){
+				//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
+				tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,'') );
+			}
+			else if( $this.hasClass('dropBottom') ){
+				//$debug.text(dragItem.ids+' が、'+this.id+' にdropBottomされました');
+				tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,''), true );
+			}
+			else if( $this.hasClass('dropIN') ){
+				//$debug.text(dragItem.ids+' が、'+this.id+' にdropINされました');
+				tree.moveChild( dragItem.ids, this.id.replace(/^\D*/,'') );
+			}
+			else return; // ドロップ不可
+			$this.removeClass('dropTop dropBottom dropIN');
+			// 表示更新
+			if( findItems ){
+				if( dragItem.folderCount >0 ) folderTree({});
+				itemTable();
+			}
+			else if( dragItem.folderCount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
+			else itemTable( tree.node(selectFolder.id.slice(6)) );
+			// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
+			// $(document).mouseup()が実行されていないような挙動にみえるので
+			// 実行したらとりあえず問題ないように見える。
+			if( IE && IE<9 ) $(doc).mouseup();
 		}
 	})
 	.one('mouseup',function(ev){
@@ -1598,135 +1716,8 @@ function itemDragStart( element, downX, downY ){
 		}
 	});
 }
-function itemMouseMove(ev){
-	if( draggie ){
-		// ドラッグ先が自分の時は何もしない
-		if( draggie.id==this.id ) return;
-		var $this = $(this);
-		// 複数選択ドラッグアイテムどうしは何もしない(ドロップ不可)
-		if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
-		// ドロップ要素スタイル適用
-		$this.removeClass('dropTop dropBottom dropIN');
-		// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
-		var Y = ev.pageY - $this.offset().top;
-		if( draggie.id.indexOf('item')==0 ){
-			// アイテム欄から…
-			if( dragItem.itemCount ){
-				// アイテム(ブックマーク)を含む単選択か複数選択を…
-				if( this.id.indexOf('item')==0 ){
-					// アイテム欄の…
-					if( $this.hasClass('folder') ){
-						// フォルダへドロップ
-						if( findItems ) ChildOnly();	// アイテム欄が検索結果
-						else SiblingAndChild();			// 通常
-					}
-					else{
-						// アイテムへドロップ
-						if( findItems ) return;		// 検索結果ドロップ不可
-						else SiblingOnly();			// 通常
-					}
-				}else{
-					// フォルダツリーへドロップ
-					ChildOnly();
-				}
-			}else if( dragItem.folderCount ){
-				// フォルダのみを…
-				if( this.id.indexOf('item')==0 ){
-					// アイテム欄の…
-					if( $this.hasClass('folder') ){
-						// フォルダへドロップ
-						if( findItems ) ChildOnly();	// アイテム欄が検索結果
-						else SiblingAndChild();			// 通常
-					}
-					else{
-						// アイテムへドロップ
-						if( findItems ) return;		// 検索結果ドロップ不可
-						else SiblingOnly();			// 通常
-					}
-				}else{
-					// フォルダツリーの…
-					if( tree.movable( this.id.slice(6) ) ) SiblingAndChild(); // その他フォルダへドロップ
-					else ChildOnly(); // トップフォルダ・ごみ箱へドロップ
-				}
-			}
-		}else{
-			// フォルダツリーから…
-			if( this.id.indexOf('item')==0 ){
-				// アイテム欄の…
-				if( $this.hasClass('folder') ){
-					// フォルダへドロップ
-					if( findItems ) ChildOnly();	// アイテム欄が検索結果
-					else SiblingAndChild();			// 通常
-				}
-				else{
-					// アイテムへドロップ
-					if( findItems ) return;		// 検索結果ドロップ不可
-					else SiblingOnly();			// 通常
-				}
-			}else{
-				// フォルダツリーの…
-				if( tree.movable( this.id.slice(6) ) ) SiblingAndChild(); // その他フォルダへドロップ
-				else ChildOnly(); // トップフォルダ・ごみ箱へドロップ
-			}
-		}
-	}
-	function SiblingAndChild(){
-		if( Y <6 )
-			$this.addClass('dropTop');
-		else if( Y >18 )
-			$this.addClass('dropBottom');
-		else
-			$this.addClass('dropIN');
-	}
-	function SiblingOnly(){
-		if( Y <12 )
-			$this.addClass('dropTop');
-		else
-			$this.addClass('dropBottom');
-	}
-	function ChildOnly(){
-		$this.addClass('dropIN');
-	}
-}
 function itemMouseLeave(){
 	if( draggie ) $(this).removeClass('dropTop dropBottom dropIN');
-}
-function itemMouseUp(ev){
-	// ここはdocument.mouseupより前に実行されるみたいだけど、
-	// その挙動って前提にしちゃってもいいのかな？ダメな場合は改造が面倒だ…。
-	if( draggie ){
-		// ドラッグ先が自分の時は何もしない
-		if( draggie.id==this.id ) return;
-		var $this = $(this);
-		// ドラッグ中アイテムどうしは何もしない(ドロップ不可)
-		if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
-		// ドロップ処理
-		if( $this.hasClass('dropTop') ){
-			//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
-			tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,'') );
-		}
-		else if( $this.hasClass('dropBottom') ){
-			//$debug.text(dragItem.ids+' が、'+this.id+' にdropBottomされました');
-			tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,''), true );
-		}
-		else if( $this.hasClass('dropIN') ){
-			//$debug.text(dragItem.ids+' が、'+this.id+' にdropINされました');
-			tree.moveChild( dragItem.ids, this.id.replace(/^\D*/,'') );
-		}
-		else return; // ドロップ不可
-		$this.removeClass('dropTop dropBottom dropIN');
-		// 表示更新
-		if( findItems ){
-			if( dragItem.folderCount >0 ) folderTree({});
-			itemTable();
-		}
-		else if( dragItem.folderCount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
-		else itemTable( tree.node(selectFolder.id.slice(6)) );
-		// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
-		// $(document).mouseup()が実行されていないような挙動にみえるので
-		// 実行したらとりあえず問題ないように見える。
-		if( IE && IE<9 ) $(doc).mouseup();
-	}
 }
 function itemClick(ev){
 	// 単選択(選択解除)
