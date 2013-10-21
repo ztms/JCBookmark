@@ -31,12 +31,12 @@ var tree = {
 	,_modified:false
 	,modified:function( on ){
 		if( arguments.length ){
-			tree._modified = on;
-			if( on ){
+			if( on && !tree._modified ){
 				$('#modified').show();
 				$(doc.body).css('padding-top',22);
-				$(win).resize();
+				resizeV();
 			}
+			tree._modified = on;
 			return tree;
 		}
 		return tree._modified;
@@ -395,7 +395,7 @@ var option = {
 		// フォント
 		$('#fontcss').attr('href',option.font.css());
 		// 表示描画
-		$(win).resize();
+		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
 		folderTree({ click0:true });
 	}
@@ -728,30 +728,6 @@ var itemTable = function(){
 		}
 	};
 }();
-// 独自フォーマット時刻文字列
-function myFmt( date, now ){
-	// 0=1970/1/1は空
-	var diff = date.getTime();
-	if( diff <1 ) return '';
-	// YYYY/MM/DD HH:MM:SS
-	var Y = date.getFullYear();
-	var M = date.getMonth() +1;
-	var D = date.getDate();
-	var h = date.getHours();
-	var m = date.getMinutes();
-	var s = date.getSeconds();
-	var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
-	var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
-	// 現在時刻との差分
-	diff = ((now - diff) /1000)|0;
-	if( diff <=10 ) return 'いまさっき (' +time +')';
-	if( diff <=60 ) return '1分以内 (' +time +')';
-	if( diff <=3600 ) return ((diff /60)|0) +'分前 (' +time +')';
-	if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
-	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
-	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
-	return Y +'/' +date +' ' +time;
-}
 // フォルダイベント
 $('#folders')
 .on('click','.folder',folderClick)
@@ -773,44 +749,9 @@ $('#folders')
 	.on('keypress','.item',itemKeyPress)
 	.on('contextmenu','.item',itemContextMenu);
 })();
+// 画面リサイズ
+$(win).on('resize',resize);
 //
-$(win).on('resize',function(){
-	$('#editbox').trigger('decide');
-	var windowWidth = $(win).width() -1; // 適当-1px
-	var folderboxWidth = (windowWidth /5.3)|0;
-	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
-	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
-	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
-	var titleWidth = (itemsWidth /2.3)|0;									// 割合適当
-	var urlWidth = ((itemsWidth -titleWidth) /2.6)|0;						// 割合適当
-	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
-	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
-
-	$('#toolbar') // 昔の#modifiedがfloatで下にいかないよう1040px以上必要だった
-		.width( (windowWidth <1040)? 1040 : windowWidth );
-	$('#folderbox')
-		.width( folderboxWidth )
-		.height( folderboxHeight );
-	$('#border')
-		.height( folderboxHeight );
-	$('#itembox')
-		.width( itemboxWidth )
-		.height( folderboxHeight );
-	// アイテムヘッダのボーダーと合うよう適当に増減して設定
-	$('#itemhead')
-		.width( itemsWidth )
-		.find('.title').width( titleWidth ).end()
-		.find('.url').width( urlWidth ).end()
-		.find('.iconurl, .place').width( iconWidth ).end()
-		.find('.date').width( dateWidth -38 );			// -38px適当float対策
-	$('#items')
-		.width( itemsWidth )
-		.find('.title').width( titleWidth -18 ).end()				// アイコンのぶん-18px
-		.find('.url').width( urlWidth +4 ).end()					// itemborderのぶん+4px
-		.find('.iconurl, .place').width( iconWidth +4 ).end()		// itemborderのぶん+4px
-		.find('.summary').width( urlWidth +iconWidth +14 ).end()	// 見た目で合うように+14px
-		.find('.date').width( dateWidth -36);					// float対策適当-36px
-});
 $(doc).on({
 	mousedown:function(ev){
 		// 右クリックメニュー隠す
@@ -1181,6 +1122,80 @@ $('#itembox').on({
 		}
 	}
 });
+// 独自フォーマット時刻文字列
+function myFmt( date, now ){
+	// 0=1970/1/1は空
+	var diff = date.getTime();
+	if( diff <1 ) return '';
+	// YYYY/MM/DD HH:MM:SS
+	var Y = date.getFullYear();
+	var M = date.getMonth() +1;
+	var D = date.getDate();
+	var h = date.getHours();
+	var m = date.getMinutes();
+	var s = date.getSeconds();
+	var date = ((M<10)?'0'+M:M) +'/' +((D<10)?'0'+D:D);
+	var time = ((h<10)?'0'+h:h) +':' +((m<10)?'0'+m:m) +':' +((s<10)?'0'+s:s);
+	// 現在時刻との差分
+	diff = ((now - diff) /1000)|0;
+	if( diff <=10 ) return 'いまさっき (' +time +')';
+	if( diff <=60 ) return '1分以内 (' +time +')';
+	if( diff <=3600 ) return ((diff /60)|0) +'分前 (' +time +')';
+	if( diff <=3600*1.5 ) return '1時間前 (' +time +')';
+	if( diff <=3600*24 ) return Math.round(diff /3600) +'時間前 (' +date +' ' +time +')';
+	if( diff <=3600*24*30 ) return Math.round(diff /3600 /24) +'日前 (' +date +' ' +time +')';
+	return Y +'/' +date +' ' +time;
+}
+// 画面縦横サイズ変更：windowから呼ばれた時はフォルダ欄の幅を維持し、それ以外は一定比率で決める
+function resize(){
+	$('#editbox').trigger('decide');
+	var windowWidth = $(win).width() -1; // 適当-1px
+	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.3)|0;
+	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
+	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
+	if( itemboxWidth <20 ){	// アイテム欄狭すぎ自動調整20px適当
+		folderboxWidth = (windowWidth /5.3)|0;
+		itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
+	}
+	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
+	var titleWidth = (itemsWidth /2.3)|0;									// 割合適当
+	var urlWidth = ((itemsWidth -titleWidth) /2.6)|0;						// 割合適当
+	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
+	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
+
+	$('#toolbar') // 昔の#modifiedがfloatで下にいかないよう1040px以上必要だった
+		.width( (windowWidth <1040)? 1040 : windowWidth );
+	$('#folderbox')
+		.width( folderboxWidth )
+		.height( folderboxHeight );
+	$('#border')
+		.height( folderboxHeight );
+	$('#itembox')
+		.width( itemboxWidth )
+		.height( folderboxHeight );
+	// アイテムヘッダのボーダーと合うよう適当に増減して設定
+	$('#itemhead')
+		.width( itemsWidth )
+		.find('.title').width( titleWidth ).end()
+		.find('.url').width( urlWidth ).end()
+		.find('.iconurl, .place').width( iconWidth ).end()
+		.find('.date').width( dateWidth -38 );			// -38px適当float対策
+	$('#items')
+		.width( itemsWidth )
+		.find('.title').width( titleWidth -18 ).end()				// アイコンのぶん-18px
+		.find('.url').width( urlWidth +4 ).end()					// itemborderのぶん+4px
+		.find('.iconurl, .place').width( iconWidth +4 ).end()		// itemborderのぶん+4px
+		.find('.summary').width( urlWidth +iconWidth +14 ).end()	// 見た目で合うように+14px
+		.find('.date').width( dateWidth -36);					// float対策適当-36px
+}
+// 画面サイズ縦のみ変更
+function resizeV(){
+	$('#editbox').trigger('decide');
+	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
+	$('#folderbox').height( folderboxHeight );
+	$('#border').height( folderboxHeight );
+	$('#itembox').height( folderboxHeight );
+}
 // 矩形選択
 // TODO:アイテム欄の上下自動スクロール
 function itemSelectStart( element, downX, downY ){
@@ -1240,7 +1255,7 @@ function treeSave( arg ){
 		,success:function(){
 			$('#progress').hide();
 			$(doc.body).css('padding-top',0);
-			$(win).resize();
+			resizeV();
 			if( arg && arg.success ) arg.success();
 		}
 	});
