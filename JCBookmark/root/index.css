@@ -51,6 +51,7 @@
 }
 .column {
 	float:left;
+	padding-bottom:1px; /* パネルが０個になった時にカラム消えないように必要 */
 }
 .panel {
 	font-size:13px;
