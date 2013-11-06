@@ -2623,7 +2623,7 @@ function analyzer( nodeTop ){
 		title	:'情報'
 		,modal	:true
 		,width	:400
-		,height	:210
+		,height	:220
 		,close	:skip
 		,buttons:{ 'スキップして次に進む':skip }
 	});
