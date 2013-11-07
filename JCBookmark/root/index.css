@@ -493,12 +493,15 @@
 #findtab .close {
 	float:right;
 	width:16px; height:16px;
-	padding:2px;
+	padding:1px;
 	background:#fff;
+	border:1px solid transparent;
+	border-radius:3px;
 	filter:alpha(opacity=30);
 	opacity:0.3;
 }
 #findtab .close:hover {
+	border-color:#ddd;
 	filter:alpha(opacity=100);
 	opacity:1;
 }
