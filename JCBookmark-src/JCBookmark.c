@@ -35,13 +35,26 @@
 //	全部LB_GETTEXTして自力検索すればいいか。でも一致部分だけ反転表示とかできないとショボいし…。
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
-//	TODO:0.0.0.0でListenする→インターネット公開→SSLでListenする→パスワード認証たいへん後回し
+//	TODO:外部公開HTTPS機能
+//	・0.0.0.0でListen -> すでにしていた…((((；ﾟДﾟ))))
+//	・接続元localhost以外はSSL送受信(同一ポートでできそうな気がするコード的に)
+//	・SSL通信にはBASIC認証が必要
+//	・できればuPnPポート開放も実装(uTorrentみたいな)
+//	・ダイナミックDNS登録機能もあれば完璧だがそこまではいいかな…
 //	TODO:アプリ実行時のWindowsの警告をどうするか
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
 //	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
 //	http://attosoft.info/blog/item-nozoneinfo/
 //	TODO:Web編集後に自動保存するモードを作れるといいが、新規ブックマーク→favicon取得のところを
 //	どうするか、favicon取得前後どちらも保存する？しない？
+//	FAQネタ?:Win7/Chromeでlocalhostに接続できない場合、起動オプション「--enable-ipv6」
+//	TODO:Win7でけっこうしばしばソケットイベントエラー10053が発生して正常に表示されない場合gある。
+//	原因不明だが、ログではよくFD_WRITEが切断後に来ている様子。FD_WRITEが来る前にsend()しているのが
+//	ダメだったりするのか？FD_WRITEが来てから送信するように実装を変えたとして、改善してるかどうか確認
+//	するのが難しそうな症状・・。ていうかFD_WRITEが来るまで送信しない実装は動かなかった。
+//	極度に遅い無線LANのXPマシンで試したら10053エラーだけでなく10054エラーも頻繁に発生してちょっと
+//	使い物にならないレベル。Win7だから発生するのではなく、無線LANや接続速度の影響で10053エラーが出る
+//	のかな・・？切断後にFD_WRITEが来るのもたくさん発生していた。う～んわからん・・。
 //
 #pragma comment(lib,"gdi32.lib")
 #pragma comment(lib,"user32.lib")
@@ -52,6 +65,8 @@
 #pragma comment(lib,"wininet.lib")
 #pragma comment(lib,"shlwapi.lib")
 #pragma comment(lib,"psapi.lib")
+#pragma comment(lib,"libeay32.lib")
+#pragma comment(lib,"ssleay32.lib")
 // 非ユニコード(Lなし)文字列リテラルをUTF-8でexeに格納する#pragma。
 // KB980263を適用しないと有効にならない。Expressには正式リリースされていない
 // hotfixにも見えるが、ググって非公式サイトからexeダウンロードして適用したら
@@ -77,6 +92,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include "sqlite3.h"
+#include "openssl/ssl.h"
+#include "openssl/rand.h"
 
 #define		WM_SOCKET			WM_APP			// ソケットイベントメッセージ
 #define		WM_TRAYICON			(WM_APP+1)		// タスクトレイクリックメッセージ
@@ -95,6 +112,8 @@ LONG		ListBoxWidth		= 0;				// リストボックス横幅
 #define		TIMER1000			1					// 1秒間隔タイマーID
 #define		TIMER_BALOON		2					// タスクトレイバルーン消去タイマーID
 HANDLE		ThisProcess			= NULL;				// 自プロセスハンドル
+SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
+
 
 // WM_COMMANDのLOWORD(wp)に入るID
 #define CMD_EXIT		1		// ポップアップメニュー終了
@@ -737,8 +756,8 @@ WCHAR* RegAppPathAlloc( HKEY topkey, WCHAR* subkey )
 	}
 	return exe;
 }
-// 設定ファイル(my.ini)パス取得
-WCHAR* ConfigFilePath( void )
+// JCBookmark.exeと同階層のファイルパス取得
+WCHAR* AppFilePath( WCHAR* fname )
 {
 	WCHAR* path = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 	if( path ){
@@ -747,7 +766,7 @@ WCHAR* ConfigFilePath( void )
 		path[MAX_PATH] = L'\0';
 		p = wcsrchr(path,L'\\');
 		if( p ){
-			wcscpy( p+1, L"my.ini" );
+			wcscpy( p+1, fname );
 			return path;
 		}
 	}
@@ -759,7 +778,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 {
 	BrowserInfo* br = malloc( sizeof(BrowserInfo)*BI_COUNT );
 	if( br ){
-		WCHAR* ini;
+		WCHAR* ini, *exe;
 		memset( br, 0, sizeof(BrowserInfo)*BI_COUNT );
 		// 既定ブラウザ名
 		br[BI_IE].name		= L"IE";
@@ -800,19 +819,30 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\firefox.exe"
 		);
-		br[BI_OPERA].exe = RegDefaultIconPathAlloc(
-			// TODO:Opera？
-			// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
-			// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
-			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
-			// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
-			// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
-			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Opera.exe
-			HKEY_CLASSES_ROOT
-			,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
+		// TODO:Opera？
+		// HKEY_CLASSES_ROOT\Opera.Extension\DefaultIcon
+		// HKEY_CLASSES_ROOT\Opera.HTML\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.Extension\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Opera.HTML\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\Opera\DefaultIcon
+		// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Opera.exe
+		// 取得パス値がなぜか %1" になっていたという問い合わせあり。
+		// 原因不明だが、App Paths 取得して不正っぽかったら DefaultIcon 取得の二段構えにする。
+		exe = RegAppPathAlloc(
+			HKEY_LOCAL_MACHINE
+			,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Opera.exe"
 		);
+		if( !exe || (exe && !(wcschr(exe,L'\\') && wcschr(exe,L'.'))) ){
+			// App Paths に \ と . が存在しない場合 DefaultIcon を取得する
+			if( exe ) free( exe );
+			exe = RegDefaultIconPathAlloc(
+				HKEY_CLASSES_ROOT
+				,L"Opera.HTML\\DefaultIcon" // "D:\Program\Opera\Opera.exe",1
+			);
+		}
+		br[BI_OPERA].exe = exe;
 		// 既定ブラウザ引数とユーザ指定ブラウザ
-		ini = ConfigFilePath();
+		ini = AppFilePath(L"my.ini");
 		if( ini ){
 			FILE* fp = _wfopen(ini,L"rb");
 			if( fp ){
@@ -971,6 +1001,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 				}
 				if( !realpath && PathIsFileSpecW(path2) ){
 					// パス区切り(:\)なし、レジストリ App Paths 自力参照
+					// http://msdn.microsoft.com/en-us/library/windows/desktop/ee872121(v=vs.85).aspx
 					// HKEY_CURRENT_USER 優先、HKEY_LOCAL_MACHINE が後
 					#define APP_PATH L"Microsoft\\Windows\\CurrentVersion\\App Paths"
 					WCHAR key[MAX_PATH+1];
@@ -978,15 +1009,20 @@ WCHAR* myPathResolve( const WCHAR* path )
 					_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,path2);
 					value = RegAppPathAlloc( HKEY_CURRENT_USER, key );
 					if( value ){
-						if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
-						else free( value );
+						// レジストリキー名と実行ファイル名は同じでないとダメという仕様にも思えたが
+						// Opera17がそうではなく(キー名Opera.exeで実行ファイルがlauncher.exe)、
+						// >start opera でも起動できたので、キー名＝ファイル名チェックはしない。
+						//if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+						//else free( value );
+						realpath = value;
 					}
 					if( !realpath ){
 						_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,path2);
 						value = RegAppPathAlloc( HKEY_LOCAL_MACHINE, key );
 						if( value ){
-							if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
-							else free( value );
+							//if( wcsicmp(path2,PathFindFileNameW(value))==0 ) realpath=value;
+							//else free( value );
+							realpath = value;
 						}
 					}
 					if( !realpath && !ext ){
@@ -996,15 +1032,17 @@ WCHAR* myPathResolve( const WCHAR* path )
 							_snwprintf(key,sizeof(key),L"Software\\%s\\%s",APP_PATH,exe);
 							value = RegAppPathAlloc( HKEY_CURRENT_USER, key );
 							if( value ){
-								if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
-								else free( value );
+								//if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
+								//else free( value );
+								realpath = value;
 							}
 							if( !realpath ){
 								_snwprintf(key,sizeof(key),L"SOFTWARE\\%s\\%s",APP_PATH,exe);
 								value = RegAppPathAlloc( HKEY_LOCAL_MACHINE, key );
 								if( value ){
-									if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
-									else free( value );
+									//if( wcsicmp(exe,PathFindFileNameW(value))==0 ) realpath=value;
+									//else free( value );
+									realpath = value;
 								}
 							}
 							free( exe );
@@ -1134,6 +1172,7 @@ typedef struct {
 
 typedef struct TClient {
 	SOCKET		sock;				// クライアント接続ソケット
+	SSL*		sslp;				// SSL
 	UINT		status;				// 接続状態フラグ
 	#define		CLIENT_ACCEPT_OK	1	// accept完了
 	#define		CLIENT_RECV_MORE	2	// 受信中
@@ -1183,6 +1222,11 @@ void ClientShutdown( TClient* cp )
 	WCHAR wpath[MAX_PATH+1]=L"";
 	if( cp ){
 		CloseHandle( cp->thread );
+		if( cp->sslp ){
+			// 非ブロックソケットSSL_shutdownリトライ考慮してない…
+			SSL_shutdown( cp->sslp );
+			SSL_free( cp->sslp );
+		}
 		if( cp->sock !=INVALID_SOCKET ){
 			shutdown( cp->sock, SD_BOTH );
 			closesocket( cp->sock );
@@ -2113,7 +2157,11 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 // 伸長においては，圧縮形式を自動判別することもできます．
 // zlibはスタティック.libにするか、ソース組み込みにするか、迷う
 // http://dencha.ojaru.jp/programs/pg_filer_04.html
-#pragma comment(lib,"zlib.lib")
+#ifdef _DEBUG
+#pragma comment(lib,"zlibd.lib")	// zlibのDebugビルド版。
+#else
+#pragma comment(lib,"zlib.lib")		// zlibのReleaseビルド版(これをリンクしてJCBookmarkをDebugビルドすると起動時になぜか落ちる)
+#endif
 #include "zlib.h"
 size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
 {
@@ -2173,13 +2221,6 @@ typedef struct {
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
-#pragma comment(lib,"libeay32.lib")
-#pragma comment(lib,"ssleay32.lib")
-#include "openssl/ssl.h"
-#include "openssl/rand.h"
-
-SSL_CTX*	ssl_ctx	= NULL;		// SSLコンテキスト
-
 HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 {
 	BOOL		ssl_enable		= FALSE;
@@ -2231,13 +2272,13 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
 			// 名前解決も時間がかかる場合があるが、タイムアウト処理は難しいもよう・・
-			if( getaddrinfo( host, port, &hint, &adr )==0 ){
+			if( GetAddrInfoA( host, port, &hint, &adr )==0 ){
 				SOCKET sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
 				// タイムアウト5秒
 				if( connect2( sock, adr->ai_addr, (int)adr->ai_addrlen, 5000 ) !=SOCKET_ERROR ){
 					DWORD timelimit;
 					struct timeval timeout = { 5, 0 };
-					SSL* ssl_sock = NULL;
+					SSL* sslp = NULL;
 					int len;
 					// send/recvタイムアウトセット
 					// SO_SNDTIMEOはconnectにも効く、いや効かないといういろんな情報があって謎。
@@ -2247,10 +2288,10 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					if( ssl_enable ){
 						BOOL success = FALSE;
 						// SSL構造体生成
-						ssl_sock = SSL_new( ssl_ctx );
-						if( ssl_sock ){
+						sslp = SSL_new( ssl_ctx );
+						if( sslp ){
 							// ソケットをSSLに紐付け
-							SSL_set_fd( ssl_sock, sock );
+							SSL_set_fd( sslp, sock );
 							// PRNG 初期化(/dev/random,/dev/urandomがない環境で必要らしい)
 							RAND_poll();
 							while( RAND_status()==0 ){
@@ -2258,7 +2299,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 								RAND_seed(&rand_ret, sizeof(rand_ret));
 							}
 							// SSLハンドシェイク
-							if( SSL_connect( ssl_sock )==1 ){
+							if( SSL_connect( sslp )==1 ){
 								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
 								success = TRUE;
 							}
@@ -2281,7 +2322,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					);
 					if( len<0 ) len = rsp->bufsize;
 					if( ssl_enable ){
-						if( SSL_write( ssl_sock, rsp->buf, len )<1 ){
+						if( SSL_write( sslp, rsp->buf, len )<1 ){
 							LogW(L"[%u]SSL_writeエラー",sock);
 						}
 					}
@@ -2298,7 +2339,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					while( readable(sock, timelimit - timeGetTime()) ){
 						int bytes;
 						if( ssl_enable )
-							bytes = SSL_read( ssl_sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+							bytes = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
 						else
 							bytes = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
 						if( bytes >0 ){
@@ -2423,15 +2464,15 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					LogA("[%u]外部受信%dbytes:%s",sock,rsp->bytes,rsp->buf);
 				  shutdown:
 					if( ssl_enable ){
-						SSL_shutdown( ssl_sock );
-						SSL_free( ssl_sock ); 
+						SSL_shutdown( sslp );
+						SSL_free( sslp ); 
 					}
 					shutdown( sock, SD_BOTH );
 					success = TRUE;
 				}
 				else LogA("[%u]connect(%s:%s)エラー(%u)",sock,host,port,WSAGetLastError());
 				closesocket( sock );
-				freeaddrinfo( adr );
+				FreeAddrInfoA( adr );
 			}
 			else LogA("ホスト%sが見つかりません",host);
 			free( host );
@@ -2821,7 +2862,7 @@ unsigned __stdcall alive( void* p )
 			memset( &hint, 0, sizeof(hint) );
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
-			if( getaddrinfo( host, port, &hint, &addr )==0 && !cp->abort ){
+			if( GetAddrInfoA( host, port, &hint, &addr )==0 && !cp->abort ){
 				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
 				BOOL		connected	= FALSE;
 				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
@@ -2868,22 +2909,22 @@ unsigned __stdcall alive( void* p )
 				// 送受信
 				if( connected && !cp->abort ){
 					struct timeval tv = { 5, 0 };
-					SSL* ssl_sock = NULL;
+					SSL* sslp = NULL;
 					BOOL ssl_ok = TRUE;
 					// send/recvタイムアウト指定
 					// 受信はreadable()も使っているので変かもしれないけどまあいいか…
 					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
 					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
 					if( proto_ssl ){
-						ssl_sock = SSL_new( ssl_ctx );
-						if( ssl_sock ){
-							SSL_set_fd( ssl_sock, sock );	// ソケットをSSLに紐付け
+						sslp = SSL_new( ssl_ctx );
+						if( sslp ){
+							SSL_set_fd( sslp, sock );	// ソケットをSSLに紐付け
 							RAND_poll();
 							while( RAND_status()==0 ){		// PRNG初期化(/dev/random,/dev/urandomない環境用？)
 								unsigned short rand_ret = rand() % 65536;
 								RAND_seed(&rand_ret, sizeof(rand_ret));
 							}
-							if( SSL_connect( ssl_sock )==1 ){	// SSLハンドシェイク
+							if( SSL_connect( sslp )==1 ){	// SSLハンドシェイク
 								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
 							}
 							else{
@@ -2918,7 +2959,7 @@ unsigned __stdcall alive( void* p )
 							len = sizeof(buf);
 						}
 						if( proto_ssl ){
-							if( SSL_write( ssl_sock, buf, len )<1 )
+							if( SSL_write( sslp, buf, len )<1 )
 								LogW(L"[%u]SSL_writeエラー",sock);
 						}
 						else{
@@ -2934,7 +2975,7 @@ unsigned __stdcall alive( void* p )
 							int bytes;
 							if( cp->abort ) break;
 							if( proto_ssl )
-								bytes = SSL_read( ssl_sock, buf +len, sizeof(buf)-len );
+								bytes = SSL_read( sslp, buf +len, sizeof(buf)-len );
 							else
 								bytes = recv( sock, buf +len, sizeof(buf)-len, 0 );
 							if( bytes >0 ){
@@ -2964,7 +3005,7 @@ unsigned __stdcall alive( void* p )
 				closesocket( sock );
 			}
 			else strcpy(text,"ホストが見つかりません");
-			if( addr ) freeaddrinfo( addr );
+			if( addr ) FreeAddrInfoA( addr );
 			free( host );
 		}
 		else{
@@ -4037,8 +4078,8 @@ WCHAR* RealPath( const UCHAR* path, WCHAR* realpath, size_t size )
 			for( p=realpath; *p; p++ ){
 				if( *p==L'/' ) *p = L'\\';
 			}
-			// 連続 \ を削除
-			p = realpath;
+			// 連続 \ を削除、ただし先頭 \\ は共有フォルダパスなので除外
+			p = realpath +1;
 			while( (p=wcsstr(p,L"\\\\")) ){
 				WCHAR* next;
 				for( next=p+2; *next; next++ ){
@@ -4362,119 +4403,72 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 
 void SocketAccept( SOCKET sock )
 {
-	SOCKET				sock_new;
+	// クライアントと接続されたソケットを取得
 	SOCKADDR_STORAGE	addr;
 	int					addrlen = sizeof(addr);
-	// クライアントと接続されたソケットを取得
-	sock_new = accept( sock, (SOCKADDR*)&addr, &addrlen );
+	SOCKET				sock_new = accept( sock, (SOCKADDR*)&addr, &addrlen );
 	if( sock_new !=INVALID_SOCKET ){
-		BOOL success = FALSE;
-		WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
-		// GetNameInfoW は XP SP2 以降のAPIらしい
+		// クライアントと接続確立
+		TClient*	cp = ClientOfSocket(INVALID_SOCKET);
+		WCHAR		ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
+		BOOL		success = FALSE;
+		SSL*		sslp = NULL;
+		// GetNameInfoW は XP (SP2?) 以降のAPIらしいが、Windows2000でもいちおう使えるとかなんとか？
+		// http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
+		// でも環境がないしなぁ・・・
 		// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
 		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
-		// クライアントと接続確立したので、次
-		// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら、メッセージ
-		// が来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
-		if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
-			TClient* cp = ClientOfSocket(INVALID_SOCKET);
-			if( cp ){
+		if( cp ){
+			//if( wcscmp(ip,L"127.0.0.1")==0 || wcscmp(ip,L"::1")==0 || wcscmp(ip,L"::ffff:127.0.0.1")==0 ){
+			if(1){
+				// ローカルホスト(loopback)から接続
 				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
-				#define CLIENT_BUFSIZE 1024	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
-				cp->req.buf = malloc( CLIENT_BUFSIZE );
-				cp->rsp.buf = malloc( CLIENT_BUFSIZE );
-				if( cp->req.buf && cp->rsp.buf ){
-					memset( cp->req.buf, 0, CLIENT_BUFSIZE );
-					memset( cp->rsp.buf, 0, CLIENT_BUFSIZE );
-					cp->req.bufsize = cp->rsp.bufsize = CLIENT_BUFSIZE;
-					cp->sock = sock_new;
-					cp->status = CLIENT_ACCEPT_OK;
+				success = TRUE;
+			}
+			else{
+				sslp = SSL_new( ssl_ctx );
+				if( sslp ){
+					SSL_set_fd( sslp, sock_new );
+					LogW(L"[%u:%u]接続(SSL):%s",Num(cp),sock_new,ip);
 					success = TRUE;
 				}
-				else{
-					LogW(L"L%u:mallocエラー",__LINE__);
-					if( cp->req.buf ) free(cp->req.buf), cp->req.buf=NULL;
-					if( cp->rsp.buf ) free(cp->rsp.buf), cp->rsp.buf=NULL;
-				}
+				else LogW(L"[%u:%u]SSL_newエラー:%s",Num(cp),sock_new,ip);
 			}
-			else LogW(L"[%u]同時接続数オーバー切断:%s",sock_new,ip);
+			if( success ){
+				success = FALSE;
+				// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら
+				// メッセージが来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
+				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
+					#define CLIENT_BUFSIZE 1024	// 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
+					cp->req.buf = malloc( CLIENT_BUFSIZE );
+					cp->rsp.buf = malloc( CLIENT_BUFSIZE );
+					if( cp->req.buf && cp->rsp.buf ){
+						memset( cp->req.buf, 0, CLIENT_BUFSIZE );
+						memset( cp->rsp.buf, 0, CLIENT_BUFSIZE );
+						cp->req.bufsize = cp->rsp.bufsize = CLIENT_BUFSIZE;
+						cp->sock = sock_new;
+						cp->sslp = sslp;
+						cp->status = CLIENT_ACCEPT_OK;
+						success = TRUE;
+					}
+					else{
+						LogW(L"L%u:mallocエラー",__LINE__);
+						if( cp->req.buf ) free(cp->req.buf), cp->req.buf=NULL;
+						if( cp->rsp.buf ) free(cp->rsp.buf), cp->rsp.buf=NULL;
+					}
+				}
+				else LogW(L"[%u:%u]WSAAsyncSelectエラー(%u):%s",Num(cp),sock_new,WSAGetLastError(),ip);
+			}
 		}
-		else LogW(L"[%u]WSAAsyncSelectエラー(%u)",sock_new,WSAGetLastError());
+		else LogW(L"[%u]同時接続数オーバー切断:%s",sock_new,ip);
 
 		if( !success ){
+			if( sslp ) SSL_free( sslp );
 			shutdown( sock_new, SD_BOTH );
 			closesocket( sock_new );
 		}
 	}
 	else LogW(L"acceptエラー(%u)",WSAGetLastError());
-}
-
-void SocketWrite( SOCKET sock )
-{
-	TClient* cp = ClientOfSocket( sock );
-	if( cp ){
-		Response* rsp = &(cp->rsp);
-		switch( cp->status ){
-		case CLIENT_SEND_READY:
-			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
-			LogA("[%u]送信:%s",Num(cp),rsp->buf);
-			// スレッドは終了してるはず
-			CloseHandle( cp->thread ), cp->thread=NULL;
-			rsp->sended = rsp->readed = 0;
-			cp->status = CLIENT_SENDING;
-
-		case CLIENT_SENDING:
-		send_more:
-			// まず送信バッファを送る
-			if( rsp->sended < rsp->bytes ){
-				int ret = send( sock, rsp->buf + rsp->sended, rsp->bytes - rsp->sended, 0 );
-				if( ret==SOCKET_ERROR ){
-					ret = WSAGetLastError();
-					if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
-						LogW(L"[%u]sendエラー(%u)",Num(cp),ret);
-					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
-					break;
-				}
-				rsp->sended += ret;
-				// 送信処理ループ
-				goto send_more;
-			}
-			// 送信バッファ送ったらファイルを…
-			if( rsp->readfh != INVALID_HANDLE_VALUE ){
-				if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
-					// バッファに読み込んで(上書き)
-					DWORD bRead=0;
-					if( ReadFile( rsp->readfh, rsp->buf, rsp->bufsize, &bRead, NULL )==0 )
-						LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-					rsp->readed += bRead;
-					rsp->bytes = bRead;
-					rsp->sended = 0;
-					// 送信処理ループ
-					goto send_more;
-				}
-				// ファイルデータ全部送った
-				CloseHandle( rsp->readfh );
-				rsp->readfh = INVALID_HANDLE_VALUE;
-			}
-			// ぜんぶ送信したら切断
-			//LogW(L"[%u]切断",Num(cp)); ClientShutdown( cp );
-			PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-			break;
-
-		default:// 何もしない
-			break;
-		}
-	}
-	else{
-		//LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
-		//shutdown( sock, SD_BOTH );
-		//closesocket( sock );
-		//どうもここで切断すると通信エラーを引き起こす場合がある風に見える。
-		//ソケット番号が重複するためか、FD_ACCEPT直前にFD_WRITEが来るようなタイミングがあり、
-		//これから通信するコネクションを切断してしまう挙動に見える。Win7で発生頻度が高い？
-		//なにもしない方が問題なく動くように感じる。
-		LogW(L"[:%u](FD_WRITE)",sock);
-	}
 }
 
 void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
@@ -4486,10 +4480,60 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 		int bytes;
 		switch( cp->status ){
 		case CLIENT_ACCEPT_OK:
+			if( cp->sslp ){
+				int r = SSL_accept( cp->sslp );
+				switch( r ){
+				case 1:
+					//LogW(L"[%u]SSL_accept成功",Num(cp));
+					cp->status = CLIENT_RECV_MORE;
+					break;
+				case -1:
+					{
+						int err = SSL_get_error( cp->sslp, r );
+						switch( err ){
+						case SSL_ERROR_WANT_READ:
+						case SSL_ERROR_WANT_WRITE:
+							// SSL_acceptリトライ
+							break;
+						default:
+							LogW(L"[%u]SSL_accept不明なエラー%d",Num(cp),err);
+							PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+						}
+					}
+					break;
+				case 0:
+				default:
+					LogW(L"[%u]SSL_accept致命的エラー%d",Num(cp),r);
+					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+				}
+				break;
+			}
+			else cp->status = CLIENT_RECV_MORE;
+
 		case CLIENT_RECV_MORE:
 			// 受信
 			bytes = req->bufsize - req->bytes - 1;
-			bytes = recv( sock, req->buf + req->bytes, bytes, 0 );
+			if( cp->sslp ){
+				bytes = SSL_read( cp->sslp, req->buf + req->bytes, bytes );
+				if( bytes==0 ){
+					// コネクション切断
+					break;
+				}
+				else if( bytes<0 ){
+					int err = SSL_get_error( cp->sslp, bytes );
+					switch( err ){
+					case SSL_ERROR_WANT_READ:
+					case SSL_ERROR_WANT_WRITE:
+						// SSL_readリトライ
+						break;
+					default:
+						LogW(L"[%u]SSL_read不明なエラー%d",Num(cp),err);
+						PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+					}
+					break;
+				}
+			}
+			else bytes = recv( sock, req->buf + req->bytes, bytes, 0 );
 			req->bytes += bytes;
 			req->buf[req->bytes] = '\0';
 			// リクエスト解析
@@ -5031,10 +5075,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ClientSendErr(cp,"501 Not Implemented");
 									goto send_ready;
 								}
-								else{
-									// 受信してファイル出力続行
-									cp->status = CLIENT_RECV_MORE;
-								}
 							}
 						}
 						else{
@@ -5112,10 +5152,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ClientSendErr(cp,"500 Internal Server Error");
 									goto send_ready;
 								}
-								else{
-									// 受信してファイル出力続行
-									cp->status = CLIENT_RECV_MORE;
-								}
 							}
 						}
 						else{
@@ -5170,7 +5206,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					free( req->buf );
 					req->buf = newbuf;
 					req->bufsize = newsize;
-					cp->status = CLIENT_RECV_MORE;
 					LogW(L"[%u]受信バッファ拡大%ubytes",Num(cp),newsize);
 				}
 				else{
@@ -5178,39 +5213,105 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					ClientSendErr(cp,"400 Bad Request");
 				send_ready:
 					cp->status = CLIENT_SEND_READY;
-					//SocketWrite( sock );
 					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
 				}
 			}
-			else{
-				// ヘッダ未完バッファもまだ空いてる
-				cp->status = CLIENT_RECV_MORE;
-			}
 			break;
 
-		default:
-			{
-				#define BUFBYTES (1024*8)
-				char* buf = malloc( BUFBYTES );
-				if( buf ){
-					memset( buf, 0, BUFBYTES );
-					LogW(L"[%u]不正ステータス受信データ破棄(%u)",Num(cp),recv(sock,buf,BUFBYTES,0));
-					free( buf );
-				}
-				else LogW(L"L%u:malloc(%u)エラー",__LINE__,BUFBYTES);
+		//default:
+		//	if( !cp->sslp ) LogW(L"[%u](FD_READ)",Num(cp));
+		}
+		// なぜかSSLでFD_READ来ないので自力発行(特にPUT/POSTで)
+		if( cp->sslp ){
+			switch( cp->status ){
+			case CLIENT_ACCEPT_OK:
+			case CLIENT_RECV_MORE:
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
 	}
-	else{
-		//LogW(L"[%u]対応するクライアントバッファなし切断します",sock);
-		//shutdown( sock, SD_BOTH );
-		//closesocket( sock );
-		//どうもここで切断すると通信エラーを引き起こす場合がある風に見える。
-		//ソケット番号が重複するためか、FD_ACCEPT直前にFD_WRITEが来るようなタイミングがあり、
-		//これから通信するコネクションを切断してしまう挙動に見える。Win7で発生頻度が高い？
-		//なにもしない方が問題なく動くように感じる。
-		LogW(L"[:%u](FD_READ)",sock);
+	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
+}
+
+void SocketWrite( SOCKET sock )
+{
+	TClient* cp = ClientOfSocket( sock );
+	if( cp ){
+		Response* rsp = &(cp->rsp);
+		switch( cp->status ){
+		case CLIENT_SEND_READY:
+			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
+			LogA("[%u]送信:%s",Num(cp),rsp->buf);
+			// スレッドは終了してるはず
+			CloseHandle( cp->thread ), cp->thread=NULL;
+			rsp->sended = rsp->readed = 0;
+			cp->status = CLIENT_SENDING;
+
+		case CLIENT_SENDING:
+			if( rsp->sended < rsp->bytes ){
+				// まず送信バッファを送る
+				int ret;
+				if( cp->sslp ){
+					ret = SSL_write( cp->sslp, rsp->buf + rsp->sended, rsp->bytes - rsp->sended );
+					if( ret<=0 ){
+						int err = SSL_get_error( cp->sslp, ret );
+						switch( err ){
+						case SSL_ERROR_WANT_READ:
+						case SSL_ERROR_WANT_WRITE:
+							// SSL_writeリトライ再度FD_WRITEが来る(？)のを待つ
+							break;
+						default:
+							LogW(L"[%u]SSL_write不明なエラー%d",Num(cp),err);
+							PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+						}
+						break;
+					}
+				}
+				else{
+					ret = send( sock, rsp->buf + rsp->sended, rsp->bytes - rsp->sended, 0 );
+					if( ret==SOCKET_ERROR ){
+						ret = WSAGetLastError();
+						if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
+							LogW(L"[%u]sendエラー(%u)",Num(cp),ret);
+						// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
+						break;
+					}
+				}
+				rsp->sended += ret;
+				// 送信継続
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
+			}
+			else if( rsp->readfh != INVALID_HANDLE_VALUE ){
+				// 送信バッファ送ったらファイルを…
+				if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
+					// バッファに読み込んで(上書き)
+					DWORD bRead=0;
+					if( ReadFile( rsp->readfh, rsp->buf, rsp->bufsize, &bRead, NULL )==0 )
+						LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+					rsp->readed += bRead;
+					rsp->bytes = bRead;
+					rsp->sended = 0;
+				}
+				else{
+					// ファイルデータ全部送った
+					CloseHandle( rsp->readfh );
+					rsp->readfh = INVALID_HANDLE_VALUE;
+				}
+				// 送信継続
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
+			}
+			else{
+				// ぜんぶ送信したら切断
+				cp->status = 0;
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+			}
+			break;
+
+		//default:
+		//	if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
+		}
 	}
+	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
 
 void SocketClose( SOCKET sock )
@@ -5250,12 +5351,11 @@ void SocketClose( SOCKET sock )
 // Listenソケット・ポート
 //
 SOCKET		ListenSock			= INVALID_SOCKET;	// Listenソケット
-UCHAR		ListenPort[8]		= "10080";			// Listenポート
-WCHAR		wListenPort[8]		= L"10080";			// Listenポート
+WCHAR		ListenPort[8]		= L"10080";			// Listenポート
 // 待受ポートを設定ファイルからグローバル変数に読込
 void ListenPortGet( void )
 {
-	WCHAR* ini = ConfigFilePath();
+	WCHAR* ini = AppFilePath(L"my.ini");
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
@@ -5263,9 +5363,8 @@ void ListenPortGet( void )
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
-					strncpy( ListenPort, buf+11, sizeof(ListenPort) );
-					ListenPort[sizeof(ListenPort)-1]='\0';
-					MultiByteToWideChar( CP_UTF8, 0, ListenPort, -1, wListenPort, sizeof(wListenPort)/sizeof(WCHAR) );
+					MultiByteToWideChar( CP_UTF8, 0, buf+11, -1, ListenPort, sizeof(ListenPort)/sizeof(WCHAR) );
+					ListenPort[sizeof(ListenPort)/sizeof(WCHAR)-1]=L'\0';
 				}
 			}
 			fclose(fp);
@@ -5278,7 +5377,7 @@ void ListenPortGet( void )
 BOOL BootMinimal( void )
 {
 	BOOL ret = FALSE;
-	WCHAR* ini = ConfigFilePath();
+	WCHAR* ini = AppFilePath(L"my.ini");
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
@@ -5295,7 +5394,7 @@ BOOL BootMinimal( void )
 	}
 	return ret;
 }
-void ConfigSave( WCHAR* wListenPort, BOOL bootMinimal, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
+void ConfigSave( WCHAR* ListenPort, BOOL bootMinimal, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
 {
 	WCHAR new[MAX_PATH+1]=L"";
 	WCHAR* p;
@@ -5307,7 +5406,7 @@ void ConfigSave( WCHAR* wListenPort, BOOL bootMinimal, WCHAR* wExe[BI_COUNT], WC
 		wcscpy( p+1, L"my.ini.new" );
 		fp = _wfopen(new,L"wb");
 		if( fp ){
-			UCHAR* listenPort = WideCharToUTF8alloc( wListenPort );
+			UCHAR* listenPort = WideCharToUTF8alloc( ListenPort );
 			UCHAR* exe[BI_COUNT], *arg[BI_COUNT];
 			WCHAR ini[MAX_PATH+1]=L"";
 			UINT i;
@@ -5349,17 +5448,43 @@ BOOL ListenStart( void )
 {
 	BOOL		success	= FALSE;
 	SOCKET		sock	= INVALID_SOCKET;
-	ADDRINFOA	hint;
-	ADDRINFOA*	adr		= NULL;
+	ADDRINFOW	hint;
+	ADDRINFOW*	adr		= NULL;
 
 	memset( &hint, 0, sizeof(hint) );
 	hint.ai_socktype = SOCK_STREAM;
 	hint.ai_protocol = IPPROTO_TCP;
 	hint.ai_flags	 = AI_PASSIVE;
 
-	if( getaddrinfo( NULL, ListenPort, &hint, &adr )==0 ){
-		int on=1;
+	if( GetAddrInfoW( NULL, ListenPort, &hint, &adr )==0 ){
+	//if( GetAddrInfoW( L"localhost", ListenPort, &hint, &adr )==0 ){	// localhostのみ
 		sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
+		if( adr->ai_family==AF_INET6 ){
+			// IPv6+Opera12でhttp://localhost:～/に接続できない問題が発覚(問い合わせで)。
+			// http://[::1]:～/ならアクセスできたので、localhost→::1の名前解決がおかしいのか？
+			// 127.0.0.1に接続しようとしているのか？ググったらOperaの不具合かのような情報もあったが、
+			// JCBookmark側も、IPv6環境ではhttp://[::1]:～/ならアクセスできるけどhttp://127.0.0.1:～/では
+			// アクセスできない、つまりIPv6でしか待ち受けていなかった。
+			// IPv4/IPv6どちらも対応する事をデュアルスタックと呼ぶらしく、setsockoptでIPV6_V6ONLYフラグ
+			// を落とせばいいらしい。
+			// http://msdn.microsoft.com/en-us/library/windows/desktop/bb513665%28v=vs.85%29.aspx
+			// http://msdn.microsoft.com/en-us/library/windows/desktop/ms737937(v=vs.85).aspx
+			// これでWin7ではデュアルスタックになったもよう。Opera12もlocalhost接続できた。
+			// 接続元IPが「::ffff:127.0.0.1」になってる。これがIPv6アドレスマッピング形式？
+			// やはりOpera12は127.0.0.1に接続しようとしていたということか。
+			// TODO:XP SP1 以前と2003はこの方式のデュアルスタックはダメと書いてある？GetAddrInfoで見つかった
+			// IPv4アドレスとIPv6アドレスぜんぶで待受ソケットを作って、複数待受ソケットを管理しないとダメ
+			// と書いてあるように見える。その方式の場合はListenソケットが複数必要で改造が大きい。
+			// TODO:このsetosockopt(IPV6_V6ONLY)ってTCPクライアントプログラムでもやる話なのかどうか？
+			// TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
+			// 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
+			// http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
+			int zero=0;
+			if( setsockopt( sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&zero, sizeof(zero) )==SOCKET_ERROR ){
+				LogW(L"setsockopt(IPV6_V6ONLY=0)エラー");
+			}
+		}
+		//int on=1;
 		//if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on) )!=SOCKET_ERROR ){	// zombie対策
 		// Listenゾンビが発生した場合SO_REUSEADDRが有効。だが、副作用でポート競合しても(すでにListenされてても)
 		// bindエラーにならず、ポートを奪い取ってしまうような挙動になる。自分のListenゾンビを奪うぶんにはいいが
@@ -5372,7 +5497,7 @@ BOOL ListenStart( void )
 					// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
 					// その時 lParam に FD_ACCEPT が格納されている。
 					if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
-						LogW(L"ポート%sで待機します - http://localhost:%s/",wListenPort,wListenPort);
+						LogW(L"ポート%sで待機します - http://localhost:%s/",ListenPort,ListenPort);
 						ListenSock = sock;
 						success = TRUE;
 					}
@@ -5384,7 +5509,7 @@ BOOL ListenStart( void )
 		}
 		else LogW(L"setsockoptエラー(%u)",WSAGetLastError());
 
-		freeaddrinfo( adr );
+		FreeAddrInfoW( adr );
 	}
 	else LogW(L"getaddrinfoエラー(%u)",WSAGetLastError());
 
@@ -5518,7 +5643,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
 			hListenPort = CreateWindowW(
-						L"edit",wListenPort
+						L"edit",ListenPort
 						,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
 						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 			);
@@ -5912,7 +6037,7 @@ BrowserIcon* BrowserIconCreate( void )
 void BrowserIconClick( UINT ix )
 {
 	BOOL empty=FALSE, invalid=FALSE;
-	BrowserInfo* br = BrowserInfoAlloc();
+	BrowserInfo* br = BrowserInfoAlloc(); // TODO:1個だけでいいのに全部取得してるムダムダ
 	if( br ){
 		if( br[ix].exe ){
 			WCHAR* exe = myPathResolve( br[ix].exe );
@@ -5930,7 +6055,7 @@ void BrowserIconClick( UINT ix )
 					memset( &pi, 0, sizeof(pi) );
 					si.cb = sizeof(si);
 					// コマンドライン全体
-					_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,br[ix].arg?br[ix].arg:L"",wListenPort);
+					_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,br[ix].arg?br[ix].arg:L"",ListenPort);
 					// EXEフォルダ
 					p = wcsrchr( dir, L'\\' );
 					if( p ) *p = L'\0';
@@ -5952,7 +6077,7 @@ void BrowserIconClick( UINT ix )
 						p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
 						if( !p || wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",exe,err);
 						// 引数
-						_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",br[ix].arg?br[ix].arg:L"",wListenPort);
+						_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",br[ix].arg?br[ix].arg:L"",ListenPort);
 						err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
 						if( err<=32 ){
 							LogW(L"ShellExecute(%s)エラー%u",exe,err);
@@ -6117,10 +6242,158 @@ void MainFormTimer1000( void )
 		if( ListenSock==INVALID_SOCKET )
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - エラー%s",APPNAME,mem);
 		else
-			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - http://localhost:%s/%s",APPNAME,wListenPort,mem);
+			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - http://localhost:%s/%s",APPNAME,ListenPort,mem);
 
 		SetWindowTextW( MainForm, text );
 	}
+}
+void SSLCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
+{
+	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
+	EVP_PKEY*		pkey	= EVP_PKEY_new();
+	BIGNUM*			exp		= BN_new();
+	BIGNUM*			big		= BN_new();
+	X509*			x509	= X509_new();
+	RSA*			rsa		= RSA_new();
+	X509_NAME*		name	= NULL;
+	FILE*			fp		= NULL;
+
+	if( !serial ){ LogW(L"ASN1_INTEGER_newエラー"); goto fin; }
+	if( !pkey ){ LogW(L"EVP_PKEY_newエラー"); goto fin; }
+	if( !exp ){ LogW(L"BN_newエラー"); goto fin; }
+	if( !big ){ LogW(L"BN_newエラー"); goto fin; }
+	if( !x509 ){ LogW(L"X509_newエラー"); goto fin; }
+	if( !rsa ){ LogW(L"RSA_newエラー"); goto fin; }
+
+	// openssl-1.0.0j/apps/genrsa.c
+	if( !BN_set_word( exp, RSA_F4 ) ){
+		LogW(L"BN_set_wordエラー");
+		goto fin;
+	}
+	// 鍵長2048bit
+	if( RSA_generate_key_ex( rsa, 2048, exp, NULL ) !=1 ){
+		LogW(L"RSA_generate_key_exエラー");
+		goto fin;
+	}
+	// openssl-1.0.0j/apps/x509.c
+	// openssl-1.0.0j/apps/apps.c:int rand_serial(BIGNUM *b, ASN1_INTEGER *ai)
+	#define SERIAL_RAND_BITS 64
+	if( !BN_pseudo_rand( big, SERIAL_RAND_BITS, 0, 0 ) ){
+		LogW(L"BN_pseudo_randエラー");
+		goto fin;
+	}
+	if( !BN_to_ASN1_INTEGER( big, serial ) ){
+		LogW(L"BN_pseudo_randエラー");
+		goto fin;
+	}
+	if( !X509_set_serialNumber( x509, serial ) ){
+		LogW(L"X509_set_serialNumberエラー");
+		goto fin;
+	}
+	// openssl-1.0.0j/demos/selfsign.c
+	if( !EVP_PKEY_assign_RSA( pkey, rsa ) ){
+		LogW(L"EVP_PKEY_assign_RSAエラー");
+		goto fin;
+	}
+	rsa = NULL;
+	X509_set_version( x509, 2 ); // 2 -> x509v3
+	// 証明書有効期間3650日
+	// TODO:期限切れるとどうなるか？
+	if( !X509_gmtime_adj( X509_get_notBefore(x509), 0 ) ||
+		!X509_gmtime_adj( X509_get_notAfter(x509), 60*60*24*365*10 )
+	){
+		LogW(L"X509_gmtime_adfエラー");
+		goto fin;
+	}
+	if( !X509_set_pubkey( x509, pkey ) ){
+		LogW(L"X509_set_pubkeyエラー");
+		goto fin;
+	}
+	// 自己署名
+	name = X509_get_subject_name( x509 );
+	if( !name ){
+		LogW(L"X509_get_subject_nameエラー");
+		goto fin;
+	}
+	if( !X509_NAME_add_entry_by_txt(name,"C",MBSTRING_ASC,"JP",-1,-1,0) ||
+		!X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,"JCBookmark",-1,-1,0)
+	){
+		LogW(L"X509_NAME_add_entry_by_txtエラー");
+		goto fin;
+	}
+	if( !X509_set_issuer_name( x509, name ) ){
+		LogW(L"X509_set_issuer_nameエラー");
+		goto fin;
+	}
+	if( !X509_sign( x509, pkey, EVP_sha1() ) ){
+		LogW(L"X509_signエラー");
+		goto fin;
+	}
+	// ファイル保存
+	fp = _wfopen( crtfile, L"wb" );
+	if( fp ){
+		PEM_write_X509( fp, x509 );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",crtfile);
+		goto fin;
+	}
+	fp = _wfopen( keyfile, L"wb" );
+	if( fp ){
+		PEM_write_PrivateKey( fp, pkey, NULL,NULL,0,NULL,NULL );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",keyfile);
+		goto fin;
+	}
+ fin:
+	if( serial ) ASN1_INTEGER_free( serial );
+	if( pkey ) EVP_PKEY_free( pkey );
+	if( x509 ) X509_free( x509 );
+	if( rsa ) RSA_free( rsa );
+	if( exp ) BN_free( exp );
+	if( big ) BN_free( big );
+}
+BOOL SSL_CTX_SelfCertificate( SSL_CTX* ctx, WCHAR* crtfile, WCHAR* keyfile )
+{
+	X509*		x509 = NULL;
+	EVP_PKEY*	pkey = NULL;
+	FILE*		fp = NULL;
+	BOOL		rc = TRUE;
+
+	fp = _wfopen( crtfile, L"rb" );
+	if( fp ){
+		x509 = PEM_read_X509( fp, NULL,NULL,NULL );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",crtfile);
+		rc = FALSE;
+	}
+	fp = _wfopen( keyfile, L"rb" );
+	if( fp ){
+		pkey = PEM_read_PrivateKey( fp, NULL,NULL,NULL );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",keyfile);
+		rc = FALSE;
+	}
+	if( x509 && pkey ){
+		if( SSL_CTX_use_certificate( ctx, x509 ) !=1 ){
+			LogW(L"SSL_CTX_use_certificateエラー");
+			rc = FALSE;
+		}
+		if( SSL_CTX_use_PrivateKey( ctx, pkey ) !=1 ){
+			LogW(L"SSL_CTX_use_PrivateKeyエラー");
+			rc = FALSE;
+		}
+	}
+	if( pkey ) EVP_PKEY_free( pkey );
+	if( x509 ) X509_free( x509 );
+	return rc;
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
@@ -6129,10 +6402,26 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 {
 	UCHAR path[MAX_PATH+1];
 	WCHAR wpath[MAX_PATH+1];
+	// タイマー起動
+	SetTimer( MainForm, TIMER1000, 1000, NULL );
 	// OpenSSL
 	SSL_library_init();
-	ssl_ctx = SSL_CTX_new( SSLv23_client_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	if( !ssl_ctx ) LogW(L"SSL_CTX_newエラー");
+	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
+	if( ssl_ctx ){
+		/*
+		WCHAR* crtfile = AppFilePath(L"ssl.crt");
+		WCHAR* keyfile = AppFilePath(L"ssl.key");
+		if( crtfile && keyfile ){
+			if( !SSL_CTX_SelfCertificate( ssl_ctx, crtfile, keyfile ) ){
+				SSLCertificateCreate( crtfile, keyfile ); // TODO:2秒くらいかかる
+				SSL_CTX_SelfCertificate( ssl_ctx, crtfile, keyfile );
+			}
+		}
+		if( crtfile ) free( crtfile );
+		if( keyfile ) free( keyfile );
+		*/
+	}
+	else LogW(L"SSL_CTX_newエラー");
 	// mlang.dll
 	// DLL読み込み脆弱性対策フルパスで指定する。
 	// http://www.ipa.go.jp/about/press/20101111.html
@@ -6166,9 +6455,8 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
 		// ダイアログOK、listenリトライ
 	}
-	// タイマー起動
+	// タイマー処理
 	MainFormTimer1000();
-	SetTimer( MainForm, TIMER1000, 1000, NULL );
 	// v1.8で無くなったファイル削除
 	_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\save.png",DocumentRoot);
 	DeleteFileW(wpath);
@@ -6493,10 +6781,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_SETTING_OK: // 設定ダイアログOK
 		{
-			UCHAR oldPort[8];
-			strcpy( oldPort, ListenPort );			// 現在ポート退避
+			WCHAR oldPort[8];
+			wcscpy( oldPort, ListenPort );			// 現在ポート退避
 			ListenPortGet();
-			if( strcmp(oldPort,ListenPort) ){		// ポート番号変わった
+			if( wcscmp(oldPort,ListenPort) ){		// ポート番号変わった
 				BOOL success;
 				SocketShutdown();					// コネクション切断
 				success = ListenStart();			// 待ち受け開始
