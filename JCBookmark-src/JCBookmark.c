@@ -47,7 +47,6 @@
 //	http://attosoft.info/blog/item-nozoneinfo/
 //	TODO:Web編集後に自動保存するモードを作れるといいが、新規ブックマーク→favicon取得のところを
 //	どうするか、favicon取得前後どちらも保存する？しない？
-//	FAQネタ?:Win7/Chromeでlocalhostに接続できない場合、起動オプション「--enable-ipv6」
 //	TODO:Win7でけっこうしばしばソケットイベントエラー10053が発生して正常に表示されない場合gある。
 //	原因不明だが、ログではよくFD_WRITEが切断後に来ている様子。FD_WRITEが来る前にsend()しているのが
 //	ダメだったりするのか？FD_WRITEが来てから送信するように実装を変えたとして、改善してるかどうか確認
@@ -101,8 +100,8 @@
 #define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
 #define		WM_SETTING_OK		(WM_APP+4)		// 設定ダイアログOK後の処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
-#define		MAINFORMNAME		L"MainForm"
-#define		CONFIGDIALOGNAME	L"ConfigDialog"
+#define		WM_SSLCERT_NEW		(WM_APP+6)		// SSL証明書読み込みメッセージ
+#define		MAINFORMCLASS		L"MainForm"
 #define		APPNAME				L"JCBookmark v1.8"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -3996,6 +3995,59 @@ BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
 
 
 //---------------------------------------------------------------------------------------------------------------
+// HTTPサーバ設定
+//
+SOCKET	ListenSock		= INVALID_SOCKET;	// Listenソケット
+WCHAR	ListenPort[8]	= L"10080";			// Listenポート
+BOOL	BindLocal		= FALSE;			// bindアドレスをlocalhostに
+BOOL	HttpsRemote		= FALSE;			// localhost以外https
+BOOL	HttpsLocal		= FALSE;			// localhostもhttps
+BOOL	BootMinimal		= FALSE;			// 起動時から最小化
+// 設定ファイルからグローバル変数に読込
+void ServerParamGet( void )
+{
+	WCHAR* ini = AppFilePath(L"my.ini");
+	// 初期値
+	wcscpy( ListenPort ,L"10080" );
+	BindLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
+					MultiByteToWideChar( CP_UTF8, 0, buf+11, -1, ListenPort, sizeof(ListenPort)/sizeof(WCHAR) );
+					ListenPort[sizeof(ListenPort)/sizeof(WCHAR)-1]=L'\0';
+				}
+				else if( strnicmp(buf,"BindLocal=",10)==0 && *(buf+10) ){
+					BindLocal = TRUE;
+				}
+				else if( strnicmp(buf,"HttpsRemote=",12)==0 && *(buf+12) ){
+					HttpsRemote = TRUE;
+				}
+				else if( strnicmp(buf,"HttpsLocal=",11)==0 && *(buf+11) ){
+					HttpsLocal = TRUE;
+				}
+				else if( strnicmp(buf,"BootMinimal=",12)==0 && *(buf+12) ){
+					BootMinimal = TRUE;
+				}
+			}
+			fclose(fp);
+		}
+		free( ini );
+	}
+}
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
 // ソケット通信・HTTPプロトコル処理関連
 //
 // "%23"を"#"に戻す(TwitterのURLの/#!/対策)
@@ -4401,6 +4453,88 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 	else ClientSendErr(cp,"400 Bad Request");
 }
 
+BOOL ListenStart( void )
+{
+	SOCKET		sock	= INVALID_SOCKET;
+	ADDRINFOW*	adr		= NULL;
+	ADDRINFOW	hint;
+	BOOL		success	= FALSE;
+
+	memset( &hint, 0, sizeof(hint) );
+	hint.ai_socktype = SOCK_STREAM;
+	hint.ai_protocol = IPPROTO_TCP;
+	hint.ai_flags	 = AI_PASSIVE;
+
+	if( GetAddrInfoW( BindLocal? L"localhost" :NULL ,ListenPort ,&hint ,&adr )==0 ){
+		sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
+		if( adr->ai_family==AF_INET6 ){
+			// IPv6+Opera12でhttp://localhost:～/に接続できない問題が発覚(問い合わせで)。
+			// http://[::1]:～/ならアクセスできたので、localhost→::1の名前解決がおかしいのか？
+			// 127.0.0.1に接続しようとしているのか？ググったらOperaの不具合かのような情報もあったが、
+			// JCBookmark側も、IPv6環境ではhttp://[::1]:～/ならアクセスできるけどhttp://127.0.0.1:～/では
+			// アクセスできない、つまりIPv6でしか待ち受けていなかった。
+			// IPv4/IPv6どちらも対応する事をデュアルスタックと呼ぶらしく、setsockoptでIPV6_V6ONLYフラグ
+			// を落とせばいいらしい。
+			// http://msdn.microsoft.com/en-us/library/windows/desktop/bb513665%28v=vs.85%29.aspx
+			// http://msdn.microsoft.com/en-us/library/windows/desktop/ms737937(v=vs.85).aspx
+			// これでWin7ではデュアルスタックになったもよう。Opera12もlocalhost接続できた。
+			// 接続元IPが「::ffff:127.0.0.1」になってる。これがIPv6アドレスマッピング形式？
+			// やはりOpera12は127.0.0.1に接続しようとしていたということか。
+			// TODO:XP SP1 以前と2003はこの方式のデュアルスタックはダメと書いてある？GetAddrInfoで見つかった
+			// IPv4アドレスとIPv6アドレスぜんぶで待受ソケットを作って、複数待受ソケットを管理しないとダメ
+			// と書いてあるように見える。その方式の場合はListenソケットが複数必要で改造が大きい。
+			// TODO:このsetosockopt(IPV6_V6ONLY)ってTCPクライアントプログラムでもやる話なのかどうか？
+			// TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
+			// 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
+			// http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
+			int zero=0;
+			if( setsockopt( sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&zero, sizeof(zero) )==SOCKET_ERROR ){
+				LogW(L"setsockopt(IPV6_V6ONLY=0)エラー");
+			}
+		}
+		//int on=1;
+		//if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on) )!=SOCKET_ERROR ){	// zombie対策
+		// Listenゾンビが発生した場合SO_REUSEADDRが有効。だが、副作用でポート競合しても(すでにListenされてても)
+		// bindエラーにならず、ポートを奪い取ってしまうような挙動になる。自分のListenゾンビを奪うぶんにはいいが
+		// 他アプリのポートだったら迷惑千万…やっぱポート重複エラーになってくれたほうがうれしい…
+		if( 1 ){
+			if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
+				#define BACKLOG 128
+				if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
+					// 待ち受け開始したので、次
+					// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
+					// その時 lParam に FD_ACCEPT が格納されている。
+					if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
+						LogW(L"ポート%sで待機します - http%s://localhost:%s/"
+								,ListenPort
+								,(HttpsRemote && HttpsLocal)? L"s" : (HttpsRemote || HttpsLocal)? L"(s)" :L""
+								,ListenPort
+						);
+						ListenSock = sock;
+						success = TRUE;
+					}
+					else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
+				}
+				else LogW(L"listenエラー(%u)",WSAGetLastError());
+			}
+			else LogW(L"bindエラー(%u)",WSAGetLastError());
+		}
+		else LogW(L"setsockoptエラー(%u)",WSAGetLastError());
+
+		FreeAddrInfoW( adr );
+	}
+	else LogW(L"getaddrinfoエラー(%u)",WSAGetLastError());
+
+	if( !success ){
+		if( sock !=INVALID_SOCKET ){
+			shutdown( sock, SD_BOTH );
+			closesocket( sock );
+		}
+		ListenSock = INVALID_SOCKET;
+	}
+	return success;
+}
+
 void SocketAccept( SOCKET sock )
 {
 	// クライアントと接続されたソケットを取得
@@ -4419,13 +4553,16 @@ void SocketAccept( SOCKET sock )
 		// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
 		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
 		if( cp ){
-			//if( wcscmp(ip,L"127.0.0.1")==0 || wcscmp(ip,L"::1")==0 || wcscmp(ip,L"::ffff:127.0.0.1")==0 ){
-			if(1){
-				// ローカルホスト(loopback)から接続
-				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
-				success = TRUE;
+			BOOL isSSL = FALSE;
+			if( wcscmp(ip,L"127.0.0.1")==0 || wcscmp(ip,L"::1")==0 || wcsicmp(ip,L"::ffff:127.0.0.1")==0 ){
+				// localhost(loopback)から接続
+				if( HttpsLocal ) isSSL = TRUE;
 			}
 			else{
+				// localhost(loopback)以外から接続
+				if( HttpsRemote ) isSSL = TRUE;
+			}
+			if( isSSL ){
 				sslp = SSL_new( ssl_ctx );
 				if( sslp ){
 					SSL_set_fd( sslp, sock_new );
@@ -4433,6 +4570,10 @@ void SocketAccept( SOCKET sock )
 					success = TRUE;
 				}
 				else LogW(L"[%u:%u]SSL_newエラー:%s",Num(cp),sock_new,ip);
+			}
+			else{
+				LogW(L"[%u:%u]接続:%s",Num(cp),sock_new,ip);
+				success = TRUE;
 			}
 			if( success ){
 				success = FALSE;
@@ -5337,192 +5478,6 @@ void SocketClose( SOCKET sock )
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-//---------------------------------------------------------------------------------------------------------------
-// Listenソケット・ポート
-//
-SOCKET		ListenSock			= INVALID_SOCKET;	// Listenソケット
-WCHAR		ListenPort[8]		= L"10080";			// Listenポート
-// 待受ポートを設定ファイルからグローバル変数に読込
-void ListenPortGet( void )
-{
-	WCHAR* ini = AppFilePath(L"my.ini");
-	if( ini ){
-		FILE* fp = _wfopen(ini,L"rb");
-		if( fp ){
-			UCHAR buf[1024];
-			while( fgets(buf,sizeof(buf),fp) ){
-				chomp(buf);
-				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
-					MultiByteToWideChar( CP_UTF8, 0, buf+11, -1, ListenPort, sizeof(ListenPort)/sizeof(WCHAR) );
-					ListenPort[sizeof(ListenPort)/sizeof(WCHAR)-1]=L'\0';
-				}
-			}
-			fclose(fp);
-		}
-		free( ini );
-	}
-}
-// 起動時に最小化する設定ON/OFFを返却
-// TODO:設定ファイル読み込みが無駄に多くないか…？
-BOOL BootMinimal( void )
-{
-	BOOL ret = FALSE;
-	WCHAR* ini = AppFilePath(L"my.ini");
-	if( ini ){
-		FILE* fp = _wfopen(ini,L"rb");
-		if( fp ){
-			UCHAR buf[1024];
-			while( fgets(buf,sizeof(buf),fp) ){
-				chomp(buf);
-				if( strnicmp(buf,"BootMinimal=",12)==0 && *(buf+12) ){
-					ret = TRUE;
-				}
-			}
-			fclose(fp);
-		}
-		free( ini );
-	}
-	return ret;
-}
-void ConfigSave( WCHAR* ListenPort, BOOL bootMinimal, WCHAR* wExe[BI_COUNT], WCHAR* wArg[BI_COUNT], BOOL hide[BI_COUNT] )
-{
-	WCHAR new[MAX_PATH+1]=L"";
-	WCHAR* p;
-	GetModuleFileNameW( NULL, new, sizeof(new)/sizeof(WCHAR) );
-	p = wcsrchr(new,L'\\');
-	if( p ){
-		// my.ini.new 作成
-		FILE* fp;
-		wcscpy( p+1, L"my.ini.new" );
-		fp = _wfopen(new,L"wb");
-		if( fp ){
-			UCHAR* listenPort = WideCharToUTF8alloc( ListenPort );
-			UCHAR* exe[BI_COUNT], *arg[BI_COUNT];
-			WCHAR ini[MAX_PATH+1]=L"";
-			UINT i;
-			for( i=0; i<BI_COUNT; i++ ){
-				exe[i] = WideCharToUTF8alloc( wExe[i] );
-				arg[i] = WideCharToUTF8alloc( wArg[i] );
-			}
-			fprintf(fp,"ListenPort=%s\r\n",	listenPort		?listenPort:"");
-			fprintf(fp,"BootMinimal=%s\r\n",bootMinimal		?"1":"");
-			fprintf(fp,"IEArg=%s\r\n",		arg[BI_IE]		?arg[BI_IE]:"");
-			fprintf(fp,"IEHide=%s\r\n",		hide[BI_IE]		?"1":"");
-			fprintf(fp,"ChromeArg=%s\r\n",	arg[BI_CHROME]	?arg[BI_CHROME]:"");
-			fprintf(fp,"ChromeHide=%s\r\n",	hide[BI_CHROME] ?"1":"");
-			fprintf(fp,"FirefoxArg=%s\r\n",	arg[BI_FIREFOX] ?arg[BI_FIREFOX]:"");
-			fprintf(fp,"FirefoxHide=%s\r\n",hide[BI_FIREFOX]?"1":"");
-			fprintf(fp,"OperaArg=%s\r\n",	arg[BI_OPERA]	?arg[BI_OPERA]:"");
-			fprintf(fp,"OperaHide=%s\r\n",	hide[BI_OPERA]	?"1":"");
-			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				fprintf(fp,"Exe%u=%s\r\n",i-BI_USER1+1,exe[i]?exe[i]:"");
-				fprintf(fp,"Arg%u=%s\r\n",i-BI_USER1+1,arg[i]?arg[i]:"");
-				fprintf(fp,"Hide%u=%s\r\n",i-BI_USER1+1,hide[i]?"1":"");
-			}
-			if( listenPort ) free( listenPort );
-			for( i=0; i<BI_COUNT; i++ ){
-				if( exe[i] ) free( exe[i] );
-				if( arg[i] ) free( arg[i] );
-			}
-			fclose(fp);
-			// my.ini.new -> my.ini
-			wcscpy( ini, new );
-			ini[wcslen(ini)-4]=L'\0';
-			if( !MoveFileExW( new, ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
-				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
-		}
-		else LogW(L"fopen(%s)エラー",new);
-	}
-}
-BOOL ListenStart( void )
-{
-	BOOL		success	= FALSE;
-	SOCKET		sock	= INVALID_SOCKET;
-	ADDRINFOW	hint;
-	ADDRINFOW*	adr		= NULL;
-
-	memset( &hint, 0, sizeof(hint) );
-	hint.ai_socktype = SOCK_STREAM;
-	hint.ai_protocol = IPPROTO_TCP;
-	hint.ai_flags	 = AI_PASSIVE;
-
-	if( GetAddrInfoW( NULL, ListenPort, &hint, &adr )==0 ){
-	//if( GetAddrInfoW( L"localhost", ListenPort, &hint, &adr )==0 ){	// localhostのみ
-		sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
-		if( adr->ai_family==AF_INET6 ){
-			// IPv6+Opera12でhttp://localhost:～/に接続できない問題が発覚(問い合わせで)。
-			// http://[::1]:～/ならアクセスできたので、localhost→::1の名前解決がおかしいのか？
-			// 127.0.0.1に接続しようとしているのか？ググったらOperaの不具合かのような情報もあったが、
-			// JCBookmark側も、IPv6環境ではhttp://[::1]:～/ならアクセスできるけどhttp://127.0.0.1:～/では
-			// アクセスできない、つまりIPv6でしか待ち受けていなかった。
-			// IPv4/IPv6どちらも対応する事をデュアルスタックと呼ぶらしく、setsockoptでIPV6_V6ONLYフラグ
-			// を落とせばいいらしい。
-			// http://msdn.microsoft.com/en-us/library/windows/desktop/bb513665%28v=vs.85%29.aspx
-			// http://msdn.microsoft.com/en-us/library/windows/desktop/ms737937(v=vs.85).aspx
-			// これでWin7ではデュアルスタックになったもよう。Opera12もlocalhost接続できた。
-			// 接続元IPが「::ffff:127.0.0.1」になってる。これがIPv6アドレスマッピング形式？
-			// やはりOpera12は127.0.0.1に接続しようとしていたということか。
-			// TODO:XP SP1 以前と2003はこの方式のデュアルスタックはダメと書いてある？GetAddrInfoで見つかった
-			// IPv4アドレスとIPv6アドレスぜんぶで待受ソケットを作って、複数待受ソケットを管理しないとダメ
-			// と書いてあるように見える。その方式の場合はListenソケットが複数必要で改造が大きい。
-			// TODO:このsetosockopt(IPV6_V6ONLY)ってTCPクライアントプログラムでもやる話なのかどうか？
-			// TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
-			// 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
-			// http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
-			int zero=0;
-			if( setsockopt( sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&zero, sizeof(zero) )==SOCKET_ERROR ){
-				LogW(L"setsockopt(IPV6_V6ONLY=0)エラー");
-			}
-		}
-		//int on=1;
-		//if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on) )!=SOCKET_ERROR ){	// zombie対策
-		// Listenゾンビが発生した場合SO_REUSEADDRが有効。だが、副作用でポート競合しても(すでにListenされてても)
-		// bindエラーにならず、ポートを奪い取ってしまうような挙動になる。自分のListenゾンビを奪うぶんにはいいが
-		// 他アプリのポートだったら迷惑千万…やっぱポート重複エラーになってくれたほうがうれしい…
-		if( 1 ){
-			if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
-				#define BACKLOG 128
-				if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
-					// 待ち受け開始したので、次
-					// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
-					// その時 lParam に FD_ACCEPT が格納されている。
-					if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
-						LogW(L"ポート%sで待機します - http://localhost:%s/",ListenPort,ListenPort);
-						ListenSock = sock;
-						success = TRUE;
-					}
-					else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
-				}
-				else LogW(L"listenエラー(%u)",WSAGetLastError());
-			}
-			else LogW(L"bindエラー(%u)",WSAGetLastError());
-		}
-		else LogW(L"setsockoptエラー(%u)",WSAGetLastError());
-
-		FreeAddrInfoW( adr );
-	}
-	else LogW(L"getaddrinfoエラー(%u)",WSAGetLastError());
-
-	if( !success ){
-		if( sock !=INVALID_SOCKET ){
-			shutdown( sock, SD_BOTH );
-			closesocket( sock );
-		}
-		ListenSock = INVALID_SOCKET;
-	}
-	return success;
-}
-
 void SocketShutdown( void )
 {
 	BOOL retry;
@@ -5559,6 +5514,7 @@ retry:
 
 
 
+
 //---------------------------------------------------------------------------------------------------------------
 // 設定ダイアログ
 //
@@ -5583,353 +5539,824 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 	}
 	return -1;
 }
+// SSL自己署名サーバ証明書・秘密鍵作成
+void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
+{
+	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
+	EVP_PKEY*		pkey	= EVP_PKEY_new();
+	BIGNUM*			exp		= BN_new();
+	BIGNUM*			big		= BN_new();
+	X509*			x509	= X509_new();
+	RSA*			rsa		= RSA_new();
+	X509_NAME*		name	= NULL;
+	FILE*			fp		= NULL;
+
+	if( !serial ){ LogW(L"ASN1_INTEGER_newエラー"); goto fin; }
+	if( !pkey ){ LogW(L"EVP_PKEY_newエラー"); goto fin; }
+	if( !exp ){ LogW(L"BN_newエラー"); goto fin; }
+	if( !big ){ LogW(L"BN_newエラー"); goto fin; }
+	if( !x509 ){ LogW(L"X509_newエラー"); goto fin; }
+	if( !rsa ){ LogW(L"RSA_newエラー"); goto fin; }
+
+	// openssl-1.0.0j/apps/genrsa.c
+	if( !BN_set_word( exp, RSA_F4 ) ){
+		LogW(L"BN_set_wordエラー");
+		goto fin;
+	}
+	// 鍵長2048bit
+	if( RSA_generate_key_ex( rsa, 2048, exp, NULL ) !=1 ){
+		LogW(L"RSA_generate_key_exエラー");
+		goto fin;
+	}
+	// openssl-1.0.0j/apps/x509.c
+	// openssl-1.0.0j/apps/apps.c:int rand_serial(BIGNUM *b, ASN1_INTEGER *ai)
+	#define SERIAL_RAND_BITS 64
+	if( !BN_pseudo_rand( big, SERIAL_RAND_BITS, 0, 0 ) ){
+		LogW(L"BN_pseudo_randエラー");
+		goto fin;
+	}
+	if( !BN_to_ASN1_INTEGER( big, serial ) ){
+		LogW(L"BN_pseudo_randエラー");
+		goto fin;
+	}
+	if( !X509_set_serialNumber( x509, serial ) ){
+		LogW(L"X509_set_serialNumberエラー");
+		goto fin;
+	}
+	// openssl-1.0.0j/demos/selfsign.c
+	if( !EVP_PKEY_assign_RSA( pkey, rsa ) ){
+		LogW(L"EVP_PKEY_assign_RSAエラー");
+		goto fin;
+	}
+	rsa = NULL;
+	X509_set_version( x509, 2 ); // 2 -> x509v3
+	// 証明書有効期間3650日
+	if( !X509_gmtime_adj( X509_get_notBefore(x509), 0 ) ||
+		!X509_gmtime_adj( X509_get_notAfter(x509), 60*60*24*365*10 )
+	){
+		LogW(L"X509_gmtime_adfエラー");
+		goto fin;
+	}
+	if( !X509_set_pubkey( x509, pkey ) ){
+		LogW(L"X509_set_pubkeyエラー");
+		goto fin;
+	}
+	// 自己署名
+	name = X509_get_subject_name( x509 );
+	if( !name ){
+		LogW(L"X509_get_subject_nameエラー");
+		goto fin;
+	}
+	if( !X509_NAME_add_entry_by_txt(name,"C",MBSTRING_ASC,"JP",-1,-1,0) ||
+		!X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,"JCBookmark",-1,-1,0)
+	){
+		LogW(L"X509_NAME_add_entry_by_txtエラー");
+		goto fin;
+	}
+	if( !X509_set_issuer_name( x509, name ) ){
+		LogW(L"X509_set_issuer_nameエラー");
+		goto fin;
+	}
+	if( !X509_sign( x509, pkey, EVP_sha1() ) ){
+		LogW(L"X509_signエラー");
+		goto fin;
+	}
+	// ファイル保存
+	fp = _wfopen( crtfile, L"wb" );
+	if( fp ){
+		PEM_write_X509( fp, x509 );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",crtfile);
+		goto fin;
+	}
+	fp = _wfopen( keyfile, L"wb" );
+	if( fp ){
+		PEM_write_PrivateKey( fp, pkey, NULL,NULL,0,NULL,NULL );
+		fclose( fp );
+	}
+	else{
+		LogW(L"fopen(%s)エラー",keyfile);
+		goto fin;
+	}
+ fin:
+	if( serial ) ASN1_INTEGER_free( serial );
+	if( pkey ) EVP_PKEY_free( pkey );
+	if( x509 ) X509_free( x509 );
+	if( rsa ) RSA_free( rsa );
+	if( exp ) BN_free( exp );
+	if( big ) BN_free( big );
+}
+// SSL証明書ファイルを読み込んでSSLコンテキストに登録
+void SSL_CTX_UseCertificate( SSL_CTX* ctx, WCHAR* crtfile, WCHAR* keyfile )
+{
+	X509*		x509 = NULL;
+	EVP_PKEY*	pkey = NULL;
+	FILE*		fp = NULL;
+
+	fp = _wfopen( crtfile, L"rb" );
+	if( fp ){
+		x509 = PEM_read_X509( fp, NULL,NULL,NULL );
+		fclose( fp );
+	}
+	else LogW(L"fopen(%s)エラー",crtfile);
+
+	fp = _wfopen( keyfile, L"rb" );
+	if( fp ){
+		pkey = PEM_read_PrivateKey( fp, NULL,NULL,NULL );
+		fclose( fp );
+	}
+	else LogW(L"fopen(%s)エラー",keyfile);
+
+	if( x509 && pkey ){
+		if( SSL_CTX_use_certificate( ctx, x509 )==1 ){
+			UCHAR buf[256];
+			BIO* bio = BIO_new( BIO_s_mem() );
+			LogW(L"SSLサーバ証明書");
+			X509_NAME_oneline( X509_get_subject_name(x509) ,buf ,sizeof(buf) );
+			buf[sizeof(buf)-1]='\0'; LogA("所有者: %s",buf);
+			X509_NAME_oneline( X509_get_issuer_name(x509) ,buf ,sizeof(buf) );
+			buf[sizeof(buf)-1]='\0'; LogA("発行者: %s",buf);
+			// http://stackoverflow.com/questions/11683021/openssl-c-get-expiry-date
+			if( bio ){
+				int bytes;
+				if( ASN1_TIME_print( bio ,X509_get_notBefore(x509) ) ){
+					*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
+					buf[bytes]='\0'; LogA("有効期間開始: %s",buf);
+				}
+				if( ASN1_TIME_print( bio, X509_get_notAfter(x509) ) ){
+					*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
+					buf[bytes]='\0'; LogA("有効期間終了: %s",buf);
+				}
+				BIO_free( bio );
+			}
+		}
+		else LogW(L"SSL_CTX_use_certificateエラー");
+
+		if( SSL_CTX_use_PrivateKey( ctx, pkey ) !=1 ){
+			LogW(L"SSL_CTX_use_PrivateKeyエラー");
+		}
+	}
+	if( pkey ) EVP_PKEY_free( pkey );
+	if( x509 ) X509_free( x509 );
+}
+void ConfigSave(
+		WCHAR*	ListenPort
+		,BOOL	bindLocal
+		,BOOL	httpsRemote
+		,BOOL	httpsLocal
+		,BOOL	bootMinimal
+		,WCHAR*	wExe[BI_COUNT]
+		,WCHAR*	wArg[BI_COUNT]
+		,BOOL	hide[BI_COUNT]
+){
+	WCHAR new[MAX_PATH+1]=L"";
+	WCHAR* p;
+	GetModuleFileNameW( NULL ,new ,sizeof(new)/sizeof(WCHAR) );
+	p = wcsrchr( new ,L'\\' );
+	if( p ){
+		// my.ini.new 作成
+		FILE* fp;
+		wcscpy( p+1 ,L"my.ini.new" );
+		fp = _wfopen( new ,L"wb" );
+		if( fp ){
+			UCHAR* listenPort = WideCharToUTF8alloc( ListenPort );
+			UCHAR* exe[BI_COUNT], *arg[BI_COUNT];
+			WCHAR ini[MAX_PATH+1]=L"";
+			UINT i;
+			for( i=0; i<BI_COUNT; i++ ){
+				exe[i] = WideCharToUTF8alloc( wExe[i] );
+				arg[i] = WideCharToUTF8alloc( wArg[i] );
+			}
+			fprintf(fp,"ListenPort=%s\r\n"	,listenPort		? listenPort:"");
+			fprintf(fp,"BindLocal=%s\r\n"	,bindLocal		? "1":"");
+			fprintf(fp,"HttpsRemote=%s\r\n"	,httpsRemote	? "1":"");
+			fprintf(fp,"HttpsLocal=%s\r\n"	,httpsLocal		? "1":"");
+			fprintf(fp,"BootMinimal=%s\r\n"	,bootMinimal	? "1":"");
+			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]			? arg[BI_IE]:"");
+			fprintf(fp,"IEHide=%s\r\n"		,hide[BI_IE]		? "1":"");
+			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]		? arg[BI_CHROME]:"");
+			fprintf(fp,"ChromeHide=%s\r\n"	,hide[BI_CHROME]	? "1":"");
+			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]	? arg[BI_FIREFOX]:"");
+			fprintf(fp,"FirefoxHide=%s\r\n"	,hide[BI_FIREFOX]	? "1":"");
+			fprintf(fp,"OperaArg=%s\r\n"	,arg[BI_OPERA]		? arg[BI_OPERA]:"");
+			fprintf(fp,"OperaHide=%s\r\n"	,hide[BI_OPERA]		? "1":"");
+			for( i=BI_USER1; i<BI_COUNT; i++ ){
+				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]	? exe[i]:"");
+				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]	? arg[i]:"");
+				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,hide[i]	? "1":"");
+			}
+			if( listenPort ) free( listenPort );
+			for( i=0; i<BI_COUNT; i++ ){
+				if( exe[i] ) free( exe[i] );
+				if( arg[i] ) free( arg[i] );
+			}
+			fclose(fp);
+			// my.ini.new -> my.ini
+			wcscpy( ini, new );
+			ini[wcslen(ini)-4] = L'\0';
+			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
+				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
+		}
+		else LogW(L"fopen(%s)エラー",new);
+	}
+}
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
 // ダイアログ用ID
-#define ID_DLG_UNKNOWN	0
-#define ID_DLG_OK		1
-#define ID_DLG_CANCEL	2
-#define ID_DLG_FOPEN	3
-#define ID_DLG_CLOSE	4
-#define ID_DLG_DESTROY	99
+#define ID_DLG_NULL			0
+#define ID_DLG_OK			1
+#define ID_DLG_CANCEL		2
+#define ID_DLG_FOPEN		3
+#define ID_DLG_CLOSE		4
+#define ID_DLG_HTTPS_REMOTE	5
+#define ID_DLG_HTTPS_LOCAL	6
+#define ID_DLG_SSL_VIEWCRT	7
+#define ID_DLG_SSL_MAKECRT	8
+#define ID_DLG_DESTROY		99
+typedef struct {
+	HWND		hTabc;
+	HWND		hOK;
+	HWND		hCancel;
+	HWND		hListenPort;
+	HWND		hListenPortTxt;
+	HWND		hBindAddrTxt;
+	HWND		hBindAny;
+	HWND		hBindLocal;
+	HWND		hHttpsTxt;
+	HWND		hHttpsRemote;
+	HWND		hHttpsLocal;
+	HWND		hBootMinimal;
+	HWND		hSSLCrt;
+	HWND		hSSLKey;
+	HWND		hSSLViewCrt;
+	HWND		hSSLMakeCrt;
+	HWND		hBtnWoTxt;
+	HWND		hExeTxt;
+	HWND		hArgTxt;
+	HWND		hFOpen;
+	HWND		hHide[BI_COUNT];
+	HWND		hExe[BI_COUNT];
+	HWND		hArg[BI_COUNT];
+	HICON		hIcon[BI_COUNT];
+	HFONT		hFontM;
+	HFONT		hFontS;
+	HIMAGELIST	hImage;
+	BOOL		SSLCertNew;
+	DWORD		result;
+} ConfigDialogData;
+
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
-	static LPDWORD		lpRes;
-	static HWND			hTabc, hOK, hCancel, hListenPort, hTxtListenPort, hBootMinimal
-						,hTxtBtn=NULL, hTxtExe=NULL, hTxtArg=NULL, hFOpen=NULL
-						,hHide[BI_COUNT]={0}, hExe[BI_COUNT]={0}, hArg[BI_COUNT]={0};
-	static HICON		hIcon[BI_COUNT]={0};
-	static HFONT		hFont;
-	static HIMAGELIST	hImage;
+	ConfigDialogData* my = (ConfigDialogData*)GetWindowLong( hwnd ,GWL_USERDATA );
+	if( my ){
+		switch( msg ){
+		case WM_CREATE_AFTER:
+			{
+				HINSTANCE hinst = (HINSTANCE)wp;
+				WCHAR* sslCrt = AppFilePath(L"ssl.crt");
+				WCHAR* sslKey = AppFilePath(L"ssl.key");
+				BrowserInfo* br;
+				TCITEMW item;
+				UINT tabid;
+				RECT rc;
+				UINT i;
 
-	if( hwnd==NULL ){
-		// 結果変数のアドレスを保存
-		lpRes = (LPDWORD)msg;
-		*lpRes = ID_DLG_UNKNOWN;
-		return 0;
-	}
-	switch( msg ){
-	case WM_CREATE:
-		{
-			HINSTANCE hinst = GetModuleHandle(NULL);
-			BrowserInfo* br;
-			TCITEMW item;
-			UINT tabid;
-			UINT i;
-
-			hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
-			// タブコントロール
-			// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
-			// タブの識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこのIDを
-			// 取り出してタブを特定する。
-			hTabc = CreateWindowW(
-						WC_TABCONTROLW, L""
-						,WS_CHILD |WS_VISIBLE |TCS_RIGHTJUSTIFY |TCS_MULTILINE
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			SendMessageA( hTabc, WM_SETFONT, (WPARAM)hFont, 0 );
-			hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
-			// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
-			ImageList_SetBkColor( hImage, GetSysColor(COLOR_BTNFACE) );
-			// HTTPサーバタブ(ID=0)
-			item.mask = TCIF_TEXT |TCIF_IMAGE |TCIF_PARAM;
-			item.pszText = L"HTTPサーバ";
-			item.iImage = ImageList_AddIcon( hImage, LoadIconA(hinst,"0") );
-			item.lParam = (LPARAM)0;					// タブ識別ID
-			TabCtrl_InsertItem( hTabc, 0, &item );		// タブインデックス
-			hTxtListenPort = CreateWindowW(
-						L"static",L"待受ポート番号"
-						,SS_SIMPLE |WS_CHILD
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			hListenPort = CreateWindowW(
-						L"edit",ListenPort
-						,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			hBootMinimal = CreateWindowW(
-						L"button",L"起動時から最小化（タスクトレイ収納）"
-						,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_CHECKBOX |BS_AUTOCHECKBOX
-						,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-			);
-			SendMessageA( hTxtListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hListenPort, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hBootMinimal, WM_SETFONT, (WPARAM)hFont, 0 );
-			if( BootMinimal() ) SendMessageA( hBootMinimal, BM_SETCHECK, BST_CHECKED, 0 );
-			// ブラウザタブ(ID=1～8、Browserインデックス＋1)
-			br = BrowserInfoAlloc();
-			if( br ){
-				for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
-					if( br[i].exe || (BI_USER1<=i && i<=BI_USER4) ){
-						hIcon[i] = FileIconLoad( br[i].exe );
-						item.pszText = br[i].name;
-						item.iImage = hIcon[i]? ImageList_AddIcon( hImage, hIcon[i] ) : -1;
-						item.lParam = (LPARAM)tabid;				// タブ識別ID
-						TabCtrl_InsertItem( hTabc, tabid, &item );	// タブインデックス
-					}
-				}
-				hTxtBtn = CreateWindowW(
-							L"static",L"ボタンを"
+				my->hFontM = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
+				my->hFontS = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
+				// タブコントロール
+				// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
+				// タブの識別はできない。そこでlParamにタブ識別IDを格納しておき、WM_NOTIFYではこのIDを
+				// 取り出してタブを特定する。
+				my->hTabc = CreateWindowW(
+							WC_TABCONTROLW, L""
+							,WS_CHILD |WS_VISIBLE |TCS_RIGHTJUSTIFY |TCS_MULTILINE
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				SendMessage( my->hTabc, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+				my->hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
+				// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
+				ImageList_SetBkColor( my->hImage, GetSysColor(COLOR_BTNFACE) );
+				// HTTPサーバタブ(ID=0)
+				item.mask = TCIF_TEXT |TCIF_IMAGE |TCIF_PARAM;
+				item.pszText = L"HTTPサーバ";
+				item.iImage = ImageList_AddIcon( my->hImage, LoadIconA(hinst,"0") );
+				item.lParam = (LPARAM)0;					// タブ識別ID
+				TabCtrl_InsertItem( my->hTabc, 0, &item );		// タブインデックス
+				my->hListenPortTxt = CreateWindowW(
+							L"static",L"待受ポート番号"
 							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				hTxtExe = CreateWindowW(
-							L"static",L"実行ﾌｧｲﾙ"
+				my->hListenPort = CreateWindowW(
+							L"edit",ListenPort
+							,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hBindAddrTxt = CreateWindowW(
+							L"static",L"待受アドレス"
 							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				hTxtArg = CreateWindowW(
-							L"static",L"引 数"
+				my->hBindAny = CreateWindowW(
+							L"button",L"どこからでも"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTORADIOBUTTON
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hBindLocal = CreateWindowW(
+							L"button",L"localhostのみ"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTORADIOBUTTON
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hHttpsTxt = CreateWindowW(
+							L"static",L"HTTPS(SSL)"
 							,SS_SIMPLE |WS_CHILD
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				hFOpen = CreateWindowA(
-							"button",NULL // L"参照"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
+				my->hHttpsRemote = CreateWindowW(
+							L"button",L"localhost以外"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
 							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_FOPEN
+							,hwnd,(HMENU)ID_DLG_HTTPS_REMOTE
 							,hinst,NULL
 				);
-				SendMessageA( hTxtBtn, WM_SETFONT, (WPARAM)hFont, 0 );
-				SendMessageA( hTxtExe, WM_SETFONT, (WPARAM)hFont, 0 );
-				SendMessageA( hTxtArg, WM_SETFONT, (WPARAM)hFont, 0 );
-				for( i=0; i<BI_COUNT; i++ ){
-					hHide[i] = CreateWindowW(
-								L"button",L"表示しない"
-								,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_CHECKBOX |BS_AUTOCHECKBOX
+				my->hHttpsLocal = CreateWindowW(
+							L"button",L"localhost"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_HTTPS_LOCAL
+							,hinst,NULL
+				);
+				if( sslCrt ){
+					my->hSSLCrt = CreateWindowW(
+								L"static"
+								,PathFileExists(sslCrt)? L"サーバ証明書：ssl.crt" :L"サーバ証明書：なし"
+								,SS_SIMPLE |WS_CHILD
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
-					hExe[i] = CreateWindowW(
-								L"edit",br[i].exe
-								,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
-								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-					);
-					hArg[i] = CreateWindowW(
-								L"edit",br[i].arg
-								,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
-								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-					);
-					SendMessageA( hHide[i], WM_SETFONT, (WPARAM)hFont, 0 );
-					SendMessageA( hExe[i], WM_SETFONT, (WPARAM)hFont, 0 );
-					SendMessageA( hArg[i], WM_SETFONT, (WPARAM)hFont, 0 );
-					if( br[i].hide ) SendMessageA( hHide[i], BM_SETCHECK, BST_CHECKED, 0 );
+					free( sslCrt );
 				}
-				// 既定ブラウザEXEパスは編集不可
-				SendMessage( hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
-				SendMessage( hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
-				SendMessage( hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
-				SendMessage( hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
-				// 参照ボタンアイコン
-				SendMessageA( hFOpen, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0) );
-				BrowserInfoFree(br), br=NULL;
+				if( sslKey ){
+					my->hSSLKey = CreateWindowW(
+								L"static"
+								,PathFileExists(sslKey)? L"秘密鍵：ssl.key" :L"秘密鍵：なし"
+								,SS_SIMPLE |WS_CHILD
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					free( sslKey );
+				}
+				my->hSSLViewCrt = CreateWindowW(
+							L"button",L"証明書を見る"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_SSL_VIEWCRT
+							,hinst,NULL
+				);
+				my->hSSLMakeCrt = CreateWindowW(
+							L"button",L"証明書（自己署名）を（再）作成"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_SSL_MAKECRT
+							,hinst,NULL
+				);
+				my->hBootMinimal = CreateWindowW(
+							L"button",L"起動時から最小化（タスクトレイ収納）"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( HttpsRemote ) SendMessage( my->hHttpsRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( HttpsLocal ) SendMessage( my->hHttpsLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( !HttpsRemote && !HttpsLocal ){
+					EnableWindow( my->hSSLViewCrt ,FALSE );
+					EnableWindow( my->hSSLMakeCrt ,FALSE );
+				}
+				if( BootMinimal ) SendMessage( my->hBootMinimal ,BM_SETCHECK ,BST_CHECKED ,0 );
+				SendMessage( my->hListenPortTxt	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hListenPort	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindAddrTxt	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindAny		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsLocal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsRemote	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hSSLCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLKey		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLViewCrt	,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLMakeCrt	,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hBootMinimal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				// ブラウザタブ(ID=1～8、Browserインデックス＋1)
+				br = BrowserInfoAlloc();
+				if( br ){
+					for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
+						if( br[i].exe || (BI_USER1<=i && i<=BI_USER4) ){
+							my->hIcon[i] = FileIconLoad( br[i].exe );
+							item.pszText = br[i].name;
+							item.iImage = my->hIcon[i]? ImageList_AddIcon( my->hImage, my->hIcon[i] ) : -1;
+							item.lParam = (LPARAM)tabid;				// タブ識別ID
+							TabCtrl_InsertItem( my->hTabc, tabid, &item );	// タブインデックス
+						}
+					}
+					my->hBtnWoTxt = CreateWindowW(
+								L"static",L"ボタンを"
+								,SS_SIMPLE |WS_CHILD
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					my->hExeTxt = CreateWindowW(
+								L"static",L"実行ﾌｧｲﾙ"
+								,SS_SIMPLE |WS_CHILD
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					my->hArgTxt = CreateWindowW(
+								L"static",L"引 数"
+								,SS_SIMPLE |WS_CHILD
+								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+					);
+					my->hFOpen = CreateWindowA(
+								"button",NULL // L"参照"
+								,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
+								,0,0,0,0
+								,hwnd,(HMENU)ID_DLG_FOPEN
+								,hinst,NULL
+					);
+					SendMessage( my->hBtnWoTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+					SendMessage( my->hExeTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+					SendMessage( my->hArgTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+					for( i=0; i<BI_COUNT; i++ ){
+						my->hHide[i] = CreateWindowW(
+									L"button",L"表示しない"
+									,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+						);
+						my->hExe[i] = CreateWindowW(
+									L"edit",br[i].exe
+									,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+						);
+						my->hArg[i] = CreateWindowW(
+									L"edit",br[i].arg
+									,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+						);
+						SendMessage( my->hHide[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
+						SendMessage( my->hExe[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
+						SendMessage( my->hArg[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
+						if( br[i].hide ) SendMessage( my->hHide[i], BM_SETCHECK, BST_CHECKED, 0 );
+					}
+					// 既定ブラウザEXEパスは編集不可
+					SendMessage( my->hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
+					SendMessage( my->hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
+					SendMessage( my->hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
+					SendMessage( my->hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
+					// 参照ボタンアイコン
+					SendMessage(
+							my->hFOpen
+							,BM_SETIMAGE
+							,IMAGE_ICON
+							,(LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0)
+					);
+					BrowserInfoFree(br), br=NULL;
+				}
+				SendMessage( my->hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)my->hImage );
+				// OK・キャンセルボタン
+				my->hOK = CreateWindowW(
+							L"button",L" O K "
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_OK
+							,hinst,NULL
+				);
+				my->hCancel = CreateWindowW(
+							L"button",L"ｷｬﾝｾﾙ"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_CANCEL
+							,hinst,NULL
+				);
+				SendMessage( my->hOK, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+				SendMessage( my->hCancel, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+				DragAcceptFiles( hwnd, TRUE ); // ドラッグ＆ドロップ可
+				// 配置のためWM_SIZE強制発行
+				GetClientRect( hwnd ,&rc );
+				SendMessage( hwnd ,WM_SIZE ,(WPARAM)0 ,MAKELPARAM(rc.right,rc.bottom) );
 			}
-			SendMessageA( hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)hImage );
-			// OK・キャンセルボタン
-			hOK = CreateWindowW(
-						L"button",L" O K "
-						,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-						,0,0,0,0
-						,hwnd,(HMENU)ID_DLG_OK
-						,hinst,NULL
-			);
-			hCancel = CreateWindowW(
-						L"button",L"ｷｬﾝｾﾙ"
-						,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-						,0,0,0,0
-						,hwnd,(HMENU)ID_DLG_CANCEL
-						,hinst,NULL
-			);
-			SendMessageA( hOK, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hCancel, WM_SETFONT, (WPARAM)hFont, 0 );
-			// ドラッグ＆ドロップ可
-			DragAcceptFiles( hwnd, TRUE );
-		}
-		break;
+			return 0;
 
-	case WM_SIZE:
-		{
-			RECT rc = { 0,0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
-			UINT i;
-			MoveWindow( hTabc, 0,0, LOWORD(lp), HIWORD(lp), TRUE );
-			// タブを除いた表示領域を取得(rc.topがタブの高さになる)
-			TabCtrl_AdjustRect( hTabc, FALSE, &rc );
-			// パーツ移動
-			MoveWindow( hTxtListenPort,	40,  rc.top+30+3,  110, 22, TRUE );
-			MoveWindow( hListenPort,	160, rc.top+30,    80, 22, TRUE );
-			MoveWindow( hBootMinimal,	40,  rc.top+70,    320, 22, TRUE );
-			MoveWindow( hTxtBtn,		40,  rc.top+26,    70, 22, TRUE );
-			MoveWindow( hTxtExe,		20,  rc.top+60+3,  90, 22, TRUE );
-			MoveWindow( hTxtArg,		50,  rc.top+100+3, 60, 22, TRUE );
-			for( i=0; i<BI_USER1; i++ ){
-				MoveWindow( hHide[i],	100, rc.top+24,  120, 22, TRUE );
-				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120, 22, TRUE );
-			}
-			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				MoveWindow( hHide[i],	100, rc.top+24,  120, 22, TRUE );
-				MoveWindow( hExe[i],	100, rc.top+60,  LOWORD(lp)-120-24, 22, TRUE );
-				MoveWindow( hArg[i],	100, rc.top+100, LOWORD(lp)-120,    22, TRUE );
-			}
-			MoveWindow( hFOpen,			LOWORD(lp)-44,  rc.top+60-1,   24, 24, TRUE );
-			MoveWindow( hOK,			LOWORD(lp)-200, HIWORD(lp)-50, 80, 30, TRUE );
-			MoveWindow( hCancel,		LOWORD(lp)-100, HIWORD(lp)-50, 80, 30, TRUE );
-		}
-		return 0;
-
-	case WM_NOTIFY:
-		if( ((NMHDR*)lp)->code==TCN_SELCHANGE ){
-			// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
-			TCITEM item;
-			item.mask = TCIF_PARAM;
-			TabCtrl_GetItem( hTabc, TabCtrl_GetCurSel(hTabc), &item );
-			SendMessage( hwnd, WM_TABSELECT, item.lParam, 0 );
-		}
-		return 0;
-
-	case WM_TABSELECT:
-		{
-			// wParamにタブIDが入っている（※タブインデックスではない）
-			int tabid = (int)wp;
-			int tabindex = TabCtrl_GetSelHasLParam( hTabc, tabid );
-			UINT i;
-			TabCtrl_SetCurSel( hTabc, tabindex );
-			TabCtrl_SetCurFocus( hTabc, tabindex );
-			// いったん全部隠して
-			ShowWindow( hTxtListenPort, SW_HIDE );
-			ShowWindow( hTxtBtn, SW_HIDE );
-			ShowWindow( hTxtExe, SW_HIDE );
-			ShowWindow( hTxtArg, SW_HIDE );
-			ShowWindow( hListenPort, SW_HIDE );
-			ShowWindow( hBootMinimal, SW_HIDE );
-			ShowWindow( hFOpen, SW_HIDE );
-			for( i=0; i<BI_COUNT; i++ ){
-				ShowWindow( hHide[i], SW_HIDE );
-				ShowWindow( hExe[i], SW_HIDE );
-				ShowWindow( hArg[i], SW_HIDE );
-			}
-			// 該当タブのものだけ表示
-			switch( tabid ){
-			case 0: // HTTPサーバ
-				ShowWindow( hTxtListenPort, SW_SHOW );
-				ShowWindow( hListenPort, SW_SHOW );
-				ShowWindow( hBootMinimal, SW_SHOW );
-				SetFocus( hListenPort );
-				break;
-			case 5: case 6: case 7: case 8: // ユーザ指定ブラウザ
-				ShowWindow( hFOpen, SW_SHOW );
-			case 1: case 2: case 3: case 4: // 既定ブラウザ
-				ShowWindow( hTxtBtn, SW_SHOW );
-				ShowWindow( hTxtExe, SW_SHOW );
-				ShowWindow( hTxtArg, SW_SHOW );
-				// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
-				ShowWindow( hHide[tabid-1], SW_SHOW );
-				ShowWindow( hExe[tabid-1], SW_SHOW );
-				ShowWindow( hArg[tabid-1], SW_SHOW );
-				SetFocus( (tabid<=4)?hArg[tabid-1]:hExe[tabid-1] );
-				break;
-			}
-		}
-		return 0;
-
-	case WM_COMMAND:
-		switch( LOWORD(wp) ){
-		case ID_DLG_OK:
+		case WM_SIZE:
 			{
-				// 設定ファイル保存
-				WCHAR	wPort[8], *wExe[BI_COUNT], *wArg[BI_COUNT];
-				BOOL	bootMinimal, hide[BI_COUNT];
-				int		iPort;
-				UINT	i;
-				GetWindowTextW( hListenPort, wPort, sizeof(wPort)/sizeof(WCHAR) );
-				iPort = _wtoi(wPort);
-				if( iPort<=0 || iPort >65535 ){
-					ErrorBoxW(L"そのポート番号はおかしい");
-					return 0;
+				RECT rc = { 0,0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
+				UINT i;
+				MoveWindow( my->hTabc, 0,0, LOWORD(lp), HIWORD(lp), TRUE );
+				// タブを除いた表示領域を取得(rc.topがタブの高さになる)
+				TabCtrl_AdjustRect( my->hTabc, FALSE, &rc );
+				// パーツ移動
+				MoveWindow( my->hListenPortTxt	,30  ,rc.top+20+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hListenPort		,135 ,rc.top+20    ,80  ,22 ,TRUE );
+				MoveWindow( my->hBindAddrTxt	,45  ,rc.top+55+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hBindAny		,135 ,rc.top+55    ,90  ,22 ,TRUE );
+				MoveWindow( my->hBindLocal		,235 ,rc.top+55    ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsTxt		,31  ,rc.top+90+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsRemote	,135 ,rc.top+90    ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsLocal		,255 ,rc.top+90    ,90  ,22 ,TRUE );
+				MoveWindow( my->hSSLCrt			,135 ,rc.top+120   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLKey			,275 ,rc.top+120   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+140   ,100 ,26 ,TRUE );
+				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+140   ,220 ,26 ,TRUE );
+				MoveWindow( my->hBootMinimal	,30  ,rc.top+185   ,240 ,22 ,TRUE );
+				MoveWindow( my->hBtnWoTxt		,40  ,rc.top+26    ,70  ,22 ,TRUE );
+				MoveWindow( my->hExeTxt			,20  ,rc.top+60+2  ,90  ,22 ,TRUE );
+				MoveWindow( my->hArgTxt			,50  ,rc.top+100+2 ,60  ,22 ,TRUE );
+				for( i=0; i<BI_USER1; i++ ){
+					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,90 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
 				}
-				bootMinimal = (BST_CHECKED==SendMessage( hBootMinimal, BM_GETCHECK, 0,0 ))? TRUE:FALSE;
-				for( i=0; i<BI_COUNT; i++ ){
-					wExe[i] = WindowTextAllocW( hExe[i] );
-					wArg[i] = WindowTextAllocW( hArg[i] );
-					hide[i] = (BST_CHECKED==SendMessage( hHide[i], BM_GETCHECK, 0,0 ))? TRUE:FALSE;
+				for( i=BI_USER1; i<BI_COUNT; i++ ){
+					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,120 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
 				}
-				ConfigSave( wPort, bootMinimal, wExe, wArg, hide );
-				for( i=0; i<BI_COUNT; i++ ){
-					if( wExe[i] ) free( wExe[i] );
-					if( wArg[i] ) free( wArg[i] );
+				MoveWindow( my->hFOpen	,LOWORD(lp)-44  ,rc.top+60-1   ,24 ,24 ,TRUE );
+				MoveWindow( my->hOK		,LOWORD(lp)-200 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
+				MoveWindow( my->hCancel	,LOWORD(lp)-100 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
+			}
+			return 0;
+
+		case WM_CTLCOLORSTATIC: // スタティックコントール描画色
+			if( (HWND)lp==my->hSSLCrt || (HWND)lp==my->hSSLKey ){
+				if( BST_CHECKED !=SendMessage(my->hHttpsRemote,BM_GETCHECK,0,0) &&
+					BST_CHECKED !=SendMessage(my->hHttpsLocal,BM_GETCHECK,0,0)
+				){
+					// SSL無効の時、証明書テキスト色薄くする
+					LRESULT r = DefDlgProc( hwnd, msg, wp, lp );
+					SetTextColor( (HDC)wp ,RGB(160,160,160) );
+					return r;
 				}
-				*lpRes = ID_DLG_OK;
-				DestroyWindow( hwnd );
 			}
 			break;
-		case ID_DLG_CANCEL:
-			*lpRes = ID_DLG_CANCEL;
-			DestroyWindow( hwnd );
-			break;
-		case ID_DLG_FOPEN:
+
+		case WM_NOTIFY:
+			if( ((NMHDR*)lp)->code==TCN_SELCHANGE ){
+				// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
+				TCITEM item;
+				item.mask = TCIF_PARAM;
+				TabCtrl_GetItem( my->hTabc, TabCtrl_GetCurSel(my->hTabc), &item );
+				SendMessage( hwnd, WM_TABSELECT, item.lParam, 0 );
+			}
+			return 0;
+
+		case WM_TABSELECT:
 			{
-				// ユーザ指定ブラウザ実行ファイルをファイル選択ダイアログで入力
-				WCHAR wpath[MAX_PATH+1] = L"";
-				OPENFILENAMEW ofn;
-				memset( &ofn, 0, sizeof(ofn) );
-				ofn.lStructSize = sizeof(ofn);
-				ofn.hwndOwner = hwnd;
-				ofn.lpstrFile = wpath;
-				ofn.nMaxFile = sizeof(wpath)/sizeof(WCHAR);
-				if( GetOpenFileNameW( &ofn ) ){
-					// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
-					TCITEM item;
-					item.mask = TCIF_PARAM;
-					TabCtrl_GetItem( hTabc, TabCtrl_GetCurSel(hTabc), &item );
+				// wParamにタブIDが入っている（※タブインデックスではない）
+				int tabid = (int)wp;
+				int tabindex = TabCtrl_GetSelHasLParam( my->hTabc ,tabid );
+				UINT i;
+				TabCtrl_SetCurSel( my->hTabc ,tabindex );
+				TabCtrl_SetCurFocus( my->hTabc ,tabindex );
+				// いったん全部隠して
+				ShowWindow( my->hListenPortTxt	,SW_HIDE );
+				ShowWindow( my->hListenPort		,SW_HIDE );
+				ShowWindow( my->hBindAddrTxt	,SW_HIDE );
+				ShowWindow( my->hBindAny		,SW_HIDE );
+				ShowWindow( my->hBindLocal		,SW_HIDE );
+				ShowWindow( my->hHttpsTxt		,SW_HIDE );
+				ShowWindow( my->hHttpsLocal		,SW_HIDE );
+				ShowWindow( my->hHttpsRemote	,SW_HIDE );
+				ShowWindow( my->hSSLCrt			,SW_HIDE );
+				ShowWindow( my->hSSLKey			,SW_HIDE );
+				ShowWindow( my->hSSLViewCrt		,SW_HIDE );
+				ShowWindow( my->hSSLMakeCrt		,SW_HIDE );
+				ShowWindow( my->hBootMinimal	,SW_HIDE );
+				ShowWindow( my->hBtnWoTxt		,SW_HIDE );
+				ShowWindow( my->hExeTxt			,SW_HIDE );
+				ShowWindow( my->hArgTxt			,SW_HIDE );
+				ShowWindow( my->hFOpen			,SW_HIDE );
+				for( i=0; i<BI_COUNT; i++ ){
+					ShowWindow( my->hHide[i]	,SW_HIDE );
+					ShowWindow( my->hExe[i]		,SW_HIDE );
+					ShowWindow( my->hArg[i]		,SW_HIDE );
+				}
+				// 該当タブのものだけ表示
+				switch( tabid ){
+				case 0: // HTTPサーバ
+					ShowWindow( my->hListenPortTxt	,SW_SHOW );
+					ShowWindow( my->hListenPort		,SW_SHOW );
+					ShowWindow( my->hBindAddrTxt	,SW_SHOW );
+					ShowWindow( my->hBindAny		,SW_SHOW );
+					ShowWindow( my->hBindLocal		,SW_SHOW );
+					ShowWindow( my->hHttpsTxt		,SW_SHOW );
+					ShowWindow( my->hHttpsLocal		,SW_SHOW );
+					ShowWindow( my->hHttpsRemote	,SW_SHOW );
+					ShowWindow( my->hSSLCrt			,SW_SHOW );
+					ShowWindow( my->hSSLKey			,SW_SHOW );
+					ShowWindow( my->hSSLViewCrt		,SW_SHOW );
+					ShowWindow( my->hSSLMakeCrt		,SW_SHOW );
+					ShowWindow( my->hBootMinimal	,SW_SHOW );
+					SetFocus( my->hListenPort );
+					break;
+				case 5: case 6: case 7: case 8: // ユーザ指定ブラウザ
+					ShowWindow( my->hFOpen, SW_SHOW );
+				case 1: case 2: case 3: case 4: // 既定ブラウザ
+					ShowWindow( my->hBtnWoTxt, SW_SHOW );
+					ShowWindow( my->hExeTxt, SW_SHOW );
+					ShowWindow( my->hArgTxt, SW_SHOW );
 					// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
-					SetWindowTextW( hExe[item.lParam-1], wpath );
+					ShowWindow( my->hHide[tabid-1], SW_SHOW );
+					ShowWindow( my->hExe[tabid-1], SW_SHOW );
+					ShowWindow( my->hArg[tabid-1], SW_SHOW );
+					SetFocus( (tabid<=4)? my->hArg[tabid-1] :my->hExe[tabid-1] );
+					break;
 				}
 			}
+			return 0;
+
+		case WM_COMMAND:
+			switch( LOWORD(wp) ){
+			case ID_DLG_OK: // 設定ファイル保存
+				{
+					WCHAR	wPort[8] ,*wExe[BI_COUNT] ,*wArg[BI_COUNT];
+					BOOL	bindLocal ,httpsRemote ,httpsLocal ,bootMinimal ,hide[BI_COUNT];
+					int		iPort;
+					UINT	i;
+					GetWindowTextW( my->hListenPort ,wPort ,sizeof(wPort)/sizeof(WCHAR) );
+					iPort = _wtoi(wPort);
+					if( iPort<=0 || iPort >65535 ){
+						ErrorBoxW(L"ポート番号が不正です。");
+						return 0;
+					}
+					bindLocal = (BST_CHECKED==SendMessage( my->hBindLocal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					httpsLocal = (BST_CHECKED==SendMessage( my->hHttpsLocal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					httpsRemote = (BST_CHECKED==SendMessage( my->hHttpsRemote ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					bootMinimal = (BST_CHECKED==SendMessage( my->hBootMinimal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					for( i=0; i<BI_COUNT; i++ ){
+						wExe[i] = WindowTextAllocW( my->hExe[i] );
+						wArg[i] = WindowTextAllocW( my->hArg[i] );
+						hide[i] = (BST_CHECKED==SendMessage( my->hHide[i] ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					}
+					ConfigSave( wPort ,bindLocal ,httpsRemote ,httpsLocal ,bootMinimal ,wExe ,wArg ,hide );
+					for( i=0; i<BI_COUNT; i++ ){
+						if( wExe[i] ) free( wExe[i] );
+						if( wArg[i] ) free( wArg[i] );
+					}
+					PostMessage( MainForm, WM_SETTING_OK, 0,0 );
+					if( my->SSLCertNew ) PostMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
+					my->result = ID_DLG_OK;
+					DestroyWindow( hwnd );
+				}
+				break;
+
+			case ID_DLG_CANCEL:
+				if( my->SSLCertNew ) PostMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
+				my->result = ID_DLG_CANCEL;
+				DestroyWindow( hwnd );
+				break;
+
+			case ID_DLG_FOPEN: // ユーザ指定ブラウザ実行ファイルをファイル選択ダイアログで入力
+				{
+					WCHAR wpath[MAX_PATH+1] = L"";
+					OPENFILENAMEW ofn;
+					memset( &ofn, 0, sizeof(ofn) );
+					ofn.lStructSize = sizeof(ofn);
+					ofn.hwndOwner = hwnd;
+					ofn.lpstrFile = wpath;
+					ofn.nMaxFile = sizeof(wpath)/sizeof(WCHAR);
+					if( GetOpenFileNameW( &ofn ) ){
+						// 選択タブ識別ID(lParam)取得(※タブインデックスではない)
+						TCITEM item;
+						item.mask = TCIF_PARAM;
+						TabCtrl_GetItem( my->hTabc, TabCtrl_GetCurSel(my->hTabc), &item );
+						// タブID-1がBrowserインデックスと対応している(TODO:わかりにくい)
+						SetWindowTextW( my->hExe[item.lParam-1], wpath );
+					}
+				}
+				break;
+
+			case ID_DLG_HTTPS_REMOTE: case ID_DLG_HTTPS_LOCAL: // HTTPSチェックボックス変化
+				// 証明書・秘密鍵テキスト色
+				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
+				InvalidateRect( my->hSSLKey ,NULL ,FALSE );
+				// 証明書作成ボタン有効・無効切り替え
+				if( BST_CHECKED !=SendMessage(my->hHttpsRemote,BM_GETCHECK,0,0) &&
+					BST_CHECKED !=SendMessage(my->hHttpsLocal,BM_GETCHECK,0,0)
+				){
+					EnableWindow( my->hSSLViewCrt ,FALSE );
+					EnableWindow( my->hSSLMakeCrt ,FALSE );
+				}
+				else{
+					EnableWindow( my->hSSLViewCrt ,TRUE );
+					EnableWindow( my->hSSLMakeCrt ,TRUE );
+				}
+				break;
+
+			case ID_DLG_SSL_VIEWCRT:
+				{
+					WCHAR* sslCrt = AppFilePath(L"ssl.crt");
+					if( sslCrt ){
+						if( PathFileExists(sslCrt) )
+							ShellExecuteW( NULL,NULL ,sslCrt ,NULL,NULL ,SW_SHOWNORMAL );
+						free( sslCrt );
+					}
+				}
+				break;
+
+			case ID_DLG_SSL_MAKECRT:
+				{
+					WCHAR* sslCrt = AppFilePath(L"ssl.crt");
+					WCHAR* sslKey = AppFilePath(L"ssl.key");
+					if( sslCrt && sslKey ){
+						int r = IDYES;
+						if( PathFileExists(sslCrt) || PathFileExists(sslKey) ){
+							r = MessageBox( hwnd
+									,L"現在の証明書（ssl.crt）と秘密鍵（ssl.key）を消去・上書きします。"
+									L"実行しますか？"
+									,L"確認" ,MB_YESNO |MB_ICONQUESTION
+							);
+						}
+						if( r==IDYES ){
+							HCURSOR cursor;
+							DeleteFileW( sslCrt );
+							DeleteFileW( sslKey );
+							// TODO:2秒くらいかかりプログレスバーが親切だが面倒なので砂時計カーソル。
+							cursor = SetCursor( LoadCursor(NULL,IDC_WAIT) );
+							SSL_SelfCertificateCreate( sslCrt ,sslKey );
+							SetCursor( cursor );
+							my->SSLCertNew = TRUE;
+							SetWindowTextW( my->hSSLCrt
+								,PathFileExists(sslCrt)? L"サーバ証明書：ssl.crt" :L"サーバ証明書：なし"
+							);
+							SetWindowTextW( my->hSSLKey
+								,PathFileExists(sslKey)? L"秘密鍵：ssl.key" :L"秘密鍵：なし"
+							);
+						}
+					}
+					if( sslCrt ) free( sslCrt );
+					if( sslKey ) free( sslKey );
+				}
+				break;
+			}
+			return 0;
+
+		case WM_DROPFILES:
+			{
+				// ドロップした場所がユーザ指定ブラウザEXEパス用エディットコントール上なら
+				// ファイルパスをEXEパスに反映する。その他のドロップ操作は無視。
+				WCHAR dropfile0[MAX_PATH+1]=L"";
+				POINT po;
+				HWND poWnd;
+				DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH );// (先頭)ドロップファイル
+				DragQueryPoint( (HDROP)wp, &po );					// ドロップ座標(クライアント座標系)
+				DragFinish( (HDROP)wp );
+				ClientToScreen( hwnd, &po );						// 座標をスクリーン座標系に
+				poWnd = WindowFromPoint(po);
+				if( poWnd==my->hExe[BI_USER1] ) SetWindowTextW( my->hExe[BI_USER1], dropfile0 );
+				else if( poWnd==my->hExe[BI_USER2] ) SetWindowTextW( my->hExe[BI_USER2], dropfile0 );
+				else if( poWnd==my->hExe[BI_USER3] ) SetWindowTextW( my->hExe[BI_USER3], dropfile0 );
+				else if( poWnd==my->hExe[BI_USER4] ) SetWindowTextW( my->hExe[BI_USER4], dropfile0 );
+			}
+			return 0;
+
+		case WM_DESTROY:
+			{ UINT i; for(i=0;i<BI_COUNT;i++) DestroyIcon( my->hIcon[i] ); }
+			ImageList_Destroy( my->hImage );
+			DeleteObject( my->hFontM );
+			DeleteObject( my->hFontS );
+			SetWindowLong( hwnd ,GWL_USERDATA ,0 );
+			if( my->result==ID_DLG_NULL ) my->result=ID_DLG_DESTROY;
 			break;
 		}
-		return 0;
-
-	case WM_DROPFILES:
-		{
-			// ドロップした場所がユーザ指定ブラウザEXEパス用エディットコントール上なら
-			// ファイルパスをEXEパスに反映する。その他のドロップ操作は無視。
-			WCHAR dropfile0[MAX_PATH+1]=L"";
-			POINT po;
-			HWND poWnd;
-			DragQueryFileW( (HDROP)wp, 0, dropfile0, MAX_PATH );// (先頭)ドロップファイル
-			DragQueryPoint( (HDROP)wp, &po );					// ドロップ座標(クライアント座標系)
-			DragFinish( (HDROP)wp );
-			ClientToScreen( hwnd, &po );						// 座標をスクリーン座標系に
-			poWnd = WindowFromPoint(po);
-			if( poWnd==hExe[BI_USER1] ) SetWindowTextW( hExe[BI_USER1], dropfile0 );
-			else if( poWnd==hExe[BI_USER2] ) SetWindowTextW( hExe[BI_USER2], dropfile0 );
-			else if( poWnd==hExe[BI_USER3] ) SetWindowTextW( hExe[BI_USER3], dropfile0 );
-			else if( poWnd==hExe[BI_USER4] ) SetWindowTextW( hExe[BI_USER4], dropfile0 );
-		}
-		return 0;
-
-	case WM_DESTROY:
-		{ UINT i; for(i=0;i<BI_COUNT;i++) DestroyIcon( hIcon[i] ); }
-		ImageList_Destroy( hImage );
-		DeleteObject( hFont );
-		if( *lpRes==ID_DLG_UNKNOWN ) *lpRes=ID_DLG_DESTROY;
-		break;
 	}
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
 DWORD ConfigDialog( UINT tabid )
 {
-	DWORD dwRes=ID_DLG_UNKNOWN;
-	// ダイアログウィンドウプロシージャに結果変数のアドレスを渡す
-	if( ConfigDialogProc( NULL, (UINT)(&dwRes), 0,0 )==0 ){
-		// ダイアログウィンドウ作成
+	#define				CONFIGDLGCLASS L"ConfigDialog"
+	HINSTANCE			hinst = GetModuleHandle(NULL);
+	WNDCLASSEXW			wc;
+	ConfigDialogData	data;
+
+	memset( &data, 0, sizeof(data) );
+	data.result = ID_DLG_NULL;
+
+	memset( &wc, 0, sizeof(wc) );
+	wc.cbSize        = sizeof(wc);
+	wc.cbWndExtra	 = DLGWINDOWEXTRA;
+	wc.lpfnWndProc   = ConfigDialogProc;
+	wc.hInstance     = hinst;
+	wc.hIcon	     = LoadIconA( hinst ,"0" );
+	wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
+	wc.lpszClassName = CONFIGDLGCLASS;
+
+	if( RegisterClassExW(&wc) ){
 		HWND hwnd = CreateWindowW(
-						CONFIGDIALOGNAME
+						CONFIGDLGCLASS
 						,APPNAME L" 設定"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
-						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 480/2
-						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 300/2
-						,480, 300
+						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 490/2
+						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 340/2
+						,490, 340
 						,MainForm,NULL
 						,GetModuleHandle(NULL),NULL
 		);
@@ -5939,8 +6366,11 @@ DWORD ConfigDialog( UINT tabid )
 			EnableWindow( MainForm, FALSE );
 			// 初期表示タブ
 			PostMessage( hwnd, WM_TABSELECT, tabid, 0 );
+			// ユーザデータ
+			SetWindowLong( hwnd ,GWL_USERDATA ,(LONG)&data );
+			SendMessage( hwnd ,WM_CREATE_AFTER ,(WPARAM)hinst ,0 );
 			// ダイアログが結果を返すまでループ
-			while( dwRes==ID_DLG_UNKNOWN && GetMessage(&msg,NULL,0,0)>0 ){
+			while( data.result==ID_DLG_NULL && GetMessage(&msg,NULL,0,0)>0 ){
 				if( !IsDialogMessage( hwnd, &msg ) ){
 					TranslateMessage( &msg );
 					DispatchMessage( &msg );
@@ -5955,8 +6385,12 @@ DWORD ConfigDialog( UINT tabid )
 			SetActiveWindow( MainForm );
 			SetFocus( MainForm );
 		}
+		else LogW(L"CreateWindowエラー");
+		UnregisterClassW( CONFIGDLGCLASS, hinst );
 	}
-	return dwRes;
+	else LogW(L"RegisterClassエラー");
+
+	return data.result;
 }
 
 
@@ -6016,11 +6450,11 @@ BrowserIcon* BrowserIconCreate( void )
 					);
 					if( ico[i].hwnd ){
 						if( ico[i].icon ){
-							SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
+							SendMessage( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
 						}
 						else if( br[i].exe ){
 							// エラーアイコン
-							SendMessageA( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
+							SendMessage( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
 						}
 					}
 					else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
@@ -6037,7 +6471,7 @@ BrowserIcon* BrowserIconCreate( void )
 void BrowserIconClick( UINT ix )
 {
 	BOOL empty=FALSE, invalid=FALSE;
-	BrowserInfo* br = BrowserInfoAlloc(); // TODO:1個だけでいいのに全部取得してるムダムダ
+	BrowserInfo* br = BrowserInfoAlloc(); // TODO:1個だけでいいのに全部取得してるムダ
 	if( br ){
 		if( br[ix].exe ){
 			WCHAR* exe = myPathResolve( br[ix].exe );
@@ -6055,7 +6489,13 @@ void BrowserIconClick( UINT ix )
 					memset( &pi, 0, sizeof(pi) );
 					si.cb = sizeof(si);
 					// コマンドライン全体
-					_snwprintf(cmd,cmdlen,L"\"%s\" %s http://localhost:%s/",exe,br[ix].arg?br[ix].arg:L"",ListenPort);
+					_snwprintf(cmd,cmdlen
+							,L"\"%s\" %s http%s://localhost:%s/"
+							,exe
+							,br[ix].arg? br[ix].arg :L""
+							,HttpsLocal? L"s" :L""
+							,ListenPort
+					);
 					// EXEフォルダ
 					p = wcsrchr( dir, L'\\' );
 					if( p ) *p = L'\0';
@@ -6077,8 +6517,13 @@ void BrowserIconClick( UINT ix )
 						p = wcsrchr(exe,L'.'); // 拡張子.lnk以外はエラーログ
 						if( !p || wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",exe,err);
 						// 引数
-						_snwprintf(cmd,cmdlen,L"%s http://localhost:%s/",br[ix].arg?br[ix].arg:L"",ListenPort);
-						err = (DWORD)ShellExecuteW( NULL, NULL, exe, cmd, dir, SW_SHOWNORMAL );
+						_snwprintf(cmd,cmdlen
+								,L"%s http%s://localhost:%s/"
+								,br[ix].arg? br[ix].arg :L""
+								,HttpsLocal? L"s" :L""
+								,ListenPort
+						);
+						err = (DWORD)ShellExecuteW( NULL,NULL, exe, cmd, dir, SW_SHOWNORMAL );
 						if( err<=32 ){
 							LogW(L"ShellExecute(%s)エラー%u",exe,err);
 							ErrorBoxW(L"%s\r\nを実行できません",exe);
@@ -6101,9 +6546,7 @@ void BrowserIconClick( UINT ix )
 	}
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-	if( empty || invalid ){
-		if( ConfigDialog(ix+1)==ID_DLG_OK ) PostMessage( MainForm, WM_SETTING_OK, 0,0 );
-	}
+	if( empty || invalid ) ConfigDialog(ix+1);
 }
 // ツールチップ
 // http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
@@ -6162,7 +6605,7 @@ HWND BrowserIconTipCreate( BrowserIcon* browser )
 // サーバログをファイル保存
 void LogSave( void )
 {
-	LONG count = SendMessageA( ListBox, LB_GETCOUNT, 0,0 );
+	LONG count = SendMessage( ListBox, LB_GETCOUNT, 0,0 );
 	if( count !=LB_ERR && count>0 ){
 		WCHAR wpath[MAX_PATH+1] = L"";
 		OPENFILENAMEW ofn;
@@ -6227,7 +6670,7 @@ void MainFormTimer1000( void )
 	// 水平スクロールバー制御処理。なんでこんな処理が自力なんだ…。
 	if( cxMax > ListBoxWidth ){
 		ListBoxWidth = cxMax;
-		SendMessageA( ListBox, LB_SETHORIZONTALEXTENT, cxMax +20, 0 );	// +20 適当余白
+		SendMessage( ListBox, LB_SETHORIZONTALEXTENT, cxMax +20, 0 );	// +20 適当余白
 	}
 	// タイトルバー更新
 	{
@@ -6242,158 +6685,16 @@ void MainFormTimer1000( void )
 		if( ListenSock==INVALID_SOCKET )
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - エラー%s",APPNAME,mem);
 		else
-			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - http://localhost:%s/%s",APPNAME,ListenPort,mem);
+			_snwprintf(text,sizeof(text)/sizeof(WCHAR)
+					,L"%s - http%s://localhost:%s/%s"
+					,APPNAME
+					,(HttpsRemote && HttpsLocal)? L"s" : (HttpsRemote || HttpsLocal)? L"(s)" :L""
+					,ListenPort
+					,mem
+			);
 
 		SetWindowTextW( MainForm, text );
 	}
-}
-void SSLCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
-{
-	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
-	EVP_PKEY*		pkey	= EVP_PKEY_new();
-	BIGNUM*			exp		= BN_new();
-	BIGNUM*			big		= BN_new();
-	X509*			x509	= X509_new();
-	RSA*			rsa		= RSA_new();
-	X509_NAME*		name	= NULL;
-	FILE*			fp		= NULL;
-
-	if( !serial ){ LogW(L"ASN1_INTEGER_newエラー"); goto fin; }
-	if( !pkey ){ LogW(L"EVP_PKEY_newエラー"); goto fin; }
-	if( !exp ){ LogW(L"BN_newエラー"); goto fin; }
-	if( !big ){ LogW(L"BN_newエラー"); goto fin; }
-	if( !x509 ){ LogW(L"X509_newエラー"); goto fin; }
-	if( !rsa ){ LogW(L"RSA_newエラー"); goto fin; }
-
-	// openssl-1.0.0j/apps/genrsa.c
-	if( !BN_set_word( exp, RSA_F4 ) ){
-		LogW(L"BN_set_wordエラー");
-		goto fin;
-	}
-	// 鍵長2048bit
-	if( RSA_generate_key_ex( rsa, 2048, exp, NULL ) !=1 ){
-		LogW(L"RSA_generate_key_exエラー");
-		goto fin;
-	}
-	// openssl-1.0.0j/apps/x509.c
-	// openssl-1.0.0j/apps/apps.c:int rand_serial(BIGNUM *b, ASN1_INTEGER *ai)
-	#define SERIAL_RAND_BITS 64
-	if( !BN_pseudo_rand( big, SERIAL_RAND_BITS, 0, 0 ) ){
-		LogW(L"BN_pseudo_randエラー");
-		goto fin;
-	}
-	if( !BN_to_ASN1_INTEGER( big, serial ) ){
-		LogW(L"BN_pseudo_randエラー");
-		goto fin;
-	}
-	if( !X509_set_serialNumber( x509, serial ) ){
-		LogW(L"X509_set_serialNumberエラー");
-		goto fin;
-	}
-	// openssl-1.0.0j/demos/selfsign.c
-	if( !EVP_PKEY_assign_RSA( pkey, rsa ) ){
-		LogW(L"EVP_PKEY_assign_RSAエラー");
-		goto fin;
-	}
-	rsa = NULL;
-	X509_set_version( x509, 2 ); // 2 -> x509v3
-	// 証明書有効期間3650日
-	// TODO:期限切れるとどうなるか？
-	if( !X509_gmtime_adj( X509_get_notBefore(x509), 0 ) ||
-		!X509_gmtime_adj( X509_get_notAfter(x509), 60*60*24*365*10 )
-	){
-		LogW(L"X509_gmtime_adfエラー");
-		goto fin;
-	}
-	if( !X509_set_pubkey( x509, pkey ) ){
-		LogW(L"X509_set_pubkeyエラー");
-		goto fin;
-	}
-	// 自己署名
-	name = X509_get_subject_name( x509 );
-	if( !name ){
-		LogW(L"X509_get_subject_nameエラー");
-		goto fin;
-	}
-	if( !X509_NAME_add_entry_by_txt(name,"C",MBSTRING_ASC,"JP",-1,-1,0) ||
-		!X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,"JCBookmark",-1,-1,0)
-	){
-		LogW(L"X509_NAME_add_entry_by_txtエラー");
-		goto fin;
-	}
-	if( !X509_set_issuer_name( x509, name ) ){
-		LogW(L"X509_set_issuer_nameエラー");
-		goto fin;
-	}
-	if( !X509_sign( x509, pkey, EVP_sha1() ) ){
-		LogW(L"X509_signエラー");
-		goto fin;
-	}
-	// ファイル保存
-	fp = _wfopen( crtfile, L"wb" );
-	if( fp ){
-		PEM_write_X509( fp, x509 );
-		fclose( fp );
-	}
-	else{
-		LogW(L"fopen(%s)エラー",crtfile);
-		goto fin;
-	}
-	fp = _wfopen( keyfile, L"wb" );
-	if( fp ){
-		PEM_write_PrivateKey( fp, pkey, NULL,NULL,0,NULL,NULL );
-		fclose( fp );
-	}
-	else{
-		LogW(L"fopen(%s)エラー",keyfile);
-		goto fin;
-	}
- fin:
-	if( serial ) ASN1_INTEGER_free( serial );
-	if( pkey ) EVP_PKEY_free( pkey );
-	if( x509 ) X509_free( x509 );
-	if( rsa ) RSA_free( rsa );
-	if( exp ) BN_free( exp );
-	if( big ) BN_free( big );
-}
-BOOL SSL_CTX_SelfCertificate( SSL_CTX* ctx, WCHAR* crtfile, WCHAR* keyfile )
-{
-	X509*		x509 = NULL;
-	EVP_PKEY*	pkey = NULL;
-	FILE*		fp = NULL;
-	BOOL		rc = TRUE;
-
-	fp = _wfopen( crtfile, L"rb" );
-	if( fp ){
-		x509 = PEM_read_X509( fp, NULL,NULL,NULL );
-		fclose( fp );
-	}
-	else{
-		LogW(L"fopen(%s)エラー",crtfile);
-		rc = FALSE;
-	}
-	fp = _wfopen( keyfile, L"rb" );
-	if( fp ){
-		pkey = PEM_read_PrivateKey( fp, NULL,NULL,NULL );
-		fclose( fp );
-	}
-	else{
-		LogW(L"fopen(%s)エラー",keyfile);
-		rc = FALSE;
-	}
-	if( x509 && pkey ){
-		if( SSL_CTX_use_certificate( ctx, x509 ) !=1 ){
-			LogW(L"SSL_CTX_use_certificateエラー");
-			rc = FALSE;
-		}
-		if( SSL_CTX_use_PrivateKey( ctx, pkey ) !=1 ){
-			LogW(L"SSL_CTX_use_PrivateKeyエラー");
-			rc = FALSE;
-		}
-	}
-	if( pkey ) EVP_PKEY_free( pkey );
-	if( x509 ) X509_free( x509 );
-	return rc;
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
@@ -6407,20 +6708,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// OpenSSL
 	SSL_library_init();
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	if( ssl_ctx ){
-		/*
-		WCHAR* crtfile = AppFilePath(L"ssl.crt");
-		WCHAR* keyfile = AppFilePath(L"ssl.key");
-		if( crtfile && keyfile ){
-			if( !SSL_CTX_SelfCertificate( ssl_ctx, crtfile, keyfile ) ){
-				SSLCertificateCreate( crtfile, keyfile ); // TODO:2秒くらいかかる
-				SSL_CTX_SelfCertificate( ssl_ctx, crtfile, keyfile );
-			}
-		}
-		if( crtfile ) free( crtfile );
-		if( keyfile ) free( keyfile );
-		*/
-	}
+	if( ssl_ctx ) SendMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
 	else LogW(L"SSL_CTX_newエラー");
 	// mlang.dll
 	// DLL読み込み脆弱性対策フルパスで指定する。
@@ -6447,7 +6735,6 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	*hToolTip = BrowserIconTipCreate( *browser );
 	// 待受開始
 	for( ;; ){
-		ListenPortGet();
 		// listen成功でループ抜け
 		if( ListenStart() ) break;
 		ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
@@ -6518,8 +6805,8 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	switch( msg ){
 	case WM_CREATE:
 		{
-			HINSTANCE hinst = GetModuleHandle(NULL);
-			HFONT hFont = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS UI Gothic");
+			HINSTANCE hinst = ((LPCREATESTRUCT)lp)->hInstance;
+			HFONT hFont = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 			HWND hTxt;
 			WCHAR wtxt[256]=L"";
 			UCHAR libs[128]="";
@@ -6548,7 +6835,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				free( wlibs );
 			}
 			// アイコン
-			SendMessageA(
+			SendMessage(
 				CreateWindowW(
 					L"static", L""
 					,WS_CHILD |WS_VISIBLE |SS_ICON
@@ -6562,10 +6849,10 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						,ES_LEFT |ES_MULTILINE |WS_CHILD |WS_VISIBLE
 						,60,10,230,126 ,hwnd,NULL ,hinst,NULL
 			);
-			SendMessageA( hTxt, WM_SETFONT, (WPARAM)hFont, 0 );
-			SendMessageA( hTxt, EM_SETREADONLY, TRUE, 0 );
+			SendMessage( hTxt, WM_SETFONT, (WPARAM)hFont, 0 );
+			SendMessage( hTxt, EM_SETREADONLY, TRUE, 0 );
 			// ボタン
-			SendMessageA(
+			SendMessage(
 				CreateWindowW(
 					L"button", L"閉じる"
 					,WS_CHILD |WS_VISIBLE |WS_TABSTOP
@@ -6642,8 +6929,10 @@ void AboutBox( void )
 			SetActiveWindow( MainForm );
 			SetFocus( MainForm );
 		}
+		else LogW(L"CreateWindowエラー");
 		UnregisterClassW( ABOUTBOXCLASS, hinst );
 	}
+	else LogW(L"RegisterClassエラー");
 }
 // メインフォームWindowProc
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
@@ -6671,7 +6960,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		if( !ListBox ) return -1;
 		hFont = CreateFontW(15,0,0,0,0,0,0,0,0,0,0,0,0,L"MS Gothic");
 		if( !hFont ) return -1;
-		SendMessageW( ListBox, WM_SETFONT, (WPARAM)hFont, 0 );
+		SendMessage( ListBox, WM_SETFONT, (WPARAM)hFont, 0 );
 		// リストボックス横幅計算のためデバイスコンテキスト取得フォント関連付け
 		ListBoxDC = GetDC( ListBox );
 		if( !ListBoxDC ) return -1;
@@ -6758,12 +7047,12 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			LogSave();
 			break;
 		case CMD_LOGCLEAR:	// ログ消去(メモリ解放になる)
-			SendMessageA( ListBox, LB_RESETCONTENT, 0,0 );
-			SendMessageA( ListBox, LB_SETHORIZONTALEXTENT, 0,0 );
+			SendMessage( ListBox, LB_RESETCONTENT, 0,0 );
+			SendMessage( ListBox, LB_SETHORIZONTALEXTENT, 0,0 );
 			ListBoxWidth = 0;
 			break;
 		case CMD_SETTING:	// 設定
-			if( ConfigDialog(0)==ID_DLG_OK ) PostMessage( hwnd, WM_SETTING_OK, 0,0 );
+			ConfigDialog(0);
 			break;
 		case CMD_ABOUT:		// バージョン情報
 			AboutBox();
@@ -6781,10 +7070,12 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_SETTING_OK: // 設定ダイアログOK
 		{
-			WCHAR oldPort[8];
+			WCHAR	oldPort[8];
+			BOOL	oldBindLocal = BindLocal;		// bind設定退避
 			wcscpy( oldPort, ListenPort );			// 現在ポート退避
-			ListenPortGet();
-			if( wcscmp(oldPort,ListenPort) ){		// ポート番号変わった
+			ServerParamGet();
+			if( oldBindLocal!=BindLocal || wcscmp(oldPort,ListenPort) ){
+				// bind設定orポート番号変わった
 				BOOL success;
 				SocketShutdown();					// コネクション切断
 				success = ListenStart();			// 待ち受け開始
@@ -6796,6 +7087,18 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			BrowserIconDestroy( browser );
 			browser = BrowserIconCreate();
 			hToolTip = BrowserIconTipCreate( browser );
+		}
+		return 0;
+
+	case WM_SSLCERT_NEW: // SSL証明書読み込み
+		{
+			WCHAR* crtfile = AppFilePath(L"ssl.crt");
+			WCHAR* keyfile = AppFilePath(L"ssl.key");
+			if( crtfile && keyfile ){
+				if( HttpsRemote || HttpsLocal ) SSL_CTX_UseCertificate( ssl_ctx, crtfile, keyfile );
+			}
+			if( crtfile ) free( crtfile );
+			if( keyfile ) free( keyfile );
 		}
 		return 0;
 
@@ -6850,7 +7153,6 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
 	WSADATA	wsaData;
-	HWND	hwnd;
 
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
@@ -6929,10 +7231,10 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 			}
 		}
 	}
-	// ウィンドウクラス登録
+	// メインフォーム生成
 	{
 		WNDCLASSEXW	wc;
-		// メインフォーム用クラス
+
 		memset( &wc, 0, sizeof(wc) );
 		wc.cbSize        = sizeof(wc);
 		wc.cbWndExtra	 = DLGWINDOWEXTRA;
@@ -6941,32 +7243,33 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		wc.hIcon	     = LoadIconA( hinst, "0" );
 		wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
 		wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
-		wc.lpszClassName = MAINFORMNAME;
-		RegisterClassExW(&wc);
-		// 設定ダイアログ用クラス
-		wc.lpfnWndProc   = ConfigDialogProc;
-		wc.lpszClassName = CONFIGDIALOGNAME;
-		RegisterClassExW( &wc );
-	}
-	// メインフォーム
-	hwnd = CreateWindowW(
-				MAINFORMNAME
-				,APPNAME
-				,WS_OVERLAPPEDWINDOW |WS_CLIPCHILDREN
-				,CW_USEDEFAULT, CW_USEDEFAULT, 600, 400
-				,NULL, NULL, hinst, NULL
-	);
-	if( hwnd ){
-		if( BootMinimal() ){
-			// 起動時にタスクトレイに収納する
-			PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
+		wc.lpszClassName = MAINFORMCLASS;
+
+		if( RegisterClassExW(&wc) ){
+			HWND hwnd = CreateWindowW(
+							MAINFORMCLASS
+							,APPNAME
+							,WS_OVERLAPPEDWINDOW |WS_CLIPCHILDREN
+							,CW_USEDEFAULT, CW_USEDEFAULT, 600, 400
+							,NULL, NULL, hinst, NULL
+			);
+			if( hwnd ){
+				ServerParamGet();
+				if( BootMinimal ){
+					// 起動時にタスクトレイに収納する
+					PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
+				}
+				else{
+					ShowWindow( hwnd, nCmdShow );
+					UpdateWindow( hwnd );
+				}
+				return hwnd;
+			}
+			else ErrorBoxW(L"L%u:CreateWindowエラー",__LINE__);
 		}
-		else{
-			ShowWindow( hwnd, nCmdShow );
-			UpdateWindow( hwnd );
-		}
+		else ErrorBoxW(L"L%u:RegisterClassエラー",__LINE__);
 	}
-	return hwnd;
+	return NULL;
 }
 // アプリ終了時
 void Cleanup( void )
