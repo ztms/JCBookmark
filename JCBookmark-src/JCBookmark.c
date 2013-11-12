@@ -98,11 +98,10 @@
 #define		WM_TRAYICON			(WM_APP+1)		// タスクトレイクリックメッセージ
 #define		WM_TRAYICON_ADD		(WM_APP+2)		// タスクトレイアイコン登録用メッセージ
 #define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
-#define		WM_SETTING_OK		(WM_APP+4)		// 設定ダイアログOK後の処理
+#define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
-#define		WM_SSLCERT_NEW		(WM_APP+6)		// SSL証明書読み込みメッセージ
 #define		MAINFORMCLASS		L"MainForm"
-#define		APPNAME				L"JCBookmark v1.8"
+#define		APPNAME				L"JCBookmark v1.9dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -150,7 +149,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -3997,7 +3996,8 @@ BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
 //---------------------------------------------------------------------------------------------------------------
 // HTTPサーバ設定
 //
-SOCKET	ListenSock		= INVALID_SOCKET;	// Listenソケット
+SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
+SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
 WCHAR	ListenPort[8]	= L"10080";			// Listenポート
 BOOL	BindLocal		= FALSE;			// bindアドレスをlocalhostに
 BOOL	HttpsRemote		= FALSE;			// localhost以外https
@@ -4173,9 +4173,8 @@ UCHAR* file2memory( const WCHAR* path, BOOL fOpenErrLog )
 	UCHAR* memory = NULL;
 	if( path && *path ){
 		HANDLE hFile = CreateFileW( path
-							,GENERIC_READ
-							,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+							,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+							,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 		);
 		if( hFile != INVALID_HANDLE_VALUE ){
 			DWORD size = GetFileSize( hFile,NULL );
@@ -4417,9 +4416,8 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 				fclose( fp );
 				// GETとおなじ処理になっとる…
 				cp->rsp.readfh = CreateFileW( tmppath
-						,GENERIC_READ
-						,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-						,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+						,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+						,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 				);
 				if( cp->rsp.readfh ){
 					SYSTEMTIME st;
@@ -4453,9 +4451,87 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 	else ClientSendErr(cp,"400 Bad Request");
 }
 
+// 待受ソケット作成
+// IPv6対応は結局、待受ソケットを２つ作成するようにした。
+// ・きっかけは、Win7+Opera12で「接続できません」エラーになるという問い合わせで、
+// 　発覚したのがWin7では http://127.0.0.1:～/ に接続できない事だった。
+// ・netstat -a を見ると、たしかに :: (IPv6のANY) では待受ているが、0.0.0.0 では
+// 　待受ていない。加えてOpera12はIPv6環境でも ::1 (IPv6のloopback) ではなく
+// 　127.0.0.1 にアクセスしようとするため、接続できなかったもよう。localhostの
+// 　名前解決が他のブラウザと異なるのか。
+// ・調べたところ１つのソケットでIPv4/IPv6両対応できる「デュアルスタック」という
+// 　方式があるようで、これを導入したところ、うまく動作しOpera12問題は解消した。
+// 　肝はsetsockoptでIPV6_V6ONLYフラグを落とす事。127.0.0.1のアクセスは接続元IP
+// 　「::ffff:127.0.0.1」というアドレスとして認識され、どうもIPv4アドレスがIPv6
+// 　アドレスにマッピングされているような感じ。
+//　　http://msdn.microsoft.com/en-us/library/windows/desktop/bb513665%28v=vs.85%29.aspx
+//　　http://msdn.microsoft.com/en-us/library/windows/desktop/ms737937(v=vs.85).aspx
+// ・その後、bindアドレスを(ANYではなく)localhost(loopback)にできる機能を導入した
+// 　ところ、ふたたびWin7+Opera12問題が発生した。挙動はおなじ。
+// ・netstat -a を見ると、待受アドレスが ::1 と 0.0.0.0 の２つあっておかしい。
+// 　0.0.0.0は127.0.0.1ではないのか。調べたたところ、デュアルスタックソケットは
+// 　bindアドレスがANYなら動作するけど、指定アドレスbindでは動作しないような情報
+// 　があり、指定アドレスbindの場合は結局IPv4アドレスとIPv6アドレスと２つ待受
+// 　ソケットを作らないとダメっぽい感じであった。
+//　　http://serverfault.com/questions/486038/dual-stack-mode-bind-to-any-address-other-than-0-0-0-0
+// ・ANYの場合はデュアルスタックにしてloopbackの場合は２つソケット使うのも無駄に
+// 　コードが増えるので、どちらも２つソケットを使うことにした。
+// 　　ANY の場合は :: と 0.0.0.0 で待受。
+// 　　Loopback の場合は ::1 と 127.0.0.1 で待受。
+// TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
+// 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
+// http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
+SOCKET ListenAddrOne( ADDRINFOW* adr )
+{
+	SOCKET	sock	= INVALID_SOCKET;
+	BOOL	success	= FALSE;
+
+	if( adr ){
+		sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
+		// Listenゾンビが発生した場合SO_REUSEADDRが有効。だが、副作用でポート競合しても(すでにListenされてても)
+		// bindエラーにならず、ポートを奪い取ってしまうような挙動になる。自分のListenゾンビを奪うぶんにはいいが
+		// 他アプリのポートだったら迷惑千万…やっぱポート重複エラーになってくれたほうがうれしい…
+		//int on=1;
+		//if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on) )!=SOCKET_ERROR ){
+		if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
+			#define BACKLOG 128
+			if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
+				// 待ち受け開始したので、次
+				// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
+				// その時 lParam に FD_ACCEPT が格納されている。
+				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
+					WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
+					// GetNameInfoW は XP (SP2?) 以降のAPIらしいが、Windows2000でもいちおう使えるとかなんとか？
+					// http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
+					// でも環境がないしなぁ・・・
+					// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
+					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen
+							,ip ,sizeof(ip)/sizeof(WCHAR)
+							,NULL,0,NI_NUMERICHOST
+					);
+					LogW(L"[%u] ポート%sで待機します - http%s://%s:%s/"
+							,sock
+							,ListenPort
+							,(HttpsRemote && HttpsLocal)? L"s" : (HttpsRemote || HttpsLocal)? L"(s)" :L""
+							,ip ,ListenPort
+					);
+					success = TRUE;
+				}
+				else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
+			}
+			else LogW(L"listenエラー(%u)",WSAGetLastError());
+		}
+		else LogW(L"bindエラー(%u)",WSAGetLastError());
+	}
+	if( !success && sock !=INVALID_SOCKET ){
+		shutdown( sock, SD_BOTH );
+		closesocket( sock );
+		sock = INVALID_SOCKET;
+	}
+	return sock;
+}
 BOOL ListenStart( void )
 {
-	SOCKET		sock	= INVALID_SOCKET;
 	ADDRINFOW*	adr		= NULL;
 	ADDRINFOW	hint;
 	BOOL		success	= FALSE;
@@ -4466,73 +4542,14 @@ BOOL ListenStart( void )
 	hint.ai_flags	 = AI_PASSIVE;
 
 	if( GetAddrInfoW( BindLocal? L"localhost" :NULL ,ListenPort ,&hint ,&adr )==0 ){
-		sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
-		if( adr->ai_family==AF_INET6 ){
-			// IPv6+Opera12でhttp://localhost:～/に接続できない問題が発覚(問い合わせで)。
-			// http://[::1]:～/ならアクセスできたので、localhost→::1の名前解決がおかしいのか？
-			// 127.0.0.1に接続しようとしているのか？ググったらOperaの不具合かのような情報もあったが、
-			// JCBookmark側も、IPv6環境ではhttp://[::1]:～/ならアクセスできるけどhttp://127.0.0.1:～/では
-			// アクセスできない、つまりIPv6でしか待ち受けていなかった。
-			// IPv4/IPv6どちらも対応する事をデュアルスタックと呼ぶらしく、setsockoptでIPV6_V6ONLYフラグ
-			// を落とせばいいらしい。
-			// http://msdn.microsoft.com/en-us/library/windows/desktop/bb513665%28v=vs.85%29.aspx
-			// http://msdn.microsoft.com/en-us/library/windows/desktop/ms737937(v=vs.85).aspx
-			// これでWin7ではデュアルスタックになったもよう。Opera12もlocalhost接続できた。
-			// 接続元IPが「::ffff:127.0.0.1」になってる。これがIPv6アドレスマッピング形式？
-			// やはりOpera12は127.0.0.1に接続しようとしていたということか。
-			// TODO:XP SP1 以前と2003はこの方式のデュアルスタックはダメと書いてある？GetAddrInfoで見つかった
-			// IPv4アドレスとIPv6アドレスぜんぶで待受ソケットを作って、複数待受ソケットを管理しないとダメ
-			// と書いてあるように見える。その方式の場合はListenソケットが複数必要で改造が大きい。
-			// TODO:このsetosockopt(IPV6_V6ONLY)ってTCPクライアントプログラムでもやる話なのかどうか？
-			// TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
-			// 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
-			// http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
-			int zero=0;
-			if( setsockopt( sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&zero, sizeof(zero) )==SOCKET_ERROR ){
-				LogW(L"setsockopt(IPV6_V6ONLY=0)エラー");
-			}
-		}
-		//int on=1;
-		//if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, (char*)&on, sizeof(on) )!=SOCKET_ERROR ){	// zombie対策
-		// Listenゾンビが発生した場合SO_REUSEADDRが有効。だが、副作用でポート競合しても(すでにListenされてても)
-		// bindエラーにならず、ポートを奪い取ってしまうような挙動になる。自分のListenゾンビを奪うぶんにはいいが
-		// 他アプリのポートだったら迷惑千万…やっぱポート重複エラーになってくれたほうがうれしい…
-		if( 1 ){
-			if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
-				#define BACKLOG 128
-				if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
-					// 待ち受け開始したので、次
-					// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
-					// その時 lParam に FD_ACCEPT が格納されている。
-					if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
-						LogW(L"ポート%sで待機します - http%s://localhost:%s/"
-								,ListenPort
-								,(HttpsRemote && HttpsLocal)? L"s" : (HttpsRemote || HttpsLocal)? L"(s)" :L""
-								,ListenPort
-						);
-						ListenSock = sock;
-						success = TRUE;
-					}
-					else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
-				}
-				else LogW(L"listenエラー(%u)",WSAGetLastError());
-			}
-			else LogW(L"bindエラー(%u)",WSAGetLastError());
-		}
-		else LogW(L"setsockoptエラー(%u)",WSAGetLastError());
-
+		ListenSock1 = ListenAddrOne( adr );
+		ListenSock2 = ListenAddrOne( adr->ai_next );
 		FreeAddrInfoW( adr );
 	}
 	else LogW(L"getaddrinfoエラー(%u)",WSAGetLastError());
 
-	if( !success ){
-		if( sock !=INVALID_SOCKET ){
-			shutdown( sock, SD_BOTH );
-			closesocket( sock );
-		}
-		ListenSock = INVALID_SOCKET;
-	}
-	return success;
+	if( ListenSock1==INVALID_SOCKET && ListenSock2==INVALID_SOCKET ) return FALSE;
+	return TRUE;
 }
 
 void SocketAccept( SOCKET sock )
@@ -4547,10 +4564,6 @@ void SocketAccept( SOCKET sock )
 		WCHAR		ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
 		BOOL		success = FALSE;
 		SSL*		sslp = NULL;
-		// GetNameInfoW は XP (SP2?) 以降のAPIらしいが、Windows2000でもいちおう使えるとかなんとか？
-		// http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
-		// でも環境がないしなぁ・・・
-		// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
 		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
 		if( cp ){
 			BOOL isSSL = FALSE;
@@ -5010,9 +5023,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									fclose( fp );
 									if( nextid >1 ){
 										cp->rsp.readfh = CreateFileW( tmppath
-												,GENERIC_READ
-												,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-												,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+												,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+												,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 										);
 									}
 									else LogW(L"[%u]IEお気に入りデータありません",Num(cp));
@@ -5036,9 +5048,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										fclose( fp );
 										if( nextid >1 ){
 											cp->rsp.readfh = CreateFileW( tmppath
-													,GENERIC_READ
-													,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-													,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+													,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+													,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 											);
 										}
 										else LogW(L"[%u]Firefoxブックマークデータありません",Num(cp));
@@ -5077,9 +5088,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										fclose( fp );
 										if( count ){
 											cp->rsp.readfh = CreateFileW( tmppath
-													,GENERIC_READ
-													,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-													,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+													,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+													,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 											);
 										}
 									}
@@ -5100,9 +5110,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// ドキュメントルート配下のみ
 							if( UnderDocumentRoot(realpath) ){
 								cp->rsp.readfh = CreateFileW( realpath
-										,GENERIC_READ
-										,FILE_SHARE_READ |FILE_SHARE_WRITE |FILE_SHARE_DELETE
-										,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+										,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+										,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 								);
 							}
 						}
@@ -5483,10 +5492,15 @@ void SocketShutdown( void )
 	BOOL retry;
 	UINT i, count=0;
 
-	if( ListenSock !=INVALID_SOCKET ){
-		shutdown( ListenSock, SD_BOTH );
-		closesocket( ListenSock );
-		ListenSock = INVALID_SOCKET;
+	if( ListenSock1 !=INVALID_SOCKET ){
+		shutdown( ListenSock1, SD_BOTH );
+		closesocket( ListenSock1 );
+		ListenSock1 = INVALID_SOCKET;
+	}
+	if( ListenSock2 !=INVALID_SOCKET ){
+		shutdown( ListenSock2, SD_BOTH );
+		closesocket( ListenSock2 );
+		ListenSock2 = INVALID_SOCKET;
 	}
 retry:
 	for( retry=FALSE, i=0; i<CLIENT_MAX; i++ ){
@@ -5540,7 +5554,7 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 	return -1;
 }
 // SSL自己署名サーバ証明書・秘密鍵作成
-void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
+BOOL SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 {
 	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
 	EVP_PKEY*		pkey	= EVP_PKEY_new();
@@ -5550,6 +5564,9 @@ void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 	RSA*			rsa		= RSA_new();
 	X509_NAME*		name	= NULL;
 	FILE*			fp		= NULL;
+	BOOL			success	= FALSE;
+
+	LogW(L"SSL自己署名証明書を作成します...");
 
 	if( !serial ){ LogW(L"ASN1_INTEGER_newエラー"); goto fin; }
 	if( !pkey ){ LogW(L"EVP_PKEY_newエラー"); goto fin; }
@@ -5559,45 +5576,55 @@ void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 	if( !rsa ){ LogW(L"RSA_newエラー"); goto fin; }
 
 	// openssl-1.0.0j/apps/genrsa.c
-	if( !BN_set_word( exp, RSA_F4 ) ){
+	LogW(L"BN_set_word(RSA_F4)..");
+	if( !BN_set_word( exp ,RSA_F4 ) ){
 		LogW(L"BN_set_wordエラー");
 		goto fin;
 	}
-	// 鍵長2048bit
-	if( RSA_generate_key_ex( rsa, 2048, exp, NULL ) !=1 ){
+	#define RSAKEY_LEN 2048 // 鍵長2048bit
+	LogW(L"RSA_generate_key(%u)..",RSAKEY_LEN);
+	if( RSA_generate_key_ex( rsa ,RSAKEY_LEN ,exp ,NULL ) !=1 ){
 		LogW(L"RSA_generate_key_exエラー");
 		goto fin;
 	}
 	// openssl-1.0.0j/apps/x509.c
 	// openssl-1.0.0j/apps/apps.c:int rand_serial(BIGNUM *b, ASN1_INTEGER *ai)
 	#define SERIAL_RAND_BITS 64
-	if( !BN_pseudo_rand( big, SERIAL_RAND_BITS, 0, 0 ) ){
+	LogW(L"BN_pseudo_rand(%u)..",SERIAL_RAND_BITS);
+	if( !BN_pseudo_rand( big ,SERIAL_RAND_BITS ,0,0 ) ){
 		LogW(L"BN_pseudo_randエラー");
 		goto fin;
 	}
-	if( !BN_to_ASN1_INTEGER( big, serial ) ){
+	LogW(L"BN_to_ASN1_INTEGER..");
+	if( !BN_to_ASN1_INTEGER( big ,serial ) ){
 		LogW(L"BN_pseudo_randエラー");
 		goto fin;
 	}
-	if( !X509_set_serialNumber( x509, serial ) ){
+	LogW(L"X509_set_serialNumber..");
+	if( !X509_set_serialNumber( x509 ,serial ) ){
 		LogW(L"X509_set_serialNumberエラー");
 		goto fin;
 	}
 	// openssl-1.0.0j/demos/selfsign.c
-	if( !EVP_PKEY_assign_RSA( pkey, rsa ) ){
+	LogW(L"EVP_PKEY_assign_RSA..");
+	if( !EVP_PKEY_assign_RSA( pkey ,rsa ) ){
 		LogW(L"EVP_PKEY_assign_RSAエラー");
 		goto fin;
 	}
 	rsa = NULL;
-	X509_set_version( x509, 2 ); // 2 -> x509v3
-	// 証明書有効期間3650日
-	if( !X509_gmtime_adj( X509_get_notBefore(x509), 0 ) ||
-		!X509_gmtime_adj( X509_get_notAfter(x509), 60*60*24*365*10 )
+	LogW(L"X509_set_version(2)..");
+	X509_set_version( x509 ,2 ); // 2 -> x509v3
+
+	#define SSLCERT_DAYS 3650
+	LogW(L"X509_gmtime_adj(60*60*24*%u)..",SSLCERT_DAYS);
+	if( !X509_gmtime_adj( X509_get_notBefore(x509) ,0 ) ||
+		!X509_gmtime_adj( X509_get_notAfter(x509) ,60*60*24*SSLCERT_DAYS )
 	){
-		LogW(L"X509_gmtime_adfエラー");
+		LogW(L"X509_gmtime_adjエラー");
 		goto fin;
 	}
-	if( !X509_set_pubkey( x509, pkey ) ){
+	LogW(L"X509_set_pubkey..");
+	if( !X509_set_pubkey( x509 ,pkey ) ){
 		LogW(L"X509_set_pubkeyエラー");
 		goto fin;
 	}
@@ -5607,39 +5634,46 @@ void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 		LogW(L"X509_get_subject_nameエラー");
 		goto fin;
 	}
+	LogW(L"X509_NAME_add_entry(C=JP,CN=JCBookmark)..");
 	if( !X509_NAME_add_entry_by_txt(name,"C",MBSTRING_ASC,"JP",-1,-1,0) ||
 		!X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,"JCBookmark",-1,-1,0)
 	){
 		LogW(L"X509_NAME_add_entry_by_txtエラー");
 		goto fin;
 	}
-	if( !X509_set_issuer_name( x509, name ) ){
+	LogW(L"X509_set_issuer_name..");
+	if( !X509_set_issuer_name( x509 ,name ) ){
 		LogW(L"X509_set_issuer_nameエラー");
 		goto fin;
 	}
-	if( !X509_sign( x509, pkey, EVP_sha1() ) ){
+	LogW(L"X509_sitn(sha1)..");
+	if( !X509_sign( x509 ,pkey ,EVP_sha1() ) ){
 		LogW(L"X509_signエラー");
 		goto fin;
 	}
-	// ファイル保存
-	fp = _wfopen( crtfile, L"wb" );
+	LogW(L"証明書をファイルに保存..");
+	fp = _wfopen( crtfile ,L"wb" );
 	if( fp ){
-		PEM_write_X509( fp, x509 );
+		PEM_write_X509( fp ,x509 );
 		fclose( fp );
 	}
 	else{
 		LogW(L"fopen(%s)エラー",crtfile);
 		goto fin;
 	}
+	LogW(L"秘密鍵をファイルに保存..");
 	fp = _wfopen( keyfile, L"wb" );
 	if( fp ){
-		PEM_write_PrivateKey( fp, pkey, NULL,NULL,0,NULL,NULL );
+		PEM_write_PrivateKey( fp ,pkey ,NULL,NULL,0,NULL,NULL );
 		fclose( fp );
 	}
 	else{
 		LogW(L"fopen(%s)エラー",keyfile);
 		goto fin;
 	}
+	LogW(L"証明書:%s",crtfile);
+	LogW(L"秘密鍵:%s",keyfile);
+	success = TRUE;
  fin:
 	if( serial ) ASN1_INTEGER_free( serial );
 	if( pkey ) EVP_PKEY_free( pkey );
@@ -5647,59 +5681,88 @@ void SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 	if( rsa ) RSA_free( rsa );
 	if( exp ) BN_free( exp );
 	if( big ) BN_free( big );
+	return success;
 }
 // SSL証明書ファイルを読み込んでSSLコンテキストに登録
-void SSL_CTX_UseCertificate( SSL_CTX* ctx, WCHAR* crtfile, WCHAR* keyfile )
+void SSL_CTX_UseCertificate( WCHAR* crtfile, WCHAR* keyfile )
 {
-	X509*		x509 = NULL;
-	EVP_PKEY*	pkey = NULL;
-	FILE*		fp = NULL;
-
-	fp = _wfopen( crtfile, L"rb" );
+	FILE* fp = _wfopen( crtfile ,L"rb" );
 	if( fp ){
-		x509 = PEM_read_X509( fp, NULL,NULL,NULL );
+		X509* x509 = PEM_read_X509( fp ,NULL,NULL,NULL );
 		fclose( fp );
+		if( x509 ){
+			if( SSL_CTX_use_certificate( ssl_ctx ,x509 )==1 ){
+				UCHAR buf[256];
+				BIO* bio = BIO_new( BIO_s_mem() );
+				LogW(L"SSLサーバ証明書");
+				X509_NAME_oneline( X509_get_subject_name(x509) ,buf ,sizeof(buf) );
+				buf[sizeof(buf)-1]='\0'; LogA("所有者: %s",buf);
+				X509_NAME_oneline( X509_get_issuer_name(x509) ,buf ,sizeof(buf) );
+				buf[sizeof(buf)-1]='\0'; LogA("発行者: %s",buf);
+				// http://stackoverflow.com/questions/11683021/openssl-c-get-expiry-date
+				if( bio ){
+					int bytes;
+					if( ASN1_TIME_print( bio ,X509_get_notBefore(x509) ) ){
+						*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
+						buf[bytes]='\0'; LogA("有効期間開始: %s",buf);
+					}
+					if( ASN1_TIME_print( bio ,X509_get_notAfter(x509) ) ){
+						*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
+						buf[bytes]='\0'; LogA("有効期間終了: %s",buf);
+					}
+					BIO_free( bio );
+				}
+				else LogW(L"BIO_newエラー");
+			}
+			else LogW(L"SSL_CTX_use_certificateエラー");
+			X509_free( x509 );
+		}
+		else LogW(L"PEM_read_X509エラー");
 	}
 	else LogW(L"fopen(%s)エラー",crtfile);
 
-	fp = _wfopen( keyfile, L"rb" );
+	fp = _wfopen( keyfile ,L"rb" );
 	if( fp ){
-		pkey = PEM_read_PrivateKey( fp, NULL,NULL,NULL );
+		EVP_PKEY* pkey = PEM_read_PrivateKey( fp ,NULL,NULL,NULL );
 		fclose( fp );
+		if( pkey ){
+			if( SSL_CTX_use_PrivateKey( ssl_ctx ,pkey ) !=1 ){
+				LogW(L"SSL_CTX_use_PrivateKeyエラー");
+			}
+			EVP_PKEY_free( pkey );
+		}
 	}
 	else LogW(L"fopen(%s)エラー",keyfile);
+}
+// 証明書ファイルが新しかったら読み込む
+void SSLCertLoad( void )
+{
+	static FILETIME lastWrite = {0};
 
-	if( x509 && pkey ){
-		if( SSL_CTX_use_certificate( ctx, x509 )==1 ){
-			UCHAR buf[256];
-			BIO* bio = BIO_new( BIO_s_mem() );
-			LogW(L"SSLサーバ証明書");
-			X509_NAME_oneline( X509_get_subject_name(x509) ,buf ,sizeof(buf) );
-			buf[sizeof(buf)-1]='\0'; LogA("所有者: %s",buf);
-			X509_NAME_oneline( X509_get_issuer_name(x509) ,buf ,sizeof(buf) );
-			buf[sizeof(buf)-1]='\0'; LogA("発行者: %s",buf);
-			// http://stackoverflow.com/questions/11683021/openssl-c-get-expiry-date
-			if( bio ){
-				int bytes;
-				if( ASN1_TIME_print( bio ,X509_get_notBefore(x509) ) ){
-					*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
-					buf[bytes]='\0'; LogA("有効期間開始: %s",buf);
+	if( HttpsRemote || HttpsLocal ){
+		WCHAR* crtfile = AppFilePath(L"ssl.crt");
+		WCHAR* keyfile = AppFilePath(L"ssl.key");
+		if( crtfile && keyfile ){
+			HANDLE hFile = CreateFileW( crtfile ,GENERIC_READ ,FILE_SHARE_READ ,NULL,
+										OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+			);
+			if( hFile ){
+				FILETIME writeTime;
+				BOOL	 success = GetFileTime( hFile ,NULL ,NULL ,&writeTime );
+				CloseHandle( hFile );
+				if( success ){
+					if( CompareFileTime( &writeTime ,&lastWrite ) ){
+						lastWrite = writeTime;
+						SSL_CTX_UseCertificate( crtfile, keyfile );
+					}
 				}
-				if( ASN1_TIME_print( bio, X509_get_notAfter(x509) ) ){
-					*buf='\0'; bytes = BIO_read( bio ,buf ,sizeof(buf) );
-					buf[bytes]='\0'; LogA("有効期間終了: %s",buf);
-				}
-				BIO_free( bio );
+				else LogW(L"GetFileTime(%s)エラー%u",crtfile,GetLastError());
 			}
+			else LogW(L"CreateFile(%s)エラー%u",crtfile,GetLastError());
 		}
-		else LogW(L"SSL_CTX_use_certificateエラー");
-
-		if( SSL_CTX_use_PrivateKey( ctx, pkey ) !=1 ){
-			LogW(L"SSL_CTX_use_PrivateKeyエラー");
-		}
+		if( crtfile ) free( crtfile );
+		if( keyfile ) free( keyfile );
 	}
-	if( pkey ) EVP_PKEY_free( pkey );
-	if( x509 ) X509_free( x509 );
 }
 void ConfigSave(
 		WCHAR*	ListenPort
@@ -5803,7 +5866,6 @@ typedef struct {
 	HFONT		hFontM;
 	HFONT		hFontS;
 	HIMAGELIST	hImage;
-	BOOL		SSLCertNew;
 	DWORD		result;
 } ConfigDialogData;
 
@@ -6199,15 +6261,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						if( wExe[i] ) free( wExe[i] );
 						if( wArg[i] ) free( wArg[i] );
 					}
-					PostMessage( MainForm, WM_SETTING_OK, 0,0 );
-					if( my->SSLCertNew ) PostMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
 					my->result = ID_DLG_OK;
 					DestroyWindow( hwnd );
 				}
 				break;
 
 			case ID_DLG_CANCEL:
-				if( my->SSLCertNew ) PostMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
 				my->result = ID_DLG_CANCEL;
 				DestroyWindow( hwnd );
 				break;
@@ -6267,7 +6326,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					if( sslCrt && sslKey ){
 						int r = IDYES;
 						if( PathFileExists(sslCrt) || PathFileExists(sslKey) ){
-							r = MessageBox( hwnd
+							r = MessageBoxW( hwnd
 									,L"現在の証明書（ssl.crt）と秘密鍵（ssl.key）を消去・上書きします。"
 									L"実行しますか？"
 									,L"確認" ,MB_YESNO |MB_ICONQUESTION
@@ -6275,19 +6334,21 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						}
 						if( r==IDYES ){
 							HCURSOR cursor;
+							BOOL	success;
 							DeleteFileW( sslCrt );
 							DeleteFileW( sslKey );
 							// TODO:2秒くらいかかりプログレスバーが親切だが面倒なので砂時計カーソル。
 							cursor = SetCursor( LoadCursor(NULL,IDC_WAIT) );
-							SSL_SelfCertificateCreate( sslCrt ,sslKey );
+							success = SSL_SelfCertificateCreate( sslCrt ,sslKey );
 							SetCursor( cursor );
-							my->SSLCertNew = TRUE;
 							SetWindowTextW( my->hSSLCrt
 								,PathFileExists(sslCrt)? L"サーバ証明書：ssl.crt" :L"サーバ証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
 								,PathFileExists(sslKey)? L"秘密鍵：ssl.key" :L"秘密鍵：なし"
 							);
+							if( success ) MessageBoxW( hwnd ,L"作成しました" ,L"情報" ,MB_ICONINFORMATION );
+							else MessageBoxW( hwnd ,L"エラーが発生しました" ,L"エラー" ,MB_ICONERROR );
 						}
 					}
 					if( sslCrt ) free( sslCrt );
@@ -6546,7 +6607,7 @@ void BrowserIconClick( UINT ix )
 	}
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-	if( empty || invalid ) ConfigDialog(ix+1);
+	if( empty || invalid ) PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(ix+1) ,0 ); 
 }
 // ツールチップ
 // http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
@@ -6682,7 +6743,7 @@ void MainFormTimer1000( void )
 		if( GetProcessMemoryInfo( ThisProcess, &pmc, sizeof(pmc) ) )
 			_snwprintf(mem,sizeof(mem)/sizeof(WCHAR),L" (PF %u KB)",pmc.PagefileUsage /1024);
 
-		if( ListenSock==INVALID_SOCKET )
+		if( ListenSock1==INVALID_SOCKET && ListenSock2==INVALID_SOCKET )
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR),L"%s - エラー%s",APPNAME,mem);
 		else
 			_snwprintf(text,sizeof(text)/sizeof(WCHAR)
@@ -6705,11 +6766,9 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	WCHAR wpath[MAX_PATH+1];
 	// タイマー起動
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
-	// OpenSSL
-	SSL_library_init();
-	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	if( ssl_ctx ) SendMessage( MainForm, WM_SSLCERT_NEW, 0,0 );
-	else LogW(L"SSL_CTX_newエラー");
+	// ブラウザ起動ボタン
+	*browser = BrowserIconCreate();
+	*hToolTip = BrowserIconTipCreate( *browser );
 	// mlang.dll
 	// DLL読み込み脆弱性対策フルパスで指定する。
 	// http://www.ipa.go.jp/about/press/20101111.html
@@ -6728,11 +6787,12 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		MoveFileA( "tree.json.empty", "tree.json" );
 		SetCurrentDirectoryW( wpath );
 	}
+	// OpenSSL
+	SSL_library_init();
+	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
+	if( ssl_ctx ) SSLCertLoad(); else LogW(L"SSL_CTX_newエラー");
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
-	// ブラウザ起動ボタン
-	*browser = BrowserIconCreate();
-	*hToolTip = BrowserIconTipCreate( *browser );
 	// 待受開始
 	for( ;; ){
 		// listen成功でループ抜け
@@ -7052,7 +7112,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			ListBoxWidth = 0;
 			break;
 		case CMD_SETTING:	// 設定
-			ConfigDialog(0);
+			PostMessage( hwnd ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(0) ,0 );
 			break;
 		case CMD_ABOUT:		// バージョン情報
 			AboutBox();
@@ -7068,37 +7128,29 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0;
 
-	case WM_SETTING_OK: // 設定ダイアログOK
+	case WM_CONFIG_DIALOG: // 設定ダイアログ後処理
 		{
-			WCHAR	oldPort[8];
-			BOOL	oldBindLocal = BindLocal;		// bind設定退避
-			wcscpy( oldPort, ListenPort );			// 現在ポート退避
-			ServerParamGet();
-			if( oldBindLocal!=BindLocal || wcscmp(oldPort,ListenPort) ){
-				// bind設定orポート番号変わった
-				BOOL success;
-				SocketShutdown();					// コネクション切断
-				success = ListenStart();			// 待ち受け開始
-				MainFormTimer1000();				// タイトルバー
-				// Listen失敗時は再び設定ダイアログ
-				if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
+			if( wp==ID_DLG_OK ){
+				WCHAR	oldPort[8];
+				BOOL	oldBindLocal = BindLocal;		// bind設定退避
+				wcscpy( oldPort, ListenPort );			// 現在ポート退避
+				ServerParamGet();
+				SSLCertLoad();
+				if( oldBindLocal!=BindLocal || wcscmp(oldPort,ListenPort) ){
+					// bind設定orポート番号変わった
+					BOOL success;
+					SocketShutdown();					// コネクション切断
+					success = ListenStart();			// 待ち受け開始
+					MainFormTimer1000();				// タイトルバー
+					// Listen失敗時は再び設定ダイアログ
+					if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
+				}
+				DestroyWindow( hToolTip );
+				BrowserIconDestroy( browser );
+				browser = BrowserIconCreate();
+				hToolTip = BrowserIconTipCreate( browser );
 			}
-			DestroyWindow( hToolTip );
-			BrowserIconDestroy( browser );
-			browser = BrowserIconCreate();
-			hToolTip = BrowserIconTipCreate( browser );
-		}
-		return 0;
-
-	case WM_SSLCERT_NEW: // SSL証明書読み込み
-		{
-			WCHAR* crtfile = AppFilePath(L"ssl.crt");
-			WCHAR* keyfile = AppFilePath(L"ssl.key");
-			if( crtfile && keyfile ){
-				if( HttpsRemote || HttpsLocal ) SSL_CTX_UseCertificate( ssl_ctx, crtfile, keyfile );
-			}
-			if( crtfile ) free( crtfile );
-			if( keyfile ) free( keyfile );
+			else SSLCertLoad();
 		}
 		return 0;
 
