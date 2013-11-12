@@ -101,7 +101,7 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		MAINFORMCLASS		L"MainForm"
-#define		APPNAME				L"JCBookmark v1.9dev"
+#define		APPNAME				L"JCBookmark v1.9"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -149,7 +149,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -4478,6 +4478,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 // 　コードが増えるので、どちらも２つソケットを使うことにした。
 // 　　ANY の場合は :: と 0.0.0.0 で待受。
 // 　　Loopback の場合は ::1 と 127.0.0.1 で待受。
+// TODO:IPv4とIPv6と２ソケットで待受して、さらにIPv6ソケット側はデュアルスタックにするのは意味なし？
 // TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
 // 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
 // http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
@@ -6261,6 +6262,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						if( wExe[i] ) free( wExe[i] );
 						if( wArg[i] ) free( wArg[i] );
 					}
+					// TODO:SSL使うけど証明書なしの場合にダイアログで証明書作るか聞く？
 					my->result = ID_DLG_OK;
 					DestroyWindow( hwnd );
 				}
