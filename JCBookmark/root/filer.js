@@ -803,7 +803,7 @@ $('#exit').click(function(){
 	}
 	else reload();
 
-	function reload(){ location.href = 'index.html'; }
+	function reload(){ location.href = '/'; }
 });
 // 新規フォルダ
 $('#newfolder').click(function(){
