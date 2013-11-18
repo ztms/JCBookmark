@@ -26,10 +26,6 @@
 //	http://d.hatena.ne.jp/htz/20090222/1235322977
 //	TODO:ログがいっぱい出るとListBoxのメモリ使用量が気になるのでログレベルの設定を作るべきか。
 //	「ログなし」「普通」「大量」
-//	TODO:通信相手が途中で死んだとき切断されずゾンビ接続になってしまったことがあったけど再現が難しいようだ。
-//	ゾンビが溜まって最大同時接続数になると新規接続もできなかった。発生したらどうすんの？一定時間無通信だっ
-//	たら切断するとか監視しないとダメ？クライアントバッファに時刻メンバを持たせて、最後の処理時刻を格納して
-//	おき、1秒毎のメモリ表示タイミングで、その処理時刻から1分とか時間が経ってたら無通信と判断して切断する？
 //	TODO:スタック使用量が気になる・・
 //	http://yabooo.org/archives/65
 //	http://okwave.jp/qa/q1099230.html
@@ -38,12 +34,6 @@
 //	全部LB_GETTEXTして自力検索すればいいか。でも一致部分だけ反転表示とかできないとショボいし…。
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
-//	TODO:Connection:Keep-Alive
-//	http://www.studyinghttp.net/connections
-//	http://www.cresc.co.jp/tech/java/Servlet_Tutorial/Lesson_36.htm
-//	http://www.softel.co.jp/blogs/tech/archives/2490
-//	http://www.tohoho-web.com/ex/http.htm
-//	Releaseビルドでなぜかフリーズしてしまう事が何度かあった。IDEデバッグ実行で再現しない謎現象。
 //	TODO:Digest認証(Basic認証はいらないよな…)
 //	http://www.studyinghttp.net/auth
 //	Windowsログインユーザとおなじユーザ名パスワードを使えるか？
@@ -1167,20 +1157,17 @@ typedef struct {
 } Request;
 
 typedef struct {
-	UCHAR*		top;
-	UINT		bytes;
-	size_t		size;
+	UCHAR*		top;				// バッファ先頭
+	UINT		bytes;				// 有効バイト
+	size_t		size;				// 全体サイズ
 } Buffer;
 
 typedef struct {
-	//UCHAR*		buf;				// レスポンス送信バッファ
 	Buffer		head;				// レスポンスヘッダ
 	Buffer		body;				// レスポンスボディ
 	HANDLE		readfh;				// 送信ファイルハンドル
 	DWORD		readed;				// 送信ファイル読込済みバイト
 	UINT		sended;				// 送信済みバイト
-	//UINT		bytes;				// 送信バッファ有効バイト
-	//size_t		bufsize;			// 送信バッファサイズ
 } Response;
 
 typedef struct TClient {
@@ -1247,12 +1234,6 @@ void ClientShutdown( TClient* cp )
 		}
 		CloseHandle( cp->req.writefh );
 		CloseHandle( cp->rsp.readfh );
-		//if( cp->req.buf ){
-		//	free( cp->req.buf );
-		//}
-		//if( cp->rsp.buf ){
-		//	free( cp->rsp.buf );
-		//}
 		if( cp->req.buf ) free( cp->req.buf );
 		if( cp->rsp.head.top ) free( cp->rsp.head.top );
 		if( cp->rsp.body.top ) free( cp->rsp.body.top );
@@ -1260,28 +1241,14 @@ void ClientShutdown( TClient* cp )
 		ClientInit( cp );
 	}
 }
-//BOOL ResponseBufferSize( TClient* cp, size_t bytes )
 BOOL BufferSize( Buffer* bp, size_t bytes )
 {
-	//Response* rsp = &(cp->rsp);
-	//size_t need = rsp->bytes + bytes;
 	size_t need = bp->bytes + bytes;
-	//if( need > rsp->bufsize ){
 	if( need > bp->size ){
 		// バッファ拡大
-		//UCHAR* newbuf;
-		//size_t newsize = rsp->bufsize * 2;
 		UCHAR* newtop;
 		size_t newsize = bp->size * 2;
 		while( need > newsize ){ newsize *= 2; }
-		//newbuf = malloc( newsize );
-		//if( newbuf ){
-			//memset( newbuf, 0, newsize );
-			//memcpy( newbuf, rsp->buf, rsp->bytes );
-			//free( rsp->buf );
-			//rsp->buf = newbuf;
-			//rsp->bufsize = newsize;
-			//LogW(L"[%u]送信バッファ拡大%ubytes",Num(cp),newsize);
 		newtop = malloc( newsize );
 		if( newtop ){
 			memset( newtop, 0, newsize );
@@ -1292,24 +1259,18 @@ BOOL BufferSize( Buffer* bp, size_t bytes )
 			LogW(L"送信バッファ拡大%ubytes",newsize);
 			return TRUE;
 		}
-		//LogW(L"[%u]mallocエラー送信データ破棄",Num(cp));
 		LogW(L"mallocエラー送信データ破棄");
 		return FALSE;
 	}
 	return TRUE;
 }
-//void ClientSend( TClient* cp, UCHAR* data, size_t bytes )
 void BufferSend( Buffer* bp, UCHAR* data, size_t bytes )
 {
-	//if( BufferSize( &(cp->rsp.head), bytes ) ){
 	if( BufferSize( bp, bytes ) ){
-		//memcpy( cp->rsp.buf + cp->rsp.bytes, data, bytes );
-		//cp->rsp.bytes += bytes;
 		memcpy( bp->top + bp->bytes, data, bytes );
 		bp->bytes += bytes;
 	}
 }
-//void ResponseFile( TClient*cp, WCHAR* path )
 void BufferSendFile( Buffer* bp, WCHAR* path )
 {
 	HANDLE hFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
@@ -1317,11 +1278,8 @@ void BufferSendFile( Buffer* bp, WCHAR* path )
 	);
 	if( hFile !=INVALID_HANDLE_VALUE ){
 		DWORD bytes = GetFileSize( hFile, NULL );
-		//if( ResponseBufferSize( cp, bytes ) ){
 		if( BufferSize( bp, bytes ) ){
 			DWORD bRead=0;
-			//if( ReadFile( hFile, cp->rsp.buf + cp->rsp.bytes, bytes, &bRead, NULL ) && bytes==bRead ){
-			//	cp->rsp.bytes += bytes;
 			if( ReadFile( hFile, bp->top + bp->bytes, bytes, &bRead, NULL ) && bytes==bRead ){
 				bp->bytes += bytes;
 			}
@@ -1331,9 +1289,7 @@ void BufferSendFile( Buffer* bp, WCHAR* path )
 	}
 	else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
 }
-//#define ClientSends(cp,msg) ClientSend(cp,msg,strlen(msg))
 #define BufferSends(bp,txt) BufferSend(bp,txt,strlen(txt))
-//void ClientSendf( TClient* cp, UCHAR* fmt, ... )
 void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
 {
 	UCHAR msg[256];
@@ -1346,7 +1302,6 @@ void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
 	va_end( arg );
 
 	if( msg[sizeof(msg)-1]=='\0' ){
-		//ClientSends( cp, msg );
 		BufferSends( bp ,msg );
 	}
 	else{
@@ -1362,8 +1317,6 @@ void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
 			va_end( arg );
 
 			if( buf[bufsiz-1]=='\0' ){
-				//LogW(L"[%u]送信一時バッファ確保%ubytes",Num(cp),bufsiz);
-				//ClientSends( cp, buf );
 				LogW(L"送信一時バッファ確保%ubytes",bufsiz);
 				BufferSends( bp ,buf );
 				free( buf );
@@ -1375,13 +1328,11 @@ void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
 				if( buf ){
 					goto retry;
 				}
-				//else LogW(L"[%u]malloc(%u)エラー送信データ破棄",Num(cp),bufsiz);
 				else LogW(L"malloc(%u)エラー送信データ破棄",bufsiz);
 			}
 		}
 	}
 }
-//#define ClientSendErr(p,s) ClientSendf(p,"HTTP/1.0 %s\r\n\r\n<head><title>%s</title></head><body>%s</body>",s,s,s)
 void ResponseError( TClient* cp ,UCHAR* txt )
 {
 	BufferSendf( &(cp->rsp.body)
@@ -2826,18 +2777,6 @@ unsigned __stdcall analyze( void* p )
 			}
 		}
 		// JSON形式応答文字列
-		// Content-Lengthなくても大丈夫なようだ…
-		/*
-		ClientSendf(cp,
-				"HTTP/1.0 200 OK\r\n"
-				"Content-Type: application/json; charset=utf-8\r\n"
-				"Connection: close\r\n"
-				"\r\n"
-				"{\"title\":\"%s\",\"icon\":\"%s\"}"
-				,title?title:""
-				,icon?icon:""
-		);
-		*/
 		BufferSendf( &(cp->rsp.body)
 				,"{\"title\":\"%s\",\"icon\":\"%s\"}"
 				,title? title :""
@@ -2852,8 +2791,7 @@ unsigned __stdcall analyze( void* p )
 				,cp->rsp.body.bytes
 				,cp->req.KeepAlive? "keep-alive" :"close"
 		);
-		// 解放
-	fin:
+	fin:// 解放
 		if( title ) free(title), title=NULL;
 		if( icon ) free(icon), icon=NULL;
 		free(rsp), rsp=NULL;
@@ -3099,15 +3037,6 @@ fin:
 	}
 	else{
 		if( *text ){
-			/*
-			ClientSendf(cp,
-				"HTTP/1.0 200 OK\r\n"
-				"Content-Type: text/plain; charset=utf-8\r\n"
-				"Connection: close\r\n"
-				"\r\n"
-				"%s",text
-			);
-			*/
 			BufferSends( &(cp->rsp.body) ,text );
 			BufferSendf( &(cp->rsp.head)
 					,"HTTP/1.0 200 OK\r\n"
@@ -4515,18 +4444,6 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 					UCHAR inetTime[INTERNET_RFC1123_BUFSIZE];
 					GetSystemTime( &st );
 					InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
-					/*
-					ClientSendf(cp,
-							"HTTP/1.0 200 OK\r\n"
-							"Date: %s\r\n"
-							"Content-Length: %u\r\n"
-							"Content-Type: text/plain; charset=utf-8\r\n"
-							"Connection: close\r\n"
-							"\r\n"
-							,inetTime
-							,GetFileSize(cp->rsp.readfh,NULL)
-					);
-					*/
 					BufferSendf( &(cp->rsp.head)
 							,"HTTP/1.0 200 OK\r\n"
 							"Date: %s\r\n"
@@ -4698,14 +4615,13 @@ void SocketAccept( SOCKET sock )
 				// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら
 				// メッセージが来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
 				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
-					#define REQUEST_BUFSIZE		1024 // 初期バッファサイズ。拡大は滅多にない程度の大きさに調節。
+					// TODO:初期バッファサイズ拡大は滅多にない程度の大きさに調節
+					#define REQUEST_BUFSIZE		1024
 					#define RESPONSE_HEADSIZE	512
 					#define RESPONSE_BODYSIZE	512
 					cp->req.buf = malloc( REQUEST_BUFSIZE );
-					//cp->rsp.buf = malloc( REQUEST_BUFSIZE );
 					cp->rsp.head.top = malloc( RESPONSE_HEADSIZE );
 					cp->rsp.body.top = malloc( RESPONSE_BODYSIZE );
-					//if( cp->req.buf && cp->rsp.buf ){
 					if( cp->req.buf && cp->rsp.head.top && cp->rsp.body.top ){
 						memset( cp->req.buf, 0, REQUEST_BUFSIZE );
 						memset( cp->rsp.head.top, 0, RESPONSE_HEADSIZE );
@@ -4878,51 +4794,35 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
 							// そもそもサーバから返す時にHTML加工してしまう方が無駄がないような…。
 							// それを言ってしまうとtree.jsonもサーバ側でHTMLにした方が無駄がない…。
+							Buffer* bp = &(cp->rsp.body);
 							UINT count=0;
-							/*
-							ClientSends(cp,
-									"HTTP/1.0 200 OK\r\n"
-									"Content-Type: application/json\r\n"
-									"Connection: close\r\n"
-									"\r\n"
-									"{"
-							);
-							*/
-							BufferSend( &(cp->rsp.body) ,"{" ,1 );
+							BufferSend( bp ,"{" ,1 );
 							if( browser ){
 								if( browser[BI_IE].hwnd ){
 									count++;
-									//ClientSends(cp,"\"ie\":1");
-									BufferSends( &(cp->rsp.body) ,"\"ie\":1" );
+									BufferSends( bp ,"\"ie\":1" );
 								}
 								if( browser[BI_CHROME].hwnd ){
-									//if( count++ ) ClientSend(cp,",",1);
-									//ClientSends(cp,"\"chrome\":1");
-									if( count++ ) BufferSend( &(cp->rsp.body) ,"," ,1 );
-									BufferSends( &(cp->rsp.body) ,"\"chrome\":1" );
+									if( count++ ) BufferSend( bp ,"," ,1 );
+									BufferSends( bp ,"\"chrome\":1" );
 								}
 								if( browser[BI_FIREFOX].hwnd ){
-									//if( count++ ) ClientSend(cp,",",1);
-									//ClientSends(cp,"\"firefox\":1");
-									if( count++ ) BufferSend( &(cp->rsp.body) ,"," ,1 );
-									BufferSends( &(cp->rsp.body) ,"\"firefox\":1" );
+									if( count++ ) BufferSend( bp ,"," ,1 );
+									BufferSends( bp ,"\"firefox\":1" );
 								}
 								if( browser[BI_OPERA].hwnd ){
-									//if( count++ ) ClientSend(cp,",",1);
-									//ClientSends(cp,"\"opera\":1");
-									if( count++ ) BufferSend( &(cp->rsp.body) ,"," ,1 );
-									BufferSends( &(cp->rsp.body) ,"\"opera\":1" );
+									if( count++ ) BufferSend( bp ,"," ,1 );
+									BufferSends( bp ,"\"opera\":1" );
 								}
 							}
-							//ClientSend(cp,"}",1);
-							BufferSend( &(cp->rsp.body) ,"}" ,1 );
+							BufferSend( bp ,"}" ,1 );
 							BufferSendf( &(cp->rsp.head)
 									,"HTTP/1.0 200 OK\r\n"
 									"Content-Type: application/json\r\n"
 									"Content-Length: %u\r\n"
 									"Connection: %s\r\n"
 									"\r\n"
-									,cp->rsp.body.bytes
+									,bp->bytes
 									,cp->req.KeepAlive? "keep-alive" :"close"
 							);
 							goto send_ready;
@@ -4952,17 +4852,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								UCHAR* u8 = WideCharToUTF8alloc( u16 ); free(u16), u16=NULL;
 								if( u8 ){
 									size_t bytes = strlen( u8 );
-									/*
-									ClientSendf(cp,
-										"HTTP/1.0 200 OK\r\n"
-										"Content-Type: text/plain; charset=utf-8\r\n"
-										"Content-Length: %u\r\n"
-										"Connection: close\r\n"
-										"\r\n"
-										,bytes
-									);
-									ClientSend(cp, u8, bytes);
-									*/
 									BufferSend( &(cp->rsp.body) ,u8 ,bytes );
 									BufferSendf( &(cp->rsp.head)
 											,"HTTP/1.0 200 OK\r\n"
@@ -5042,16 +4931,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							if( wfind ){
 								WIN32_FIND_DATAW wfd;
 								HANDLE hFind = FindFirstFileW( wfind, &wfd );
-								/*
-								ClientSends(cp,
-										"HTTP/1.0 200 OK\r\n"
-										"Content-Type: application/json\r\n"
-										"Connection: close\r\n"
-										"\r\n"
-										"["
-								);
-								*/
-								BufferSend( &(cp->rsp.body) ,"[" ,1 );
+								Buffer* bp = &(cp->rsp.body);
+								BufferSend( bp ,"[" ,1 );
 								if( hFind !=INVALID_HANDLE_VALUE ){
 									UINT count=0;
 									do{
@@ -5060,8 +4941,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										if( wtxt && u8name ){
 											// メモファイルは.cabと同名の拡張子.txtファイル
 											wcscpy( wtxt +wcslen(wtxt) -3, L"txt" );
-											/*
-											ClientSendf(cp
+											BufferSendf( bp
 													,"%s{"
 													"\"id\":\"%s\""
 													",\"date\":%I64u"
@@ -5070,20 +4950,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 													,u8name
 													,FileTimeToJSTime( &wfd.ftLastWriteTime )
 											);
-											*/
-											BufferSendf( &(cp->rsp.body)
-													,"%s{"
-													"\"id\":\"%s\""
-													",\"date\":%I64u"
-													",\"memo\":\""
-													,count++? "," : ""
-													,u8name
-													,FileTimeToJSTime( &wfd.ftLastWriteTime )
-											);
-											//if( PathFileExists(wtxt) ) ResponseFile( cp, wtxt );
-											//ClientSend(cp,"\"}",2);
-											if( PathFileExists(wtxt) ) BufferSendFile( &(cp->rsp.body), wtxt );
-											BufferSend( &(cp->rsp.body) ,"\"}" ,2 );
+											if( PathFileExists(wtxt) ) BufferSendFile( bp ,wtxt );
+											BufferSend( bp ,"\"}" ,2 );
 										}
 										else err = TRUE;
 										if( wtxt ) free( wtxt );
@@ -5095,15 +4963,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 								else LogW(L"[%u]FindFirstFileW(%s)エラー%u",Num(cp),wfind,GetLastError());
 								free( wfind );
-								//ClientSend(cp,"]",1);
-								BufferSend( &(cp->rsp.body) ,"]" ,1 );
+								BufferSend( bp ,"]" ,1 );
 								BufferSendf( &(cp->rsp.head)
 										,"HTTP/1.0 200 OK\r\n"
 										"Content-Type: application/json\r\n"
 										"Content-Length: %u\r\n"
 										"Connection: %s\r\n"
 										"\r\n"
-										,cp->rsp.body.bytes
+										,bp->bytes
 										,cp->req.KeepAlive? "keep-alive" :"close"
 								);
 							}
@@ -5154,34 +5021,21 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									WCHAR* tree = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
 									if( index && tree ){
 										if( cabDecomp( wcab, wdir ) ){
-											/*
-											ClientSends(cp,
-												"HTTP/1.0 200 OK\r\n"
-												"Content-Type: application/json\r\n"
-												"Connection: close\r\n"
-												"\r\n"
-												"{\"tree.json\":"
-											);
-											ResponseFile( cp, tree );
-											*/
-											BufferSends( &(cp->rsp.body) ,"{\"tree.json\":" );
-											BufferSendFile( &(cp->rsp.body) ,tree );
+											Buffer* bp = &(cp->rsp.body);
+											BufferSends( bp ,"{\"tree.json\":" );
+											BufferSendFile( bp ,tree );
 											if( PathFileExists(index) ){
-												//ClientSends(cp,",\"index.json\":");
-												//ResponseFile( cp, index );
-												BufferSends( &(cp->rsp.body) ,",\"index.json\":" );
-												BufferSendFile( &(cp->rsp.body) ,index );
+												BufferSends( bp ,",\"index.json\":" );
+												BufferSendFile( bp ,index );
 											}
-											//ClientSend(cp,"}",1);
-											BufferSend( &(cp->rsp.body) ,"}" ,1 );
-											BufferSendf(
-													&(cp->rsp.head)
+											BufferSend( bp ,"}" ,1 );
+											BufferSendf( &(cp->rsp.head)
 													,"HTTP/1.0 200 OK\r\n"
 													"Content-Type: application/json\r\n"
 													"Content-Length: %u\r\n"
 													"Connection: %s\r\n"
 													"\r\n"
-													,cp->rsp.body.bytes
+													,bp->bytes
 													,cp->req.KeepAlive? "keep-alive" :"close"
 											);
 											success = TRUE;
@@ -5310,6 +5164,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							FILETIME ft;
 							SYSTEMTIME st;
 							UCHAR inetTime[INTERNET_RFC1123_BUFSIZE];
+							Buffer* bp = &(cp->rsp.head);
 							GetFileTime( cp->rsp.readfh, NULL, NULL, &ft );
 							FileTimeToSystemTime( &ft, &st );
 							InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
@@ -5324,8 +5179,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								// とかもCGIじゃないから変な気がするし…、ブラウザキャッシュをクリアしてくれ
 								// ということでいいかな…？
 								if( UINT64InetTime(cp->req.IfModifiedSince) >= UINT64InetTime(inetTime) ){
-									//ClientSends(cp,"HTTP/1.0 304 Not Modified\r\n");
-									BufferSends( &(cp->rsp.head) ,"HTTP/1.0 304 Not Modified\r\n" );
+									BufferSends( bp ,"HTTP/1.0 304 Not Modified\r\n" );
 									// ファイル中身送らない
 									CloseHandle( cp->rsp.readfh );
 									cp->rsp.readfh = INVALID_HANDLE_VALUE;
@@ -5334,9 +5188,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							else{
 							_200_ok:
-								//ClientSendf(cp,
-								//		"HTTP/1.0 200 OK\r\n"
-								BufferSendf( &(cp->rsp.head)
+								BufferSendf( bp
 										,"HTTP/1.0 200 OK\r\n"
 										"Content-Length: %u\r\n"
 										,GetFileSize(cp->rsp.readfh,NULL)
@@ -5345,34 +5197,22 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// エクスポートHTMLは特別扱い
 									// Chrome,Firefoxでは octet-stream にするだけで保存ダイアログ出たけど
 									// IE8は出てくれない。しょうがなくContent-Dispositionもつける。
-									//ClientSends(cp,
-									//		"Content-Type: application/octet-stream\r\n"
-									BufferSends( &(cp->rsp.head)
+									BufferSends( bp
 											,"Content-Type: application/octet-stream\r\n"
 											"Content-Disposition: attachment; filename=\"bookmark.html\"\r\n"
 									);
 								}
 								else{
-									//ClientSendf(cp
-									BufferSendf( &(cp->rsp.head)
+									BufferSendf( bp
 											,"Content-Type: %s\r\n"
 											,(*realpath)? FileContentTypeW(realpath) : FileContentTypeA(file)
 									);
 								}
-								//ClientSendf(cp,"Last-Modified: %s\r\n",inetTime);
-								BufferSendf( &(cp->rsp.head) ,"Last-Modified: %s\r\n" ,inetTime );
+								BufferSendf( bp ,"Last-Modified: %s\r\n" ,inetTime );
 							}
 							GetSystemTime( &st );
 							InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
-							/*
-							ClientSendf(cp,
-									"Date: %s\r\n"
-									"Connection: close\r\n"
-									"\r\n"
-									,inetTime
-							);
-							*/
-							BufferSendf( &(cp->rsp.head)
+							BufferSendf( bp
 									,"Date: %s\r\n"
 									"Connection: %s\r\n"
 									"\r\n"
@@ -5408,8 +5248,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							if( req->writefh !=INVALID_HANDLE_VALUE ){
 								// Content-Lengthバイトぶんファイル出力
-								// TODO:Content-Lengthぶんデータが来ない場合は待ち続けてしまう？
-								// 無通信監視機能を入れないと対処できないか…
 								DWORD bodybytes = req->bytes - (req->body - req->buf);
 								DWORD bWrite=0;
 								if( bodybytes > req->ContentLength - req->wrote )
@@ -5480,8 +5318,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							if( req->writefh !=INVALID_HANDLE_VALUE ){
 								// リクエスト本文をContent-Lengthバイトぶんファイル出力
-								// TODO:Content-Lengthぶんデータが来ない場合は待ち続けてしまう？
-								// 無通信監視機能を入れないと対処できないか・・
 								DWORD bodybytes = req->bytes - (req->body - req->buf);
 								DWORD bWrite=0;
 								if( bodybytes > req->ContentLength - req->wrote )
@@ -5575,15 +5411,15 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			}
 			break;
 
-		//default:
-		//	if( !cp->sslp ) LogW(L"[%u](FD_READ)",Num(cp));
+		//default: if( !cp->sslp ) LogW(L"[%u](FD_READ)",Num(cp));
 		}
 		// なぜかSSLでFD_READ来ないので自力発行(特にPUT/POSTで)
+		// http://d.hatena.ne.jp/tt_clown/20081108/p1
 		if( cp->sslp ){
 			switch( cp->status ){
 			case CLIENT_ACCEPT_OK:
 			case CLIENT_RECV_MORE:
-				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
+				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
 		cp->frozen = 0;
@@ -5599,7 +5435,6 @@ void SocketWrite( SOCKET sock )
 		switch( cp->status ){
 		case CLIENT_SEND_READY:
 			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
-			//LogA("[%u]送信:%s",Num(cp),rsp->buf);
 			LogA("[%u]送信:%s",Num(cp),rsp->head.top);
 			// スレッドは終了してるはず
 			CloseHandle( cp->thread ), cp->thread=NULL;
@@ -5607,9 +5442,8 @@ void SocketWrite( SOCKET sock )
 			cp->status = CLIENT_SENDING;
 
 		case CLIENT_SENDING:
-			//if( rsp->sended < rsp->bytes ){
 			if( rsp->sended < rsp->head.bytes + rsp->body.bytes ){
-				// まず送信バッファを送る
+				// まず送信バッファ(ヘッダ＋ボディ)を送る
 				Buffer* bp;
 				UINT sended;
 				int ret;
@@ -5622,7 +5456,6 @@ void SocketWrite( SOCKET sock )
 					sended = rsp->sended - rsp->head.bytes;
 				}
 				if( cp->sslp ){
-					//ret = SSL_write( cp->sslp, rsp->buf + rsp->sended, rsp->bytes - rsp->sended );
 					ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
 					if( ret<=0 ){
 						int err = SSL_get_error( cp->sslp, ret );
@@ -5639,7 +5472,6 @@ void SocketWrite( SOCKET sock )
 					}
 				}
 				else{
-					//ret = send( sock, rsp->buf + rsp->sended, rsp->bytes - rsp->sended, 0 );
 					ret = send( sock, bp->top + sended, bp->bytes - sended, 0 );
 					if( ret==SOCKET_ERROR ){
 						ret = WSAGetLastError();
@@ -5658,12 +5490,9 @@ void SocketWrite( SOCKET sock )
 				if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
 					// 送信バッファに読み込んで(上書き)
 					DWORD bRead=0;
-					//if( ReadFile( rsp->readfh, rsp->buf, rsp->bufsize, &bRead, NULL )==0 )
 					if( ReadFile( rsp->readfh, rsp->body.top, rsp->body.size, &bRead, NULL )==0 )
 						LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
 					rsp->readed += bRead;
-					//rsp->bytes = bRead;
-					//rsp->sended = 0;
 					rsp->body.bytes = bRead;
 					rsp->sended = rsp->head.bytes;
 				}
@@ -5714,8 +5543,7 @@ void SocketWrite( SOCKET sock )
 			}
 			break;
 
-		//default:
-		//	if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
+		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 		}
 		cp->frozen = 0;
 	}
@@ -7019,7 +6847,7 @@ void MainFormTimer1000( void )
 	{
 		int i;
 		for( i=CLIENT_MAX-1; i>=0; i-- ){
-			if( Client[i].sock !=INVALID_SOCKET && Client[i].frozen++ >60*5 ){
+			if( Client[i].sock !=INVALID_SOCKET && Client[i].frozen++ >60*3 ){ // 3分
 				if( Client[i].status==CLIENT_THREADING ){
 					// スレッド終了待たないとアクセス違反で落ちる
 					Client[i].abort = 1;
