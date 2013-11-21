@@ -16,9 +16,19 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
-//	TODO:Win8.1で実行してみたら変な警告が出て画面中央に横帯が出たまま使いものにならない。exeに署名？する
-//	必要があるのか・・？めんどくせえ。
-//	http://stackoverflow.com/questions/15358185/changing-publisher-information-for-a-exe-file
+//	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」ログがたくさん出るようになた。
+//	そしてサイドバーの画像いくつか出てなかったり。16本じゃ足りないのか…keep-aliveじゃなければ出ないてことは
+//	Firefox相手だとkeep-aliveじゃない方がいいのか？同時接続数増やすかどうするか・・32本にしてみたら、Firefox
+//	だけで24本くらい使うもよう。クライアント用バッファは動的確保しないせいかexeサイズ100KBくらい増えた・・・。
+//	keep-aliveやめたら8本くらいしか使わないようだ。なんじゃそらFirefoxイヤなブラウザだな・・・。
+//	Firefoxだったらkeep-aliveやめるとか？User-Agentの判定はFirefoxにするかGeckoにするか？Geckoってレンダリング
+//	エンジンだからコネクション本数とかの挙動には関係ないかな？
+//	keep-alive無効なら16本で充分。keep-alive有効だと32本でもそんなに余裕があるわけでもない・・。
+//	keep-alive有効で体感速度が上がっているなら採用する価値があるけど、そうでもないならいらないと思う。
+//	keep-aliveでどのくらい速くなっているか？調べてみよう・・。
+//	一発確認したのみだが、Firefoxはkeep-ailve有無で体感速度に差が現れるようだ。Chrome/Operaは大差なし。
+//	localhost接続なので、インターネットから使った場合どうなるかわからないが・・うーん。
+//	keep-alive動作にするかどうかオプションにする？？？
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -34,47 +44,17 @@
 //	全部LB_GETTEXTして自力検索すればいいか。でも一致部分だけ反転表示とかできないとショボいし…。
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
-//	TODO:Digest認証
-//	http://www.studyinghttp.net/auth
-//	http://www.studyinghttp.net/rfc_ja/rfc2617
-//	http://x68000.q-e-d.net/~68user/net/http-auth-2.html
-//	http://ja.wikipedia.org/wiki/Digest%E8%AA%8D%E8%A8%BC
-//	TODO:Basic/Digest認証にはログアウト機能がない問題
-//	http://d.hatena.ne.jp/IwamotoTakashi/20081108/p1
-//	http://shorindo.com/research/1307411586
-//	http://d.hatena.ne.jp/kazuhooku/20080711/1215783708
-//	http://labs.cybozu.co.jp/blog/kazuho/archives/2006/02/digest_and_cookie.php
-//	http://www.freeml.com/seasurfers/0000356
-//	ログアウトするにはブラウザ終了というのは確かにイマイチ・・ログアウトボタンがほしい。
-//	あとブラウザのログインダイアログを使わないといけないのも・・他のタブが見れなくなったりするし。
-//	FORM認証＋クッキーにするか・・。
-//	クッキーってファイル保存すべき？HTTPサーバ終了でクッキー消えてもいいんだっけ？
-//	http://www.studyinghttp.net/cookies
-//	http://ja.wikipedia.org/wiki/HTTP_cookie
-//	http://sehermitage.web.fc2.com/security/cookie.html
-//	ユーザ名はなしパスワードだけってのもオッケーかな？別に個人を識別する目的じゃないし・・。
-//	セキュリティに気をつけて・・
-//	http://sc.seeeko.com/archives/4570034.html
-//	http://www.ipa.go.jp/files/000017508.pdf
-//	http://www.jumperz.net/texts/csrf1.2.htm
 //	TODO:Windowsログインユーザとおなじユーザ名パスワードを使えるか？
-//	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなんだよ。
-//	LogonUserはパスワードを与える必要があるので、Digest認証ではダメでBasic認証で生パスワードを
-//	入手しないといけなのも難あり・・JCBookmark側で何も保存しておかなくていいのは楽だけど・・。
-//	http://x68000.q-e-d.net/~68user/net/http-auth-1.html
+//	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
 //	TODO:アプリ実行時のWindowsの警告をどうするか
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
 //	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
 //	http://attosoft.info/blog/item-nozoneinfo/
+//	TODO:Win8.1で実行してみたら変な警告が出て画面中央に横帯が出たまま使いものにならない。exeに署名？する
+//	必要があるのか・・？めんどくせえ。
+//	http://stackoverflow.com/questions/15358185/changing-publisher-information-for-a-exe-file
 //	TODO:Web編集後に自動保存するモードを作れるといいが、新規ブックマーク→favicon取得のところを
 //	どうするか、favicon取得前後どちらも保存する？しない？
-//	TODO:Win7でけっこうしばしばソケットイベントエラー10053が発生して正常に表示されない場合gある。
-//	原因不明だが、ログではよくFD_WRITEが切断後に来ている様子。FD_WRITEが来る前にsend()しているのが
-//	ダメだったりするのか？FD_WRITEが来てから送信するように実装を変えたとして、改善してるかどうか確認
-//	するのが難しそうな症状・・。ていうかFD_WRITEが来るまで送信しない実装は動かなかった。
-//	極度に遅い無線LANのXPマシンで試したら10053エラーだけでなく10054エラーも頻繁に発生してちょっと
-//	使い物にならないレベル。Win7だから発生するのではなく、無線LANや接続速度の影響で10053エラーが出る
-//	のかな・・？切断後にFD_WRITEが来るのもたくさん発生していた。う～んわからん・・。
 //
 #pragma comment(lib,"gdi32.lib")
 #pragma comment(lib,"user32.lib")
@@ -1180,7 +1160,9 @@ typedef struct {
 	UINT		ContentLength;		// Content-Length値
 	UINT		bytes;				// 受信バッファ有効バイト
 	size_t		bufsize;			// 受信バッファサイズ
+#if HTTP_KEEPALIVE
 	UCHAR		KeepAlive;			// Connection:Keep-Aliveかどうか(1/0)
+#endif
 } Request;
 
 typedef struct {
@@ -1215,12 +1197,14 @@ typedef struct TClient {
 	Response	rsp;
 	Session*	session;			// 有効セッション
 	HANDLE		thread;
+#if HTTP_KEEPALIVE
 	UINT		silent;				// 無通信監視カウンタ
+#endif
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
 } TClient;
 
-#define		CLIENT_MAX			16					// クライアント最大同時接続数
+#define		CLIENT_MAX			16					// クライアント最大同時接続数(keep-alive有だと増やす必要あり)
 TClient		Client[CLIENT_MAX]	= {0};				// クライアント
 WCHAR*		DocumentRoot		= NULL;				// ドキュメントルートフルパス
 size_t		DocumentRootLen		= 0;				// wcslen(DocumentRoot)
@@ -1369,12 +1353,10 @@ void BufferSendf( Buffer* bp, const UCHAR* fmt, ... )
 }
 void ResponseError( TClient* cp ,const UCHAR* txt )
 {
-	BufferSendf( &(cp->rsp.body)
-		,"<head><title>%s</title></head><body>%s</body>"
-		,txt,txt
-	);
+	BufferSends( &(cp->rsp.body) ,txt );
 	BufferSendf( &(cp->rsp.head)
 		,"HTTP/1.0 %s\r\n"
+		"Content-Type: text/plain; charset=utf-8\r\n"
 		"Content-Length: %u\r\n"
 		,txt
 		,cp->rsp.body.bytes
@@ -4266,11 +4248,34 @@ Session* SessionCreate( void )
 	else LogW(L"RAND_bytesエラー");
 	return NULL;
 }
+// セッション１つ破棄
+void SessionDestroy( Session* target )
+{
+	if( !target ) return;
+	if( target==Session0 ){ // 先頭
+		Session0 = target->next;
+		if( target==SessionN ) SessionN = NULL;
+		free( target );
+	}
+	else{ // 先頭以外
+		Session* sp = Session0;
+		Session* prev = NULL;
+		for( ; sp; sp=sp->next ){
+			if( sp==target ){
+				prev->next = sp->next;
+				if( sp==SessionN ) SessionN = prev;
+				free( sp );
+				break;
+			}
+			prev = sp;
+		}
+	}
+}
 // CookieヘッダのセッションIDが有効かどうか
 // なぜか/jquery/のファイルに対するリクエストに2つsession=が存在する。
 //   Cookie: session=XXXXX; session=XXXXXX ←おなじセッションIDの場合
 //   Cookie: session=XXXXX; session=YYYYYY ←ちがうセッションIDの場合
-// login.html用にjquery.jsに穴を開けているがそのせい？どちらかが有効ならよしとする。
+// login.html用にjquery.jsに穴を開けているがそのせい？どちらかが有効ならよしとする…。
 Session* ClientSessionAlive( TClient* cp )
 {
 	UCHAR* cookie = cp->req.Cookie;
@@ -4341,7 +4346,7 @@ unsigned __stdcall authenticate( void* p )
 											"Content-Length: %u\r\n"
 											,cp->rsp.body.bytes
 									);
-									LogA("[%u]ログインしました(%s)",Num(cp),sep->id);
+									LogA("[%u]ログイン(%s)",Num(cp),sep->id);
 								}
 								else ResponseError(cp,"500 Internal Server Error");
 							}
@@ -5061,7 +5066,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						UCHAR* cl = strHeaderValue(  req->head,"Content-Length");
 						UCHAR* ua = strHeaderValue(  req->head,"User-Agent");
 						UCHAR* ims= strHeaderValue(  req->head,"If-Modified-Since");
+#if HTTP_KEEPALIVE
 						UCHAR* ka = strHeaderValue(  req->head,"Connection");
+#endif
 						// TODO:Cookieヘッダて複数行の場合もあるんだっけ…？
 						UCHAR* ck = strHeaderValue(  req->head,"Cookie");
 						if( ct ) req->ContentType = chomp(ct);
@@ -5075,7 +5082,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						if( ua ) req->UserAgent = chomp(ua);
 						if( ims ) req->IfModifiedSince = chomp(ims);
+#if HTTP_KEEPALIVE
+						//Firefoxの接続爆発挙動がイヤなのでkeep-alive殺しておく
 						if( ka && stricmp(chomp(ka),"keep-alive")==0 ) req->KeepAlive = 1;
+#endif
 						if( ck ) req->Cookie = chomp(ck);
 					}
 					req->method = chomp(req->buf);
@@ -5096,7 +5106,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							UCHAR* file = cp->req.path;
 							while( *file=='/' ) file++;
 							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
-								// ログイン画面なしindex.htmlを返す
+								// index.htmlを返す
 								// TODO:このログイン要求のパスワードが間違っている時は？？？
 								// セッション有効だから無視してもいい？認証処理すべき？
 								cp->rsp.readfh = CreateFileW(
@@ -5115,6 +5125,22 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								else ResponseError(cp,"404 Not Found");
 								goto send_ready;
 							}
+							else if( stricmp(file,":logout")==0 ){
+								if( cp->session ){
+									BufferSends( &(cp->rsp.body) ,cp->session->id );
+									BufferSendf( &(cp->rsp.head)
+										,"HTTP/1.0 200 OK\r\n"
+										"Content-Type: text/plain\r\n"
+										"Content-Length: %u\r\n"
+										,cp->rsp.body.bytes
+									);
+									LogA("[%u]ログアウト(%s)",Num(cp),cp->session->id);
+									SessionDestroy( cp->session );
+									cp->session = NULL;
+								}
+								else ResponseError(cp,"500 Internal Server Error");
+								goto send_ready;
+							}
 						}
 						else{
 							// セッションなし
@@ -5122,7 +5148,21 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								UCHAR* file = cp->req.path;
 								while( *file=='/' ) file++;
 								if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
-									// faviconとjquery.jsはクッキーなくても返却(login.htmlで使うから)
+									// faviconとjquery.jsはクッキーなくても返却する(login.htmlで使うから)。
+									// この特別扱いのせいか、ログアウトしてセッション破棄後も、jquery.jsの
+									// リクエストには古いクッキーがついたままになってしまうもよう…。しかし
+									// jqueryに穴を空けずlogin.htmlは外部jqueryを参照する(最初はそうしてた)と
+									// ログイン後に「$が見つからない」とかJavaScriptエラーになってしまう・・。
+									// おそらくURLがおなじままでログイン画面もログイン後も返却しているせいか？
+									// おなじURLでjQueryが変わるとダメなのかな・・。HTTPリダイレクトを使って
+									// login.htmlに飛ばすような感じにすればURLが変わるのでjqueryエラーは
+									// 出なくなるのかな・・。ただリダイレクトで使うLocationヘッダは絶対URL
+									// しかダメらしく、Hostヘッダから生成するとかが面倒だったり、filer.htmlに
+									// アクセスしてログイン画面出してログインしたらfiler.htmlを表示したいけど、
+									// それを実現するには・・hiddenパラメータ埋め込むとかRefererヘッダを見る
+									// とか？そのあたりがいま機能がなくて実装しなければならぬ・・うーむ。
+									// jQueryローカル化をやめてぜんぶ外部jQuery参照にしても解決するかな？
+									// う～んせっかくjQueryローカルにしたが・・・。
 								}
 								else if( !*file || stricmp(FileContentTypeA(file),"text/html")==0 ){
 									// リダイレクトは使わず直接login.htmlを返却する。
@@ -5788,7 +5828,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
+#if HTTP_KEEPALIVE
 		cp->silent = 0;
+#endif
 	}
 	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
 }
@@ -5809,7 +5851,11 @@ void SocketWrite( SOCKET sock )
 			BufferSendf( &(rsp->head)
 					,"Connection: %s\r\n"
 					"\r\n"
+#if HTTP_KEEPALIVE
 					,cp->req.KeepAlive? "keep-alive" :"close"
+#else
+					,"close"
+#endif
 			);
 			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
 			LogA("[%u]送信:%s",Num(cp),rsp->head.top);
@@ -5881,6 +5927,7 @@ void SocketWrite( SOCKET sock )
 			}
 			else{
 				// ぜんぶ送信した
+#if HTTP_KEEPALIVE
 				if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
 					WCHAR	wpath[MAX_PATH+1]=L"";
 					SSL*	sslp		= cp->sslp;
@@ -5914,15 +5961,20 @@ void SocketWrite( SOCKET sock )
 					//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
 				}
 				else{ // 切断
+#endif
 					cp->status = 0;
 					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+#if HTTP_KEEPALIVE
 				}
+#endif
 			}
 			break;
 
 		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 		}
+#if HTTP_KEEPALIVE
 		cp->silent = 0;
+#endif
 	}
 	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
@@ -7381,11 +7433,12 @@ void MainFormTimer1000( void )
 
 		SetWindowTextW( MainForm, text );
 	}
+#if HTTP_KEEPALIVE
 	// 無通信監視
 	{
 		int i;
 		for( i=CLIENT_MAX-1; i>=0; i-- ){
-			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >60 ){ // 1分
+			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >10 ){ // 10秒
 				if( Client[i].status==CLIENT_THREADING ){
 					// スレッド終了待たないとアクセス違反で落ちる
 					Client[i].abort = 1;
@@ -7398,6 +7451,7 @@ void MainFormTimer1000( void )
 			}
 		}
 	}
+#endif
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。

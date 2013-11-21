@@ -1000,7 +1000,7 @@ function setEvents(){
 						}
 					});
 				}
-				else $('#chromeico').hide();
+				else{ $('#chromeico').hide(); sidebarHeight -=32; }
 
 				if( 'ie' in browser ){
 					// IEお気に入りインポート
@@ -1020,7 +1020,7 @@ function setEvents(){
 						});
 					});
 				}
-				else $('#ieico').hide();
+				else{ $('#ieico').hide(); sidebarHeight -=32; }
 
 				if( 'firefox' in browser ){
 					// Firefoxブックマークインポート
@@ -1039,16 +1039,17 @@ function setEvents(){
 						});
 					});
 				}
-				else $('#firefoxico').hide();
+				else{ $('#firefoxico').hide(); sidebarHeight -=32; }
 			}
 		});
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
+	var sidebarHeight = 340;
 	$doc.on('mousemove',function(){
 		var animate = null;
 		return function(ev){
-			if( ev.clientX <37 && ev.clientY <300 ){	// サイドバー周辺にある程度近づいた
+			if( ev.clientX <37 && ev.clientY <sidebarHeight ){	// サイドバー周辺にある程度近づいた
 				if( !animate )
 					animate = $sidebar.animate({width:65},'fast');
 			}
@@ -1494,12 +1495,35 @@ function setEvents(){
 			gotoFiler();
 		}
 		else Confirm({
-			msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
-			,width:380
-			,no	:function(){ gotoFiler(); }
+			width:380
+			,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 			,yes:function(){ modifySave({ success:gotoFiler }); }
+			,no	:gotoFiler
 		});
 		function gotoFiler(){ location.href = 'filer.html'; }
+	});
+	// ログアウト
+	$('#logout').click(function(){
+		if( !tree.modified() && !option.modified() ){
+			logout();
+		}
+		else Confirm({
+			width:380
+			,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
+			,yes:function(){ modifySave({ success:logout }); }
+			,no	:logout
+		});
+		function logout(){
+			$.ajax({
+				url		:':logout'
+				,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
+				,success:function(data){
+					// dataはセッションID:過去日付でクッキー削除
+					document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
+					location.reload(true);
+				}
+			});
+		}
 	});
 	// インポート・エクスポート
 	$('#impexpico').click(function(){

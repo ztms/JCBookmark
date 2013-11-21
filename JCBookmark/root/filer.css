@@ -31,6 +31,10 @@ body {
 	border-color:#da7;
 	background:#fff5f0;
 }
+#logout {
+	float:right;
+	margin-right:3px;
+}
 #toolbar input {
 	position:relative;
 	float:left;

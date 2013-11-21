@@ -768,7 +768,7 @@ $(doc).on({
 	,keydown:function(ev){
 		switch( ev.which || ev.keyCode || ev.charCode ){
 		case 27: // Esc
-			$('#exit').click(); return false;
+			$('#home').click(); return false;
 		case 46: // Delete
 			if( ev.target.tagName !='INPUT' ){
 				$('#delete').click();
@@ -791,19 +791,43 @@ if( IE && IE<9 ){
 }
 // 変更保存リンク
 $('#modified').click(function(){ treeSave(); });
-// 終了
-$('#exit').click(function(){
+// パネル画面に戻る
+$('#home').click(function(){
 	if( tree.modified() ){
 		Confirm({
 			msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 			,width:380
-			,yes:function(){ treeSave({ success:reload }); }
-			,no :reload
+			,yes:function(){ treeSave({ success:home }); }
+			,no :home
 		});
 	}
-	else reload();
+	else home();
 
-	function reload(){ location.href = '/'; }
+	function home(){ location.href = '/'; }
+});
+// ログアウト
+$('#logout').click(function(){
+	if( tree.modified() ){
+		Confirm({
+			msg	:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
+			,width:380
+			,yes:function(){ treeSave({ success:logout }); }
+			,no :logout
+		});
+	}
+	else logout();
+
+	function logout(){
+		$.ajax({
+			url		:':logout'
+			,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
+			,success:function(data){
+				// dataはセッションID:過去日付でクッキー削除
+				document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
+				location.reload(true);
+			}
+		});
+	}
 });
 // 新規フォルダ
 $('#newfolder').click(function(){
@@ -1163,8 +1187,8 @@ function resize(){
 	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
 	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
 
-	$('#toolbar') // 昔の#modifiedがfloatで下にいかないよう1040px以上必要だった
-		.width( (windowWidth <1040)? 1040 : windowWidth );
+	$('#toolbar') // ボタン類がfloatで下にいかないよう800px以上
+		.width( (windowWidth <740)? 740 : windowWidth );
 	$('#folderbox')
 		.width( folderboxWidth )
 		.height( folderboxHeight );
