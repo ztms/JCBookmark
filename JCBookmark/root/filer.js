@@ -793,42 +793,39 @@ if( IE && IE<9 ){
 $('#modified').click(function(){ treeSave(); });
 // パネル画面に戻る
 $('#home').click(function(){
-	if( tree.modified() ){
-		Confirm({
-			msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
-			,width:380
-			,yes:function(){ treeSave({ success:home }); }
-			,no :home
-		});
-	}
+	if( tree.modified() ) Confirm({
+		msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+		,width:380
+		,yes:function(){ treeSave({ success:home }); }
+		,no :home
+	});
 	else home();
-
 	function home(){ location.href = '/'; }
 });
 // ログアウト
-$('#logout').click(function(){
-	if( tree.modified() ){
-		Confirm({
+if( /session=.+/.test(document.cookie) ){
+	$('#logout').click(function(){
+		if( tree.modified() ) Confirm({
 			msg	:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
 			,width:380
 			,yes:function(){ treeSave({ success:logout }); }
 			,no :logout
 		});
-	}
-	else logout();
-
-	function logout(){
-		$.ajax({
-			url		:':logout'
-			,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
-			,success:function(data){
-				// dataはセッションID:過去日付でクッキー削除
-				document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
-				location.reload(true);
-			}
-		});
-	}
-});
+		else logout();
+		function logout(){
+			$.ajax({
+				url		:':logout'
+				,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
+				,success:function(data){
+					// dataはセッションID:過去日付でクッキー削除
+					document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
+					location.reload(true);
+				}
+			});
+		}
+	});
+}
+else $('#logout').hide();
 // 新規フォルダ
 $('#newfolder').click(function(){
 	// 選択フォルダID=folderXXならノードID=XX

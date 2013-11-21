@@ -1000,7 +1000,7 @@ function setEvents(){
 						}
 					});
 				}
-				else{ $('#chromeico').hide(); sidebarHeight -=32; }
+				else{ $('#chromeico').hide(); sidebarHeight -=34; }
 
 				if( 'ie' in browser ){
 					// IEお気に入りインポート
@@ -1020,7 +1020,7 @@ function setEvents(){
 						});
 					});
 				}
-				else{ $('#ieico').hide(); sidebarHeight -=32; }
+				else{ $('#ieico').hide(); sidebarHeight -=34; }
 
 				if( 'firefox' in browser ){
 					// Firefoxブックマークインポート
@@ -1039,7 +1039,7 @@ function setEvents(){
 						});
 					});
 				}
-				else{ $('#firefoxico').hide(); sidebarHeight -=32; }
+				else{ $('#firefoxico').hide(); sidebarHeight -=34; }
 			}
 		});
 	})();
@@ -1491,40 +1491,39 @@ function setEvents(){
 	});
 	// ブックマークの整理
 	$('#filerico').click(function(){
-		if( !tree.modified() && !option.modified() ){
-			gotoFiler();
-		}
-		else Confirm({
+		if( tree.modified() || option.modified() ) Confirm({
 			width:380
 			,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 			,yes:function(){ modifySave({ success:gotoFiler }); }
 			,no	:gotoFiler
 		});
+		else gotoFiler();
 		function gotoFiler(){ location.href = 'filer.html'; }
 	});
 	// ログアウト
-	$('#logout').click(function(){
-		if( !tree.modified() && !option.modified() ){
-			logout();
-		}
-		else Confirm({
-			width:380
-			,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
-			,yes:function(){ modifySave({ success:logout }); }
-			,no	:logout
-		});
-		function logout(){
-			$.ajax({
-				url		:':logout'
-				,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
-				,success:function(data){
-					// dataはセッションID:過去日付でクッキー削除
-					document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
-					location.reload(true);
-				}
+	if( /session=.+/.test(document.cookie) ){
+		$('#logout').click(function(){
+			if( tree.modified() || option.modified() ) Confirm({
+				width:380
+				,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
+				,yes:function(){ modifySave({ success:logout }); }
+				,no	:logout
 			});
-		}
-	});
+			else logout();
+			function logout(){
+				$.ajax({
+					url		:':logout'
+					,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
+					,success:function(data){
+						// dataはセッションID:過去日付でクッキー削除
+						document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
+						location.reload(true);
+					}
+				});
+			}
+		});
+	}
+	else{ $('#logout').hide(); sidebarHeight -=34; }
 	// インポート・エクスポート
 	$('#impexpico').click(function(){
 		// ダイアログ表示
