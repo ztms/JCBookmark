@@ -34,9 +34,34 @@
 //	全部LB_GETTEXTして自力検索すればいいか。でも一致部分だけ反転表示とかできないとショボいし…。
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
-//	TODO:Digest認証(Basic認証はいらないよな…)
+//	TODO:Digest認証
 //	http://www.studyinghttp.net/auth
-//	Windowsログインユーザとおなじユーザ名パスワードを使えるか？
+//	http://www.studyinghttp.net/rfc_ja/rfc2617
+//	http://x68000.q-e-d.net/~68user/net/http-auth-2.html
+//	http://ja.wikipedia.org/wiki/Digest%E8%AA%8D%E8%A8%BC
+//	TODO:Basic/Digest認証にはログアウト機能がない問題
+//	http://d.hatena.ne.jp/IwamotoTakashi/20081108/p1
+//	http://shorindo.com/research/1307411586
+//	http://d.hatena.ne.jp/kazuhooku/20080711/1215783708
+//	http://labs.cybozu.co.jp/blog/kazuho/archives/2006/02/digest_and_cookie.php
+//	http://www.freeml.com/seasurfers/0000356
+//	ログアウトするにはブラウザ終了というのは確かにイマイチ・・ログアウトボタンがほしい。
+//	あとブラウザのログインダイアログを使わないといけないのも・・他のタブが見れなくなったりするし。
+//	FORM認証＋クッキーにするか・・。
+//	クッキーってファイル保存すべき？HTTPサーバ終了でクッキー消えてもいいんだっけ？
+//	http://www.studyinghttp.net/cookies
+//	http://ja.wikipedia.org/wiki/HTTP_cookie
+//	http://sehermitage.web.fc2.com/security/cookie.html
+//	ユーザ名はなしパスワードだけってのもオッケーかな？別に個人を識別する目的じゃないし・・。
+//	セキュリティに気をつけて・・
+//	http://sc.seeeko.com/archives/4570034.html
+//	http://www.ipa.go.jp/files/000017508.pdf
+//	http://www.jumperz.net/texts/csrf1.2.htm
+//	TODO:Windowsログインユーザとおなじユーザ名パスワードを使えるか？
+//	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなんだよ。
+//	LogonUserはパスワードを与える必要があるので、Digest認証ではダメでBasic認証で生パスワードを
+//	入手しないといけなのも難あり・・JCBookmark側で何も保存しておかなくていいのは楽だけど・・。
+//	http://x68000.q-e-d.net/~68user/net/http-auth-1.html
 //	TODO:アプリ実行時のWindowsの警告をどうするか
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
 //	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
@@ -421,6 +446,7 @@ void LogCacheAdd( const WCHAR* text )
 			LogCache0 = lc;
 		LeaveCriticalSection( &LogCacheCS );
 	}
+	else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(LogCache)+bytes);
 }
 void LogW( const WCHAR* fmt, ... )
 {
@@ -690,7 +716,7 @@ typedef struct {
 	WCHAR*		text;			// ツールチップ用テキスト(名前)
 } BrowserIcon;
 
-WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
+WCHAR* RegValueAlloc( HKEY topkey, const WCHAR* subkey, const WCHAR* name )
 {
 	WCHAR* value = NULL;
 	BOOL ok = FALSE;
@@ -712,7 +738,7 @@ WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
 				}
 				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
 			}
-			else LogW(L"L%u:mallocエラー",__LINE__);
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
 		}
 		else LogW(L"RegQueryValueExW(%s)エラー",subkey);
 		// レジストリ閉じる
@@ -724,7 +750,7 @@ WCHAR* RegValueAlloc( HKEY topkey, WCHAR* subkey, WCHAR* name )
 	return value;
 }
 // レジストリキーDefaultIconからブラウザEXEパス取得
-WCHAR* RegDefaultIconPathAlloc( HKEY topkey, WCHAR* subkey )
+WCHAR* RegDefaultIconPathAlloc( HKEY topkey, const WCHAR* subkey )
 {
 	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
 	if( exe ){
@@ -739,7 +765,7 @@ WCHAR* RegDefaultIconPathAlloc( HKEY topkey, WCHAR* subkey )
 	return exe;
 }
 // レジストリキーApp PathsからブラウザEXEパス取得
-WCHAR* RegAppPathAlloc( HKEY topkey, WCHAR* subkey )
+WCHAR* RegAppPathAlloc( HKEY topkey, const WCHAR* subkey )
 {
 	WCHAR* exe = RegValueAlloc( topkey, subkey, NULL );
 	if( exe ){
@@ -751,7 +777,7 @@ WCHAR* RegAppPathAlloc( HKEY topkey, WCHAR* subkey )
 	return exe;
 }
 // JCBookmark.exeと同階層のファイルパス取得
-WCHAR* AppFilePath( WCHAR* fname )
+WCHAR* AppFilePath( const WCHAR* fname )
 {
 	WCHAR* path = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
 	if( path ){
@@ -990,7 +1016,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 						if( !*realpath ) SearchPathW( NULL, path2, NULL, MAX_PATH, realpath, NULL );
 						if( !*realpath ) free( realpath ), realpath=NULL;
 					}
-					else LogW(L"L%u:mallocエラー",__LINE__);
+					else LogW(L"L%u:malloc(%u)エラー",__LINE__,(MAX_PATH+1)*sizeof(WCHAR));
 					SetCurrentDirectoryW( dir );
 				}
 				if( !realpath && PathIsFileSpecW(path2) ){
@@ -1069,7 +1095,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 							free( realpath ), realpath=NULL;
 						}
 					}
-					else LogW(L"L%u:mallocエラー",__LINE__);
+					else LogW(L"L%u:malloc(%u)エラー",__LINE__,(MAX_PATH+1)*sizeof(WCHAR));
 				}
 			}
 			free( path2 );
@@ -1146,6 +1172,7 @@ typedef struct {
 	UCHAR*		ContentType;		// Content-Type
 	UCHAR*		UserAgent;			// User-Agent
 	UCHAR*		IfModifiedSince;	// If-Modified-Since
+	UCHAR*		Cookie;				// Cookie
 	UCHAR*		body;				// リクエストボディ開始位置
 	UCHAR*		boundary;			// Content-Type:multipart/form-dataのboundary
 	HANDLE		writefh;			// 書出ファイルハンドル
@@ -1170,6 +1197,11 @@ typedef struct {
 	UINT		sended;				// 送信済みバイト
 } Response;
 
+typedef struct Session {
+	struct Session* next;
+	UCHAR id[1];					// セッションID文字列
+} Session;
+
 typedef struct TClient {
 	SOCKET		sock;				// クライアント接続ソケット
 	SSL*		sslp;				// SSL
@@ -1181,9 +1213,11 @@ typedef struct TClient {
 	#define		CLIENT_THREADING	5	// スレッド処理中
 	Request		req;
 	Response	rsp;
+	Session*	session;			// 有効セッション
 	HANDLE		thread;
-	UINT		frozen;				// 無通信監視用
+	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
+	UCHAR		loopback;			// loopbackからの接続フラグ
 } TClient;
 
 #define		CLIENT_MAX			16					// クライアント最大同時接続数
@@ -1259,19 +1293,19 @@ BOOL BufferSize( Buffer* bp, size_t bytes )
 			LogW(L"送信バッファ拡大%ubytes",newsize);
 			return TRUE;
 		}
-		LogW(L"mallocエラー送信データ破棄");
+		LogW(L"L%u:malloc(%u)エラー",__LINE__,newsize);
 		return FALSE;
 	}
 	return TRUE;
 }
-void BufferSend( Buffer* bp, UCHAR* data, size_t bytes )
+void BufferSend( Buffer* bp, const UCHAR* data, size_t bytes )
 {
 	if( BufferSize( bp, bytes ) ){
 		memcpy( bp->top + bp->bytes, data, bytes );
 		bp->bytes += bytes;
 	}
 }
-void BufferSendFile( Buffer* bp, WCHAR* path )
+void BufferSendFile( Buffer* bp, const WCHAR* path )
 {
 	HANDLE hFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
 							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -1290,7 +1324,7 @@ void BufferSendFile( Buffer* bp, WCHAR* path )
 	else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
 }
 #define BufferSends(bp,txt) BufferSend(bp,txt,strlen(txt))
-void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
+void BufferSendf( Buffer* bp, const UCHAR* fmt, ... )
 {
 	UCHAR msg[256];
 	va_list arg;
@@ -1333,7 +1367,7 @@ void BufferSendf( Buffer* bp, UCHAR* fmt, ... )
 		}
 	}
 }
-void ResponseError( TClient* cp ,UCHAR* txt )
+void ResponseError( TClient* cp ,const UCHAR* txt )
 {
 	BufferSendf( &(cp->rsp.body)
 		,"<head><title>%s</title></head><body>%s</body>"
@@ -1342,11 +1376,8 @@ void ResponseError( TClient* cp ,UCHAR* txt )
 	BufferSendf( &(cp->rsp.head)
 		,"HTTP/1.0 %s\r\n"
 		"Content-Length: %u\r\n"
-		"Connection: %s\r\n"
-		"\r\n"
 		,txt
 		,cp->rsp.body.bytes
-		,cp->req.KeepAlive? "keep-alive" :"close"
 	);
 }
 void ResponseEmpty( TClient* cp )
@@ -1469,7 +1500,7 @@ void NodeListDestroy( NodeList* node )
 	}
 }
 // ノード１つメモリ確保
-NodeList* NodeCreate( const WCHAR* name, UCHAR* url, UCHAR* icon )
+NodeList* NodeCreate( const WCHAR* name, const UCHAR* url, const UCHAR* icon )
 {
 	NodeList* node = NULL;
 	size_t namesize=0, urlsize=0, iconsize=0;
@@ -1509,7 +1540,7 @@ NodeList* NodeCreate( const WCHAR* name, UCHAR* url, UCHAR* icon )
 			p += iconsize;
 		}
 	}
-	else LogW(L"L%u:mallocエラー",__LINE__);
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
 	return node;
 }
 
@@ -1573,7 +1604,6 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 							}
 							free( wpath );
 						}
-						else LogW(L"L%u:mallocエラー",__LINE__);
 					}
 				}
 				while( FindNextFileW( handle, &wfd ) );
@@ -1583,7 +1613,6 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 		else LogW(L"FindFirstFileW(%s)エラー%u",wfindir,GetLastError());
 		free( wfindir );
 	}
-	else LogW(L"L%u:mallocエラー",__LINE__);
 	return folder;
 }
 // お気に入り並び順をレジストリから取得
@@ -1746,7 +1775,7 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 }
 // ノードリスト並べ替え
 // アルゴリズム的には単純バブルソートか…？ノード移動は単方向リストのつなぎかえ。
-NodeList* NodeListSort( NodeList* top, int (*isReversed)( NodeList*, NodeList* ) )
+NodeList* NodeListSort( NodeList* top, int (*isReversed)( const NodeList* ,const NodeList* ) )
 {
 	NodeList* this = top;
 	NodeList* prev = NULL;
@@ -1786,13 +1815,13 @@ NodeList* NodeListSort( NodeList* top, int (*isReversed)( NodeList*, NodeList* )
 }
 // ソート用比較関数。p1が前、p2が次のノード。
 // 1を返却した場合、p2がp1より前にあるべきとしてp2が前方に移動する。
-int NodeIndexCompare( NodeList* p1, NodeList* p2 )
+int NodeIndexCompare( const NodeList* p1, const NodeList* p2 )
 {
 	// ソートインデックスが小さいものを前に
 	if( p1->sortIndex > p2->sortIndex ) return 1;
 	return 0;
 }
-int NodeNameCompare( NodeList* p1, NodeList* p2 )
+int NodeNameCompare( const NodeList* p1, const NodeList* p2 )
 {
 	// ソートインデックスが同じ場合の名前の並び順。IE8と同じ並びになるように比較関数を選ぶ。
 	// wcsicmpダメ、CompareStringWダメ、lstrcmpiWで同じになった。
@@ -1810,7 +1839,7 @@ int NodeNameCompare( NodeList* p1, NodeList* p2 )
 	if( p1->sortIndex==p2->sortIndex && lstrcmpiW(p1->name,p2->name)>0 ) return 1;
 	return 0;
 }
-int NodeTypeCompare( NodeList* p1, NodeList* p2 )
+int NodeTypeCompare( const NodeList* p1, const NodeList* p2 )
 {
 	// ソートインデックスが同じ場合フォルダを前に
 	if( p1->sortIndex==p2->sortIndex && !p1->isFolder && p2->isFolder ) return 1;
@@ -1861,7 +1890,7 @@ NodeList* FavoriteListCreate( void )
 	return list;
 }
 // ノードリストをJSONでファイル出力
-void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, UCHAR* view )
+void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, const UCHAR* view )
 {
 	UINT count=0;
 	if( depth==0 ){
@@ -1956,7 +1985,7 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, UCHAR* vi
 // 外部接続・HTTPクライアント関連
 //
 // ANSIとUnicodeとどううまく共通化すれば…
-UCHAR* FileContentTypeA( UCHAR* file )
+UCHAR* FileContentTypeA( const UCHAR* file )
 {
 	if( file ){
 		UCHAR* ext = strrchr(file,'.');
@@ -1984,7 +2013,7 @@ UCHAR* FileContentTypeA( UCHAR* file )
 	}
 	return "application/octet-stream";
 }
-UCHAR* FileContentTypeW( WCHAR* file )
+UCHAR* FileContentTypeW( const WCHAR* file )
 {
 	if( file ){
 		WCHAR* ext = wcsrchr(file,L'.');
@@ -2079,7 +2108,7 @@ UCHAR* strMonth( WORD wMonth )
 	return "Unknown";
 }
 // HTTP日付文字列をUINT64に変換
-UINT64 UINT64InetTime( UCHAR* intime )
+UINT64 UINT64InetTime( const UCHAR* intime )
 {
 	SYSTEMTIME st;
 	FILETIME ft;
@@ -2245,7 +2274,8 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	}
 	rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 	if( !rsp ){
-		LogW(L"L%u:mallocエラー",__LINE__); return NULL;
+		LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
+		return NULL;
 	}
 	memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 	rsp->bufsize = HTTPGET_BUFSIZE;
@@ -2463,7 +2493,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 									free(rsp), rsp=newrsp;
 								}
 								else{
-									LogW(L"L%u:mallocエラー",__LINE__);
+									LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
 									break;
 								}
 							}
@@ -2489,7 +2519,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 			else LogA("ホスト%sが見つかりません",host);
 			free( host );
 		}
-		else LogW(L"L%u:mallocエラー",__LINE__);
+		else LogW(L"L%u:strdupエラー",__LINE__);
 	}
 	else LogA("不正なURL:%s",url);
 fin:
@@ -2516,7 +2546,7 @@ fin:
 				newrsp->bytes = headbytes + bytes;
 				free(rsp), rsp=newrsp;
 			}
-			else LogW(L"L%u:mallocエラー",__LINE__);
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
 		}
 	}
 	else{
@@ -2771,7 +2801,6 @@ unsigned __stdcall analyze( void* p )
 						}
 						if( !success ) free(icon), icon=NULL;
 					}
-					else LogW(L"L%u:mallocエラー",__LINE__);
 					if( slash ) *slash = '/';
 				}
 			}
@@ -2786,10 +2815,7 @@ unsigned __stdcall analyze( void* p )
 				,"HTTP/1.0 200 OK\r\n"
 				"Content-Type: application/json; charset=utf-8\r\n"
 				"Content-Length: %u\r\n"
-				"Connection: %s\r\n"
-				"\r\n"
 				,cp->rsp.body.bytes
-				,cp->req.KeepAlive? "keep-alive" :"close"
 		);
 	fin:// 解放
 		if( title ) free(title), title=NULL;
@@ -3024,7 +3050,7 @@ unsigned __stdcall alive( void* p )
 			free( host );
 		}
 		else{
-			LogW(L"L%u:mallocエラー",__LINE__);
+			LogW(L"L%u:strdupエラー",__LINE__);
 			ResponseError(cp,"500 Internal Server Error");
 		}
 	}
@@ -3042,10 +3068,7 @@ fin:
 					,"HTTP/1.0 200 OK\r\n"
 					"Content-Type: text/plain; charset=utf-8\r\n"
 					"Content-Length: %u\r\n"
-					"Connection: %s\r\n"
-					"\r\n"
 					,cp->rsp.body.bytes
-					,cp->req.KeepAlive? "keep-alive" :"close"
 			);
 		}
 		// メインスレッドで処理続行
@@ -3201,7 +3224,7 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 //   「すべてのブックマーク」の中に、「ブックマークツールバー」「ブクマークメニュー」「未整理」の順に
 //   並んでいるが、places.sqliteの中身を見てもそんな順番には並んでいない。
 //
-UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, UCHAR* view )
+UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, const UCHAR* view )
 {
 	sqlite3_stmt* bookmarks;
 	UCHAR* moz_bookmarks = "select id,type,fk,title,dateAdded from moz_bookmarks where parent=? order by position";
@@ -3434,7 +3457,7 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 // 実装は、まずテーブル icon_mapping の url をぜんぶ取得して、１エントリずつ対応
 // するテーブル favicons の url を取得するのかな…。テーブル favicons を検索する
 // 回数が多いけど、もっと楽に対応づけを一気に取得する方法が…わからん。
-UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, UCHAR* view )
+UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, const UCHAR* view )
 {
 	sqlite3_stmt* icon_mapping;
 	sqlite3_stmt* favicons;
@@ -4020,6 +4043,8 @@ SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
 SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
 WCHAR	ListenPort[8]	= L"10080";			// Listenポート
 BOOL	BindLocal		= FALSE;			// bindアドレスをlocalhostに
+BOOL	WebPasswdRemote	= FALSE;			// localhost以外パスワード必要
+BOOL	WebPasswdLocal	= FALSE;			// localhostもパスワード必要
 BOOL	HttpsRemote		= FALSE;			// localhost以外https
 BOOL	HttpsLocal		= FALSE;			// localhostもhttps
 BOOL	BootMinimal		= FALSE;			// 起動時から最小化
@@ -4029,7 +4054,7 @@ void ServerParamGet( void )
 	WCHAR* ini = AppFilePath(L"my.ini");
 	// 初期値
 	wcscpy( ListenPort ,L"10080" );
-	BindLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
+	BindLocal = WebPasswdRemote = WebPasswdLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
@@ -4042,6 +4067,12 @@ void ServerParamGet( void )
 				}
 				else if( strnicmp(buf,"BindLocal=",10)==0 && *(buf+10) ){
 					BindLocal = TRUE;
+				}
+				else if( strnicmp(buf,"WebPasswdRemote=",16)==0 && *(buf+16) ){
+					WebPasswdRemote = TRUE;
+				}
+				else if( strnicmp(buf,"WebPasswdLocal=",15)==0 && *(buf+15) ){
+					WebPasswdLocal = TRUE;
 				}
 				else if( strnicmp(buf,"HttpsRemote=",12)==0 && *(buf+12) ){
 					HttpsRemote = TRUE;
@@ -4058,6 +4089,292 @@ void ServerParamGet( void )
 		free( ini );
 	}
 }
+// http://www.openssl.org/docs/crypto/BIO_f_base64.html
+// http://devenix.wordpress.com/2008/01/18/howto-base64-encode-and-decode-with-c-and-openssl-2/
+// http://www.ioncannon.net/programming/34/howto-base64-encode-with-cc-and-openssl/
+// http://www.fireproject.jp/feature/c-language/openssl/base64.html
+BOOL base64encode( UCHAR* data ,size_t databytes ,UCHAR* b64txt ,size_t b64bytes )
+{
+	BOOL success = FALSE;
+	BIO* b64 = BIO_new( BIO_f_base64() );
+	BIO* bio = BIO_new( BIO_s_mem() );
+	if( b64 && bio ){
+		BUF_MEM* bp = NULL;
+		BIO_push( b64 ,bio );
+		if( BIO_write( b64 ,data ,databytes ) <=0 )
+			LogW(L"BIO_writeエラー");
+		BIO_flush( b64 );
+		BIO_get_mem_ptr( b64 ,&bp );
+		if( bp ){
+			if( bp->length <b64bytes ){
+				memcpy( b64txt ,bp->data ,bp->length );
+				b64txt[bp->length] = '\0';
+				chomp(b64txt); // なぜか末尾に改行コードがあるので削除
+				success = TRUE;
+			}
+			else LogW(L"base64encode:バッファが足りません");
+		}
+		else LogW(L"BIO_get_mem_ptrエラー");
+	}
+	else LogW(L"BIO_newエラー");
+	if( bio ) BIO_free( bio );
+	if( b64 ) BIO_free( b64 );
+	return success;
+}
+// 出力バッファdataはlen以上バイトぶん確保しておくこと
+// http://d.hatena.ne.jp/stonife/20100306/p1
+BOOL base64decode( UCHAR* b64txt ,size_t len ,UCHAR* data )
+{
+	BOOL success = FALSE;
+	BIO* b64 = BIO_new( BIO_f_base64() );
+	BIO* bio = BIO_new_mem_buf( b64txt ,len );
+	if( b64 && bio ){
+		BIO_set_flags( b64 ,BIO_FLAGS_BASE64_NO_NL ); // 末尾改行コードあっても大丈夫
+		BIO_push( b64 ,bio );
+			memset( data ,0 ,len );
+			if( BIO_read( b64 ,data ,len ) >0 ){
+				success = TRUE;
+			}
+			else LogW(L"BIO_readエラー");
+	}
+	else LogW(L"BIO_new/BIO_new_mem_bufエラー");
+	if( bio ) BIO_free( bio );
+	if( b64 ) BIO_free( b64 );
+	return success;
+}
+// 以下のため変な引数と戻り値になっている
+// ・戻り値のTRUE/FALSE ＝ 設定値があるかどうか(WebPasswd=ならFALSE)
+// ・引数は有効なら設定値(base64エンコード文字列)が入る(ただしバッファ不足の時は空にして返却)
+BOOL WebPasswd( UCHAR* digest ,size_t bytes )
+{
+	BOOL found = FALSE;
+	WCHAR* ini = AppFilePath(L"my.ini");
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"WebPasswd=",10)==0 && *(buf+10) ){
+					if( digest ){
+						if( strlen(buf+10) <bytes ){
+							strncpy( digest ,buf+10 ,bytes );
+						}
+						else{
+							LogW(L"WebPasswd=文字列が長すぎます");
+							*digest = '\0';
+						}
+					}
+					found = TRUE;
+					break;
+				}
+			}
+			fclose( fp );
+		}
+		free( ini );
+	}
+	return found;
+}
+// URLデコード
+// http://www.kinet.or.jp/hiromin/cgi_introduction/appendix/url_encode/x_www_form_url_translator.c
+// http://bytes.com/topic/c/answers/601171-int-urldecode-char-src-char-last-char-dest
+// http://www.joinc.co.kr/modules/moniwiki/wiki.php/Site/Code/C/urlencode
+// http://www.endoshoji.co.jp/cat_menu/src/kensaku.h
+BOOL URLdecode( const UCHAR* src ,size_t srclen ,UCHAR* dst ,size_t dstlen )
+{
+	BOOL success = FALSE;
+	UCHAR* srcEnd = src + srclen;
+	UCHAR* dstEnd = dst + dstlen;
+	for( ; src <srcEnd && dst <dstEnd; src++, dst++ ){
+		if( *src=='%' ){
+			if( src+2 <srcEnd ){
+				UCHAR hex[3] = { src[1] ,src[2] ,'\0' };
+				long code = strtol( hex ,NULL ,16 );
+				*dst = (UCHAR)code;
+				src += 2;
+			}
+			else{
+				*dst = '%';
+			}
+		}
+		else if( *src=='+' ){
+			*dst = ' ';
+		}
+		else{
+			*dst = *src;
+		}
+	}
+	if( dst <dstEnd ){
+		*dst = '\0';
+		success = TRUE;
+	}
+	else if( dst==dstEnd && src==srcEnd ){
+		*(dst-1) = '\0';
+		success = TRUE;
+	}
+	else{
+		LogW(L"URLdecode:出力バッファが足りません");
+		*(dstEnd-1) = '\0';
+	}
+	return success;
+}
+// HTTPセッションクッキー
+// http://www.studyinghttp.net/cookies
+// http://ja.wikipedia.org/wiki/HTTP_cookie
+// http://sehermitage.web.fc2.com/security/cookie.html
+// http://www.jumperz.net/texts/csrf1.2.htm
+// http://www.ipa.go.jp/files/000017508.pdf
+// http://sc.seeeko.com/archives/4570034.html
+// http://www.ipa.go.jp/security/awareness/vendor/programmingv2/contents/302.html
+// http://www.ipa.go.jp/security/awareness/vendor/programmingv2/contents/303.html
+CRITICAL_SECTION	SessionCS ={0};		// スレッド間排他
+Session*			Session0 = NULL;	// 先頭
+Session*			SessionN = NULL;	// 末尾
+// セッション１つ生成
+Session* SessionCreate( void )
+{
+	// 乱数生成
+	// http://www.openssl.org/docs/crypto/RAND_bytes.html
+	// http://tkyk.name/blog/2009/06/06/PHP-Ruby-Programming-Encryption/
+	UCHAR rand[1024]="";
+	if( RAND_bytes( rand ,sizeof(rand) ) ){
+		UCHAR session[SHA256_DIGEST_LENGTH*2]="";
+		UCHAR digest[SHA256_DIGEST_LENGTH]="";
+		// ハッシュ値にして
+		SHA256( rand ,sizeof(rand) ,digest );
+		// BASE64
+		if( base64encode( digest ,sizeof(digest) ,session ,sizeof(session) ) ){
+			size_t len = strlen( session );
+			Session* sp;
+			while( session[len-1]==' ' ) session[--len]='\0';
+			sp = malloc( sizeof(Session) + len );
+			if( sp ){
+				memcpy( sp->id, session, len );
+				sp->id[len] = '\0';
+				sp->next = NULL;
+				// リスト末尾追加
+				EnterCriticalSection( &SessionCS );
+				if( SessionN ) SessionN->next = sp;
+				SessionN = sp;
+				if( !Session0 ) Session0 = sp;
+				LeaveCriticalSection( &SessionCS );
+				return sp;
+			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(Session)+len);
+		}
+	}
+	else LogW(L"RAND_bytesエラー");
+	return NULL;
+}
+// CookieヘッダのセッションIDが有効かどうか
+// なぜか/jquery/のファイルに対するリクエストに2つsession=が存在する。
+//   Cookie: session=XXXXX; session=XXXXXX ←おなじセッションIDの場合
+//   Cookie: session=XXXXX; session=YYYYYY ←ちがうセッションIDの場合
+// login.html用にjquery.jsに穴を開けているがそのせい？どちらかが有効ならよしとする。
+Session* ClientSessionAlive( TClient* cp )
+{
+	UCHAR* cookie = cp->req.Cookie;
+	UCHAR* sid;
+	if( cookie ){
+	next:
+		sid = stristr(cookie,"session=");
+		if( sid && *(sid+8) ){
+			sid += 8;
+			{
+				UCHAR ch;
+				UCHAR* end = strchr(sid,' ');
+				if( !end ) end = strchr(sid,';');
+				if( end ){ ch = *end; *end = '\0'; }
+				{
+					Session* sep = Session0;
+					while( sep ){
+						if( strcmp( sid ,sep->id )==0 ){
+							cp->session = sep;
+							break;
+						}
+						sep = sep->next;
+					}
+				}
+				if( end ) *end = ch;
+			}
+			cookie = sid;
+			goto next;
+		}
+	}
+	return cp->session;
+}
+// Webパスワード認証
+// GET /:login HTTP/1.x
+// この関数から戻った後は送信処理に行くので送信準備を必ず行って終了する。
+// ブルートフォースアタック対策のため(?)パスワードが違った場合は少し待ってから応答を返す。
+// その少し待ってる間メインスレッドを止めないよう一応スレッドで実行する。
+#define WEBPASSWD_MAX 24
+unsigned __stdcall authenticate( void* p )
+{
+	TClient* cp = p;
+	// メインスレッドなにもしない
+	cp->status = CLIENT_THREADING;
+	// リクエストメッセージ本文に p=パスワード(URLエンコード)
+	if( strnicmp(cp->req.body,"p=",2)==0 && *(cp->req.body+2) ){
+		UCHAR*	encpass = cp->req.body +2;
+		UCHAR	plain[WEBPASSWD_MAX*2]="";
+		UCHAR	b64[SHA256_DIGEST_LENGTH*2]="";
+		if( !cp->sslp ) LogW(L"[%u]注意:暗号化されていない平文パスワードを受信しました",Num(cp));
+		if( URLdecode( encpass ,strlen(encpass) ,plain ,sizeof(plain) ) ){
+			if( WebPasswd( b64 ,sizeof(b64) ) && *b64 ){
+				size_t b64len = strlen(b64);
+				UCHAR digest[SHA256_DIGEST_LENGTH]="";
+				SHA256( plain ,strlen(plain) ,digest );
+				if( SHA256_DIGEST_LENGTH <= b64len ){
+					UCHAR* webpass = malloc( b64len );
+					if( webpass ){
+						if( base64decode( b64 ,b64len ,webpass ) ){
+							if( memcmp( webpass ,digest ,SHA256_DIGEST_LENGTH )==0 ){
+								// 認証成功
+								Session* sep = SessionCreate();
+								if( sep ){
+									// 本文セッションID
+									BufferSends( &(cp->rsp.body) ,sep->id );
+									BufferSendf( &(cp->rsp.head)
+											,"HTTP/1.0 200 OK\r\n"
+											"Content-Type: text/plain\r\n"
+											"Content-Length: %u\r\n"
+											,cp->rsp.body.bytes
+									);
+									LogA("[%u]ログインしました(%s)",Num(cp),sep->id);
+								}
+								else ResponseError(cp,"500 Internal Server Error");
+							}
+							else{
+								ResponseError(cp,"401 Unauthorized");
+								Sleep(1000); // 少し待つ
+							}
+						}
+						free( webpass );
+					}
+					else{
+						LogW(L"L%u:malloc(%u)エラー",__LINE__,b64len);
+						ResponseError(cp,"500 Internal Server Error");
+					}
+				}
+				else{
+					LogW(L"設定ファイルパスワード情報が不正です(短すぎます)");
+					ResponseError(cp,"500 Internal Server Error");
+				}
+			}
+			else ResponseError(cp,"500 Internal Server Error");
+		}
+		else ResponseError(cp,"400 Bad Request");
+	}
+	else ResponseError(cp,"400 Bad Request");
+	// メインスレッドで処理続行
+	cp->status = CLIENT_SEND_READY;
+	PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
+	_endthreadex(0);
+	return 0;
+}
+
+
 
 
 
@@ -4244,7 +4561,7 @@ BOOL UnderDocumentRoot( const WCHAR* path )
 // xxx
 // --XXX--
 //
-void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
+void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 {
 	UCHAR* path = cp->req.path;
 	if( *path=='/' ) path++;
@@ -4449,11 +4766,8 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 							"Date: %s\r\n"
 							"Content-Type: text/plain; charset=utf-8\r\n"
 							"Content-Length: %u\r\n"
-							"Connection: %s\r\n"
-							"\r\n"
 							,inetTime
 							,GetFileSize(cp->rsp.readfh,NULL)
-							,cp->req.KeepAlive? "keep-alive" :"close"
 					);
 				}
 				else{
@@ -4471,7 +4785,6 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 	}
 	else ResponseError(cp,"400 Bad Request");
 }
-
 // 待受ソケット作成
 // IPv6対応は結局、待受ソケットを２つ作成するようにした。
 // ・きっかけは、Win7+Opera12で「接続できません」エラーになるという問い合わせで、
@@ -4503,7 +4816,7 @@ void MultipartFormdataProc( TClient* cp, WCHAR* tmppath )
 // TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
 // 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
 // http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
-SOCKET ListenAddrOne( ADDRINFOW* adr )
+SOCKET ListenAddrOne( const ADDRINFOW* adr )
 {
 	SOCKET	sock	= INVALID_SOCKET;
 	BOOL	success	= FALSE;
@@ -4589,9 +4902,11 @@ void SocketAccept( SOCKET sock )
 		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
 		if( cp ){
 			BOOL isSSL = FALSE;
+			UCHAR loopback = 0;
 			if( wcscmp(ip,L"127.0.0.1")==0 || wcscmp(ip,L"::1")==0 || wcsicmp(ip,L"::ffff:127.0.0.1")==0 ){
 				// localhost(loopback)から接続
 				if( HttpsLocal ) isSSL = TRUE;
+				loopback = 1;
 			}
 			else{
 				// localhost(loopback)以外から接続
@@ -4626,12 +4941,13 @@ void SocketAccept( SOCKET sock )
 						memset( cp->req.buf, 0, REQUEST_BUFSIZE );
 						memset( cp->rsp.head.top, 0, RESPONSE_HEADSIZE );
 						memset( cp->rsp.body.top, 0, RESPONSE_BODYSIZE );
-						cp->req.bufsize = REQUEST_BUFSIZE;
-						cp->rsp.head.size = RESPONSE_HEADSIZE;
-						cp->rsp.body.size = RESPONSE_BODYSIZE;
-						cp->sock = sock_new;
-						cp->sslp = sslp;
-						cp->status = CLIENT_ACCEPT_OK;
+						cp->req.bufsize		= REQUEST_BUFSIZE;
+						cp->rsp.head.size	= RESPONSE_HEADSIZE;
+						cp->rsp.body.size	= RESPONSE_BODYSIZE;
+						cp->loopback		= loopback;
+						cp->sock			= sock_new;
+						cp->sslp			= sslp;
+						cp->status			= CLIENT_ACCEPT_OK;
 						success = TRUE;
 					}
 					else{
@@ -4746,6 +5062,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						UCHAR* ua = strHeaderValue(  req->head,"User-Agent");
 						UCHAR* ims= strHeaderValue(  req->head,"If-Modified-Since");
 						UCHAR* ka = strHeaderValue(  req->head,"Connection");
+						// TODO:Cookieヘッダて複数行の場合もあるんだっけ…？
+						UCHAR* ck = strHeaderValue(  req->head,"Cookie");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
 							UINT n = 0;
@@ -4758,6 +5076,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						if( ua ) req->UserAgent = chomp(ua);
 						if( ims ) req->IfModifiedSince = chomp(ims);
 						if( ka && stricmp(chomp(ka),"keep-alive")==0 ) req->KeepAlive = 1;
+						if( ck ) req->Cookie = chomp(ck);
 					}
 					req->method = chomp(req->buf);
 					req->path = strchr(req->method,' ');
@@ -4770,21 +5089,95 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					}
 				}
 				if( req->method && req->path && req->ver ){
+					if( (WebPasswdRemote && !cp->loopback) || (WebPasswdLocal && cp->loopback) ){
+						// Webパスワード有効
+						if( ClientSessionAlive( cp ) ){
+							// セッション有効ログイン済み
+							UCHAR* file = cp->req.path;
+							while( *file=='/' ) file++;
+							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
+								// ログイン画面なしindex.htmlを返す
+								// TODO:このログイン要求のパスワードが間違っている時は？？？
+								// セッション有効だから無視してもいい？認証処理すべき？
+								cp->rsp.readfh = CreateFileW(
+										RealPath("index.html",realpath,sizeof(realpath)/sizeof(WCHAR))
+										,GENERIC_READ ,FILE_SHARE_READ ,NULL
+										,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+								);
+								if( cp->rsp.readfh !=INVALID_HANDLE_VALUE ){
+									BufferSendf( &(cp->rsp.head)
+											,"HTTP/1.0 200 OK\r\n"
+											"Content-Type: text/html\r\n"
+											"Content-Length: %u\r\n"
+											,GetFileSize(cp->rsp.readfh,NULL)
+									);
+								}
+								else ResponseError(cp,"404 Not Found");
+								goto send_ready;
+							}
+						}
+						else{
+							// セッションなし
+							if( stricmp(req->method,"GET")==0 ){
+								UCHAR* file = cp->req.path;
+								while( *file=='/' ) file++;
+								if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
+									// faviconとjquery.jsはクッキーなくても返却(login.htmlで使うから)
+								}
+								else if( !*file || stricmp(FileContentTypeA(file),"text/html")==0 ){
+									// リダイレクトは使わず直接login.htmlを返却する。
+									cp->rsp.readfh = CreateFileW(
+											RealPath("login.html",realpath,sizeof(realpath)/sizeof(WCHAR))
+											,GENERIC_READ ,FILE_SHARE_READ ,NULL
+											,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+									);
+									if( cp->rsp.readfh !=INVALID_HANDLE_VALUE ){
+										BufferSendf( &(cp->rsp.head)
+												,"HTTP/1.0 200 OK\r\n"
+												"Content-Type: text/html\r\n"
+												"Content-Length: %u\r\n"
+												,GetFileSize(cp->rsp.readfh,NULL)
+										);
+									}
+									else ResponseError(cp,"404 Not Found");
+									goto send_ready;
+								}
+								else{ ResponseError(cp,"404 Not Found"); goto send_ready; }
+							}
+							else if( stricmp(req->method,"POST")==0 ){
+								UCHAR* file = cp->req.path;
+								while( *file=='/' ) file++;
+								if( stricmp(file,":login")==0 && req->ContentLength && req->ContentLength <999 ){
+									// ログイン処理
+									UINT bodybytes = req->bytes - (req->body - req->buf);
+									if( bodybytes >= req->ContentLength ){
+										// 本文受信完了
+										cp->thread = (HANDLE)_beginthreadex( NULL,0 ,authenticate ,(void*)cp ,0,NULL );
+										Sleep(50);	// なんとなくちょっと待つ
+										break; // スレッド終了まで何もしない
+									}
+									else break; // 引き続き本文受信
+								}
+								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
+							}
+							else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
+						}
+					}
 					if( stricmp(req->method,"GET")==0 ){
 						UCHAR* file = cp->req.path;
-						if( *file=='/' ) file++;
+						while( *file=='/' ) file++;
 						// リクエストファイル開く
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
 							URLfix( cp->req.param );
-							cp->thread = (HANDLE)_beginthreadex( NULL, 0, analyze, (void*)cp, 0, NULL );
+							cp->thread = (HANDLE)_beginthreadex( NULL,0, analyze, (void*)cp, 0,NULL );
 							Sleep(50);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":alive")==0 && cp->req.param ){
 							// URL死活確認
 							URLfix( cp->req.param );
-							cp->thread = (HANDLE)_beginthreadex( NULL, 0, alive, (void*)cp, 0, NULL );
+							cp->thread = (HANDLE)_beginthreadex( NULL,0, alive, (void*)cp, 0,NULL );
 							Sleep(50);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
@@ -4820,10 +5213,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									,"HTTP/1.0 200 OK\r\n"
 									"Content-Type: application/json\r\n"
 									"Content-Length: %u\r\n"
-									"Connection: %s\r\n"
-									"\r\n"
 									,bp->bytes
-									,cp->req.KeepAlive? "keep-alive" :"close"
 							);
 							goto send_ready;
 						}
@@ -4851,16 +5241,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							if( u16 ){
 								UCHAR* u8 = WideCharToUTF8alloc( u16 ); free(u16), u16=NULL;
 								if( u8 ){
-									size_t bytes = strlen( u8 );
-									BufferSend( &(cp->rsp.body) ,u8 ,bytes );
+									size_t len = strlen( u8 );
+									BufferSend( &(cp->rsp.body) ,u8 ,len );
 									BufferSendf( &(cp->rsp.head)
 											,"HTTP/1.0 200 OK\r\n"
 											"Content-Type: text/plain; charset=utf-8\r\n"
 											"Content-Length: %u\r\n"
-											"Connection: %s\r\n"
-											"\r\n"
-											,bytes
-											,cp->req.KeepAlive? "keep-alive" :"close"
+											,len
 									);
 									free( u8 );
 								}
@@ -4968,10 +5355,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										,"HTTP/1.0 200 OK\r\n"
 										"Content-Type: application/json\r\n"
 										"Content-Length: %u\r\n"
-										"Connection: %s\r\n"
-										"\r\n"
 										,bp->bytes
-										,cp->req.KeepAlive? "keep-alive" :"close"
 								);
 							}
 							else ResponseError(cp,"500 Internal Server Error");
@@ -5033,10 +5417,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 													,"HTTP/1.0 200 OK\r\n"
 													"Content-Type: application/json\r\n"
 													"Content-Length: %u\r\n"
-													"Connection: %s\r\n"
-													"\r\n"
 													,bp->bytes
-													,cp->req.KeepAlive? "keep-alive" :"close"
 											);
 											success = TRUE;
 										}
@@ -5212,13 +5593,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							GetSystemTime( &st );
 							InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
-							BufferSendf( bp
-									,"Date: %s\r\n"
-									"Connection: %s\r\n"
-									"\r\n"
-									,inetTime
-									,cp->req.KeepAlive? "keep-alive" :"close"
-							);
+							BufferSendf( bp ,"Date: %s\r\n" ,inetTime );
 						}
 						else ResponseError(cp,"404 Not Found");
 						goto send_ready;
@@ -5272,15 +5647,12 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 							}
 						}
-						else{
-							ResponseError(cp,"400 Bad Request");
-							goto send_ready;
-						}
+						else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 					}
 					else if( stricmp(req->method,"PUT")==0 ){
 						if( req->ContentLength ){
 							UCHAR* file = req->path;
-							if( *file=='/' ) file++;
+							while( *file=='/' ) file++;
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
 							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							// リクエスト本文を一時ファイルに書き出す
@@ -5358,7 +5730,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					}
 					else if( stricmp(req->method,"DEL")==0 ){
 						UCHAR* file = req->path;
-						if( *file=='/' ) file++;
+						while( *file=='/' ) file++;
 						// スナップショットメモのみ
 						if( strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0 ){
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
@@ -5368,15 +5740,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						else ResponseError(cp,"400 Bad Request");
 						goto send_ready;
 					}
-					else{
-						ResponseError(cp,"400 Bad Request");
-						goto send_ready;
-					}
+					else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 				}
-				else{
-					ResponseError(cp,"400 Bad Request");
-					goto send_ready;
-				}
+				else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 			}
 			else if( req->bytes >= req->bufsize-1 ){
 				// ヘッダ完了せずバッファいっぱい
@@ -5422,7 +5788,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
-		cp->frozen = 0;
+		cp->silent = 0;
 	}
 	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
 }
@@ -5434,10 +5800,19 @@ void SocketWrite( SOCKET sock )
 		Response* rsp = &(cp->rsp);
 		switch( cp->status ){
 		case CLIENT_SEND_READY:
-			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
-			LogA("[%u]送信:%s",Num(cp),rsp->head.top);
 			// スレッドは終了してるはず
 			CloseHandle( cp->thread ), cp->thread=NULL;
+			// 共通レスポンスヘッダ
+			if( cp->session ){
+				BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s\r\n" ,cp->session->id );
+			}
+			BufferSendf( &(rsp->head)
+					,"Connection: %s\r\n"
+					"\r\n"
+					,cp->req.KeepAlive? "keep-alive" :"close"
+			);
+			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
+			LogA("[%u]送信:%s",Num(cp),rsp->head.top);
 			rsp->sended = rsp->readed = 0;
 			cp->status = CLIENT_SENDING;
 
@@ -5507,14 +5882,15 @@ void SocketWrite( SOCKET sock )
 			else{
 				// ぜんぶ送信した
 				if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
-					WCHAR wpath[MAX_PATH+1]=L"";
-					SSL* sslp = cp->sslp;
-					UCHAR* reqBuf = cp->req.buf;
-					UCHAR* rspHead = cp->rsp.head.top;
-					UCHAR* rspBody = cp->rsp.body.top;
-					size_t reqBufSize = cp->req.bufsize;
-					size_t rspHeadSize = cp->rsp.head.size;
-					size_t rspBodySize = cp->rsp.body.size;
+					WCHAR	wpath[MAX_PATH+1]=L"";
+					SSL*	sslp		= cp->sslp;
+					UCHAR	loopback	= cp->loopback;
+					UCHAR*	reqBuf		= cp->req.buf;
+					UCHAR*	rspHead		= cp->rsp.head.top;
+					UCHAR*	rspBody		= cp->rsp.body.top;
+					size_t	reqBufSize	= cp->req.bufsize;
+					size_t	rspHeadSize	= cp->rsp.head.size;
+					size_t	rspBodySize	= cp->rsp.body.size;
 					CloseHandle( cp->thread );
 					CloseHandle( cp->req.writefh );
 					CloseHandle( cp->rsp.readfh );
@@ -5523,17 +5899,18 @@ void SocketWrite( SOCKET sock )
 					memset( cp->rsp.head.top ,0 ,cp->rsp.head.size );
 					memset( cp->rsp.body.top ,0 ,cp->rsp.body.size );
 					memset( cp ,0 ,sizeof(TClient) );
-					cp->sock = sock;
-					cp->sslp = sslp;
-					cp->req.buf = reqBuf;
-					cp->rsp.head.top = rspHead;
-					cp->rsp.body.top = rspBody;
-					cp->req.bufsize = reqBufSize;
-					cp->rsp.head.size = rspHeadSize;
-					cp->rsp.body.size = rspBodySize;
-					cp->req.writefh = INVALID_HANDLE_VALUE;
-					cp->rsp.readfh = INVALID_HANDLE_VALUE;
-					cp->status = CLIENT_RECV_MORE;
+					cp->sock			= sock;
+					cp->sslp			= sslp;
+					cp->loopback		= loopback;
+					cp->req.buf			= reqBuf;
+					cp->req.bufsize		= reqBufSize;
+					cp->rsp.head.top	= rspHead;
+					cp->rsp.body.top	= rspBody;
+					cp->rsp.head.size	= rspHeadSize;
+					cp->rsp.body.size	= rspBodySize;
+					cp->rsp.readfh		= INVALID_HANDLE_VALUE;
+					cp->req.writefh		= INVALID_HANDLE_VALUE;
+					cp->status			= CLIENT_RECV_MORE;
 					//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
 				}
 				else{ // 切断
@@ -5545,7 +5922,7 @@ void SocketWrite( SOCKET sock )
 
 		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 		}
-		cp->frozen = 0;
+		cp->silent = 0;
 	}
 	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
@@ -5640,7 +6017,8 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 	return -1;
 }
 // SSL自己署名サーバ証明書・秘密鍵作成
-BOOL SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
+// TODO:証明書を見るで確認すると「拇印アルゴリズム:sha1」だが、それを設定するのはどこ？
+BOOL SSL_SelfCertificateCreate( const WCHAR* crtfile, const WCHAR* keyfile )
 {
 	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
 	EVP_PKEY*		pkey	= EVP_PKEY_new();
@@ -5732,8 +6110,8 @@ BOOL SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 		LogW(L"X509_set_issuer_nameエラー");
 		goto fin;
 	}
-	LogW(L"X509_sitn(sha1)..");
-	if( !X509_sign( x509 ,pkey ,EVP_sha1() ) ){
+	LogW(L"X509_sign(sha256)..");
+	if( !X509_sign( x509 ,pkey ,EVP_sha256() ) ){
 		LogW(L"X509_signエラー");
 		goto fin;
 	}
@@ -5770,7 +6148,7 @@ BOOL SSL_SelfCertificateCreate( WCHAR* crtfile, WCHAR* keyfile )
 	return success;
 }
 // SSL証明書ファイルを読み込んでSSLコンテキストに登録
-void SSL_CTX_UseCertificate( WCHAR* crtfile, WCHAR* keyfile )
+void SSL_CTX_UseCertificate( const WCHAR* crtfile, const WCHAR* keyfile )
 {
 	FILE* fp = _wfopen( crtfile ,L"rb" );
 	if( fp ){
@@ -5782,9 +6160,9 @@ void SSL_CTX_UseCertificate( WCHAR* crtfile, WCHAR* keyfile )
 				BIO* bio = BIO_new( BIO_s_mem() );
 				LogW(L"SSLサーバ証明書");
 				X509_NAME_oneline( X509_get_subject_name(x509) ,buf ,sizeof(buf) );
-				buf[sizeof(buf)-1]='\0'; LogA("所有者: %s",buf);
+				buf[sizeof(buf)-1]='\0'; LogA("所有者:%s",buf);
 				X509_NAME_oneline( X509_get_issuer_name(x509) ,buf ,sizeof(buf) );
-				buf[sizeof(buf)-1]='\0'; LogA("発行者: %s",buf);
+				buf[sizeof(buf)-1]='\0'; LogA("発行者:%s",buf);
 				// http://stackoverflow.com/questions/11683021/openssl-c-get-expiry-date
 				if( bio ){
 					int bytes;
@@ -5850,16 +6228,24 @@ void SSLCertLoad( void )
 		if( keyfile ) free( keyfile );
 	}
 }
-void ConfigSave(
-		WCHAR*	ListenPort
-		,BOOL	bindLocal
-		,BOOL	httpsRemote
-		,BOOL	httpsLocal
-		,BOOL	bootMinimal
-		,WCHAR*	wExe[BI_COUNT]
-		,WCHAR*	wArg[BI_COUNT]
-		,BOOL	hide[BI_COUNT]
-){
+
+// 設定ファイル保存
+typedef struct {
+	WCHAR	wListenPort[8];
+	BOOL	bindLocal;
+	BOOL	webPasswdRemote;
+	BOOL	webPasswdLocal;
+	BOOL	httpsRemote;
+	BOOL	httpsLocal;
+	BOOL	bootMinimal;
+	WCHAR	wWebPasswd[WEBPASSWD_MAX+1];
+	WCHAR*	wExe[BI_COUNT];
+	WCHAR*	wArg[BI_COUNT];
+	BOOL	hide[BI_COUNT];
+} ConfigData;
+
+void ConfigSave( const ConfigData* dp )
+{
 	WCHAR new[MAX_PATH+1]=L"";
 	WCHAR* p;
 	GetModuleFileNameW( NULL ,new ,sizeof(new)/sizeof(WCHAR) );
@@ -5870,33 +6256,59 @@ void ConfigSave(
 		wcscpy( p+1 ,L"my.ini.new" );
 		fp = _wfopen( new ,L"wb" );
 		if( fp ){
-			UCHAR* listenPort = WideCharToUTF8alloc( ListenPort );
-			UCHAR* exe[BI_COUNT], *arg[BI_COUNT];
-			WCHAR ini[MAX_PATH+1]=L"";
-			UINT i;
+			UCHAR*	listenPort = WideCharToUTF8alloc( dp->wListenPort );
+			UCHAR*	webPasswd = *dp->wWebPasswd? WideCharToUTF8alloc( dp->wWebPasswd ) :NULL;
+			UCHAR*	exe[BI_COUNT];
+			UCHAR*	arg[BI_COUNT];
+			WCHAR	ini[MAX_PATH+1] = L"";
+			UCHAR	b64txt[SHA256_DIGEST_LENGTH*2]="";
+			UINT	i;
 			for( i=0; i<BI_COUNT; i++ ){
-				exe[i] = WideCharToUTF8alloc( wExe[i] );
-				arg[i] = WideCharToUTF8alloc( wArg[i] );
+				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
+				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
 			}
-			fprintf(fp,"ListenPort=%s\r\n"	,listenPort		? listenPort:"");
-			fprintf(fp,"BindLocal=%s\r\n"	,bindLocal		? "1":"");
-			fprintf(fp,"HttpsRemote=%s\r\n"	,httpsRemote	? "1":"");
-			fprintf(fp,"HttpsLocal=%s\r\n"	,httpsLocal		? "1":"");
-			fprintf(fp,"BootMinimal=%s\r\n"	,bootMinimal	? "1":"");
-			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]			? arg[BI_IE]:"");
-			fprintf(fp,"IEHide=%s\r\n"		,hide[BI_IE]		? "1":"");
-			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]		? arg[BI_CHROME]:"");
-			fprintf(fp,"ChromeHide=%s\r\n"	,hide[BI_CHROME]	? "1":"");
-			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]	? arg[BI_FIREFOX]:"");
-			fprintf(fp,"FirefoxHide=%s\r\n"	,hide[BI_FIREFOX]	? "1":"");
-			fprintf(fp,"OperaArg=%s\r\n"	,arg[BI_OPERA]		? arg[BI_OPERA]:"");
-			fprintf(fp,"OperaHide=%s\r\n"	,hide[BI_OPERA]		? "1":"");
+			if( webPasswd ){
+				// 新パスワード:SHA256ハッシュ
+				// http://www.askyb.com/cpp/openssl-sha256-hashing-example-in-cpp/
+				UCHAR digest[SHA256_DIGEST_LENGTH]="";
+				SHA256( webPasswd ,strlen(webPasswd) ,digest );
+				if( base64encode( digest ,sizeof(digest) ,b64txt ,sizeof(b64txt) ) ){
+					// デコード検査
+					UCHAR test[SHA256_DIGEST_LENGTH*2]="";
+					if( base64decode( b64txt ,strlen(b64txt) ,test ) ){
+						if( memcmp( test ,digest ,SHA256_DIGEST_LENGTH ) )
+							LogW(L"Webパスワード内部エラー(BASE64デコード検査エラー)");
+					}
+				}
+			}
+			else{
+				// 登録済みパスワード
+				if( WebPasswd( b64txt ,sizeof(b64txt) ) && !*b64txt )
+					LogW(L"設定ファイルのパスワード情報が不正です(破棄されます)");
+			}
+			fprintf(fp,"ListenPort=%s\r\n"		,listenPort			? listenPort:"");
+			fprintf(fp,"BindLocal=%s\r\n"		,dp->bindLocal		? "1":"");
+			fprintf(fp,"WebPasswd=%s\r\n"		,b64txt);
+			fprintf(fp,"WebPasswdRemote=%s\r\n"	,dp->webPasswdRemote? "1":"");
+			fprintf(fp,"WebPasswdLocal=%s\r\n"	,dp->webPasswdLocal	? "1":"");
+			fprintf(fp,"HttpsRemote=%s\r\n"		,dp->httpsRemote	? "1":"");
+			fprintf(fp,"HttpsLocal=%s\r\n"		,dp->httpsLocal		? "1":"");
+			fprintf(fp,"BootMinimal=%s\r\n"		,dp->bootMinimal	? "1":"");
+			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]				? arg[BI_IE]:"");
+			fprintf(fp,"IEHide=%s\r\n"		,dp->hide[BI_IE]		? "1":"");
+			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]			? arg[BI_CHROME]:"");
+			fprintf(fp,"ChromeHide=%s\r\n"	,dp->hide[BI_CHROME]	? "1":"");
+			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]		? arg[BI_FIREFOX]:"");
+			fprintf(fp,"FirefoxHide=%s\r\n"	,dp->hide[BI_FIREFOX]	? "1":"");
+			fprintf(fp,"OperaArg=%s\r\n"	,arg[BI_OPERA]			? arg[BI_OPERA]:"");
+			fprintf(fp,"OperaHide=%s\r\n"	,dp->hide[BI_OPERA]		? "1":"");
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]	? exe[i]:"");
-				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]	? arg[i]:"");
-				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,hide[i]	? "1":"");
+				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]		? exe[i]:"");
+				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]		? arg[i]:"");
+				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i]	? "1":"");
 			}
 			if( listenPort ) free( listenPort );
+			if( webPasswd ) free( webPasswd );
 			for( i=0; i<BI_COUNT; i++ ){
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
@@ -5914,16 +6326,18 @@ void ConfigSave(
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
 // ダイアログ用ID
-#define ID_DLG_NULL			0
-#define ID_DLG_OK			1
-#define ID_DLG_CANCEL		2
-#define ID_DLG_FOPEN		3
-#define ID_DLG_CLOSE		4
-#define ID_DLG_HTTPS_REMOTE	5
-#define ID_DLG_HTTPS_LOCAL	6
-#define ID_DLG_SSL_VIEWCRT	7
-#define ID_DLG_SSL_MAKECRT	8
-#define ID_DLG_DESTROY		99
+#define ID_DLG_NULL				0
+#define ID_DLG_OK				1
+#define ID_DLG_CANCEL			2
+#define ID_DLG_FOPEN			3
+#define ID_DLG_CLOSE			4
+#define ID_DLG_HTTPS_REMOTE		5
+#define ID_DLG_HTTPS_LOCAL		6
+#define ID_DLG_SSL_VIEWCRT		7
+#define ID_DLG_SSL_MAKECRT		8
+#define ID_DLG_WEBPASSWD_REMOTE	9
+#define ID_DLG_WEBPASSWD_LOCAL	10
+#define ID_DLG_DESTROY			99
 typedef struct {
 	HWND		hTabc;
 	HWND		hOK;
@@ -5933,14 +6347,19 @@ typedef struct {
 	HWND		hBindAddrTxt;
 	HWND		hBindAny;
 	HWND		hBindLocal;
+	HWND		hWebPasswdTxt;
+	HWND		hWebPasswd;
+	HWND		hWebPasswdState;
+	HWND		hWebPasswdRemote;
+	HWND		hWebPasswdLocal;
 	HWND		hHttpsTxt;
 	HWND		hHttpsRemote;
 	HWND		hHttpsLocal;
-	HWND		hBootMinimal;
 	HWND		hSSLCrt;
 	HWND		hSSLKey;
 	HWND		hSSLViewCrt;
 	HWND		hSSLMakeCrt;
+	HWND		hBootMinimal;
 	HWND		hBtnWoTxt;
 	HWND		hExeTxt;
 	HWND		hArgTxt;
@@ -5955,6 +6374,8 @@ typedef struct {
 	DWORD		result;
 } ConfigDialogData;
 
+BOOL isChecked( HWND hwnd ){ return (SendMessage(hwnd,BM_GETCHECK,0,0)==BST_CHECKED)? TRUE:FALSE; }
+
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	ConfigDialogData* my = (ConfigDialogData*)GetWindowLong( hwnd ,GWL_USERDATA );
@@ -5962,11 +6383,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		switch( msg ){
 		case WM_CREATE_AFTER:
 			{
+				BrowserInfo* br;
 				HINSTANCE hinst = (HINSTANCE)wp;
+				TCITEMW item;
 				WCHAR* sslCrt = AppFilePath(L"ssl.crt");
 				WCHAR* sslKey = AppFilePath(L"ssl.key");
-				BrowserInfo* br;
-				TCITEMW item;
 				UINT tabid;
 				RECT rc;
 				UINT i;
@@ -6016,6 +6437,36 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							L"button",L"localhostのみ"
 							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTORADIOBUTTON
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hWebPasswdTxt = CreateWindowW(
+							L"static",L"Webパスワード"
+							,SS_SIMPLE |WS_CHILD
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hWebPasswd = CreateWindowExW(
+							WS_EX_CLIENTEDGE
+							,L"edit",L""
+							,ES_LEFT |ES_PASSWORD |WS_CHILD |WS_BORDER |WS_TABSTOP
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hWebPasswdState = CreateWindowW(
+							L"static",WebPasswd(NULL,0)? L"(登録済み・変更する時は入力)" :L"(未登録)"
+							,SS_SIMPLE |WS_CHILD
+							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hWebPasswdRemote = CreateWindowW(
+							L"button",L"localhost以外"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_WEBPASSWD_REMOTE
+							,hinst,NULL
+				);
+				my->hWebPasswdLocal = CreateWindowW(
+							L"button",L"localhost"
+							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0
+							,hwnd,(HMENU)ID_DLG_WEBPASSWD_LOCAL
+							,hinst,NULL
 				);
 				my->hHttpsTxt = CreateWindowW(
 							L"static",L"HTTPS(SSL)"
@@ -6074,26 +6525,37 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
+				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX ,0 );
+				if( WebPasswdRemote ) SendMessage( my->hWebPasswdRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( WebPasswdLocal ) SendMessage( my->hWebPasswdLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( HttpsRemote ) SendMessage( my->hHttpsRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( HttpsLocal ) SendMessage( my->hHttpsLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( !WebPasswdRemote && !WebPasswdLocal ){
+					EnableWindow( my->hWebPasswd ,FALSE );
+				}
 				if( !HttpsRemote && !HttpsLocal ){
 					EnableWindow( my->hSSLViewCrt ,FALSE );
 					EnableWindow( my->hSSLMakeCrt ,FALSE );
 				}
 				if( BootMinimal ) SendMessage( my->hBootMinimal ,BM_SETCHECK ,BST_CHECKED ,0 );
-				SendMessage( my->hListenPortTxt	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hListenPort	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindAddrTxt	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindAny		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsLocal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsRemote	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hSSLCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
-				SendMessage( my->hSSLKey		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
-				SendMessage( my->hSSLViewCrt	,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
-				SendMessage( my->hSSLMakeCrt	,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
-				SendMessage( my->hBootMinimal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hListenPortTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hListenPort		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindAddrTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindAny			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBindLocal			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hWebPasswdTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hWebPasswd			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hWebPasswdState	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hWebPasswdLocal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hWebPasswdRemote	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsTxt			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hHttpsRemote		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hSSLCrt			,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLKey			,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLViewCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hSSLMakeCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
+				SendMessage( my->hBootMinimal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 				br = BrowserInfoAlloc();
 				if( br ){
@@ -6121,8 +6583,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 								,SS_SIMPLE |WS_CHILD
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
-					my->hFOpen = CreateWindowA(
-								"button",NULL // L"参照"
+					my->hFOpen = CreateWindowW(
+								L"button",L"" // L"参照"
 								,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
 								,0,0,0,0
 								,hwnd,(HMENU)ID_DLG_FOPEN
@@ -6204,14 +6666,19 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hBindAddrTxt	,45  ,rc.top+55+2  ,110 ,22 ,TRUE );
 				MoveWindow( my->hBindAny		,135 ,rc.top+55    ,90  ,22 ,TRUE );
 				MoveWindow( my->hBindLocal		,235 ,rc.top+55    ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsTxt		,31  ,rc.top+90+2  ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsRemote	,135 ,rc.top+90    ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsLocal		,255 ,rc.top+90    ,90  ,22 ,TRUE );
-				MoveWindow( my->hSSLCrt			,135 ,rc.top+120   ,130 ,26 ,TRUE );
-				MoveWindow( my->hSSLKey			,275 ,rc.top+120   ,130 ,26 ,TRUE );
-				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+140   ,100 ,26 ,TRUE );
-				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+140   ,220 ,26 ,TRUE );
-				MoveWindow( my->hBootMinimal	,30  ,rc.top+185   ,240 ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdTxt	,31  ,rc.top+90+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hWebPasswd		,135 ,rc.top+90    ,180 ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdState	,320 ,rc.top+90+2  ,180 ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdRemote,135 ,rc.top+115   ,110 ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,90  ,22 ,TRUE );
+				MoveWindow( my->hHttpsTxt		,31  ,rc.top+150+2 ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,90  ,22 ,TRUE );
+				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
+				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+200   ,220 ,26 ,TRUE );
+				MoveWindow( my->hBootMinimal	,30  ,rc.top+245   ,240 ,22 ,TRUE );
 				MoveWindow( my->hBtnWoTxt		,40  ,rc.top+26    ,70  ,22 ,TRUE );
 				MoveWindow( my->hExeTxt			,20  ,rc.top+60+2  ,90  ,22 ,TRUE );
 				MoveWindow( my->hArgTxt			,50  ,rc.top+100+2 ,60  ,22 ,TRUE );
@@ -6232,11 +6699,17 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			return 0;
 
 		case WM_CTLCOLORSTATIC: // スタティックコントール描画色
-			if( (HWND)lp==my->hSSLCrt || (HWND)lp==my->hSSLKey ){
-				if( BST_CHECKED !=SendMessage(my->hHttpsRemote,BM_GETCHECK,0,0) &&
-					BST_CHECKED !=SendMessage(my->hHttpsLocal,BM_GETCHECK,0,0)
-				){
-					// SSL無効の時、証明書テキスト色薄くする
+			if( (HWND)lp==my->hWebPasswdState ){
+				if( !isChecked(my->hWebPasswdRemote) && !isChecked(my->hWebPasswdLocal) ){
+					// パスワード無効の時、状態テキスト色薄く
+					LRESULT r = DefDlgProc( hwnd, msg, wp, lp );
+					SetTextColor( (HDC)wp ,RGB(160,160,160) );
+					return r;
+				}
+			}
+			else if( (HWND)lp==my->hSSLCrt || (HWND)lp==my->hSSLKey ){
+				if( !isChecked(my->hHttpsRemote) && !isChecked(my->hHttpsLocal) ){
+					// SSL無効の時、証明書テキスト色薄く
 					LRESULT r = DefDlgProc( hwnd, msg, wp, lp );
 					SetTextColor( (HDC)wp ,RGB(160,160,160) );
 					return r;
@@ -6268,6 +6741,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( my->hBindAddrTxt	,SW_HIDE );
 				ShowWindow( my->hBindAny		,SW_HIDE );
 				ShowWindow( my->hBindLocal		,SW_HIDE );
+				ShowWindow( my->hWebPasswdTxt	,SW_HIDE );
+				ShowWindow( my->hWebPasswd		,SW_HIDE );
+				ShowWindow( my->hWebPasswdState	,SW_HIDE );
+				ShowWindow( my->hWebPasswdLocal	,SW_HIDE );
+				ShowWindow( my->hWebPasswdRemote,SW_HIDE );
 				ShowWindow( my->hHttpsTxt		,SW_HIDE );
 				ShowWindow( my->hHttpsLocal		,SW_HIDE );
 				ShowWindow( my->hHttpsRemote	,SW_HIDE );
@@ -6293,6 +6771,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hBindAddrTxt	,SW_SHOW );
 					ShowWindow( my->hBindAny		,SW_SHOW );
 					ShowWindow( my->hBindLocal		,SW_SHOW );
+					ShowWindow( my->hWebPasswdTxt	,SW_SHOW );
+					ShowWindow( my->hWebPasswd		,SW_SHOW );
+					ShowWindow( my->hWebPasswdState	,SW_SHOW );
+					ShowWindow( my->hWebPasswdLocal	,SW_SHOW );
+					ShowWindow( my->hWebPasswdRemote,SW_SHOW );
 					ShowWindow( my->hHttpsTxt		,SW_SHOW );
 					ShowWindow( my->hHttpsLocal		,SW_SHOW );
 					ShowWindow( my->hHttpsRemote	,SW_SHOW );
@@ -6323,29 +6806,32 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			switch( LOWORD(wp) ){
 			case ID_DLG_OK: // 設定ファイル保存
 				{
-					WCHAR	wPort[8] ,*wExe[BI_COUNT] ,*wArg[BI_COUNT];
-					BOOL	bindLocal ,httpsRemote ,httpsLocal ,bootMinimal ,hide[BI_COUNT];
-					int		iPort;
-					UINT	i;
-					GetWindowTextW( my->hListenPort ,wPort ,sizeof(wPort)/sizeof(WCHAR) );
-					iPort = _wtoi(wPort);
+					ConfigData	data;
+					int			iPort;
+					UINT		i;
+					memset( &data ,0 ,sizeof(data) );
+					GetWindowTextW( my->hListenPort ,data.wListenPort ,sizeof(data.wListenPort)/sizeof(WCHAR) );
+					iPort = _wtoi(data.wListenPort);
 					if( iPort<=0 || iPort >65535 ){
 						ErrorBoxW(L"ポート番号が不正です。");
 						return 0;
 					}
-					bindLocal = (BST_CHECKED==SendMessage( my->hBindLocal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
-					httpsLocal = (BST_CHECKED==SendMessage( my->hHttpsLocal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
-					httpsRemote = (BST_CHECKED==SendMessage( my->hHttpsRemote ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
-					bootMinimal = (BST_CHECKED==SendMessage( my->hBootMinimal ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+					GetWindowTextW( my->hWebPasswd ,data.wWebPasswd ,sizeof(data.wWebPasswd)/sizeof(WCHAR) );
+					data.bindLocal		= isChecked( my->hBindLocal );
+					data.webPasswdLocal	= isChecked( my->hWebPasswdLocal );
+					data.webPasswdRemote= isChecked( my->hWebPasswdRemote );
+					data.httpsLocal		= isChecked( my->hHttpsLocal );
+					data.httpsRemote	= isChecked( my->hHttpsRemote );
+					data.bootMinimal	= isChecked( my->hBootMinimal );
 					for( i=0; i<BI_COUNT; i++ ){
-						wExe[i] = WindowTextAllocW( my->hExe[i] );
-						wArg[i] = WindowTextAllocW( my->hArg[i] );
-						hide[i] = (BST_CHECKED==SendMessage( my->hHide[i] ,BM_GETCHECK,0,0 ))? TRUE:FALSE;
+						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
+						data.wArg[i] = WindowTextAllocW( my->hArg[i] );
+						data.hide[i] = isChecked( my->hHide[i] );
 					}
-					ConfigSave( wPort ,bindLocal ,httpsRemote ,httpsLocal ,bootMinimal ,wExe ,wArg ,hide );
+					ConfigSave( &data );
 					for( i=0; i<BI_COUNT; i++ ){
-						if( wExe[i] ) free( wExe[i] );
-						if( wArg[i] ) free( wArg[i] );
+						if( data.wExe[i] ) free( data.wExe[i] );
+						if( data.wArg[i] ) free( data.wArg[i] );
 					}
 					// TODO:SSL使うけど証明書なしの場合にダイアログで証明書作るか聞く？
 					my->result = ID_DLG_OK;
@@ -6378,21 +6864,74 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				}
 				break;
 
-			case ID_DLG_HTTPS_REMOTE: case ID_DLG_HTTPS_LOCAL: // HTTPSチェックボックス変化
-				// 証明書・秘密鍵テキスト色
-				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
-				InvalidateRect( my->hSSLKey ,NULL ,FALSE );
-				// 証明書作成ボタン有効・無効切り替え
-				if( BST_CHECKED !=SendMessage(my->hHttpsRemote,BM_GETCHECK,0,0) &&
-					BST_CHECKED !=SendMessage(my->hHttpsLocal,BM_GETCHECK,0,0)
-				){
-					EnableWindow( my->hSSLViewCrt ,FALSE );
-					EnableWindow( my->hSSLMakeCrt ,FALSE );
+			case ID_DLG_WEBPASSWD_REMOTE: // パスワードチェックボックス変化
+				if( isChecked( my->hWebPasswdRemote ) ){
+					// パス入力有効
+					EnableWindow( my->hWebPasswd ,TRUE );
+					// SSLも有効
+					SendMessage(my->hHttpsRemote,BM_SETCHECK,BST_CHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_REMOTE,0);
 				}
-				else{
+				else if( !isChecked( my->hWebPasswdLocal ) ){
+					// パス入力無効
+					EnableWindow( my->hWebPasswd ,FALSE );
+				}
+				// パスワード状態テキスト色
+				InvalidateRect( my->hWebPasswdState ,NULL ,FALSE );
+				break;
+
+			case ID_DLG_WEBPASSWD_LOCAL:
+				if( isChecked( my->hWebPasswdLocal ) ){
+					// パス入力有効
+					EnableWindow( my->hWebPasswd ,TRUE );
+					// SSLも有効
+					SendMessage(my->hHttpsLocal,BM_SETCHECK,BST_CHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_LOCAL,0);
+				}
+				else if( !isChecked( my->hWebPasswdRemote ) ){
+					// パス入力無効
+					EnableWindow( my->hWebPasswd ,FALSE );
+				}
+				// パスワード状態テキスト色
+				InvalidateRect( my->hWebPasswdState ,NULL ,FALSE );
+				break;
+
+			case ID_DLG_HTTPS_REMOTE: // HTTPSチェックボックス変化
+				if( isChecked(my->hHttpsRemote) ){
 					EnableWindow( my->hSSLViewCrt ,TRUE );
 					EnableWindow( my->hSSLMakeCrt ,TRUE );
 				}
+				else{
+					if( !isChecked(my->hHttpsLocal) ){
+						EnableWindow( my->hSSLViewCrt ,FALSE );
+						EnableWindow( my->hSSLMakeCrt ,FALSE );
+					}
+					// Webパスワード無効
+					SendMessage(my->hWebPasswdRemote,BM_SETCHECK,BST_UNCHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_REMOTE,0);
+				}
+				// 証明書・秘密鍵テキスト色
+				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
+				InvalidateRect( my->hSSLKey ,NULL ,FALSE );
+				break;
+
+			case ID_DLG_HTTPS_LOCAL:
+				if( isChecked(my->hHttpsLocal) ){
+					EnableWindow( my->hSSLViewCrt ,TRUE );
+					EnableWindow( my->hSSLMakeCrt ,TRUE );
+				}
+				else{
+					if( !isChecked(my->hHttpsRemote) ){
+						EnableWindow( my->hSSLViewCrt ,FALSE );
+						EnableWindow( my->hSSLMakeCrt ,FALSE );
+					}
+					// Webパスワード無効
+					SendMessage(my->hWebPasswdLocal,BM_SETCHECK,BST_UNCHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_LOCAL,0);
+				}
+				// 証明書・秘密鍵テキスト色
+				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
+				InvalidateRect( my->hSSLKey ,NULL ,FALSE );
 				break;
 
 			case ID_DLG_SSL_VIEWCRT:
@@ -6414,9 +6953,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						int r = IDYES;
 						if( PathFileExists(sslCrt) || PathFileExists(sslKey) ){
 							r = MessageBoxW( hwnd
-									,L"現在の証明書（ssl.crt）と秘密鍵（ssl.key）を消去・上書きします。"
-									L"実行しますか？"
-									,L"確認" ,MB_YESNO |MB_ICONQUESTION
+								,L"現在の証明書（ssl.crt）と秘密鍵（ssl.key）を消去・上書きします。実行しますか？"
+								,L"確認" ,MB_YESNO |MB_ICONQUESTION
 							);
 						}
 						if( r==IDYES ){
@@ -6502,9 +7040,9 @@ DWORD ConfigDialog( UINT tabid )
 						CONFIGDLGCLASS
 						,APPNAME L" 設定"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
-						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 490/2
-						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 340/2
-						,490, 340
+						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 530/2
+						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 390/2
+						,530, 390
 						,MainForm,NULL
 						,GetModuleHandle(NULL),NULL
 		);
@@ -6703,7 +7241,7 @@ void BrowserIconClick( UINT ix )
 // TOOLINFOW構造体サイズ(がcomctl32.dllバージョンによって変わるので変数保持)
 size_t sizeofTOOLINFOW = sizeof(TOOLINFOW);
 
-HWND BrowserIconTipCreate( BrowserIcon* browser )
+HWND BrowserIconTipCreate( const BrowserIcon* browser )
 {
 	HWND hToolTip = NULL;
 	if( browser ){
@@ -6796,7 +7334,7 @@ void MainFormTimer1000( void )
 	LONG cxMax=0;
 	LogCache* lc;
 	// 現在のキャッシュをローカルに取得してグローバル変数は空にする。
-	// CS解放した後はスレッド(ログ関数)が止まらず動ける。
+	// CS解放した後はスレッド(のログ関数)が止まらず動ける。
 	EnterCriticalSection( &LogCacheCS );
 	lc = LogCache0;
 	LogCache0 = LogCacheN = NULL;
@@ -6847,7 +7385,7 @@ void MainFormTimer1000( void )
 	{
 		int i;
 		for( i=CLIENT_MAX-1; i>=0; i-- ){
-			if( Client[i].sock !=INVALID_SOCKET && Client[i].frozen++ >60*3 ){ // 3分
+			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >60 ){ // 1分
 				if( Client[i].status==CLIENT_THREADING ){
 					// スレッド終了待たないとアクセス違反で落ちる
 					Client[i].abort = 1;
@@ -7312,6 +7850,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
+	InitializeCriticalSection( &SessionCS );
 	InitCommonControls();
 	// comctl32.dllバージョン確認、TOOLINFOW構造体サイズ決定
 	{
@@ -7382,7 +7921,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 				}
 			}
 			else{
-				ErrorBoxW(L"L%u:mallocエラー",__LINE__);
+				ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
 				return NULL;
 			}
 		}
@@ -7431,13 +7970,20 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 void Cleanup( void )
 {
 	LogCache* lc = LogCache0;
+	Session* sp = Session0;
+	while( sp ){
+		Session* next = sp->next;
+		free( sp );
+		sp = next;
+	}
 	while( lc ){
 		LogCache* next = lc->next;
 		free( lc );
 		lc = next;
 	}
-	free( DocumentRoot );
 	DeleteCriticalSection( &LogCacheCS );
+	DeleteCriticalSection( &SessionCS );
+	free( DocumentRoot );
 	WSACleanup();
 #ifdef MEMLOG
 	if( mlog ) fclose(mlog);

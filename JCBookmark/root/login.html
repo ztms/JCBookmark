@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang=ja>
+<head>
+<meta charset=utf-8>
+<title>JCBookmarkログイン</title>
+<style>
+*{ margin:0;padding:0; }
+body{
+  text-align:center;
+  font-family:"メイリオ",Meiryo,"MS PGothic",sans-serif;
+}
+h1{
+  color:#fff;
+  font-size:40px;
+  background:#210;
+  padding:20px 0 10px 0;
+}
+h1 img{
+  margin-right:10px;
+  vertical-align:-5px;
+}
+h2,h3{
+  color:#fff;
+  background:#210;
+}
+h3{
+  padding:0 0 30px 0;
+}
+input{
+  font-size:16px;
+  width:400px;
+  height:30px;
+  padding:0 0 0 5px;
+  margin:0 0 9px 0;
+}
+button{
+  font-size:20px;
+  font-weight:bold;
+  width:120px;
+  height:34px;
+  font-family:"メイリオ",Meiryo,"MS PGothic",sans-serif;
+}
+</style>
+</head>
+<body>
+<h1><img src="https://ztmsdf.appspot.com/jcbookmark/icon.png" width=48 height=48>JCBookmark</h1>
+<h2>Webパスワード</h2>
+<h3><input type=password maxlength=36><br><button>ログイン</button></h3>
+<script src="jquery/jquery.js"></script>
+<script>
+$('button').click(function(){
+	var ajax = null;
+	return function(){
+		if( /^http:/.test(location) ){ $('h2').text('エラー:HTTPS(SSL)を有効にしてください'); return; }
+		if( ajax ) return;
+		$('button').attr('disabled',true);
+		$('h2').text('処理中です...');
+		ajax = $.ajax({
+			type:'post'
+			,url:':login'
+			,data:{ p:$('input').val() }
+			,error:function(xhr){
+				switch( xhr.status ){
+				case 401: $('h2').text('エラー:パスワードが違います'); break;
+				default:$('h2').text('エラー:'+xhr.status+' '+xhr.statusText);
+				}
+			}
+			,success:function(data){
+				// dataはセッションID
+				$('h2').text('ログインしました...');
+				document.cookie = 'session='+data;
+				if( /\/login.html$/.test(location) ) location.pathname = '';
+				else location.reload(true);
+			}
+			,complete:function(){
+				ajax = null;
+				$('button').removeAttr('disabled');
+			}
+		});
+	};
+}());
+$('input').focus().keypress(function(ev){
+	switch( ev.which || ev.keyCode || ev.charCode ){
+	case 13: $('button').click(); return false;
+	}
+});
+</script>
+</body>
+</html>
