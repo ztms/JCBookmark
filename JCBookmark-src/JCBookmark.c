@@ -17,18 +17,17 @@
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
 //	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」ログがたくさん出るようになた。
-//	そしてサイドバーの画像いくつか出てなかったり。16本じゃ足りないのか…keep-aliveじゃなければ出ないてことは
-//	Firefox相手だとkeep-aliveじゃない方がいいのか？同時接続数増やすかどうするか・・32本にしてみたら、Firefox
-//	だけで24本くらい使うもよう。クライアント用バッファは動的確保しないせいかexeサイズ100KBくらい増えた・・・。
-//	keep-aliveやめたら8本くらいしか使わないようだ。なんじゃそらFirefoxイヤなブラウザだな・・・。
-//	Firefoxだったらkeep-aliveやめるとか？User-Agentの判定はFirefoxにするかGeckoにするか？Geckoってレンダリング
-//	エンジンだからコネクション本数とかの挙動には関係ないかな？
-//	keep-alive無効なら16本で充分。keep-alive有効だと32本でもそんなに余裕があるわけでもない・・。
-//	keep-alive有効で体感速度が上がっているなら採用する価値があるけど、そうでもないならいらないと思う。
-//	keep-aliveでどのくらい速くなっているか？調べてみよう・・。
-//	一発確認したのみだが、Firefoxはkeep-ailve有無で体感速度に差が現れるようだ。Chrome/Operaは大差なし。
-//	localhost接続なので、インターネットから使った場合どうなるかわからないが・・うーん。
-//	keep-alive動作にするかどうかオプションにする？？？
+//	そしてサイドバーの画像いくつか出てなかったり。同時接続数32本にしてみたら、Firefoxだけで24本くらい使うもよう。
+//	keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOperaではこんなに挙動に違いはないようだ。Firefoxだけ
+//	判定してkeep-aliveやめるとか…やりすぎか？
+//	keep-alive無効なら16本で充分。keep-alive有効だとFirefoxのために64本くらいあった方が安心。
+//	keep-alive有効で体感速度が上がっているなら採用する価値があるけど、そうでもないならkeep-aliveいらないと思う。
+//	keep-aliveでどのくらい速くなっているか？Firefoxはkeep-ailve有無で体感速度に差が現れる事がありそう。keep-alive
+//	有の方が速い。Chrome/Operaは大差なし。localhost接続なのでインターネットから使った時にどうかも気になる。
+//	keep-alive動作にするかどうかオプション(隠しパラメータ)にする手もあるか？とりあえずプリプロセッサ切り替え。
+//	TODO:クッキーはJCBookmark.exe終了で消えるけど問題ないか？有効期間セット＋ファイル保存で消えないようにしようと
+//	思えばできるけど必要ないかな・・起動しっぱなしで古いクッキーがメモリにずっと残る可能性はあるけど、そんなずっと
+//	起動しっぱなしのものでもないだろうし・・。
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -1160,7 +1159,8 @@ typedef struct {
 	UINT		ContentLength;		// Content-Length値
 	UINT		bytes;				// 受信バッファ有効バイト
 	size_t		bufsize;			// 受信バッファサイズ
-#if HTTP_KEEPALIVE
+#define HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 	UCHAR		KeepAlive;			// Connection:Keep-Aliveかどうか(1/0)
 #endif
 } Request;
@@ -1197,14 +1197,18 @@ typedef struct TClient {
 	Response	rsp;
 	Session*	session;			// 有効セッション
 	HANDLE		thread;
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 	UINT		silent;				// 無通信監視カウンタ
 #endif
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
 } TClient;
 
-#define		CLIENT_MAX			16					// クライアント最大同時接続数(keep-alive有だと増やす必要あり)
+#ifdef HTTP_KEEPALIVE
+#define		CLIENT_MAX			64					// クライアント最大同時接続数(KeepAliveは特にFirefoxで接続数必要)
+#else
+#define		CLIENT_MAX			16					// クライアント最大同時接続数
+#endif
 TClient		Client[CLIENT_MAX]	= {0};				// クライアント
 WCHAR*		DocumentRoot		= NULL;				// ドキュメントルートフルパス
 size_t		DocumentRootLen		= 0;				// wcslen(DocumentRoot)
@@ -5066,7 +5070,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						UCHAR* cl = strHeaderValue(  req->head,"Content-Length");
 						UCHAR* ua = strHeaderValue(  req->head,"User-Agent");
 						UCHAR* ims= strHeaderValue(  req->head,"If-Modified-Since");
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 						UCHAR* ka = strHeaderValue(  req->head,"Connection");
 #endif
 						// TODO:Cookieヘッダて複数行の場合もあるんだっけ…？
@@ -5082,7 +5086,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						if( ua ) req->UserAgent = chomp(ua);
 						if( ims ) req->IfModifiedSince = chomp(ims);
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 						//Firefoxの接続爆発挙動がイヤなのでkeep-alive殺しておく
 						if( ka && stricmp(chomp(ka),"keep-alive")==0 ) req->KeepAlive = 1;
 #endif
@@ -5828,7 +5832,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 		cp->silent = 0;
 #endif
 	}
@@ -5851,7 +5855,7 @@ void SocketWrite( SOCKET sock )
 			BufferSendf( &(rsp->head)
 					,"Connection: %s\r\n"
 					"\r\n"
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 					,cp->req.KeepAlive? "keep-alive" :"close"
 #else
 					,"close"
@@ -5927,7 +5931,7 @@ void SocketWrite( SOCKET sock )
 			}
 			else{
 				// ぜんぶ送信した
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 				if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
 					WCHAR	wpath[MAX_PATH+1]=L"";
 					SSL*	sslp		= cp->sslp;
@@ -5964,7 +5968,7 @@ void SocketWrite( SOCKET sock )
 #endif
 					cp->status = 0;
 					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 				}
 #endif
 			}
@@ -5972,7 +5976,7 @@ void SocketWrite( SOCKET sock )
 
 		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 		}
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 		cp->silent = 0;
 #endif
 	}
@@ -7433,7 +7437,7 @@ void MainFormTimer1000( void )
 
 		SetWindowTextW( MainForm, text );
 	}
-#if HTTP_KEEPALIVE
+#ifdef HTTP_KEEPALIVE
 	// 無通信監視
 	{
 		int i;
