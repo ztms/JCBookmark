@@ -6466,84 +6466,63 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				item.lParam = (LPARAM)0;					// タブ識別ID
 				TabCtrl_InsertItem( my->hTabc, 0, &item );		// タブインデックス
 				my->hListenPortTxt = CreateWindowW(
-							L"static",L"待受ポート番号"
-							,SS_SIMPLE |WS_CHILD
+							L"static",L"待受ポート番号" ,WS_CHILD |SS_SIMPLE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hListenPort = CreateWindowW(
-							L"edit",ListenPort
-							,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP
+							L"edit",ListenPort ,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hBindAddrTxt = CreateWindowW(
-							L"static",L"待受アドレス"
-							,SS_SIMPLE |WS_CHILD
+							L"static",L"待受アドレス" ,WS_CHILD |SS_SIMPLE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hBindAny = CreateWindowW(
-							L"button",L"どこからでも"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTORADIOBUTTON
+							L"button",L"どこからでも" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hBindLocal = CreateWindowW(
-							L"button",L"localhostのみ"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTORADIOBUTTON
+							L"button",L"localhostのみ" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hWebPasswdTxt = CreateWindowW(
-							L"static",L"Webパスワード"
-							,SS_SIMPLE |WS_CHILD
+							L"static",L"Webパスワード" ,WS_CHILD |SS_SIMPLE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hWebPasswd = CreateWindowExW(
-							WS_EX_CLIENTEDGE
-							,L"edit",L""
-							,ES_LEFT |ES_PASSWORD |ES_AUTOHSCROLL |WS_CHILD |WS_BORDER |WS_TABSTOP
+							WS_EX_CLIENTEDGE ,L"edit",L""
+							,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_PASSWORD |ES_AUTOHSCROLL
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hWebPasswdState = CreateWindowW(
 							L"static",WebPasswd(NULL,0)? L"(登録済み・変更する時は入力)" :L"(未登録)"
-							,SS_SIMPLE |WS_CHILD
-							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+							,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hWebPasswdRemote = CreateWindowW(
-							L"button",L"localhost以外"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_WEBPASSWD_REMOTE
-							,hinst,NULL
+							L"button",L"localhost以外" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_WEBPASSWD_REMOTE ,hinst,NULL
 				);
 				my->hWebPasswdLocal = CreateWindowW(
-							L"button",L"localhost"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_WEBPASSWD_LOCAL
-							,hinst,NULL
+							L"button",L"localhost" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_WEBPASSWD_LOCAL ,hinst,NULL
 				);
 				my->hHttpsTxt = CreateWindowW(
-							L"static",L"HTTPS(SSL)"
-							,SS_SIMPLE |WS_CHILD
+							L"static",L"HTTPS(SSL)" ,WS_CHILD |SS_SIMPLE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hHttpsRemote = CreateWindowW(
-							L"button",L"localhost以外"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_HTTPS_REMOTE
-							,hinst,NULL
+							L"button",L"localhost以外" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_HTTPS_REMOTE ,hinst,NULL
 				);
 				my->hHttpsLocal = CreateWindowW(
-							L"button",L"localhost"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_HTTPS_LOCAL
-							,hinst,NULL
+							L"button",L"localhost" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_HTTPS_LOCAL ,hinst,NULL
 				);
 				if( sslcrt ){
 					my->hSSLCrt = CreateWindowW(
 								L"static"
 								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
-								,SS_SIMPLE |WS_CHILD
+								,WS_CHILD |SS_SIMPLE
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
 					free( sslcrt );
@@ -6552,29 +6531,22 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					my->hSSLKey = CreateWindowW(
 								L"static"
 								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
-								,SS_SIMPLE |WS_CHILD
+								,WS_CHILD |SS_SIMPLE
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
 					free( sslkey );
 				}
 				my->hSSLViewCrt = CreateWindowW(
-							L"button",L"証明書を見る"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_SSL_VIEWCRT
-							,hinst,NULL
+							L"button",L"証明書を見る" ,WS_CHILD |WS_TABSTOP
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_SSL_VIEWCRT ,hinst,NULL
 				);
 				my->hSSLMakeCrt = CreateWindowW(
-							L"button",L"証明書（自己署名）を（再）作成"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_SSL_MAKECRT
-							,hinst,NULL
+							L"button",L"証明書（自己署名）を（再）作成" ,WS_CHILD |WS_TABSTOP
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_SSL_MAKECRT ,hinst,NULL
 				);
 				my->hBootMinimal = CreateWindowW(
 							L"button",L"起動時から最小化（タスクトレイ収納）"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+							,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
 				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX+1 ,0 ); // エラー通知用＋1文字
@@ -6621,44 +6593,34 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						}
 					}
 					my->hBtnWoTxt = CreateWindowW(
-								L"static",L"ボタンを"
-								,SS_SIMPLE |WS_CHILD
-								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+								L"static",L"ボタンを" ,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
 					my->hExeTxt = CreateWindowW(
-								L"static",L"実行ﾌｧｲﾙ"
-								,SS_SIMPLE |WS_CHILD
-								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+								L"static",L"実行ﾌｧｲﾙ" ,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
 					my->hArgTxt = CreateWindowW(
-								L"static",L"引 数"
-								,SS_SIMPLE |WS_CHILD
-								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+								L"static",L"引 数" ,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
 					my->hFOpen = CreateWindowW(
-								L"button",L"" // L"参照"
-								,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_ICON
-								,0,0,0,0
-								,hwnd,(HMENU)ID_DLG_FOPEN
-								,hinst,NULL
+								L"button",L"" /* L"参照"*/ ,WS_CHILD |WS_TABSTOP |BS_ICON
+								,0,0,0,0 ,hwnd,(HMENU)ID_DLG_FOPEN ,hinst,NULL
 					);
 					SendMessage( my->hBtnWoTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
 					SendMessage( my->hExeTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
 					SendMessage( my->hArgTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
 					for( i=0; i<BI_COUNT; i++ ){
 						my->hHide[i] = CreateWindowW(
-									L"button",L"表示しない"
-									,WS_CHILD |WS_VISIBLE |WS_TABSTOP |BS_AUTOCHECKBOX
+									L"button",L"表示しない" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
 									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 						);
 						my->hExe[i] = CreateWindowW(
 									L"edit",br[i].exe
-									,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+									,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_AUTOHSCROLL
 									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 						);
 						my->hArg[i] = CreateWindowW(
 									L"edit",br[i].arg
-									,ES_LEFT |WS_CHILD |WS_BORDER |WS_TABSTOP |ES_AUTOHSCROLL
+									,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_AUTOHSCROLL
 									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 						);
 						SendMessage( my->hHide[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
@@ -6673,9 +6635,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					SendMessage( my->hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
 					// 参照ボタンアイコン
 					SendMessage(
-							my->hFOpen
-							,BM_SETIMAGE
-							,IMAGE_ICON
+							my->hFOpen ,BM_SETIMAGE ,IMAGE_ICON
 							,(LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0)
 					);
 					BrowserInfoFree(br), br=NULL;
@@ -6683,18 +6643,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				SendMessage( my->hTabc, TCM_SETIMAGELIST, (WPARAM)0, (LPARAM)my->hImage );
 				// OK・キャンセルボタン
 				my->hOK = CreateWindowW(
-							L"button",L" O K "
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_OK
-							,hinst,NULL
+							L"button",L" O K " ,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_OK ,hinst,NULL
 				);
 				my->hCancel = CreateWindowW(
-							L"button",L"ｷｬﾝｾﾙ"
-							,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-							,0,0,0,0
-							,hwnd,(HMENU)ID_DLG_CANCEL
-							,hinst,NULL
+							L"button",L"ｷｬﾝｾﾙ" ,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_CANCEL ,hinst,NULL
 				);
 				SendMessage( my->hOK, WM_SETFONT, (WPARAM)my->hFontM, 0 );
 				SendMessage( my->hCancel, WM_SETFONT, (WPARAM)my->hFontM, 0 );
