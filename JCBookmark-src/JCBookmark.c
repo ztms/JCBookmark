@@ -6074,7 +6074,7 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 }
 // SSL自己署名サーバ証明書・秘密鍵作成
 // TODO:証明書を見るで確認すると「拇印アルゴリズム:sha1」だが、それを設定するのはどこ？
-BOOL SSL_SelfCertificateCreate( const WCHAR* crtfile, const WCHAR* keyfile )
+BOOL SSL_SelfCertCreate( const WCHAR* crtfile, const WCHAR* keyfile )
 {
 	ASN1_INTEGER*	serial	= ASN1_INTEGER_new();
 	EVP_PKEY*		pkey	= EVP_PKEY_new();
@@ -6135,10 +6135,10 @@ BOOL SSL_SelfCertificateCreate( const WCHAR* crtfile, const WCHAR* keyfile )
 	LogW(L"X509_set_version(2)..");
 	X509_set_version( x509 ,2 ); // 2 -> x509v3
 
-	#define SSLCERT_DAYS 3650
-	LogW(L"X509_gmtime_adj(60*60*24*%u)..",SSLCERT_DAYS);
+	#define SSL_CERT_DAYS 3650
+	LogW(L"X509_gmtime_adj(60*60*24*%u)..",SSL_CERT_DAYS);
 	if( !X509_gmtime_adj( X509_get_notBefore(x509) ,0 ) ||
-		!X509_gmtime_adj( X509_get_notAfter(x509) ,60*60*24*SSLCERT_DAYS )
+		!X509_gmtime_adj( X509_get_notAfter(x509) ,60*60*24*SSL_CERT_DAYS )
 	){
 		LogW(L"X509_gmtime_adjエラー");
 		goto fin;
@@ -6255,13 +6255,15 @@ void SSL_CTX_UseCertificate( const WCHAR* crtfile, const WCHAR* keyfile )
 	else LogW(L"fopen(%s)エラー",keyfile);
 }
 // 証明書ファイルが新しかったら読み込む
-void SSLCertLoad( void )
+#define SSL_CRT L"ssl.crt"
+#define SSL_KEY L"ssl.key"
+void SSL_CertLoad( void )
 {
 	static FILETIME lastWrite = {0};
 
 	if( HttpsRemote || HttpsLocal ){
-		WCHAR* crtfile = AppFilePath(L"ssl.crt");
-		WCHAR* keyfile = AppFilePath(L"ssl.key");
+		WCHAR* crtfile = AppFilePath( SSL_CRT );
+		WCHAR* keyfile = AppFilePath( SSL_KEY );
 		if( crtfile && keyfile ){
 			HANDLE hFile = CreateFileW( crtfile ,GENERIC_READ ,FILE_SHARE_READ ,NULL,
 										OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
@@ -6442,8 +6444,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				BrowserInfo* br;
 				HINSTANCE hinst = (HINSTANCE)wp;
 				TCITEMW item;
-				WCHAR* sslCrt = AppFilePath(L"ssl.crt");
-				WCHAR* sslKey = AppFilePath(L"ssl.key");
+				WCHAR* sslcrt = AppFilePath( SSL_CRT );
+				WCHAR* sslkey = AppFilePath( SSL_KEY );
 				UINT tabid;
 				RECT rc;
 				UINT i;
@@ -6543,23 +6545,23 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,hwnd,(HMENU)ID_DLG_HTTPS_LOCAL
 							,hinst,NULL
 				);
-				if( sslCrt ){
+				if( sslcrt ){
 					my->hSSLCrt = CreateWindowW(
 								L"static"
-								,PathFileExists(sslCrt)? L"サーバ証明書：ssl.crt" :L"サーバ証明書：なし"
+								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
 								,SS_SIMPLE |WS_CHILD
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
-					free( sslCrt );
+					free( sslcrt );
 				}
-				if( sslKey ){
+				if( sslkey ){
 					my->hSSLKey = CreateWindowW(
 								L"static"
-								,PathFileExists(sslKey)? L"秘密鍵：ssl.key" :L"秘密鍵：なし"
+								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
 								,SS_SIMPLE |WS_CHILD
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
-					free( sslKey );
+					free( sslkey );
 				}
 				my->hSSLViewCrt = CreateWindowW(
 							L"button",L"証明書を見る"
@@ -6889,7 +6891,31 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
 					}
-					// TODO:SSL使うけど証明書なしの場合にダイアログで証明書作るか聞く？
+					if( data.httpsLocal || data.httpsRemote ){
+						WCHAR* sslcrt = AppFilePath( SSL_CRT );
+						WCHAR* sslkey = AppFilePath( SSL_KEY );
+						if( sslcrt && sslkey && !PathFileExists(sslcrt) && !PathFileExists(sslkey) &&
+							IDYES==MessageBoxW( hwnd
+									,L"HTTP(SSL)が有効ですがサーバ証明書がありません。"
+									L"証明書（自己署名）をいま作成しますか？"
+									,L"確認" ,MB_YESNO |MB_ICONQUESTION
+							)
+						){
+							HCURSOR cursor = SetCursor( LoadCursor(NULL,IDC_WAIT) );
+							BOOL success = SSL_SelfCertCreate( sslcrt ,sslkey );
+							SetCursor( cursor );
+							SetWindowTextW( my->hSSLCrt
+								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+							);
+							SetWindowTextW( my->hSSLKey
+								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
+							);
+							if( success ) MessageBoxW( hwnd ,L"作成しました" ,L"情報" ,MB_ICONINFORMATION );
+							else MessageBoxW( hwnd ,L"エラーが発生しました" ,L"エラー" ,MB_ICONERROR );
+						}
+						if( sslcrt ) free( sslcrt );
+						if( sslkey ) free( sslkey );
+					}
 					my->result = ID_DLG_OK;
 					DestroyWindow( hwnd );
 				}
@@ -6992,48 +7018,48 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 			case ID_DLG_SSL_VIEWCRT:
 				{
-					WCHAR* sslCrt = AppFilePath(L"ssl.crt");
-					if( sslCrt ){
-						if( PathFileExists(sslCrt) )
-							ShellExecuteW( NULL,NULL ,sslCrt ,NULL,NULL ,SW_SHOWNORMAL );
-						free( sslCrt );
+					WCHAR* sslcrt = AppFilePath( SSL_CRT );
+					if( sslcrt ){
+						if( PathFileExists(sslcrt) )
+							ShellExecuteW( NULL,NULL ,sslcrt ,NULL,NULL ,SW_SHOWNORMAL );
+						free( sslcrt );
 					}
 				}
 				break;
 
 			case ID_DLG_SSL_MAKECRT:
 				{
-					WCHAR* sslCrt = AppFilePath(L"ssl.crt");
-					WCHAR* sslKey = AppFilePath(L"ssl.key");
-					if( sslCrt && sslKey ){
+					WCHAR* sslcrt = AppFilePath( SSL_CRT );
+					WCHAR* sslkey = AppFilePath( SSL_KEY );
+					if( sslcrt && sslkey ){
 						int r = IDYES;
-						if( PathFileExists(sslCrt) || PathFileExists(sslKey) ){
+						if( PathFileExists(sslcrt) || PathFileExists(sslkey) ){
 							r = MessageBoxW( hwnd
-								,L"現在の証明書（ssl.crt）と秘密鍵（ssl.key）を消去・上書きします。実行しますか？"
+								,L"現在の証明書（" SSL_CRT L"）と秘密鍵（" SSL_KEY L"）を消去・上書きします。実行しますか？"
 								,L"確認" ,MB_YESNO |MB_ICONQUESTION
 							);
 						}
 						if( r==IDYES ){
 							HCURSOR cursor;
 							BOOL	success;
-							DeleteFileW( sslCrt );
-							DeleteFileW( sslKey );
+							DeleteFileW( sslcrt );
+							DeleteFileW( sslkey );
 							// TODO:2秒くらいかかりプログレスバーが親切だが面倒なので砂時計カーソル。
 							cursor = SetCursor( LoadCursor(NULL,IDC_WAIT) );
-							success = SSL_SelfCertificateCreate( sslCrt ,sslKey );
+							success = SSL_SelfCertCreate( sslcrt ,sslkey );
 							SetCursor( cursor );
 							SetWindowTextW( my->hSSLCrt
-								,PathFileExists(sslCrt)? L"サーバ証明書：ssl.crt" :L"サーバ証明書：なし"
+								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
-								,PathFileExists(sslKey)? L"秘密鍵：ssl.key" :L"秘密鍵：なし"
+								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
 							);
 							if( success ) MessageBoxW( hwnd ,L"作成しました" ,L"情報" ,MB_ICONINFORMATION );
 							else MessageBoxW( hwnd ,L"エラーが発生しました" ,L"エラー" ,MB_ICONERROR );
 						}
 					}
-					if( sslCrt ) free( sslCrt );
-					if( sslKey ) free( sslKey );
+					if( sslcrt ) free( sslcrt );
+					if( sslkey ) free( sslkey );
 				}
 				break;
 			}
@@ -7490,7 +7516,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// OpenSSL
 	SSL_library_init();
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	if( ssl_ctx ) SSLCertLoad(); else LogW(L"SSL_CTX_newエラー");
+	if( ssl_ctx ) SSL_CertLoad(); else LogW(L"SSL_CTX_newエラー");
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
@@ -7835,7 +7861,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				BOOL	oldBindLocal = BindLocal;		// bind設定退避
 				wcscpy( oldPort, ListenPort );			// 現在ポート退避
 				ServerParamGet();
-				SSLCertLoad();
+				SSL_CertLoad();
 				if( oldBindLocal!=BindLocal || wcscmp(oldPort,ListenPort) ){
 					// bind設定orポート番号変わった
 					BOOL success;
@@ -7850,7 +7876,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				browser = BrowserIconCreate();
 				hToolTip = BrowserIconTipCreate( browser );
 			}
-			else SSLCertLoad();
+			else SSL_CertLoad();
 		}
 		return 0;
 
