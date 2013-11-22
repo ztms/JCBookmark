@@ -380,25 +380,19 @@ var option = {
 (function(){
 	var option_ok = false;
 	var tree_ok = false;
-	tree.load(function(){
-		tree_ok = true;
-		if( option_ok ) filer();
-	});
 	option.load(function(){
-		option_ok = true;
-		if( tree_ok ) filer();
-	});
-	function filer(){
-		// フォントサイズ(meiryoは-1px)
+		// 準備
 		var fontSize = (option.font.css()=='gothic.css')? 13 : 12;
 		$.css.add('#toolbar input, #folders span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
-		// フォント
 		$('#fontcss').attr('href',option.font.css());
-		// 表示描画
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
-		folderTree({ click0:true });
-	}
+		// ツリー描画
+		option_ok = true;
+		if( tree_ok ) go();
+	});
+	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
+	function go(){ setTimeout(function(){ folderTree({ click0:true }); },0); }
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727

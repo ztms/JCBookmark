@@ -619,14 +619,15 @@ var option = {
 (function(){
 	var option_ok = false;
 	var tree_ok = false;
-	tree.load(function(){
-		tree_ok = true;
-		if( option_ok ) paneler( tree.top(), setEvents );
-	});
 	option.load(function(){
+		panelReady();
+		// 表示(チラツキ低減)
+		$('body').css('visibility','visible');
 		option_ok = true;
-		if( tree_ok ) paneler( tree.top(), setEvents );
+		if( tree_ok ) go();
 	});
+	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
+	function go(){ setTimeout(function(){ paneler( tree.top(), setEvents ); },0); }
 })();
 // カラム生成関数
 var $columnBase = $('<div class=column></div>');
@@ -676,34 +677,8 @@ var paneler = function(){
 	var timer = null;	// setTimeoutID
 	return function( nodeTop, postEvent ){
 		clearTimeout( timer ); // 古いのキャンセル
-		document.title = option.page.title();
-		$('#colorcss').attr('href',option.color.css());
-		$('#fontcss').attr('href',option.font.css());
-		var fontSize = option.font.size();
-		var iconSize = option.icon.size();
-		var panelWidth = option.panel.width();
-		var panelMarginTop = option.panel.margin.top();
-		var panelMarginLeft = option.panel.margin.left();
-		var columnCount = option.column.count();
-		var columnWidth = panelWidth + panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
-		$wall.empty().width( columnWidth * columnCount ).css({
-			'padding-right':panelMarginLeft
-			,margin:option.wall.margin()
-		});
-		// カラム元要素
-		$columnBase.width( columnWidth );
-		// パネル元要素
-		$panelBase.width( panelWidth ).css({
-			'font-size':fontSize
-			,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
-		});
-		$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
-		$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
-		$panelBase.find('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
-		// パネルアイテム元要素
-		$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
-		$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 		// カラム(段)生成
+		var columnCount = option.column.count();
 		var columns = {};
 		for( var i=0; i<columnCount; i++ ){
 			columns['co'+i] = {
@@ -713,8 +688,6 @@ var paneler = function(){
 		}
 		// float解除
 		$wall.append('<br class=clear>');
-		// 表示(チラツキ低減)
-		$('body').css('visibility','visible');
 		// レイアウト保存データのパネル配置
 		// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
 		// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
@@ -799,6 +772,7 @@ var paneler = function(){
 		}
 		// 全パネル配置後
 		function afterPlaced(){
+			var fontSize = option.font.size();
 			// 新規URL投入BOX作成
 			$('#'+nodeTop.id).find('.itembox').before(
 				$('<input id=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
@@ -1484,7 +1458,7 @@ function setEvents(){
 				}
 				,'パネル配置クリア':function(){
 					option.panel.layout({});
-					paneler( tree.top() );
+					panelReady(); paneler( tree.top() );
 				}
 			}
 		});
@@ -1724,7 +1698,7 @@ function setEvents(){
 				,success:function(data){
 					if( 'index.json' in data ) option.merge( data['index.json'] );
 					else option.clear();
-					paneler( tree.replace(data['tree.json']).top() );
+					panelReady(); paneler( tree.replace(data['tree.json']).top() );
 					$btn.next().hide();
 					$btn.show();
 				}
@@ -2707,11 +2681,11 @@ function importer( nodeTop ){
 			'差し替える':function(){
 				$(this).dialog('destroy');
 				option.panel.layout({}).panel.status({});
-				paneler( tree.replace(nodeTop).top() );
+				panelReady(); paneler( tree.replace(nodeTop).top() );
 			}
 			,'追加登録する':function(){
 				$(this).dialog('destroy');
-				paneler( tree.mount(nodeTop.child[0]).top() );
+				panelReady(); paneler( tree.mount(nodeTop.child[0]).top() );
 			}
 			,'キャンセル':function(){ $(this).dialog('destroy'); }
 		}
@@ -2843,6 +2817,35 @@ function DragDrop( opt ){
 		else return false;
 	});
 }
+// optionApplyと重複
+function panelReady(){
+	document.title = option.page.title();
+	$('#colorcss').attr('href',option.color.css());
+	$('#fontcss').attr('href',option.font.css());
+	var fontSize = option.font.size();
+	var iconSize = option.icon.size();
+	var panelWidth = option.panel.width();
+	var panelMarginTop = option.panel.margin.top();
+	var panelMarginLeft = option.panel.margin.left();
+	var columnWidth = panelWidth + panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
+	$wall.empty().width( columnWidth * option.column.count() ).css({
+		'padding-right':panelMarginLeft
+		,margin:option.wall.margin()
+	});
+	// カラム元要素
+	$columnBase.width( columnWidth );
+	// パネル元要素
+	$panelBase.width( panelWidth ).css({
+		'font-size':fontSize
+		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
+	});
+	$panelBase.find('.title span').css('vertical-align',(iconSize/2)|0);
+	$panelBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+	$panelBase.find('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
+	// パネルアイテム元要素
+	$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
+	$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+}
 // パラメータ変更反映
 function optionApply(){
 	var fontSize = option.font.size();
@@ -2851,7 +2854,7 @@ function optionApply(){
 	var panelMarginTop = option.panel.margin.top();
 	var panelMarginLeft = option.panel.margin.left();
 	var columnWidth = panelWidth +panelMarginLeft +2;	// +2 適当たぶんボーダーぶん
-	$wall.width( columnWidth *option.column.count() ).css({
+	$wall.width( columnWidth * option.column.count() ).css({
 		'padding-right':panelMarginLeft
 	});
 	$wall.find('.column').width( columnWidth );
