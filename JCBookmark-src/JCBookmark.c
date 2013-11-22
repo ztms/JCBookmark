@@ -1195,9 +1195,7 @@ typedef struct TClient {
 	Response	rsp;
 	Session*	session;			// 有効セッション
 	HANDLE		thread;
-#ifdef HTTP_KEEPALIVE
 	UINT		silent;				// 無通信監視カウンタ
-#endif
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
 } TClient;
@@ -4316,7 +4314,7 @@ Session* ClientSessionAlive( TClient* cp )
 // この関数から戻った後は送信処理に行くので送信準備を必ず行って終了する。
 // ブルートフォースアタック対策のため(?)パスワードが違った場合は少し待ってから応答を返す。
 // その少し待ってる間メインスレッドを止めないよう一応スレッドで実行する。
-#define WEBPASSWD_MAX 24
+#define WEBPASSWD_MAX 64
 unsigned __stdcall authenticate( void* p )
 {
 	TClient* cp = p;
@@ -4324,24 +4322,27 @@ unsigned __stdcall authenticate( void* p )
 	cp->status = CLIENT_THREADING;
 	// リクエストメッセージ本文に p=パスワード(URLエンコード)
 	if( strnicmp(cp->req.body,"p=",2)==0 && *(cp->req.body+2) ){
-		UCHAR*	encpass = cp->req.body +2;
-		UCHAR	plain[WEBPASSWD_MAX*2]="";
-		UCHAR	b64[SHA256_DIGEST_LENGTH*2]="";
+		UCHAR b64[SHA256_DIGEST_LENGTH*2]="";
 		if( !cp->sslp ) LogW(L"[%u]注意:暗号化されていない平文パスワードを受信しました",Num(cp));
-		if( URLdecode( encpass ,strlen(encpass) ,plain ,sizeof(plain) ) ){
-			if( WebPasswd( b64 ,sizeof(b64) ) && *b64 ){
-				size_t b64len = strlen(b64);
-				UCHAR digest[SHA256_DIGEST_LENGTH]="";
-				SHA256( plain ,strlen(plain) ,digest );
-				if( SHA256_DIGEST_LENGTH <= b64len ){
-					UCHAR* webpass = malloc( b64len );
-					if( webpass ){
-						if( base64decode( b64 ,b64len ,webpass ) ){
+		// 設定ファイルパスワードハッシュ取得
+		if( WebPasswd( b64 ,sizeof(b64) ) && *b64 ){
+			size_t b64len = strlen(b64);
+			if( SHA256_DIGEST_LENGTH <= b64len ){
+				UCHAR* webpass = malloc( b64len );
+				if( webpass ){
+					if( base64decode( b64 ,b64len ,webpass ) ){
+						// 受信パスワードハッシュ変換
+						UCHAR* encpass = cp->req.body +2;
+						UCHAR plain[WEBPASSWD_MAX*2]=""; // 不正に長いパスワード用に*2
+						if( URLdecode( encpass ,strlen(encpass) ,plain ,sizeof(plain) ) ){
+							UCHAR digest[SHA256_DIGEST_LENGTH]="";
+							SHA256( plain ,strlen(plain) ,digest );
+							// ハッシュ値比較
 							if( memcmp( webpass ,digest ,SHA256_DIGEST_LENGTH )==0 ){
-								// 認証成功
+								// 認証成功:セッション生成
 								Session* sep = SessionCreate();
 								if( sep ){
-									// 本文セッションID
+									// 応答本文にセッションID
 									BufferSends( &(cp->rsp.body) ,sep->id );
 									BufferSendf( &(cp->rsp.head)
 											,"HTTP/1.0 200 OK\r\n"
@@ -4355,24 +4356,25 @@ unsigned __stdcall authenticate( void* p )
 							}
 							else{
 								ResponseError(cp,"401 Unauthorized");
-								Sleep(1000); // 少し待つ
+								Sleep(1000); // パスワード不正少し待つ
 							}
 						}
-						free( webpass );
+						else ResponseError(cp,"400 Bad Request");
 					}
-					else{
-						LogW(L"L%u:malloc(%u)エラー",__LINE__,b64len);
-						ResponseError(cp,"500 Internal Server Error");
-					}
+					else ResponseError(cp,"500 Internal Server Error");
+					free( webpass );
 				}
 				else{
-					LogW(L"設定ファイルパスワード情報が不正です(短すぎます)");
+					LogW(L"L%u:malloc(%u)エラー",__LINE__,b64len);
 					ResponseError(cp,"500 Internal Server Error");
 				}
 			}
-			else ResponseError(cp,"500 Internal Server Error");
+			else{
+				LogW(L"設定ファイルパスワード情報が不正です(短すぎます)");
+				ResponseError(cp,"500 Internal Server Error");
+			}
 		}
-		else ResponseError(cp,"400 Bad Request");
+		else ResponseError(cp,"500 Internal Server Error");
 	}
 	else ResponseError(cp,"400 Bad Request");
 	// メインスレッドで処理続行
@@ -5086,7 +5088,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						if( ua ) req->UserAgent = chomp(ua);
 						if( ims ) req->IfModifiedSince = chomp(ims);
 #ifdef HTTP_KEEPALIVE
-						//Firefoxの接続爆発挙動がイヤなのでkeep-alive殺しておく
 						if( ka && stricmp(chomp(ka),"keep-alive")==0 ) req->KeepAlive = 1;
 #endif
 						if( ck ) req->Cookie = chomp(ck);
@@ -5831,9 +5832,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
-#ifdef HTTP_KEEPALIVE
 		cp->silent = 0;
-#endif
 	}
 	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
 }
@@ -5975,9 +5974,7 @@ void SocketWrite( SOCKET sock )
 
 		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 		}
-#ifdef HTTP_KEEPALIVE
 		cp->silent = 0;
-#endif
 	}
 	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
@@ -6295,7 +6292,7 @@ typedef struct {
 	BOOL	httpsRemote;
 	BOOL	httpsLocal;
 	BOOL	bootMinimal;
-	WCHAR	wWebPasswd[WEBPASSWD_MAX+1];
+	UCHAR*	webPasswd;
 	WCHAR*	wExe[BI_COUNT];
 	WCHAR*	wArg[BI_COUNT];
 	BOOL	hide[BI_COUNT];
@@ -6314,7 +6311,6 @@ void ConfigSave( const ConfigData* dp )
 		fp = _wfopen( new ,L"wb" );
 		if( fp ){
 			UCHAR*	listenPort = WideCharToUTF8alloc( dp->wListenPort );
-			UCHAR*	webPasswd = *dp->wWebPasswd? WideCharToUTF8alloc( dp->wWebPasswd ) :NULL;
 			UCHAR*	exe[BI_COUNT];
 			UCHAR*	arg[BI_COUNT];
 			WCHAR	ini[MAX_PATH+1] = L"";
@@ -6324,13 +6320,13 @@ void ConfigSave( const ConfigData* dp )
 				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
 				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
 			}
-			if( webPasswd ){
+			if( dp->webPasswd ){
 				// 新パスワード:SHA256ハッシュ
 				// http://www.askyb.com/cpp/openssl-sha256-hashing-example-in-cpp/
 				UCHAR digest[SHA256_DIGEST_LENGTH]="";
-				SHA256( webPasswd ,strlen(webPasswd) ,digest );
+				SHA256( dp->webPasswd ,strlen(dp->webPasswd) ,digest );
 				if( base64encode( digest ,sizeof(digest) ,b64txt ,sizeof(b64txt) ) ){
-					// デコード検査
+					// BASE64検査
 					UCHAR test[SHA256_DIGEST_LENGTH*2]="";
 					if( base64decode( b64txt ,strlen(b64txt) ,test ) ){
 						if( memcmp( test ,digest ,SHA256_DIGEST_LENGTH ) )
@@ -6365,7 +6361,6 @@ void ConfigSave( const ConfigData* dp )
 				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i]	? "1":"");
 			}
 			if( listenPort ) free( listenPort );
-			if( webPasswd ) free( webPasswd );
 			for( i=0; i<BI_COUNT; i++ ){
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
@@ -6503,7 +6498,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				my->hWebPasswd = CreateWindowExW(
 							WS_EX_CLIENTEDGE
 							,L"edit",L""
-							,ES_LEFT |ES_PASSWORD |WS_CHILD |WS_BORDER |WS_TABSTOP
+							,ES_LEFT |ES_PASSWORD |ES_AUTOHSCROLL |WS_CHILD |WS_BORDER |WS_TABSTOP
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hWebPasswdState = CreateWindowW(
@@ -6582,7 +6577,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
-				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX ,0 );
+				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX+1 ,0 ); // エラー通知用＋1文字
 				if( WebPasswdRemote ) SendMessage( my->hWebPasswdRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( WebPasswdLocal ) SendMessage( my->hWebPasswdLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( HttpsRemote ) SendMessage( my->hHttpsRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
@@ -6864,8 +6859,10 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			case ID_DLG_OK: // 設定ファイル保存
 				{
 					ConfigData	data;
+					WCHAR		wPwd[WEBPASSWD_MAX+2]=L""; // エラー通知用＋1文字＋NULL文字
 					int			iPort;
 					UINT		i;
+
 					memset( &data ,0 ,sizeof(data) );
 					GetWindowTextW( my->hListenPort ,data.wListenPort ,sizeof(data.wListenPort)/sizeof(WCHAR) );
 					iPort = _wtoi(data.wListenPort);
@@ -6873,7 +6870,19 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						ErrorBoxW(L"ポート番号が不正です。");
 						return 0;
 					}
-					GetWindowTextW( my->hWebPasswd ,data.wWebPasswd ,sizeof(data.wWebPasswd)/sizeof(WCHAR) );
+					GetWindowTextW( my->hWebPasswd ,wPwd ,sizeof(wPwd)/sizeof(WCHAR) );
+					if( *wPwd ){
+						UCHAR* pwd = WideCharToUTF8alloc( wPwd );
+						if( pwd ){
+							if( strlen(pwd) >WEBPASSWD_MAX ){
+								ErrorBoxW(L"パスワードは最大%uバイトです。",WEBPASSWD_MAX);
+								SetFocus( my->hWebPasswd );
+								free( pwd );
+								return 0;
+							}
+							data.webPasswd = pwd;
+						}
+					}
 					data.bindLocal		= isChecked( my->hBindLocal );
 					data.webPasswdLocal	= isChecked( my->hWebPasswdLocal );
 					data.webPasswdRemote= isChecked( my->hWebPasswdRemote );
@@ -6886,6 +6895,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						data.hide[i] = isChecked( my->hHide[i] );
 					}
 					ConfigSave( &data );
+					if( data.webPasswd ) free( data.webPasswd );
 					for( i=0; i<BI_COUNT; i++ ){
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
@@ -7462,12 +7472,19 @@ void MainFormTimer1000( void )
 
 		SetWindowTextW( MainForm, text );
 	}
-#ifdef HTTP_KEEPALIVE
 	// 無通信監視
+	// keep-alive無効の場合はContent-Lengthぶんデータを送ってこない異常クライアントが考えられ、
+	// それほど短くない分単位でよさそうだが、keep-alive有効の場合は普通にFirefoxが何本も接続を
+	// 切らないまま居座るので10秒くらいで切断したくなるが、短すぎてなにか問題が発生しないか謎。
 	{
+#ifdef HTTP_KEEPALIVE
+		#define SILENT_TIMEOUT 10 // 10秒
+#else
+		#define SILENT_TIMEOUT 60 // 1分
+#endif
 		int i;
 		for( i=CLIENT_MAX-1; i>=0; i-- ){
-			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >10 ){ // 10秒
+			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >SILENT_TIMEOUT ){
 				if( Client[i].status==CLIENT_THREADING ){
 					// スレッド終了待たないとアクセス違反で落ちる
 					Client[i].abort = 1;
@@ -7480,7 +7497,6 @@ void MainFormTimer1000( void )
 			}
 		}
 	}
-#endif
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
