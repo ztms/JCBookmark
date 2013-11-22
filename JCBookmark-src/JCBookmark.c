@@ -16,6 +16,7 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
+//	TODO:Operaブックマーク読み込みはBookSyncのソースが参考にならないかな・・？
 //	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
 //	そしてサイドバーの画像いくつか出ないとか。同時接続数32本にしてみたらFirefoxだけで24本くらい使うもよう。
 //	keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOperaではこんなに挙動に違いはない。Firefoxだけ
@@ -844,6 +845,8 @@ BrowserInfo* BrowserInfoAlloc( void )
 			FILE* fp = _wfopen(ini,L"rb");
 			if( fp ){
 				UCHAR buf[1024];
+				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+				fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
 				while( fgets(buf,sizeof(buf),fp) ){
 					chomp(buf);
 					if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
@@ -4042,6 +4045,8 @@ void ServerParamGet( void )
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			UCHAR buf[1024];
+			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
@@ -4136,6 +4141,8 @@ BOOL WebPasswd( UCHAR* digest ,size_t bytes )
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			UCHAR buf[1024];
+			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"WebPasswd=",10)==0 && *(buf+10) ){
@@ -6824,6 +6831,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						ErrorBoxW(L"ポート番号が不正です。");
 						return 0;
 					}
+					data.bindLocal		= isChecked( my->hBindLocal );
+					data.webPasswdLocal	= isChecked( my->hWebPasswdLocal );
+					data.webPasswdRemote= isChecked( my->hWebPasswdRemote );
+					data.httpsLocal		= isChecked( my->hHttpsLocal );
+					data.httpsRemote	= isChecked( my->hHttpsRemote );
+					data.bootMinimal	= isChecked( my->hBootMinimal );
 					GetWindowTextW( my->hWebPasswd ,wPwd ,sizeof(wPwd)/sizeof(WCHAR) );
 					if( *wPwd ){
 						UCHAR* pwd = WideCharToUTF8alloc( wPwd );
@@ -6836,13 +6849,16 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							}
 							data.webPasswd = pwd;
 						}
+						else ErrorBoxW(L"致命的エラー：パスワードを登録できません");
 					}
-					data.bindLocal		= isChecked( my->hBindLocal );
-					data.webPasswdLocal	= isChecked( my->hWebPasswdLocal );
-					data.webPasswdRemote= isChecked( my->hWebPasswdRemote );
-					data.httpsLocal		= isChecked( my->hHttpsLocal );
-					data.httpsRemote	= isChecked( my->hHttpsRemote );
-					data.bootMinimal	= isChecked( my->hBootMinimal );
+					else if( data.webPasswdLocal || data.webPasswdRemote ){
+						if( !WebPasswd(NULL,0) && IDYES !=MessageBoxW( hwnd
+								,L"Webパスワードが登録されていません。"
+								L"空のパスワードではログインできません。このままでよろしいですか？"
+								,L"確認" ,MB_YESNO |MB_ICONQUESTION
+							)
+						){ SetFocus( my->hWebPasswd ); return 0; }
+					}
 					for( i=0; i<BI_COUNT; i++ ){
 						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
 						data.wArg[i] = WindowTextAllocW( my->hArg[i] );
