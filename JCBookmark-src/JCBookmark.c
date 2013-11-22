@@ -16,18 +16,28 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
-//	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」ログがたくさん出るようになた。
-//	そしてサイドバーの画像いくつか出てなかったり。同時接続数32本にしてみたら、Firefoxだけで24本くらい使うもよう。
-//	keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOperaではこんなに挙動に違いはないようだ。Firefoxだけ
+//	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
+//	そしてサイドバーの画像いくつか出ないとか。同時接続数32本にしてみたらFirefoxだけで24本くらい使うもよう。
+//	keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOperaではこんなに挙動に違いはない。Firefoxだけ
 //	判定してkeep-aliveやめるとか…やりすぎか？
 //	keep-alive無効なら16本で充分。keep-alive有効だとFirefoxのために64本くらいあった方が安心。
-//	keep-alive有効で体感速度が上がっているなら採用する価値があるけど、そうでもないならkeep-aliveいらないと思う。
-//	keep-aliveでどのくらい速くなっているか？Firefoxはkeep-ailve有無で体感速度に差が現れる事がありそう。keep-alive
-//	有の方が速い。Chrome/Operaは大差なし。localhost接続なのでインターネットから使った時にどうかも気になる。
-//	keep-alive動作にするかどうかオプション(隠しパラメータ)にする手もあるか？とりあえずプリプロセッサ切り替え。
-//	TODO:クッキーはJCBookmark.exe終了で消えるけど問題ないか？有効期間セット＋ファイル保存で消えないようにしようと
-//	思えばできるけど必要ないかな・・起動しっぱなしで古いクッキーがメモリにずっと残る可能性はあるけど、そんなずっと
-//	起動しっぱなしのものでもないだろうし・・。
+//	keep-alive有効で体感速度が上がるなら採用する価値があるけど、そうでもないならkeep-aliveいらないと思う。
+//	keep-aliveでどのくらい速くなっているか？軽く確認したところFirefoxはkeep-ailve有無で体感速度に差が現れる
+//	事もあるもよう。keep-alive有の方が速い。Chrome/Operaは大差なし。localhost接続なのでインターネットから
+//	使った時にどうかは不明。keep-alive有無の切り替えをオプション(隠しパラメータ)にする手もあるか？
+//	とりあえずkeep-alive有効64本同時接続で使ってみる。JCBookmark.exeリソース消費増加はわずかなもよう。
+//	TODO:クッキーはJCBookmark.exe終了で消えるけど問題ないか？有効期間＋ファイル保存で消えないようにもできる
+//	けど必要ないかな・・起動しっぱなしで古いクッキーがメモリにずっと残る可能性はあるけど、そんなずっと起動
+//	しっぱなしなものでもないだろうし・・。
+//	TODO:WebパスワードにWindowsログインユーザのパスワードを使えるか？
+//	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
+//	TODO:アプリ実行時のWindowsの警告をどうするか
+//	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
+//	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
+//	http://attosoft.info/blog/item-nozoneinfo/
+//	TODO:Win8.1で実行してみたら変な警告が出て画面中央にどでかい青い横帯が出たまま使いものにならない。
+//	exeに署名？する必要があるのかな？めんどくせえ。
+//	http://stackoverflow.com/questions/15358185/changing-publisher-information-for-a-exe-file
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -43,17 +53,6 @@
 //	全部LB_GETTEXTして自力検索すればいいか。でも一致部分だけ反転表示とかできないとショボいし…。
 //	TODO:ログ文字列を選択コピーできるようにする簡単な手はないものか…
 //	EDITコントロール(含むリッチエディット)はプログラムから行追加とかできないようだし…
-//	TODO:Windowsログインユーザとおなじユーザ名パスワードを使えるか？
-//	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
-//	TODO:アプリ実行時のWindowsの警告をどうするか
-//	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
-//	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
-//	http://attosoft.info/blog/item-nozoneinfo/
-//	TODO:Win8.1で実行してみたら変な警告が出て画面中央に横帯が出たまま使いものにならない。exeに署名？する
-//	必要があるのか・・？めんどくせえ。
-//	http://stackoverflow.com/questions/15358185/changing-publisher-information-for-a-exe-file
-//	TODO:Web編集後に自動保存するモードを作れるといいが、新規ブックマーク→favicon取得のところを
-//	どうするか、favicon取得前後どちらも保存する？しない？
 //
 #pragma comment(lib,"gdi32.lib")
 #pragma comment(lib,"user32.lib")
@@ -100,7 +99,6 @@
 #define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
-#define		MAINFORMCLASS		L"MainForm"
 #define		APPNAME				L"JCBookmark v2.0dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -2320,7 +2318,8 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 						if( sslp ){
 							// ソケットをSSLに紐付け
 							SSL_set_fd( sslp, sock );
-							// PRNG 初期化(/dev/random,/dev/urandomがない環境で必要らしい)
+							// PRNG初期化(本当に必要なのかイマイチ謎)
+							// http://x68000.q-e-d.net/~68user/net/ssl-1.html
 							RAND_poll();
 							while( RAND_status()==0 ){
 								unsigned short rand_ret = rand() % 65536;
@@ -2945,9 +2944,9 @@ unsigned __stdcall alive( void* p )
 					if( proto_ssl ){
 						sslp = SSL_new( ssl_ctx );
 						if( sslp ){
-							SSL_set_fd( sslp, sock );	// ソケットをSSLに紐付け
+							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
 							RAND_poll();
-							while( RAND_status()==0 ){		// PRNG初期化(/dev/random,/dev/urandomない環境用？)
+							while( RAND_status()==0 ){		// PRNG初期化
 								unsigned short rand_ret = rand() % 65536;
 								RAND_seed(&rand_ret, sizeof(rand_ret));
 							}
@@ -7099,7 +7098,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
 DWORD ConfigDialog( UINT tabid )
 {
-	#define				CONFIGDLGCLASS L"ConfigDialog"
+	#define				CONFIGDLGCLASS L"JCBookmarkConfigDialog"
 	HINSTANCE			hinst = GetModuleHandle(NULL);
 	WNDCLASSEXW			wc;
 	ConfigDialogData	data;
@@ -7670,7 +7669,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 }
 void AboutBox( void )
 {
-	#define ABOUTBOXCLASS L"ABOUTBOX"
+	#define ABOUTBOXCLASS L"JCBookmarkAboutBox"
 	HINSTANCE hinst = GetModuleHandle(NULL);
 	WNDCLASSEXW	wc;
 
@@ -8012,6 +8011,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	}
 	// メインフォーム生成
 	{
+		#define MAINFORMCLASS L"JCBookmarkMainForm"
 		WNDCLASSEXW	wc;
 
 		memset( &wc, 0, sizeof(wc) );
