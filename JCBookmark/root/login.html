@@ -50,6 +50,12 @@ button{
 <script>
 $('button').click(function(){
 	var ajax = null;
+	$('input').focus().keypress(function(ev){
+		if( ajax ) return;
+		switch( ev.which || ev.keyCode || ev.charCode ){
+		case 13: $('button').click(); return false;
+		}
+	});
 	return function(){
 		if( /^http:/.test(location.href) ){ $('h2').text('エラー:HTTPS(SSL)を有効にしてください'); return; }
 		if( ajax ) return;
@@ -79,11 +85,6 @@ $('button').click(function(){
 		});
 	};
 }());
-$('input').focus().keypress(function(ev){
-	switch( ev.which || ev.keyCode || ev.charCode ){
-	case 13: $('button').click(); return false;
-	}
-});
 </script>
 </body>
 </html>
