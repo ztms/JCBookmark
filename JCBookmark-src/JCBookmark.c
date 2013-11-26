@@ -32,13 +32,10 @@
 //	しっぱなしなものでもないだろうし・・。
 //	TODO:WebパスワードにWindowsログインユーザのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
-//	TODO:アプリ実行時のWindowsの警告をどうするか
+//	TODO:アプリ実行時のWindowsの警告を解除する手順（ブロックを解除する）をWebのFAQにでも載せる。
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
 //	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
 //	http://attosoft.info/blog/item-nozoneinfo/
-//	TODO:Win8.1で実行してみたら変な警告が出て画面中央にどでかい青い横帯が出たまま使いものにならない。
-//	exeに署名？する必要があるのかな？めんどくせえ。
-//	http://stackoverflow.com/questions/15358185/changing-publisher-information-for-a-exe-file
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -1194,6 +1191,7 @@ typedef struct TClient {
 	#define		CLIENT_SEND_READY	3	// 送信準備完了
 	#define		CLIENT_SENDING		4	// 送信中
 	#define		CLIENT_THREADING	5	// スレッド処理中
+	#define		CLIENT_KEEP_ALIVE	6	// KeepAlive受信中
 	Request		req;
 	Response	rsp;
 	Session*	session;			// 有効セッション
@@ -4961,11 +4959,11 @@ void SocketAccept( SOCKET sock )
 						cp->req.bufsize		= REQUEST_BUFSIZE;
 						cp->rsp.head.size	= RESPONSE_HEADSIZE;
 						cp->rsp.body.size	= RESPONSE_BODYSIZE;
-						cp->loopback		= loopback;
-						cp->sock			= sock_new;
-						cp->sslp			= sslp;
-						cp->status			= CLIENT_ACCEPT_OK;
-						success = TRUE;
+						cp->loopback= loopback;
+						cp->sock	= sock_new;
+						cp->sslp	= sslp;
+						cp->status	= CLIENT_ACCEPT_OK;
+						success		= TRUE;
 					}
 					else{
 						LogW(L"L%u:mallocエラー",__LINE__);
@@ -5028,6 +5026,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			else cp->status = CLIENT_RECV_MORE;
 
 		case CLIENT_RECV_MORE:
+		case CLIENT_KEEP_ALIVE:
 			// 受信
 			bytes = req->bufsize - req->bytes - 1;
 			if( cp->sslp ){
@@ -5207,7 +5206,11 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										Sleep(50);	// なんとなくちょっと待つ
 										break; // スレッド終了まで何もしない
 									}
-									else break; // 引き続き本文受信
+									else{
+										// 引き続き本文受信
+										cp->status = CLIENT_RECV_MORE;
+										break;
+									}
 								}
 								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 							}
@@ -5696,6 +5699,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ResponseError(cp,"501 Not Implemented");
 									goto send_ready;
 								}
+								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
 							}
 						}
 						else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
@@ -5768,6 +5772,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ResponseError(cp,"500 Internal Server Error");
 									goto send_ready;
 								}
+								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
 							}
 						}
 						else{
@@ -5836,6 +5841,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			switch( cp->status ){
 			case CLIENT_ACCEPT_OK:
 			case CLIENT_RECV_MORE:
+			case CLIENT_KEEP_ALIVE:
 				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
 			}
 		}
@@ -5966,7 +5972,7 @@ void SocketWrite( SOCKET sock )
 					cp->rsp.body.size	= rspBodySize;
 					cp->rsp.readfh		= INVALID_HANDLE_VALUE;
 					cp->req.writefh		= INVALID_HANDLE_VALUE;
-					cp->status			= CLIENT_RECV_MORE;
+					cp->status			= CLIENT_KEEP_ALIVE;
 					//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
 				}
 				else{ // 切断
@@ -7443,26 +7449,31 @@ void MainFormTimer1000( void )
 		SetWindowTextW( MainForm, text );
 	}
 	// 無通信監視
-	// keep-alive無効の場合はContent-Lengthぶんデータを送ってこない異常クライアントが考えられ、
-	// それほど短くない分単位でよさそうだが、keep-alive有効の場合は普通にFirefoxが何本も接続を
-	// 切らないまま居座るので10秒くらいで切断したくなるが、短すぎてなにか問題が発生しないか謎。
+	// keep-alive無効で無通信のまま接続が残ってしまう場合としてクライアントがContent-Lengthぶんの
+	// データを送ってこない異常時が考えられるが、ほとんど発生しないためタイムアウトはそれほど短く
+	// ない分単位でよさそう。だがkeep-alive有効の場合は普通にFirefoxが何本も接続を切らないまま居
+	// 座りやがるので10秒くらいで切断したくなる。が、短すぎると他に問題が発生しないか気がかり。
 	{
-#ifdef HTTP_KEEPALIVE
-		#define SILENT_TIMEOUT 10 // 10秒
-#else
-		#define SILENT_TIMEOUT 60 // 1分
-#endif
 		int i;
 		for( i=CLIENT_MAX-1; i>=0; i-- ){
-			if( Client[i].sock !=INVALID_SOCKET && Client[i].silent++ >SILENT_TIMEOUT ){
-				if( Client[i].status==CLIENT_THREADING ){
-					// スレッド終了待たないとアクセス違反で落ちる
-					Client[i].abort = 1;
-					LogW(L"[%u]スレッド実行中待機...(無通信)",i);
-				}
-				else{
-					LogW(L"[%u]切断(無通信)",i);
-					ClientShutdown( &(Client[i]) );
+			if( Client[i].sock !=INVALID_SOCKET ){
+				TClient* cp = &(Client[i]);
+				cp->silent++;
+#ifdef HTTP_KEEPALIVE
+				if( (cp->status==CLIENT_KEEP_ALIVE && cp->silent >10) || // 10秒
+					(cp->status!=CLIENT_KEEP_ALIVE && cp->silent >60) ){ // 1分
+#else
+				if( cp->silent >60 ){ // 1分
+#endif
+					if( cp->status==CLIENT_THREADING ){
+						// スレッド終了待たないとアクセス違反で落ちる
+						cp->abort = 1;
+						LogW(L"[%u]スレッド実行中待機...(無通信)",i);
+					}
+					else{
+						LogW(L"[%u]切断(%s)",i,(cp->status==CLIENT_KEEP_ALIVE)?L"keep-alive":L"無通信");
+						ClientShutdown( cp );
+					}
 				}
 			}
 		}
