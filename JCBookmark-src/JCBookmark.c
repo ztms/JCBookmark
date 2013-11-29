@@ -17,25 +17,38 @@
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
 //	TODO:Operaブックマーク読み込みはBookSyncのソースが参考にならないかな・・？
-//	TODO:Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
-//	そしてサイドバーの画像いくつか出ないとか。同時接続数32本にしてみたらFirefoxだけで24本くらい使うもよう。
-//	keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOperaではこんなに挙動に違いはない。Firefoxだけ
-//	判定してkeep-aliveやめるとか…やりすぎか？
-//	keep-alive無効なら16本で充分。keep-alive有効だとFirefoxのために64本くらいあった方が安心。
-//	keep-alive有効で体感速度が上がるなら採用する価値があるけど、そうでもないならkeep-aliveいらないと思う。
-//	keep-aliveでどのくらい速くなっているか？軽く確認したところFirefoxはkeep-ailve有無で体感速度に差が現れる
-//	事もあるもよう。keep-alive有の方が速い。Chrome/Operaは大差なし。localhost接続なのでインターネットから
-//	使った時にどうかは不明。keep-alive有無の切り替えをオプション(隠しパラメータ)にする手もあるか？
-//	とりあえずkeep-alive有効64本同時接続で使ってみる。JCBookmark.exeリソース消費増加はわずかなもよう。
-//	TODO:クッキーはJCBookmark.exe終了で消えるけど問題ないか？有効期間＋ファイル保存で消えないようにもできる
-//	けど必要ないかな・・起動しっぱなしで古いクッキーがメモリにずっと残る可能性はあるけど、そんなずっと起動
-//	しっぱなしなものでもないだろうし・・。
+//	TODO:Webサイトの「Facebookアカウントでログイン」「Twitterアカウントでログイン」を実装できる？
+//	OAuth認証という技術？仕組み？らしい。
+//	WebアプリにSNSアカウントでのログインを実装する
+//	http://codezine.jp/article/detail/6572
+//	OAuth認証でFacebookを利用するWebアプリケーション（PHPの場合）
+//	http://blog.unfindable.net/archives/1891
+//	第1回 「OAuth」の基本動作を知る
+//	http://www.atmarkit.co.jp/fsecurity/rensai/digid01/02.html
+//	[iPhoneプログラミング][OAuth]TwitterのOAuth認証を使う
+//	http://d.hatena.ne.jp/nakamura001/20100519/1274287901
+//	twitterでOAuthを使う方法（その１：認証まで）
+//	http://sayama-yuki.cocolog-nifty.com/blog/2009/09/twitteroauth-d7.html
+//	OAuthプロトコルには1.0と2.0があってWebサービス毎に異なったりややこしいが、さらに似たような
+//	シングルサインオン関連で「OpenID」「SAML」とかあるようだ。う～んいろいろあるのな・・。
+//	http://www.sakimura.org/2011/05/1087/
+//	http://www.hde.co.jp/press/column/detail.php?n=201010290
+//	http://dev.ariel-networks.com/wp/archives/258
+//	http://d.hatena.ne.jp/tk_4dd/20120128
 //	TODO:WebパスワードにWindowsログインユーザのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
 //	TODO:アプリ実行時のWindowsの警告を解除する手順（ブロックを解除する）をWebのFAQにでも載せる。
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
 //	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
 //	http://attosoft.info/blog/item-nozoneinfo/
+//	TODO:Windows2000対応
+//	GetNameInfoW が XP (SP2?) 以降のAPIらしいが、Win2000でもANSI版のgetnameinfoなら使えるらしい。
+//	http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
+//	ws2tcpip.h に加えて wspiapi.h を include すればよいと。たしかに起動時エラーは出なくなったけど、
+//	Unicode⇔ANSI変換が増えてごちゃごちゃするなぁ・・。でもこんどは FreeAddrInfoW でエラーになった。
+//	なるほどUnicode版の関数がないのか。まだ他にもあるのか？不明。うーむ・・対応できるけど、Windows2000
+//	で動く必要があるか？ブラウザ画面が使いたいだけならHTTPサーバは別マシンで起動しておけばよいので、
+//	なんとかそれでおねがいしたい・・。ブラウザ画面は2000のOpera10.63で確認。ただし日本語表示は未確認。
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -1191,7 +1204,7 @@ typedef struct TClient {
 	#define		CLIENT_SEND_READY	3	// 送信準備完了
 	#define		CLIENT_SENDING		4	// 送信中
 	#define		CLIENT_THREADING	5	// スレッド処理中
-	#define		CLIENT_KEEP_ALIVE	6	// KeepAlive受信中
+	#define		CLIENT_KEEP_ALIVE	6	// KeepAlive待機中
 	Request		req;
 	Response	rsp;
 	Session*	session;			// 有効セッション
@@ -1201,8 +1214,14 @@ typedef struct TClient {
 	UCHAR		loopback;			// loopbackからの接続フラグ
 } TClient;
 
+//	Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
+//	Firefoxだけで24本くらい接続を張るもよう。keep-aliveやめたら8本くらいしか使わないようだ。ChromeやOpera
+//	ではこんなに挙動に違いはない。keep-alive無効なら16本で充分。keep-alive有効だとFirefoxのために64本くらい
+//	あった方が安心。keep-aliveでどのくらい速くなっているか？なんとなく速い気もするが・・。とりあえず
+//	keep-alive有効64本同時接続で使ってみる。JCBookmark.exeリソース消費増加はわずかなもよう。
+//	keep-alive有無の切り替えをオプション(隠しパラメータ)にする？
 #ifdef HTTP_KEEPALIVE
-#define		CLIENT_MAX			64					// クライアント最大同時接続数(KeepAliveは特にFirefoxで接続数必要)
+#define		CLIENT_MAX			64					// クライアント最大同時接続数
 #else
 #define		CLIENT_MAX			16					// クライアント最大同時接続数
 #endif
@@ -2149,79 +2168,6 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 
 	return result;
 }
-// zlib伸張
-// たとえばhttp://api.jquery.com/jQuery.ajax/やhttp://www.hide10.com/archives/6186は、
-// リクエストにAccept-Encodingがない場合、Content-Encoding:gzip で応答が返ってくる。
-// とりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら大丈夫になったが、
-// それでもgzipで返ってきてしまう場合があった。どうもサイト側にリバースプロキシがあると
-// ブラウザでgzip受信したすぐ後にはgzipになってしまうケース？時間が経過したら大丈夫に
-// なったが、たしかにブラウザとおなじUser-Agentでリクエストしてるので、Accept-Encoding
-// もおなじでないとおかしいが・・やはりgzip対応くらいはすべきか。
-// Chrome27は Accept-Encoding: gzip,deflate,sdch
-// Fierfox21とIE8は Accept-Encoding: gzip, deflate
-// いちおうgzip対応はしておいて、やっぱりAccept-Encodingは空にしておこうかな。
-// 空じゃなくてidentityという値が無圧縮という意味らしいのでidentityにしてみよう。
-// TODO:コンテンツ圧縮を積極的に使うべきかどうなのか？無圧縮なら</head>まで受信して
-// 次に進めるからちょっと速いかも？いやgzip伸長の負荷によるから一概には言えないか…
-// [参考サイト]
-// サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
-// http://kaigai-hosting.com/opt_site-specify-vary-header.php
-// HTTPのgzip圧縮コンテントをzlibで展開
-// http://blogs.itmedia.co.jp/komata/2011/04/httpgzipzlib-b764.html
-// Cでのzlibの伸張
-// http://kacl19nrlb99.blog117.fc2.com/blog-entry-84.html
-// 3.5 内容コーディング
-// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec3.5
-// 14.3 Accept-Encoding
-// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.3
-// 14.11 Content-Encoding
-// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.11
-// zlib の使い方
-// http://s-yata.jp/docs/zlib/
-// 伸長においては，圧縮形式を自動判別することもできます．
-// zlibはスタティック.libにするか、ソース組み込みにするか、迷う
-// http://dencha.ojaru.jp/programs/pg_filer_04.html
-#ifdef _DEBUG
-#pragma comment(lib,"zlibd.lib")	// zlibのDebugビルド版。
-#else
-#pragma comment(lib,"zlib.lib")		// zlibのReleaseビルド版(これをリンクしてJCBookmarkをDebugビルドすると起動時になぜか落ちる)
-#endif
-#include "zlib.h"
-size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
-{
-	z_stream z;
-	int status;
-	// メモリ管理をライブラリに任せる
-	z.zalloc = Z_NULL;
-	z.zfree  = Z_NULL;
-	z.opaque = Z_NULL;
-	// 初期化
-	z.next_in  = indata;			// 入力データ
-	z.avail_in = inbytes;			// 入力データサイズ
-	z.next_out  = outdata;			// 出力バッファ
-	z.avail_out = outbytes;			// 出力バッファ残量
-	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK )
-	{
-		LogA("inflateInit2エラー(%s)",z.msg?z.msg:"???");
-		return 0;
-	}
-	// 展開
-	status = inflate( &z, Z_NO_FLUSH );
-	if( status !=Z_OK && status !=Z_STREAM_END )
-	{
-		LogA("inflateエラー(%s)",z.msg?z.msg:"???");
-		inflateEnd(&z);
-		return 0;
-	}
-	outbytes -= z.avail_out;
-	// 後始末
-	if( inflateEnd(&z) !=Z_OK )
-	{
-		LogA("inflateEndエラー(%s)",z.msg?z.msg:"???");
-		return 0;
-	}
-	return outbytes;
-}
 
 // HTTPクライアント
 typedef struct {
@@ -2339,14 +2285,18 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					// リクエスト送信
 					len =_snprintf(rsp->buf,rsp->bufsize,
 						"GET /%s HTTP/1.0\r\n"
-						"Host: %s\r\n"					// fc2でHostヘッダがないとエラーになる
-						"User-Agent: %s\r\n"			// facebookでUser-Agentないと302 move
-						"Accept-Encoding: identity\r\n"	// gzip,deflateでも動作可能
+						"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
+						"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+						"Accept-Encoding: identity\r\n"			// 無圧縮
+						//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
 						"Connection: close\r\n"
 						"\r\n"
 						,path, host, (ua && *ua)? ua : "Mozilla/4.0"
 					);
-					if( len<0 ) len = rsp->bufsize;
+					if( len<0 ){
+						LogW(L"[%u]送信バッファ不足",sock);
+						len = rsp->bufsize;
+					}
 					if( ssl_enable ){
 						if( SSL_write( sslp, rsp->buf, len )<1 ){
 							LogW(L"[%u]SSL_writeエラー",sock);
@@ -2363,13 +2313,12 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					*rsp->buf = '\0';
 					timelimit = timeGetTime() +4000;
 					while( readable(sock, timelimit - timeGetTime()) ){
-						int bytes;
 						if( ssl_enable )
-							bytes = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+							len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
 						else
-							bytes = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-						if( bytes >0 ){
-							rsp->bytes += bytes;
+							len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+						if( len >0 ){
+							rsp->bytes += len;
 							rsp->buf[rsp->bytes] = '\0';
 							if( !rsp->body ){
 								// ヘッダと本文の区切り空行をさがす
@@ -2483,7 +2432,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 							}
 						}
 						else{
-							LogW(L"[%u]%s()=%d",sock,(ssl_enable)?L"SSL_read":L"recv",bytes);
+							LogW(L"[%u]%s()=%d",sock,(ssl_enable)?L"SSL_read":L"recv",len);
 							break;
 						}
 					}
@@ -2507,7 +2456,88 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	}
 	else LogA("不正なURL:%s",url);
 fin:
-	if( success ){
+	if( !success ) free(rsp), rsp=NULL;
+	return rsp;
+}
+
+// zlib伸張
+// たとえばhttp://api.jquery.com/jQuery.ajax/やhttp://www.hide10.com/archives/6186は、
+// リクエストにAccept-Encodingがない場合、Content-Encoding:gzip で応答が返ってくる。
+// とりあえず値が空のAccept-Encodingヘッダをリクエストにつけたら大丈夫になったが、
+// それでもgzipで返ってきてしまう場合があった。どうもサイト側にリバースプロキシがあると
+// ブラウザでgzip受信したすぐ後にはgzipになってしまうケース？時間が経過したら大丈夫に
+// なったが、たしかにブラウザとおなじUser-Agentでリクエストしてるので、Accept-Encoding
+// もおなじでないとおかしいが・・やはりgzip対応くらいはすべきか。
+// Chrome27は Accept-Encoding: gzip,deflate,sdch
+// Fierfox21とIE8は Accept-Encoding: gzip, deflate
+// いちおうgzip対応はしておいて、やっぱりAccept-Encodingは空にしておこうかな。
+// 空じゃなくてidentityという値が無圧縮という意味らしいのでidentityにしてみよう。
+// TODO:コンテンツ圧縮を積極的に使うべきかどうなのか？無圧縮なら</head>まで受信して
+// 次に進めるからちょっと速いかも？いやgzip伸長の負荷によるから一概には言えないか…
+// [参考サイト]
+// サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
+// http://kaigai-hosting.com/opt_site-specify-vary-header.php
+// HTTPのgzip圧縮コンテントをzlibで展開
+// http://blogs.itmedia.co.jp/komata/2011/04/httpgzipzlib-b764.html
+// Cでのzlibの伸張
+// http://kacl19nrlb99.blog117.fc2.com/blog-entry-84.html
+// 3.5 内容コーディング
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec3.5
+// 14.3 Accept-Encoding
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.3
+// 14.11 Content-Encoding
+// http://www.studyinghttp.net/cgi-bin/rfc.cgi?2616#Sec14.11
+// zlib の使い方
+// http://s-yata.jp/docs/zlib/
+// 伸長においては，圧縮形式を自動判別することもできます．
+// zlibはスタティック.libにするか、ソース組み込みにするか、迷う
+// http://dencha.ojaru.jp/programs/pg_filer_04.html
+#ifdef _DEBUG
+#pragma comment(lib,"zlibd.lib")	// zlibのDebugビルド版。
+#else
+#pragma comment(lib,"zlib.lib")		// zlibのReleaseビルド版(これをリンクしてJCBookmarkをDebugビルドすると起動時になぜか落ちる)
+#endif
+#include "zlib.h"
+size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
+{
+	z_stream z;
+	int status;
+	// メモリ管理をライブラリに任せる
+	z.zalloc = Z_NULL;
+	z.zfree  = Z_NULL;
+	z.opaque = Z_NULL;
+	// 初期化
+	z.next_in  = indata;			// 入力データ
+	z.avail_in = inbytes;			// 入力データサイズ
+	z.next_out  = outdata;			// 出力バッファ
+	z.avail_out = outbytes;			// 出力バッファ残量
+	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK )
+	{
+		LogA("inflateInit2エラー(%s)",z.msg?z.msg:"???");
+		return 0;
+	}
+	// 展開
+	status = inflate( &z, Z_NO_FLUSH );
+	if( status !=Z_OK && status !=Z_STREAM_END )
+	{
+		LogA("inflateエラー(%s)",z.msg?z.msg:"???");
+		inflateEnd(&z);
+		return 0;
+	}
+	outbytes -= z.avail_out;
+	// 後始末
+	if( inflateEnd(&z) !=Z_OK )
+	{
+		LogA("inflateEndエラー(%s)",z.msg?z.msg:"???");
+		return 0;
+	}
+	return outbytes;
+}
+
+// HTTP圧縮コンテンツ伸長
+HTTPGet* HTTPGetContentDecode( TClient* cp ,HTTPGet* rsp )
+{
+	if( rsp ){
 		// gzip,deflate伸長
 		// TODO:301 Moved Permanentlyや302 Foundが(なぜか)伸長エラーになってしまうもよう
 		// Accept-Encoding:identityではなかなか圧縮されないので、発生させるにはgzip,deflateに変更する
@@ -2523,18 +2553,18 @@ fin:
 				memcpy( newrsp, rsp, sizeof(HTTPGet) + headbytes );
 				newrsp->body += distance;
 				newrsp->bufsize = newsize;
-				LogW(L"伸長バッファ確保%ubytes",newsize);
+				LogW(L"[%u]伸長バッファ確保%ubytes",Num(cp),newsize);
 				bytes = zlibInflate( rsp->body, bodybytes, newrsp->body, newsize - headbytes );
-				if( !bytes ) LogW(L"圧縮コンテンツ伸長エラー(%u)",rsp->ContentEncoding);
-				else LogW(L"伸長[%u]%u->%ubyte(%.1f倍)",rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+				if( bytes )
+					LogW(L"[%u]伸長[%u]%u->%ubyte(%.1f倍)"
+							,Num(cp),rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+				else
+					LogW(L"[%u]圧縮コンテンツ伸長エラー(%u)",Num(cp),rsp->ContentEncoding);
 				newrsp->bytes = headbytes + bytes;
 				free(rsp), rsp=newrsp;
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
 		}
-	}
-	else{
-		free(rsp), rsp=NULL;
 	}
 	return rsp;
 }
@@ -2547,32 +2577,9 @@ struct {
 	CONVERTINETSTRING	Convert;
 } mlang = { NULL, NULL };
 
-// 指定サイトのタイトルとか解析するスレッド関数
-// クライアントからの要求 GET /:analyze?URL HTTP/1.x で開始され、
-// URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
-//		{"title":"タイトル","icon":"URL"}
-// URLのエンコードは施されている前提。単純ブロッキングソケット利用。
-// TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
-// 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
-// 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
-// できないっぽいので、やるとしたらサーバ側で自動で「18歳以上」をクリックする
-// 動作をやってしまうことか…。ブラウザが保持してるamazonクッキーを取得する手
-// はあるのかな？でもそんなことするアプリはセキュリティ的にまずそうで厳しいか。
-// しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
-// イマイチなのも確か…。なにかいい手はないものか…。
-// ブラウザのアドオンを使う手もあるか？
-unsigned __stdcall analyze( void* p )
+void HTTPGetHtmlToUTF8( TClient* cp ,HTTPGet* rsp )
 {
-	TClient*	cp = p;
-	UCHAR*		url = cp->req.param;
-	HTTPGet*	rsp;
-	// メインスレッドなにもしない
-	cp->status = CLIENT_THREADING;
-	// URL取得。req.paramは今のところURLのみ。
-	rsp = httpGET( url, cp->req.UserAgent );
 	if( rsp ){
-		UCHAR* title=NULL, *icon=NULL;
-		if( cp->abort ) goto fin;
 		// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 		// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
 		// とりあえずConvertINetString()で変換しておく。
@@ -2638,7 +2645,7 @@ unsigned __stdcall analyze( void* p )
 							tmp[tmpbytes]='\0';
 							tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
 							mode=0;
-							// 次にSJISからUTF8に変換(なぜかEUCからUTF8直変換がエラーになってしまうので)
+							// 次にSJISからUTF8に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
 							res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
 							if( res==S_OK ){
 								rsp->body[tmpbytes]='\0';
@@ -2654,6 +2661,37 @@ unsigned __stdcall analyze( void* p )
 				}
 			}
 		}
+	}
+}
+
+// 指定サイトのタイトルとか解析するスレッド関数
+// クライアントからの要求 GET /:analyze?URL HTTP/1.x で開始され、
+// URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
+//		{"title":"タイトル","icon":"URL"}
+// URLのエンコードは施されている前提。単純ブロッキングソケット利用。
+// TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
+// 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
+// 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
+// できないっぽいので、やるとしたらサーバ側で自動で「18歳以上」をクリックする
+// 動作をやってしまうことか…。ブラウザが保持してるamazonクッキーを取得する手
+// はあるのかな？でもそんなことするアプリはセキュリティ的にまずそうで厳しいか。
+// しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
+// イマイチなのも確か…。なにかいい手はないものか…。
+// ブラウザのアドオンを使う手もあるか？
+unsigned __stdcall analyze( void* p )
+{
+	TClient*	cp = p;
+	UCHAR*		url = cp->req.param;
+	HTTPGet*	rsp;
+	// メインスレッドなにもしない
+	cp->status = CLIENT_THREADING;
+	// URL取得。req.paramは今のところURLのみ。
+	rsp = httpGET( url, cp->req.UserAgent );
+	if( rsp ){
+		UCHAR* title=NULL, *icon=NULL;
+		if( cp->abort ) goto fin;
+		rsp = HTTPGetContentDecode( cp ,rsp );
+		HTTPGetHtmlToUTF8( cp ,rsp );
 		// タイトル取得
 		{
 			UCHAR* begin = stristr(rsp->body,"<title");
@@ -2820,19 +2858,13 @@ unsigned __stdcall analyze( void* p )
 	_endthreadex(0);
 	return 0;
 }
+
 // 指定URL死活確認を行うスレッド関数
 // クライアントからの要求 GET /:alive?URL HTTP/1.x で開始され、
-// - 調査URLに接続しGETリクエストを送った応答一行目(例：HTTP/1.0 200 OK)を取得する。
+// - 調査URLに接続しGETリクエストを送って応答を確認する。
 // - 名前解決エラー、接続タイムアウトなどはその旨の短文テキストを生成する。
-// - クライアントへの応答は基本「200 OK」で本文に調査結果を記載する。
-// - ただし内部エラーやリクエスト不正についてはクライアントに「500」や「400」を返却する。
-// プロキシ的な動作だがプロキシではない。
-// TODO:時事ドットコムの旧URLリダイレクト対応。時事ドットコムの個別記事は古くなると別URLになるが、
-// 旧URLにアクセスした場合でもHTTP応答は 200 OK、<title>は「時事ドットコム」のみで記事個別タイトル
-// は取得できない。リダイレクト方法は <meta http-equiv="refresh" content="0:URL=新URL"> を使っており、
-// ヘッダを取得して解析しないとリダイレクトされるURLかどうかわからない。昔登録したURLを再登録したら
-// タイトルがちゃんと取得できないなぜだ？という現象になるので、検出できるようにしなければ…。
-// ちなみにJavaScriptを使ったリダイレクトもあるようだが、JavaScriptの解析は自力では無理…。
+// - クライアントへの応答は基本「200 OK」で本文にJSON形式で調査結果を記載する。
+// JavaScriptを使ったリダイレクトもあるようだが、JavaScriptの解析は自力では無理…。
 // リダイレクト手法まとめ
 // http://likealunatic.jp/2007/10/21_redirect.php
 unsigned __stdcall alive( void* p )
@@ -2840,13 +2872,16 @@ unsigned __stdcall alive( void* p )
 	TClient*	cp			= p;
 	UCHAR*		url			= cp->req.param;
 	BOOL		proto_ssl	= FALSE;
-	UCHAR		text[256]	= "";
+	UCHAR		ico			= '?';
+	UCHAR		msg[256]	= "不明な処理結果です";
+	UCHAR*		newurl		= NULL;
+	HTTPGet*	rsp			= NULL;
 
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
 	// プロトコル
 	if( !url || !*url ){
-		ResponseError(cp,"400 Bad Request"); goto fin;
+		ico='E'; strcpy(msg,"URLが空です"); goto fin;
 	}
 	else if( strnicmp(url,"http://",7)==0 ){
 		url += 7;
@@ -2857,15 +2892,9 @@ unsigned __stdcall alive( void* p )
 	else if( strnicmp(url,"https://",8)==0 ){
 		url += 8;
 		if( ssl_ctx ) proto_ssl = TRUE;
-		else{
-			LogW(L"SSL利用できません");
-			ResponseError(cp,"500 Internal Server Error");
-			goto fin;
-		}
+		else{ ico='?'; strcpy(msg,"SSL利用できません"); goto fin; }
 	}
-	else{
-		strcpy(text,"不明なプロトコル"); goto fin;
-	}
+	else{ ico='E'; strcpy(msg,"不明なプロトコルです"); goto fin; }
 	// ホスト名
 	if( *url ){
 		UCHAR* path = strchr(url,'/');
@@ -2906,21 +2935,21 @@ unsigned __stdcall alive( void* p )
 								}
 								else{
 									LogW(L"[%u]WSAEnumNetworkEventsエラー？",sock);
-									ResponseError(cp,"500 Internal Server Error");
+									ico='?'; strcpy(msg,"サーバー内部エラー");
 								}
 							}
 							else{
 								LogW(L"[%u]WSAEnumNetworkEventsエラー(%u)",sock,WSAGetLastError());
-								ResponseError(cp,"500 Internal Server Error");
+								ico='?'; strcpy(msg,"サーバー内部エラー");
 							}
 							break;
 						case WSA_WAIT_TIMEOUT:
-							strcpy(text,"接続タイムアウト");
+							ico='?'; strcpy(msg,"接続がタイムアウトしました");
 							break;
 						case WSA_WAIT_FAILED:
 						default:
 							LogW(L"[%u]WSAWaitForMultipleEventsエラー(%u)",sock,dwRes);
-							ResponseError(cp,"500 Internal Server Error");
+							ico='?'; strcpy(msg,"サーバー内部エラー");
 						}
 					}
 					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
@@ -2928,7 +2957,7 @@ unsigned __stdcall alive( void* p )
 				}
 				else{
 					LogW(L"[%u]WSAEventSelectエラー(%u)",sock,WSAGetLastError());
-					ResponseError(cp,"500 Internal Server Error");
+					ico='?'; strcpy(msg,"サーバー内部エラー");
 				}
 				WSACloseEvent( ev );
 				// 送受信
@@ -2954,111 +2983,311 @@ unsigned __stdcall alive( void* p )
 							}
 							else{
 								LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
-								strcpy(text,"SSL接続できません");
+								ico='?'; strcpy(msg,"SSL接続できませんでした");
 								ssl_ok = FALSE;
 							}
 						}
 						else{
 							LogW(L"[%u]SSL_newエラー",sock);
-							ResponseError(cp,"500 Internal Server Error");
+							ico='?'; strcpy(msg,"サーバー内部エラー");
 							ssl_ok = FALSE;
 						}
 					}
 					else LogA("[%u]外部接続:%s:%s",sock,host,port);
 					// リクエスト送信
 					if( ssl_ok && !cp->abort ){
-						DWORD timelimit;
-						UCHAR buf[1024*4] = "";
-						UCHAR* ua = cp->req.UserAgent;
-						int len =_snprintf(buf,sizeof(buf),
-							"GET /%s HTTP/1.0\r\n"
-							"Host: %s\r\n"						// fc2でHostヘッダがないとエラーになる
-							"User-Agent: %s\r\n"				// facebookでUser-Agentないと302 move
-							"Accept-Encoding: gzip,deflate\r\n"	// identityだと無圧縮
-							"Connection: close\r\n"
-							"\r\n"
-							,path, host, (ua && *ua)? ua : "Mozilla/4.0"
-						);
-						if( len<0 ){
-							LogW(L"[%u]送信バッファ不足",sock);
-							len = sizeof(buf);
-						}
-						if( proto_ssl ){
-							if( SSL_write( sslp, buf, len )<1 )
-								LogW(L"[%u]SSL_writeエラー",sock);
-						}
-						else{
-							if( send( sock, buf, len, 0 )==SOCKET_ERROR )
-								LogW(L"[%u]sendエラー(%u)",sock,WSAGetLastError());
-						}
-						buf[sizeof(buf)-1]='\0';
-						LogA("[%u]外部送信:%s",sock,buf);
-						// レスポンス受信4秒待つ
-						*buf='\0'; len=0;
-						timelimit = timeGetTime() +4000;
-						while( !cp->abort && readable(sock, timelimit - timeGetTime()) ){
-							int bytes;
-							if( cp->abort ) break;
-							if( proto_ssl )
-								bytes = SSL_read( sslp, buf +len, sizeof(buf)-len );
-							else
-								bytes = recv( sock, buf +len, sizeof(buf)-len, 0 );
-							if( bytes >0 ){
-								if( cp->abort ) break;
-								len += bytes;
-								if( len >=sizeof(buf) ){
-									buf[sizeof(buf)-1] = '\0';
-									break;
-								}
-								buf[len] = '\0';
-								if( strchr(buf,'\n') ) break; // 一行受信したらおわり
+						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+						if( rsp ){
+							DWORD timelimit;
+							UCHAR* ua = cp->req.UserAgent;
+							int len;
+							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+							rsp->bufsize = HTTPGET_BUFSIZE;
+							len = _snprintf(rsp->buf,rsp->bufsize,
+								"GET /%s HTTP/1.0\r\n"
+								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
+								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+								"Accept-Encoding: identity\r\n"			// 無圧縮
+								//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
+								"Connection: close\r\n"
+								"\r\n"
+								,path, host, (ua && *ua)? ua : "Mozilla/4.0"
+							);
+							if( len<0 ){
+								LogW(L"[%u]送信バッファ不足",sock);
+								len = rsp->bufsize;
+							}
+							if( sslp ){
+								if( SSL_write( sslp, rsp->buf, len )<1 )
+									LogW(L"[%u]SSL_writeエラー",sock);
 							}
 							else{
-								LogW(L"[%u]%s()=%d",sock,(proto_ssl)?L"SSL_read":L"recv",bytes);
-								break;
+								if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
+									LogW(L"[%u]sendエラー(%u)",sock,WSAGetLastError());
 							}
+							rsp->buf[rsp->bufsize-1]='\0';
+							LogA("[%u]外部送信:%s",sock,rsp->buf);
+							// レスポンス受信4秒待つ
+							*rsp->buf = '\0';
+							timelimit = timeGetTime() +4000;
+							while( !cp->abort && readable(sock, timelimit - timeGetTime()) ){
+								if( cp->abort ) break;
+								if( sslp )
+									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+								else
+									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+								if( len >0 ){
+									if( cp->abort ) break;
+									rsp->bytes += len;
+									rsp->buf[rsp->bytes] = '\0';
+									if( !rsp->body ){
+										// ヘッダと本文の区切り空行をさがす
+										rsp->body = strstr(rsp->buf,"\r\n\r\n");
+										if( rsp->body ){
+											*rsp->body = '\0';
+											rsp->body += 4;
+										}else{
+											rsp->body = strstr(rsp->buf,"\n\n");
+											if( rsp->body ){
+												*rsp->body = '\0';
+												rsp->body += 2;
+											}
+										}
+										// 空行みつかったらヘッダ解析
+										if( rsp->body ){
+											if( !rsp->ContentLength ){
+												UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
+												if( p ){
+													UINT n = 0;
+													while( isdigit(*p) ){
+														n = n*10 + *p - '0';
+														p++;
+													}
+													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+												}
+												//else LogW(L"Content-Lengthなし");
+											}
+											if( !rsp->ContentEncoding ){
+												UCHAR* p = strHeaderValue(rsp->buf,"Content-Encoding");
+												if( p ){
+													if( strnicmp(p,"deflate",7)==0 ){
+														rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+													}
+													else if( strnicmp(p,"gzip",4)==0 ){
+														rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+													}
+													else{
+														rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+													}
+												}
+												//else LogW(L"Content-Encodingなし");
+											}
+											if( !rsp->ContentType ){
+												UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
+												if( p ){
+													if( strnicmp(p,"text/html",9)==0 ){
+														rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+													}
+													else{
+														rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+													}
+													p = stristr(p,"charset=");
+													if( p ){
+														p += 8;
+														if( *p=='"') p++;
+														if( strnicmp(p,"utf-8",5)==0 ){
+															rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+														}
+														else if( strnicmp(p,"shift_jis",9)==0 ){
+															rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+														}
+														else if( strnicmp(p,"euc-jp",6)==0 ){
+															rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+														}
+														else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+															rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+														}
+														else{
+															rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+														}
+													}
+												}
+												//else LogW(L"Content-Typeなし");
+											}
+										}
+									}
+									// 受信終了チェック
+									if( rsp->ContentLength ){
+										// Content-Lengthぶん受信したらおわり
+										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+									}
+									if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+										// 非圧縮HTMLなら</head>まであればおわり
+										if( stristr(rsp->body,"</head>") ) break;
+									}
+									if( rsp->bytes >1024*1024*10 ){
+										LogW(L"10MBを超える受信データ破棄します");
+										break;
+									}
+									if( rsp->bytes >= rsp->bufsize ){
+										// バッファ拡大して受信継続
+										size_t newsize = rsp->bufsize * 2;
+										HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+										if( newrsp ){
+											int distance = (BYTE*)newrsp - (BYTE*)rsp;
+											memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+											if( rsp->body ) newrsp->body += distance;
+											newrsp->bufsize = newsize;
+											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+											free(rsp), rsp=newrsp;
+										}
+										else{
+											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+											break;
+										}
+									}
+								}
+								else{
+									LogW(L"[%u]%s()=%d",sock,(sslp)?L"SSL_read":L"recv",len);
+									break;
+								}
+							}
+							LogA("[%u]外部受信%ubytes:%s",sock,rsp->bytes,rsp->buf);
+							if( !*rsp->buf ){ ico='?'; strcpy(msg,"受信タイムアウト"); }
 						}
-						LogA("[%u]外部受信%dbytes:%s",sock,len,buf);
-						if( *chomp(buf) ){
-							strncpy(text,buf,sizeof(text));
-							text[sizeof(text)-1]='\0';
+						else{
+							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
+							ico='?'; strcpy(msg,"サーバー内部エラー");
 						}
-						else strcpy(text,"受信タイムアウト");
+					}
+					if( sslp ){
+						SSL_shutdown( sslp );
+						SSL_free( sslp );
 					}
 				}
 				shutdown( sock, SD_BOTH );
 				closesocket( sock );
 			}
-			else strcpy(text,"ホストが見つかりません");
+			else{ ico='?'; strcpy(msg,"ホストが見つかりません"); }
 			if( addr ) FreeAddrInfoA( addr );
 			free( host );
 		}
 		else{
 			LogW(L"L%u:strdupエラー",__LINE__);
-			ResponseError(cp,"500 Internal Server Error");
+			ico='?'; strcpy(msg,"サーバー内部エラー");
 		}
 	}
-	else strcpy(text,"不正なURL");
+	else{ ico='E'; strcpy(msg,"不正なURLです"); }
 
+	if( rsp && *rsp->buf ){
+		if( cp->abort ) goto fin;
+		rsp = HTTPGetContentDecode( cp ,rsp );
+		HTTPGetHtmlToUTF8( cp ,rsp );
+		// HTTP/1.x 200 OK
+		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
+			UCHAR* code = rsp->buf +9;							// 応答コードテキスト("200 OK"など)
+			UCHAR* head = code;									// 応答ヘッダ開始位置
+			while( *head && *head !='\r' && *head !='\n' ) head++;
+			while( *head=='\r' || *head=='\n' ) *head++ = '\0'; // rsp->buf破壊
+			switch( code[0] ){
+			case '2': // 成功
+				// TODO:時事ドットコムの古い記事は、HTTP応答 200 OK、<title> は「時事ドットコム」のみで
+				// 個別タイトルはなく、<meta http-equiv="refresh" content="0:URL=新URL"> でリダイレクト
+				// されるが、リダイレクト先のURLがちゃんと存在する場合と 404 Not Found の場合とある。
+				// リダイレクト先を確認すべきか・・何回もリダイレクトされる可能性も考えると・・。
+				// @ITの記事もこのリダイレクト方式で、他にもちょくちょく見かける。
+				// TODO:みんくちゃんねるの個別記事URLは記事がなくなってても 200 が返ってくる。判別不能。
+				{ // <meta http-equiv="refresh" content="0:URL=新URL">リダイレクト
+					UCHAR* body = rsp->body;
+					UCHAR* meta;
+					while( meta = stristr(body,"<meta ") ){
+						UCHAR* endtag = strchr(meta,'>');
+						if( endtag ){
+							*endtag = '\0'; // rsp->body破壊
+							if( stristr(meta,"http-equiv=") && stristr(meta,"refresh") ){
+								UCHAR* content = stristr(meta,"content=");
+								if( content ){
+									newurl = stristr(content,"URL=");
+									if( newurl ){
+										UCHAR* end;
+										newurl += 4;
+										end = strchr(newurl,'"');
+										if( !end ){
+											end = newurl;
+											while( *end && *end !=' ' ) end++;
+										}
+										*end = '\0';
+										//LogA("refresh URL=%s",newurl);
+										break;
+									}
+								}
+							}
+							body = endtag +1;
+						}
+						else break;
+					}
+				}
+				ico = newurl?'!':'O';
+				break;
+			case '3': // 転送
+				// TODO:Coccoc は Location: http://localhost/ を返してくるけど、ポート番号なくてもいいの？
+				// http://localhost:4474/ じゃないの？でもブラウザはちゃんとポート4474にアクセスしている謎…。
+				// localhost通信だからキャプチャできないし…
+				{ // Locationヘッダ
+					newurl = strHeaderValue(head,"Location");
+					if( newurl ){
+						chomp(newurl); // rsp->buf破壊
+						//LogA("location URL=%s",newurl);
+					}
+				}
+				ico='!';
+				break;
+			case '4': // クライアントエラー
+				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しいHTML
+				// が返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になるだけで、
+				// コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わらないのでブラ
+				// ウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスはなんでも xxx.jpg
+				// でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。正しいURLは 200 が返
+				// ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクトせずこういう応答するサー
+				// バーもあるのか。しかし判定処理どうしよう・・トップページを取得して比較するとかしないと判定
+				// できない？もしトップページと同じだったら 200 OK に変更して返却する？でもそれもよろしくない
+				// ような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫されているようだ。
+				// http://tuitui.jp/2011/10/404page.html
+				// ていうか 404 専用ページじゃなくてトップとおなじHTMLが返ってくるパターンもあるという問題。
+				ico='D';
+				break;
+			case '5': // サーバーエラー
+			case '1': // 情報(HTTP/1.1以降)
+			default:
+				ico='?';
+			}
+			strncpy(msg,code,sizeof(msg));
+			msg[sizeof(msg)-1]='\0';
+		}
+		else{ ico='E'; strcpy(msg,"不正なHTTP応答です"); }
+	}
 fin:
 	if( cp->abort ){
 		LogW(L"[%u]中断します...",Num(cp));
 		cp->status = 0;
 	}
 	else{
-		if( *text ){
-			BufferSends( &(cp->rsp.body) ,text );
-			BufferSendf( &(cp->rsp.head)
-					,"HTTP/1.0 200 OK\r\n"
-					"Content-Type: text/plain; charset=utf-8\r\n"
-					"Content-Length: %u\r\n"
-					,cp->rsp.body.bytes
-			);
-		}
+		BufferSendf( &(cp->rsp.body)
+				,"{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
+				,ico ,msg ,newurl?newurl:""
+		);
+		BufferSendf( &(cp->rsp.head)
+				,"HTTP/1.0 200 OK\r\n"
+				"Content-Type: application/json; charset=utf-8\r\n"
+				"Content-Length: %u\r\n"
+				,cp->rsp.body.bytes
+		);
 		// メインスレッドで処理続行
 		cp->status = CLIENT_SEND_READY;
 		PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
 	}
+	if( rsp ) free( rsp );
 	_endthreadex(0);
 	return 0;
 }
@@ -4851,9 +5080,6 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 				// その時 lParam に FD_ACCEPT が格納されている。
 				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
 					WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
-					// GetNameInfoW は XP (SP2?) 以降のAPIらしいが、Windows2000でもいちおう使えるとかなんとか？
-					// http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
-					// でも環境がないしなぁ・・・
 					// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
 					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen
 							,ip ,sizeof(ip)/sizeof(WCHAR)
@@ -5117,7 +5343,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							while( *file=='/' ) file++;
 							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
 								// index.htmlを返す
-								// TODO:このログイン要求のパスワードが間違っている時は？？？
+								// TODO:セッション有効なのにログイン要求のパスワードが間違っている時は？
 								// セッション有効だから無視してもいい？認証処理すべき？
 								cp->rsp.readfh = CreateFileW(
 										RealPath("index.html",realpath,sizeof(realpath)/sizeof(WCHAR))
@@ -5225,18 +5451,18 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
 							URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, analyze, (void*)cp, 0,NULL );
-							Sleep(50);	// なんとなくちょっと待つ
+							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":alive")==0 && cp->req.param ){
 							// URL死活確認
 							URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, alive, (void*)cp, 0,NULL );
-							Sleep(50);	// なんとなくちょっと待つ
+							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":browser.json")==0 ){
-							// index.htmlサイドバーブラウザアイコン不要なものを表示しないための情報。
+							// index.htmlサイドバーブラウザアイコン不要なものを隠すための情報。
 							//   {"chrome":0,"firefox":0,"ie":0,"opera":0}
 							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
 							// そもそもサーバから返す時にHTML加工してしまう方が無駄がないような…。

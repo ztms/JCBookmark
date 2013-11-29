@@ -149,6 +149,7 @@ body {
 }
 #items .select .url,
 #items .select .iconurl,
+#items .select .status,
 #items .select .place,
 #items .select .summary,
 #items .select .date {
@@ -175,6 +176,7 @@ body {
 }
 #itemhead .url,
 #itemhead .iconurl,
+#itemhead .status,
 #itemhead .place,
 #itemhead .date {
 	color:#888;
@@ -182,6 +184,7 @@ body {
 }
 #items .url,
 #items .iconurl,
+#items .status,
 #items .place,
 #items .summary,
 #items .date {
