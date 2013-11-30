@@ -617,17 +617,23 @@ var option = {
 };
 // ブックマークデータ取得
 (function(){
+	var $loading = $('<div id=loading>データ取得中...</div>');
 	var option_ok = false;
 	var tree_ok = false;
 	option.load(function(){
 		panelReady();
 		// 表示(チラツキ低減)
-		$('body').css('visibility','visible');
+		$loading.prependTo( $('body').css('visibility','visible') );
 		option_ok = true;
 		if( tree_ok ) go();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
-	function go(){ setTimeout(function(){ paneler( tree.top(), setEvents ); },0); }
+	function go(){
+		setTimeout(function(){
+			$loading.remove();
+			paneler( tree.top(), setEvents );
+		},0);
+	}
 })();
 // カラム生成関数
 var $columnBase = $('<div class=column></div>');
@@ -1123,6 +1129,7 @@ function setEvents(){
 		}))
 		.append('<hr>')
 		.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
+			// TODO:ローカルのみ
 			// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
 			// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
 			// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの

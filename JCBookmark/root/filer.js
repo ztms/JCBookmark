@@ -927,6 +927,7 @@ $('#newitem').on({
 		var $menu = $('#contextmenu').width(250);
 		var $box = $menu.children('div').empty();
 		// クリップボードから登録
+		// TODO:ローカルのみ
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			// 選択フォルダ先頭に登録
@@ -1160,6 +1161,7 @@ $('#itembox').on({
 			var $menu = $('#contextmenu').width(250);
 			var $box = $menu.children('div').empty();
 			// クリップボードから登録
+			// TODO:ローカルのみ
 			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 				$menu.hide();
 				// 選択フォルダ末尾に登録
@@ -1979,6 +1981,7 @@ function itemContextMenu(ev){
 	}
 	if( !findItems ){
 		// クリップボードから登録
+		// TODO:ローカルのみ
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			// 選択アイテム位置に登録
@@ -2023,6 +2026,7 @@ function folderContextMenu(ev){
 	var $menu = $('#contextmenu').width(250);
 	var $box = $menu.children('div').empty();
 	// クリップボードから登録
+	// TODO:ローカルのみ
 	$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 		$menu.hide();
 		onContextHide();

@@ -3,6 +3,9 @@
 body {
 	background:#171300;
 }
+#loading {
+	color:#fff;
+}
 .panel {
 	border:1px solid #444;
 	background:#222;
