@@ -45,6 +45,9 @@
 	height:21px;
 	vertical-align:top;
 }
+#loading {
+	text-align:center;
+}
 #wall {
 	margin:auto;
 	padding-bottom:50px;
