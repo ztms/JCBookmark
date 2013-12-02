@@ -74,6 +74,7 @@
 #pragma comment(lib,"wininet.lib")
 #pragma comment(lib,"shlwapi.lib")
 #pragma comment(lib,"psapi.lib")
+#pragma comment(lib,"iphlpapi.lib")
 #pragma comment(lib,"libeay32.lib")
 #pragma comment(lib,"ssleay32.lib")
 // 非ユニコード(Lなし)文字列リテラルをUTF-8でexeに格納する#pragma。
@@ -90,11 +91,12 @@
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <shellapi.h>
+#include <wininet.h>
+#include <iphlpapi.h>
 #include <process.h>
 #include <mmsystem.h>
 #include <commctrl.h>
-#include <wininet.h>
+#include <shellapi.h>
 #include <shlwapi.h>
 #include <psapi.h>
 #include <stdio.h>
@@ -724,7 +726,7 @@ WCHAR* RegValueAlloc( HKEY topkey, const WCHAR* subkey, const WCHAR* name )
 					}
 					else LogW(L"RegQueryValueExW(%s)エラー？",value);
 				}
-				else LogW(L"RegQueryValueExW(%s)エラー(%u)",subkey,GetLastError());
+				else LogW(L"RegQueryValueExW(%s)エラー%u",subkey,GetLastError());
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
 		}
@@ -2145,7 +2147,7 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 							}
 							else LogW(L"[%u]WSAEnumNetworkEventsエラー？",sock);
 						}
-						else LogW(L"[%u]WSAEnumNetworkEventsエラー(%u)",sock,WSAGetLastError());
+						else LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
 					}
 					break;
 				case WSA_WAIT_TIMEOUT:
@@ -2153,7 +2155,7 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 					break;
 				case WSA_WAIT_FAILED:
 				default:
-					LogW(L"[%u]WSAWaitForMultipleEventsエラー(%u)",sock,dwRes);
+					LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
 				}
 			}
 			// イベント型終了
@@ -2162,9 +2164,9 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 			// ブロッキングに戻す
 			ioctlsocket( sock, FIONBIO, &off );
 		}
-		else LogW(L"[%u]WSAEventSelectエラー(%u)",sock,WSAGetLastError());
+		else LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
 	}
-	else LogW(L"[%u]WSACreateEventエラー(%u)",sock,WSAGetLastError());
+	else LogW(L"[%u]WSACreateEventエラー%u",sock,WSAGetLastError());
 
 	return result;
 }
@@ -2304,7 +2306,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					}
 					else{
 						if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR ){
-							LogW(L"[%u]sendエラー(%u)",sock,WSAGetLastError());
+							LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
 						}
 					}
 					rsp->buf[rsp->bufsize-1]='\0';
@@ -2445,7 +2447,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 					shutdown( sock, SD_BOTH );
 					success = TRUE;
 				}
-				else LogA("[%u]connect(%s:%s)エラー(%u)",sock,host,port,WSAGetLastError());
+				else LogA("[%u]connect(%s:%s)エラー%u",sock,host,port,WSAGetLastError());
 				closesocket( sock );
 				FreeAddrInfoA( adr );
 			}
@@ -2559,7 +2561,7 @@ HTTPGet* HTTPGetContentDecode( TClient* cp ,HTTPGet* rsp )
 					LogW(L"[%u]伸長[%u]%u->%ubyte(%.1f倍)"
 							,Num(cp),rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
 				else
-					LogW(L"[%u]圧縮コンテンツ伸長エラー(%u)",Num(cp),rsp->ContentEncoding);
+					LogW(L"[%u]圧縮コンテンツ伸長エラー%u",Num(cp),rsp->ContentEncoding);
 				newrsp->bytes = headbytes + bytes;
 				free(rsp), rsp=newrsp;
 			}
@@ -2939,7 +2941,7 @@ unsigned __stdcall alive( void* p )
 								}
 							}
 							else{
-								LogW(L"[%u]WSAEnumNetworkEventsエラー(%u)",sock,WSAGetLastError());
+								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
 								ico='?'; strcpy(msg,"サーバー内部エラー");
 							}
 							break;
@@ -2948,7 +2950,7 @@ unsigned __stdcall alive( void* p )
 							break;
 						case WSA_WAIT_FAILED:
 						default:
-							LogW(L"[%u]WSAWaitForMultipleEventsエラー(%u)",sock,dwRes);
+							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
 							ico='?'; strcpy(msg,"サーバー内部エラー");
 						}
 					}
@@ -2956,7 +2958,7 @@ unsigned __stdcall alive( void* p )
 					ioctlsocket( sock, FIONBIO, &off );		// ブロッキングに戻す
 				}
 				else{
-					LogW(L"[%u]WSAEventSelectエラー(%u)",sock,WSAGetLastError());
+					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
 					ico='?'; strcpy(msg,"サーバー内部エラー");
 				}
 				WSACloseEvent( ev );
@@ -3023,7 +3025,7 @@ unsigned __stdcall alive( void* p )
 							}
 							else{
 								if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
-									LogW(L"[%u]sendエラー(%u)",sock,WSAGetLastError());
+									LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
 							}
 							rsp->buf[rsp->bufsize-1]='\0';
 							LogA("[%u]外部送信:%s",sock,rsp->buf);
@@ -5029,6 +5031,123 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 	}
 	else ResponseError(cp,"400 Bad Request");
 }
+
+// 指定IPアドレスをこのマシンが持ってるかどうか。
+// IPを列挙するには、GetAdaptersAddresses()とWSAIoctl(SIO_GET_INTERFACE_LIST)とgethostname()と3方式くらい
+// あるもよう。ipconfigに一番近そうなGetAdaptersAddresses()を使う。
+// http://members.jcom.home.ne.jp/toya.hiroshi/get_my_ipaddress.html
+// http://msdn.microsoft.com/en-us/library/aa365915(VS.85).aspx
+// http://dev.ariel-networks.com/column/tech/windows-ipconfig/
+// http://frog.raindrop.jp/knowledge/archives/002204.html
+// http://atamoco.boy.jp/cpp/windows/network/get-adapters-addresses.php
+// IPが変更された場合に通知をもらう関数もあるようだが、XPにはIPv6対応の関数がないもよう。
+// http://togarasi.wordpress.com/2011/07/08/ip-%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9%E3%81%AE%E5%A4%89%E6%9B%B4%E3%82%92%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF%E3%81%99%E3%82%8B/
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa366329(v=vs.85).aspx
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa814450(v=vs.85).aspx
+#if 0
+typedef struct SelfIPaddr {
+	struct SelfIPaddr*	next;
+	WCHAR				text[1];
+} SelfIPaddr;
+
+SelfIPaddr* SelfIPaddrTop = NULL;
+
+void SelfIPaddrFree( void )
+{
+	SelfIPaddr* ip = SelfIPaddrTop;
+	while( ip ){
+		SelfIPaddr* next = ip->next;
+		free( ip );
+		ip = next;
+	}
+}
+void SelfIPaddrPrepend( const WCHAR* text )
+{
+	// リスト先頭に追加
+	SelfIPaddr* ip = malloc( sizeof(SelfIPaddr) + wcslen(text)*sizeof(WCHAR) );
+	if( ip ){
+		wcscpy( ip->text ,text );
+		ip->next = SelfIPaddrTop;
+		SelfIPaddrTop = ip;
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(SelfIPaddr)+wcslen(text)*sizeof(WCHAR));
+}
+BOOL SelfIPaddrHas( const WCHAR* text )
+{
+	SelfIPaddr* ip;
+	for( ip=SelfIPaddrTop; ip; ip=ip->next ){
+		//LogW(L"SelfIP=%s",ip->text);
+		if( wcsicmp(ip->text,text)==0 ) return TRUE;
+	}
+	return FALSE;
+}
+#endif
+BOOL AdapterHas( const WCHAR* text )
+{
+	IP_ADAPTER_ADDRESSES*	adps;
+	ULONG					bytes = 1024; // 1024適当
+	BOOL					found = FALSE;
+	for( ;; ){
+		adps = malloc( bytes );
+		if( adps ){
+			ULONG ret = GetAdaptersAddresses(
+							AF_UNSPEC
+							,GAA_FLAG_SKIP_ANYCAST |GAA_FLAG_SKIP_MULTICAST
+							|GAA_FLAG_SKIP_DNS_SERVER |GAA_FLAG_SKIP_FRIENDLY_NAME
+							,0
+							,adps
+							,&bytes
+			);
+			if( ret==NO_ERROR ){
+				IP_ADAPTER_ADDRESSES* adp;
+				for( adp=adps; adp; adp=adp->Next ){
+					IP_ADAPTER_UNICAST_ADDRESS* uni;
+					for( uni=adp->FirstUnicastAddress; uni; uni=uni->Next ){
+						WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
+						GetNameInfoW(
+								uni->Address.lpSockaddr
+								,uni->Address.iSockaddrLength
+								,ip
+								,sizeof(ip)/sizeof(WCHAR)
+								,NULL
+								,0
+								,NI_NUMERICHOST
+						);
+						if( wcscmp( ip ,text )==0 ){ found=TRUE; break; } // 発見
+					}
+				}
+				break; // おわり
+			}
+			else if( ret==ERROR_BUFFER_OVERFLOW ){
+				free( adps );
+				adps = NULL;
+				// リトライ
+			}
+			else{ LogW(L"GetAdaptersAddresses不明なエラー%u",ret); break; }
+		}
+		else{ LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes); break; }
+	}
+	if( adps ) free( adps );
+	return found;
+}
+// クライアントがローカルで動作している
+BOOL ClientIsLocal( TClient* cp )
+{
+	SOCKADDR_STORAGE addr;
+	int		addrlen = sizeof(addr);
+	WCHAR	ip[INET6_ADDRSTRLEN+1]=L""; // クライアントIP
+
+	getpeername( cp->sock ,(SOCKADDR*)&addr ,&addrlen );
+	GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
+
+	//LogW(L"[%u]peer=%s",Num(cp),ip);
+	if( wcscmp(ip,L"::1")==0 ) return TRUE;
+	if( wcscmp(ip,L"127.0.0.1")==0 ) return TRUE;
+	if( wcsicmp(ip,L"::ffff:127.0.0.1")==0 ) return TRUE;
+	if( AdapterHas(ip) ) return TRUE;
+	return FALSE;
+}
+
 // 待受ソケット作成
 // IPv6対応は結局、待受ソケットを２つ作成するようにした。
 // ・きっかけは、Win7+Opera12で「接続できません」エラーになるという問い合わせで、
@@ -5056,7 +5175,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 // 　コードが増えるので、どちらも２つソケットを使うことにした。
 // 　　ANY の場合は :: と 0.0.0.0 で待受。
 // 　　Loopback の場合は ::1 と 127.0.0.1 で待受。
-// TODO:IPv4とIPv6と２ソケットで待受して、さらにIPv6ソケット側はデュアルスタックにするのは意味なし？
+// IPv4とIPv6と２ソケットで待受して、さらにIPv6ソケット側はデュアルスタックにするのは意味なさそうやらない。
 // TODO:↓の記事ではクライアントのデュアルスタック対応はGetAddrInfoで見つかった複数アドレスに
 // 順番に成功するまでコネクトせよと書いてあるが・・そんなことしてない。
 // http://blogs.msdn.com/b/japan_platform_sdkwindows_sdk_support_team_blog/archive/2012/05/10/winsock-api-ipv4-ipv6-tcp.aspx
@@ -5080,12 +5199,8 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 				// その時 lParam に FD_ACCEPT が格納されている。
 				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
 					WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
-					// Win7だと127.0.0.1は「::1」これはIPv6のloopbackアドレス表記らしい
-					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen
-							,ip ,sizeof(ip)/sizeof(WCHAR)
-							,NULL,0,NI_NUMERICHOST
-					);
-					LogW(L"[%u] ポート%sで待機します - http%s://%s:%s/"
+					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen ,ip ,sizeof(ip)/sizeof(WCHAR) ,NULL,0,NI_NUMERICHOST );
+					LogW(L"[%u]ポート%sで待機します - http%s://%s:%s/"
 							,sock
 							,ListenPort
 							,(HttpsRemote && HttpsLocal)? L"s" : (HttpsRemote || HttpsLocal)? L"(s)" :L""
@@ -5093,11 +5208,11 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 					);
 					success = TRUE;
 				}
-				else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
+				else LogW(L"WSAAsyncSelectエラー%u",WSAGetLastError());
 			}
-			else LogW(L"listenエラー(%u)",WSAGetLastError());
+			else LogW(L"listenエラー%u",WSAGetLastError());
 		}
-		else LogW(L"bindエラー(%u)",WSAGetLastError());
+		else LogW(L"bindエラー%u",WSAGetLastError());
 	}
 	if( !success && sock !=INVALID_SOCKET ){
 		shutdown( sock, SD_BOTH );
@@ -5118,11 +5233,12 @@ BOOL ListenStart( void )
 	hint.ai_flags	 = AI_PASSIVE;
 
 	if( GetAddrInfoW( BindLocal? L"localhost" :NULL ,ListenPort ,&hint ,&adr )==0 ){
+		// IPv4とIPv6と2回
 		ListenSock1 = ListenAddrOne( adr );
 		ListenSock2 = ListenAddrOne( adr->ai_next );
 		FreeAddrInfoW( adr );
 	}
-	else LogW(L"getaddrinfoエラー(%u)",WSAGetLastError());
+	else LogW(L"getaddrinfoエラー%u",WSAGetLastError());
 
 	if( ListenSock1==INVALID_SOCKET && ListenSock2==INVALID_SOCKET ) return FALSE;
 	return TRUE;
@@ -5144,7 +5260,7 @@ void SocketAccept( SOCKET sock )
 		if( cp ){
 			BOOL isSSL = FALSE;
 			UCHAR loopback = 0;
-			if( wcscmp(ip,L"127.0.0.1")==0 || wcscmp(ip,L"::1")==0 || wcsicmp(ip,L"::ffff:127.0.0.1")==0 ){
+			if( wcscmp(ip,L"::1")==0 || wcscmp(ip,L"127.0.0.1")==0 || wcsicmp(ip,L"::ffff:127.0.0.1")==0 ){
 				// localhost(loopback)から接続
 				if( HttpsLocal ) isSSL = TRUE;
 				loopback = 1;
@@ -5198,7 +5314,7 @@ void SocketAccept( SOCKET sock )
 						if( cp->rsp.body.top ) free(cp->rsp.body.top), cp->rsp.body.top=NULL;
 					}
 				}
-				else LogW(L"[%u:%u]WSAAsyncSelectエラー(%u):%s",Num(cp),sock_new,WSAGetLastError(),ip);
+				else LogW(L"[%u:%u]WSAAsyncSelectエラー%u:%s",Num(cp),sock_new,WSAGetLastError(),ip);
 			}
 		}
 		else LogW(L"[%u]同時接続数オーバー切断:%s",sock_new,ip);
@@ -5209,7 +5325,7 @@ void SocketAccept( SOCKET sock )
 			closesocket( sock_new );
 		}
 	}
-	else LogW(L"acceptエラー(%u)",WSAGetLastError());
+	else LogW(L"acceptエラー%u",WSAGetLastError());
 }
 
 void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
@@ -5418,7 +5534,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ResponseError(cp,"404 Not Found");
 									goto send_ready;
 								}
-								else{ ResponseError(cp,"404 Not Found"); goto send_ready; }
+								else{ ResponseError(cp,"403 Forbidden"); goto send_ready; }
 							}
 							else if( stricmp(req->method,"POST")==0 ){
 								UCHAR* file = cp->req.path;
@@ -5446,7 +5562,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					if( stricmp(req->method,"GET")==0 ){
 						UCHAR* file = cp->req.path;
 						while( *file=='/' ) file++;
-						// リクエストファイル開く
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
 							URLfix( cp->req.param );
@@ -5499,41 +5614,43 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						else if( stricmp(file,":clipboard.txt")==0 ){
 							// クリップボードテキスト取得
-							WCHAR* u16 = NULL;
-							if( OpenClipboard(MainForm) ){
-								HGLOBAL cb = GetClipboardData( CF_UNICODETEXT );
-								if( cb ){
-									u16 = malloc( GlobalSize(cb) );
-									if( u16 ){
-										WCHAR* p = GlobalLock(cb);
-										if( p ){
-											wcscpy( u16, p );
-											GlobalUnlock(cb);
+							if( ClientIsLocal( cp ) ){
+								WCHAR* u16 = NULL;
+								if( OpenClipboard(MainForm) ){
+									HGLOBAL cb = GetClipboardData( CF_UNICODETEXT );
+									if( cb ){
+										u16 = malloc( GlobalSize(cb) );
+										if( u16 ){
+											WCHAR* p = GlobalLock(cb);
+											if( p ){
+												wcscpy( u16, p );
+												GlobalUnlock(cb);
+											}
+											else LogW(L"[%u]GlobalLockエラー%u",Num(cp),GetLastError());
 										}
-										else LogW(L"[%u]GlobalLockエラー%u",Num(cp),GetLastError());
+										else LogW(L"L%u:malloc(%u)エラー",__LINE__,GlobalSize(cb));
 									}
-									else LogW(L"L%u:malloc(%u)エラー",__LINE__,GlobalSize(cb));
+									CloseClipboard();
 								}
-								CloseClipboard();
-							}
-							else LogW(L"[%u]OpenClipboardエラー%u",Num(cp),GetLastError());
-							// 返却
-							if( u16 ){
-								UCHAR* u8 = WideCharToUTF8alloc( u16 ); free(u16), u16=NULL;
-								if( u8 ){
-									size_t len = strlen( u8 );
-									BufferSend( &(cp->rsp.body) ,u8 ,len );
-									BufferSendf( &(cp->rsp.head)
-											,"HTTP/1.0 200 OK\r\n"
-											"Content-Type: text/plain; charset=utf-8\r\n"
-											"Content-Length: %u\r\n"
-											,len
-									);
-									free( u8 );
+								else LogW(L"[%u]OpenClipboardエラー%u",Num(cp),GetLastError());
+								// 返却
+								if( u16 ){
+									UCHAR* u8 = WideCharToUTF8alloc( u16 ); free(u16), u16=NULL;
+									if( u8 ){
+										BufferSends( &(cp->rsp.body) ,u8 );
+										BufferSendf( &(cp->rsp.head)
+												,"HTTP/1.0 200 OK\r\n"
+												"Content-Type: text/plain; charset=utf-8\r\n"
+												"Content-Length: %u\r\n"
+												,cp->rsp.body.bytes
+										);
+										free( u8 );
+									}
+									else ResponseError(cp,"500 Internal Server Error");
 								}
-								else ResponseError(cp,"500 Internal Server Error");
+								else ResponseError(cp,"404 Not Found");
 							}
-							else ResponseError(cp,"404 Not Found");
+							else ResponseError(cp,"403 Forbidden");
 							goto send_ready;
 						}
 						else if( stricmp(file,":snapshot")==0 ){
@@ -6138,7 +6255,7 @@ void SocketWrite( SOCKET sock )
 					if( ret==SOCKET_ERROR ){
 						ret = WSAGetLastError();
 						if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
-							LogW(L"[%u]sendエラー(%u)",Num(cp),ret);
+							LogW(L"[%u]sendエラー%u",Num(cp),ret);
 						// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
 						break;
 					}
@@ -6247,11 +6364,13 @@ void SocketShutdown( void )
 	UINT i, count=0;
 
 	if( ListenSock1 !=INVALID_SOCKET ){
+		LogW(L"[%u]待機終了",ListenSock1);
 		shutdown( ListenSock1, SD_BOTH );
 		closesocket( ListenSock1 );
 		ListenSock1 = INVALID_SOCKET;
 	}
 	if( ListenSock2 !=INVALID_SOCKET ){
+		LogW(L"[%u]待機終了",ListenSock2);
 		shutdown( ListenSock2, SD_BOTH );
 		closesocket( ListenSock2 );
 		ListenSock2 = INVALID_SOCKET;
@@ -6915,10 +7034,10 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hWebPasswd		,135 ,rc.top+90    ,180 ,22 ,TRUE );
 				MoveWindow( my->hWebPasswdState	,320 ,rc.top+90+2  ,180 ,22 ,TRUE );
 				MoveWindow( my->hWebPasswdRemote,135 ,rc.top+115   ,110 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,90  ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,85  ,22 ,TRUE );
 				MoveWindow( my->hHttpsTxt		,31  ,rc.top+150+2 ,110 ,22 ,TRUE );
 				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,90  ,22 ,TRUE );
+				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,22 ,TRUE );
 				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
@@ -7162,6 +7281,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					// パス入力有効
 					EnableWindow( my->hWebPasswd ,TRUE );
 					// SSLも有効
+					// TODO:勝手にチェックが付いたことがグラフィカルにわかるといい
 					SendMessage(my->hHttpsRemote,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_REMOTE,0);
 				}
@@ -7178,6 +7298,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					// パス入力有効
 					EnableWindow( my->hWebPasswd ,TRUE );
 					// SSLも有効
+					// TODO:勝手にチェックが付いたことがグラフィカルにわかるといい
 					SendMessage(my->hHttpsLocal,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_LOCAL,0);
 				}
@@ -7200,6 +7321,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
 					// Webパスワード無効
+					// TODO:勝手にチェックが外れたことがグラフィカルにわかるといい
 					SendMessage(my->hWebPasswdRemote,BM_SETCHECK,BST_UNCHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_REMOTE,0);
 				}
@@ -7219,6 +7341,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
 					// Webパスワード無効
+					// TODO:勝手にチェックが外れたことがグラフィカルにわかるといい
 					SendMessage(my->hWebPasswdLocal,BM_SETCHECK,BST_UNCHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_LOCAL,0);
 				}
@@ -8108,7 +8231,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		// WSAGETSELECTERROR(lp) = エラー番号(WORD)
 		// TODO:しばしばAccept後のソケットでエラー10053(WSAECONNABORTED)が発生してFD_CLOSEも来て切断され、
 		// おそらくそのせいでブラウザ側でエラーになってしまう。回避策はあるのか？
-		if( WSAGETSELECTERROR(lp) ) LogW(L"[:%u]ソケットイベントエラー(%u)",(SOCKET)wp,WSAGETSELECTERROR(lp));
+		if( WSAGETSELECTERROR(lp) ) LogW(L"[:%u]ソケットイベントエラー%u",(SOCKET)wp,WSAGETSELECTERROR(lp));
 		switch( WSAGETSELECTEVENT(lp) ){
 		//	http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html
 		//case FD_CONNECT: break; // connect成功した

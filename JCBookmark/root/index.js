@@ -1101,9 +1101,11 @@ function setEvents(){
 			return false;
 		}
 		return true; // 既定右クリックメニュー
-	})
+	});
 	// パネル右クリックメニュー
-	.on('contextmenu','.title',function(ev){
+	var isLocalServer = true;
+	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
+	$doc.on('contextmenu','.title',function(ev){
 		// ev.targetはクリックした場所にあるDOMエレメント
 		var panel = ev.target;
 		while( panel.className !='panel' ){
@@ -1127,52 +1129,53 @@ function setEvents(){
 				}
 			});
 		}))
-		.append('<hr>')
-		.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
-			// TODO:ローカルのみ
-			// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
-			// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
-			// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの
-			// プログレスバー出した方がよいか？そうするなら、先にDOM更新した後タイトル変更
-			// ではなく、先にタイトル取得して最後にDOM更新でいいような気もする。
-			$menu.hide();
-			$.get(':clipboard.txt',function(data){
-				var pnode = tree.node( panel.id );
-				var $itembox = $(panel).find('.itembox');
-				var lines = data.split(/[\r\n]+/);							// 一行一URLとして解析
-				var index = lines.length -1;
-				(function callee(){
-					var count = 10;											// 10個ずつ
-					while( index >=0 && count>0 ){
-						var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
-						if( /^[A-Za-z]+:.+/.test(url) ) itemAdd( url );		// URLなら登録
-						index--; count--;
+		.append('<hr>');
+		if( isLocalServer ){
+			$box.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
+				// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
+				// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
+				// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの
+				// プログレスバー出した方がよいか？そうするなら、先にDOM更新した後タイトル変更
+				// ではなく、先にタイトル取得して最後にDOM更新でいいような気もする。
+				$menu.hide();
+				$.get(':clipboard.txt',function(data){
+					var pnode = tree.node( panel.id );
+					var $itembox = $(panel).find('.itembox');
+					var lines = data.split(/[\r\n]+/);							// 一行一URLとして解析
+					var index = lines.length -1;
+					(function callee(){
+						var count = 10;											// 10個ずつ
+						while( index >=0 && count>0 ){
+							var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
+							if( /^[A-Za-z]+:.+/.test(url) ) itemAdd( url );		// URLなら登録
+							index--; count--;
+						}
+						// 次
+						if( index >=0 ) setTimeout(callee,0);
+					})();
+					function itemAdd( url ){
+						// ノード作成
+						var node = tree.newURL( pnode, url, url.noProto() );
+						if( node ){
+							// タイトル/favicon取得
+							$.get(':analyze?'+url.myURLenc(),function(data){
+								if( data.title.length ){
+									data.title = HTMLdec( data.title );
+									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+								}
+								if( data.icon.length )
+									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+										$('#'+node.id).find('img').attr('src',data.icon);
+							});
+							// DOM増加
+							$newItem(node).prependTo( $itembox );
+						}
 					}
-					// 次
-					if( index >=0 ) setTimeout(callee,0);
-				})();
-				function itemAdd( url ){
-					// ノード作成
-					var node = tree.newURL( pnode, url, url.noProto() );
-					if( node ){
-						// タイトル/favicon取得
-						$.get(':analyze?'+url.myURLenc(),function(data){
-							if( data.title.length ){
-								data.title = HTMLdec( data.title );
-								if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-									$('#'+node.id).attr('title',data.title).find('span').text(data.title);
-							}
-							if( data.icon.length )
-								if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-									$('#'+node.id).find('img').attr('src',data.icon);
-						});
-						// DOM増加
-						$newItem(node).prependTo( $itembox );
-					}
-				}
-			});
-		}))
-		.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
+				});
+			}));
+		}
+		$box.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
 			$menu.hide();
 			panelEdit( panel.id );
 		}))

@@ -18,6 +18,7 @@ $.ajaxSetup({
 		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
 	}
 });
+var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
 var selectFolder = null;		// 選択フォルダ
 var selectItemLast = null;		// 最後に単選択(通常クリックおよびCtrl+クリック)したアイテム
@@ -392,6 +393,7 @@ var option = {
 		if( tree_ok ) go();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
+	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
 	function go(){ setTimeout(function(){ folderTree({ click0:true }); },0); }
 })();
 // CSSルール追加
@@ -924,21 +926,22 @@ $('#newitem').on({
 		$('#newurl').val('');
 	}
 	,contextmenu:function(ev){
-		var $menu = $('#contextmenu').width(250);
-		var $box = $menu.children('div').empty();
-		// クリップボードから登録
-		// TODO:ローカルのみ
-		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
-			$menu.hide();
-			// 選択フォルダ先頭に登録
-			clipboardTo( tree.node( selectFolder.id.slice(6) ), 0 );
-		}));
-		// 表示
-		$menu.css({
-			left: (($(win).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
-			,top: (($(win).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
-		}).show();
-		return false;	// 既定右クリックメニュー出さない
+		if( isLocalServer ){
+			var $menu = $('#contextmenu').width(250);
+			var $box = $menu.children('div').empty();
+			// クリップボードから登録
+			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+				$menu.hide();
+				// 選択フォルダ先頭に登録
+				clipboardTo( tree.node( selectFolder.id.slice(6) ), 0 );
+			}));
+			// 表示
+			$menu.css({
+				left: (($(win).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
+				,top: (($(win).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
+			}).show();
+			return false;	// 既定右クリックメニュー出さない
+		}
 	}
 });
 $('#newurl').keypress(function(ev){
@@ -1157,11 +1160,10 @@ $('#itembox').on({
 		}
 	}
 	,contextmenu:function(ev){
-		if( !findItems && (ev.target.className=='spacer' || ev.target.id=='itembox') ){
+		if( !findItems && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
 			var $menu = $('#contextmenu').width(250);
 			var $box = $menu.children('div').empty();
 			// クリップボードから登録
-			// TODO:ローカルのみ
 			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 				$menu.hide();
 				// 選択フォルダ末尾に登録
@@ -1855,7 +1857,7 @@ function itemContextMenu(ev){
 		item = item.parentNode;
 	}
 	var nid = item.id.slice(4);	// ノードID
-	var $menu = $('#contextmenu').width(250);
+	var $menu = $('#contextmenu').width(210);
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).find('.icon').attr('src');
 	var isURL = false;
@@ -1979,9 +1981,9 @@ function itemContextMenu(ev){
 			$box.append('<hr>');
 		}
 	}
-	if( !findItems ){
+	if( !findItems && isLocalServer ){
 		// クリップボードから登録
-		// TODO:ローカルのみ
+		$menu.width(250);
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			// 選択アイテム位置に登録
@@ -2023,19 +2025,22 @@ function folderContextMenu(ev){
 		folder = folder.parentNode;
 	}
 	var nid = folder.id.slice(6); // ノードID
-	var $menu = $('#contextmenu').width(250);
+	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
 	// クリップボードから登録
-	// TODO:ローカルのみ
-	$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
-		$menu.hide();
-		onContextHide();
-		// クリックフォルダ先頭に登録
-		clipboardTo( tree.node( nid ), 0 );
-	}));
+	if( isLocalServer ){
+		$menu.width(250);
+		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+			$menu.hide();
+			onContextHide();
+			// クリックフォルダ先頭に登録
+			clipboardTo( tree.node( nid ), 0 );
+		}))
+		.append('<hr>');
+	}
 	if( nid==tree.trash().id ){
-		$box.append('<hr>')
-		.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
+		$menu.width(170);
+		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
 			onContextHide();
 			Confirm({
@@ -2053,7 +2058,7 @@ function folderContextMenu(ev){
 		}));
 	}
 	else if( tree.movable(nid) ){
-		$box.append('<hr>');
+		$menu.width(100);
 		if( tree.trashHas(nid) ){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide();
