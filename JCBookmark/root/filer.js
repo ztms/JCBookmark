@@ -35,7 +35,7 @@ var tree = {
 			if( on && !tree._modified ){
 				$('#modified').show();
 				$(doc.body).css('padding-top',22);
-				resizeV();
+				resizeV(22);
 			}
 			tree._modified = on;
 			return tree;
@@ -1246,9 +1246,9 @@ function resize(){
 		.find('.date').width( dateWidth -36);					// float対策適当-36px
 }
 // 画面サイズ縦のみ変更
-function resizeV(){
+function resizeV( padding ){
 	$('#editbox').trigger('decide');
-	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
+	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -padding;
 	$('#folderbox').height( folderboxHeight );
 	$('#border').height( folderboxHeight );
 	$('#itembox').height( folderboxHeight );
@@ -1312,7 +1312,7 @@ function treeSave( arg ){
 		,success:function(){
 			$('#progress').hide();
 			$(doc.body).css('padding-top',0);
-			resizeV();
+			resizeV(0);
 			if( arg && arg.success ) arg.success();
 		}
 	});
