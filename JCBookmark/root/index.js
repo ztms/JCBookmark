@@ -359,7 +359,7 @@ var option = {
 		}
 		if( 'autoshot' in data ){
 			od.autoshot = data.autoshot;
-			$('#autoshot').attr('checked', data.autoshot );
+			$('#autoshot').prop('checked', data.autoshot );
 		}
 		return option;
 	}
@@ -581,7 +581,7 @@ var option = {
 	,autoshot:function( val ){
 		if( arguments.length ){
 			option.data.autoshot = val;
-			$('#autoshot').attr('checked', val );
+			$('#autoshot').prop('checked',val);
 			option.modified(true);
 			return option;
 		}
@@ -1269,7 +1269,7 @@ function setEvents(){
 		if( ev.target.id=='modified' ) modifySave();
 	});
 	$('#modified label,#autoshot').click(function(){
-		option.autoshot( $('#autoshot').attr('checked')? true:false );
+		option.autoshot( $('#autoshot').prop('checked') );
 	});
 	// パネル設定ダイアログ
 	$('#optionico').click(function(){
@@ -1283,8 +1283,7 @@ function setEvents(){
 		});
 		// 色テーマ
 		$('input[name=colorcss]').each(function(){
-			if( this.value==option.color.css() )
-				$(this).attr('checked','checked');
+			if( this.value==option.color.css() ) $(this).prop('checked',true);
 		})
 		.off().change(function(){
 			option.color.css( this.value );
@@ -1292,8 +1291,7 @@ function setEvents(){
 		});
 		// 全体
 		$('input[name=wall_margin]').each(function(){
-			if( this.value==option.wall.margin() )
-				$(this).attr('checked','checked');
+			if( this.value==option.wall.margin() ) $(this).prop('checked',true);
 		})
 		.off().change(function(){
 			option.wall.margin( this.value );
@@ -1442,8 +1440,7 @@ function setEvents(){
 		// http://pointofviewpoint.air-nifty.com/blog/2012/11/jquerycss-7530.html
 		// http://d.hatena.ne.jp/ofk/20090716/1247719727
 		$('input[name=fontcss]').each(function(){
-			if( this.value==option.font.css() )
-				$(this).attr('checked','checked');
+			if( this.value==option.font.css() ) $(this).prop('checked',true);
 		})
 		.off().change(function(){
 			option.font.css( this.value );
