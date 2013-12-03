@@ -1857,10 +1857,11 @@ function itemContextMenu(ev){
 		item = item.parentNode;
 	}
 	var nid = item.id.slice(4);	// ノードID
-	var $menu = $('#contextmenu').width(210);
+	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).find('.icon').attr('src');
 	var isURL = false;
+	var width = 210;
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
@@ -1983,7 +1984,7 @@ function itemContextMenu(ev){
 	}
 	if( !findItems && isLocalServer ){
 		// クリップボードから登録
-		$menu.width(250);
+		if( width<250 ) width=250;
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			// 選択アイテム位置に登録
@@ -2008,7 +2009,7 @@ function itemContextMenu(ev){
 		$('#delete').click();
 	}));
 	// 表示
-	$menu.css({
+	$menu.width(width).css({
 		left: (($(win).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
 		,top: (($(win).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
 	}).show();
@@ -2027,9 +2028,10 @@ function folderContextMenu(ev){
 	var nid = folder.id.slice(6); // ノードID
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
+	var width = 100;
 	// クリップボードから登録
 	if( isLocalServer ){
-		$menu.width(250);
+		if( width<250 ) width=250;
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide();
 			onContextHide();
@@ -2039,7 +2041,7 @@ function folderContextMenu(ev){
 		.append('<hr>');
 	}
 	if( nid==tree.trash().id ){
-		$menu.width(170);
+		if( width<170 ) width=170;
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
 			onContextHide();
@@ -2058,7 +2060,6 @@ function folderContextMenu(ev){
 		}));
 	}
 	else if( tree.movable(nid) ){
-		$menu.width(100);
 		if( tree.trashHas(nid) ){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide();
@@ -2093,7 +2094,7 @@ function folderContextMenu(ev){
 		onContextHide = null;
 	};
 	// 表示
-	$menu.css({
+	$menu.width(width).css({
 		left: (($(win).width() -ev.pageX) < $menu.width())? ev.pageX -$menu.width() : ev.pageX
 		,top: (($(win).height() -ev.pageY) < $menu.height())? ev.pageY -$menu.height() : ev.pageY
 	}).show();
