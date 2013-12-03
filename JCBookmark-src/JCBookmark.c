@@ -49,6 +49,8 @@
 //	なるほどUnicode版の関数がないのか。まだ他にもあるのか？不明。うーむ・・対応できるけど、Windows2000
 //	で動く必要があるか？ブラウザ画面が使いたいだけならHTTPサーバは別マシンで起動しておけばよいので、
 //	なんとかそれでおねがいしたい・・。ブラウザ画面は2000のOpera10.63で確認。ただし日本語表示は未確認。
+//	GetNameInfoW は WSAAddressToStringW が同機能だったけど、ポート番号付き文字列になってしまうようで
+//	単純置き換えではダメだった。
 //	TODO:Chromeみたいな自動バージョンアップ機能をつけるには？旧exeと新exeがあってどうやって入れ替えるの？
 //	TODO:WinHTTPつかえばOpenSSLいらない？
 //	TODO:strlenのコスト削減でこんな構造体を使うとよいのか…？
@@ -2063,16 +2065,23 @@ BOOL readable( SOCKET sock, DWORD msec )
 UCHAR* strHeaderValue( const UCHAR* buf, const UCHAR* name )
 {
 	if( buf && name ){
-		UCHAR* value = stristr( buf, name );
-		if( value ){
-			if( buf==value || (buf < value && *(value-1)=='\n') ){
-				value += strlen( name );
-				while( *value==' ' || *value=='\t' ) value++;
-				if( *value==':' ){
-					value++;
-					while( *value==' ' || *value=='\t' ) value++;
-					return value;
+		UCHAR* value = buf;
+		size_t len = strlen( name );
+		for( ; *value; value++ ){
+			if( strnicmp( value, name, len )==0 ){
+				if( buf==value || (buf < value && *(value-1)=='\n') ){
+					value += len;
+					if( *value==':' || *value==' ' || *value=='\t' ){
+						while( *value==' ' || *value=='\t' ) value++;
+						if( *value==':' ){
+							value++;
+							while( *value==' ' || *value=='\t' ) value++;
+							return value;
+						}
+					}
+					else value--;
 				}
+				else value += len-1;
 			}
 		}
 	}
@@ -2581,87 +2590,83 @@ struct {
 
 void HTTPGetHtmlToUTF8( TClient* cp ,HTTPGet* rsp )
 {
-	if( rsp ){
-		// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
-		// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
-		// とりあえずConvertINetString()で変換しておく。
-		if( rsp->ContentType==TYPE_HTML ){
-			if( mlang.Convert ){
-				DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
-				switch( rsp->charset ){
-				case CS_UTF8: CP = 65001; break;
-				case CS_SJIS: CP = 932;   break;
-				case CS_EUC : CP = 51932; break;
-				case CS_JIS : CP = 50221; break;
-				default:
-					if( rsp->body ){
-						// HTTPヘッダにcharset指定がなかった場合。
-						// HTMLヘッダ<meta>に従うべきだが、その文字列が既にエンコードされているので…。
-						// <meta>は無視して DetectInputCodepage() で判定する。MLDETECTCP_HTML を使えば
-						// それなりにちゃんと判定できているようにみえる(既定の MLDETECTCP_NONE は挙動
-						// 不審で使いものにならない)。「バベル」というC++ライブラリが評価高いようだが
-						// C++インタフェースのみ。
-						// http://yuzublo.blog48.fc2.com/blog-entry-29.html
-						IMultiLanguage2 *mlang2;
-						HRESULT res;
-						CoInitialize(NULL);
-						// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
-						// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
-						res = CoCreateInstance(
-									&CLSID_CMultiLanguage
-									,NULL
-									,CLSCTX_INPROC_SERVER
-									,&IID_IMultiLanguage2
-									,(void**)&mlang2
-						);
-						if( SUCCEEDED(res) ){
-							int dataLen = rsp->bytes - (rsp->body - rsp->buf);	// 判定データバイト
-							int count = 1;										// 判定結果の候補数
-							DetectEncodingInfo info;							// 判定結果
-							res = mlang2->lpVtbl->DetectInputCodepage( mlang2
-										,MLDETECTCP_HTML
-										,0
-										,rsp->body
-										,&dataLen
-										,&info
-										,&count
-							);
-							if( SUCCEEDED(res) ){
-								CP = info.nCodePage;
-							}
-							mlang2->lpVtbl->Release( mlang2 );
-						}
-						CoUninitialize();
+	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
+	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
+	// とりあえずConvertINetString()で変換しておく。
+	if( rsp && rsp->ContentType==TYPE_HTML && mlang.Convert ){
+		DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
+		switch( rsp->charset ){
+		case CS_UTF8: CP = 65001; break;
+		case CS_SJIS: CP = 932;   break;
+		case CS_EUC : CP = 51932; break;
+		case CS_JIS : CP = 50221; break;
+		default:
+			if( rsp->body ){
+				// HTTPヘッダにcharset指定がなかった場合。
+				// HTMLヘッダ<meta>に従うべきだが、その文字列が既にエンコードされているので…。
+				// <meta>は無視して DetectInputCodepage() で判定する。MLDETECTCP_HTML を使えば
+				// それなりにちゃんと判定できているようにみえる(既定の MLDETECTCP_NONE は挙動
+				// 不審で使いものにならない)。「バベル」というC++ライブラリが評価高いようだが
+				// C++インタフェースのみ。
+				// http://yuzublo.blog48.fc2.com/blog-entry-29.html
+				IMultiLanguage2 *mlang2;
+				HRESULT res;
+				CoInitialize(NULL);
+				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
+				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
+				res = CoCreateInstance(
+							&CLSID_CMultiLanguage
+							,NULL
+							,CLSCTX_INPROC_SERVER
+							,&IID_IMultiLanguage2
+							,(void**)&mlang2
+				);
+				if( SUCCEEDED(res) ){
+					int dataLen = rsp->bytes - (rsp->body - rsp->buf);	// 判定データバイト
+					int count = 1;										// 判定結果の候補数
+					DetectEncodingInfo info;							// 判定結果
+					res = mlang2->lpVtbl->DetectInputCodepage( mlang2
+								,MLDETECTCP_HTML
+								,0
+								,rsp->body
+								,&dataLen
+								,&info
+								,&count
+					);
+					if( SUCCEEDED(res) ){
+						CP = info.nCodePage;
 					}
+					mlang2->lpVtbl->Release( mlang2 );
 				}
-				if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
-					int tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
-					BYTE* tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
-					if( tmp ){
-						DWORD mode=0;
-						HRESULT res;
-						memset( tmp, 0, tmpbytes );
-						// まずSJIS(932)に変換
-						res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
-						if( res==S_OK ){
-							tmp[tmpbytes]='\0';
-							tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
-							mode=0;
-							// 次にSJISからUTF8に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
-							res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
-							if( res==S_OK ){
-								rsp->body[tmpbytes]='\0';
-								LogW(L"[%u]文字コード%u->65001変換",Num(cp),CP);
-							}
-							else LogW(L"[%u]ConvertINetString(932->65001)エラー",Num(cp));
-						}
-						else LogW(L"[%u]ConvertINetString(%u->932)エラー",Num(cp),CP);
-
-						free(tmp);
-					}
-					else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
-				}
+				CoUninitialize();
 			}
+		}
+		if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
+			int tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
+			BYTE* tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
+			if( tmp ){
+				DWORD mode=0;
+				HRESULT res;
+				memset( tmp, 0, tmpbytes );
+				// まずSJIS(932)に変換
+				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
+				if( res==S_OK ){
+					tmp[tmpbytes]='\0';
+					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
+					mode=0;
+					// 次にSJISからUTF8に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
+					res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
+					if( res==S_OK ){
+						rsp->body[tmpbytes]='\0';
+						LogW(L"[%u]文字コード%u->65001変換",Num(cp),CP);
+					}
+					else LogW(L"[%u]ConvertINetString(932->65001)エラー",Num(cp));
+				}
+				else LogW(L"[%u]ConvertINetString(%u->932)エラー",Num(cp),CP);
+
+				free(tmp);
+			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
 		}
 	}
 }
@@ -2693,11 +2698,11 @@ unsigned __stdcall analyze( void* p )
 		UCHAR* title=NULL, *icon=NULL;
 		if( cp->abort ) goto fin;
 		rsp = HTTPGetContentDecode( cp ,rsp );
-		HTTPGetHtmlToUTF8( cp ,rsp );
-		// タイトル取得
-		{
-			UCHAR* begin = stristr(rsp->body,"<title");
-			UCHAR* end;
+		if( rsp->ContentType==TYPE_HTML ){
+			UCHAR* begin ,*end;
+			HTTPGetHtmlToUTF8( cp ,rsp );
+			// タイトル取得
+			begin = stristr(rsp->body,"<title");
 			if( begin ){
 				begin += 6;
 				end = stristr(begin,"</title>");
@@ -2714,13 +2719,9 @@ unsigned __stdcall analyze( void* p )
 				else LogW(L"[%u]</title>が見つかりません(%s)",Num(cp),url);
 			}
 			else LogA("[%u]<title>が見つかりません(%s)",Num(cp),url);
-		}
-		// favicon取得
-		{
-			// まず<link rel=icon href="xxx">をさがす
-			UCHAR* begin = rsp->body;
+			// favicon取得まず<link rel=icon href="xxx">をさがす
+			begin = rsp->body;
 			while( begin=stristr(begin,"<link") ){
-				UCHAR* end;
 				begin += 5;
 				end = strchr(begin,'>');
 				if( end ){
@@ -2859,6 +2860,109 @@ unsigned __stdcall analyze( void* p )
 	}
 	_endthreadex(0);
 	return 0;
+}
+
+// <meta http-equiv=refresh ..>方式転送検出のためHTMLを書き換える。
+// http://www.nifty.com/ や facebook で <noscript>タグ内に<meta http-equiv=refresh ..>があり、
+// 単純に検索しただけでは誤検出(転送じゃないのに転送と判定)っぽくなってしまう。<noscript>は
+// 無視でよいと思うので、<noscript>～</noscript>はあらかじめスペースで塗りつぶす。
+// ついでにHTMLコメント<!-- -->や<script>～</script>、<style>～</style>も誤検出の元なので
+// スペースで塗りつぶす。
+UCHAR* HTMLmodify( UCHAR* top )
+{
+	UCHAR* p = top;
+	UCHAR* end;
+	// 1.<script>～</script>をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* script = stristr(p,"<script");
+		if( script && (script[7]==' ' || script[7]=='>') ){
+			end = stristr(script+7,"</script>");
+			if( end ){
+				UCHAR quote1=0 ,quote2=0;
+				// クォート解析
+				p = script + 7;
+			retry:
+				for( ; p<end; p++ ){
+					if( *p=='\'' ){ if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; } else quote1=1; }
+					else if( *p=='"' ){ if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; } else quote2=1; }
+				}
+				if( quote1 || quote2 ){
+					// </script>がクォートの中
+					UCHAR* newend = stristr(end+9,"</script>");
+					if( newend ){ end=newend; goto retry; }
+					LogW(L"<script>閉タグが文字列として存在するが新たな閉タグが見つからない構文エラー？");
+				}
+				p = end + 9 ;
+				LogW(L"<script>%u文字塗りつぶし",p-script);
+				memset( script ,' ' ,p-script );
+				// 再検索
+			}
+			else{
+				LogW(L"<script>閉タグがありません");
+				*script='\0';
+				break;
+			}
+		}
+		else break; // <script>なし
+	}
+	// 2.HTMLコメント<!-- -->をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* comment = strstr(p,"<!--");
+		if( comment ){
+			end = strstr(comment+4,"-->");
+			if( end ){
+				p = end + 3;
+				LogW(L"HTMLコメント%u文字塗りつぶし",p-comment);
+				memset( comment ,' ' ,p-comment );
+				// 再検索
+			}
+			else{
+				LogW(L"HTMLコメント閉タグがありません");
+				*comment='\0';
+				break;
+			}
+		}
+		else break; // コメントなし
+	}
+	// 3.<noscript>～</noscript>をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* noscript = stristr(p,"<noscript");
+		if( noscript && (noscript[9]==' ' || noscript[9]=='>') ){
+			end = stristr(noscript+9,"</noscript>");
+			if( end ){
+				p = end + 11;
+				LogW(L"<noscript>%u文字塗りつぶし",p-noscript);
+				memset( noscript ,' ' ,p-noscript );
+				// 再検索
+			}
+			else{
+				LogW(L"<noscript>閉タグがありません");
+				*noscript='\0';
+				break;
+			}
+		}
+		else break; // <noscript>なし
+	}
+	// 4.ついでに<style>～</style>もスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* style = stristr(p,"<style");
+		if( style && (style[6]==' ' || style[6]=='>') ){
+			end = stristr(style+6,"</style>");
+			if( end ){
+				p = end + 8;
+				LogW(L"<style>%u文字塗りつぶし",p-style);
+				memset( style ,' ' ,p-style );
+				// 再検索
+			}
+			else{
+				LogW(L"<style>閉タグがありません");
+				*style='\0';
+				break;
+			}
+		}
+		else break; // <style>なし
+	}
+	return top;
 }
 
 // 指定URL死活確認を行うスレッド関数
@@ -3061,10 +3165,7 @@ unsigned __stdcall alive( void* p )
 												UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
 												if( p ){
 													UINT n = 0;
-													while( isdigit(*p) ){
-														n = n*10 + *p - '0';
-														p++;
-													}
+													for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
 													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
 												}
 												//else LogW(L"Content-Lengthなし");
@@ -3141,8 +3242,8 @@ unsigned __stdcall alive( void* p )
 											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
 											if( rsp->body ) newrsp->body += distance;
 											newrsp->bufsize = newsize;
-											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
 											free(rsp), rsp=newrsp;
+											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
 										}
 										else{
 											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
@@ -3185,7 +3286,6 @@ unsigned __stdcall alive( void* p )
 	if( rsp && *rsp->buf ){
 		if( cp->abort ) goto fin;
 		rsp = HTTPGetContentDecode( cp ,rsp );
-		HTTPGetHtmlToUTF8( cp ,rsp );
 		// HTTP/1.x 200 OK
 		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
 			UCHAR* code = rsp->buf +9;							// 応答コードテキスト("200 OK"など)
@@ -3194,15 +3294,16 @@ unsigned __stdcall alive( void* p )
 			while( *head=='\r' || *head=='\n' ) *head++ = '\0'; // rsp->buf破壊
 			switch( code[0] ){
 			case '2': // 成功
-				// TODO:時事ドットコムの古い記事は、HTTP応答 200 OK、<title> は「時事ドットコム」のみで
-				// 個別タイトルはなく、<meta http-equiv="refresh" content="0:URL=新URL"> でリダイレクト
-				// されるが、リダイレクト先のURLがちゃんと存在する場合と 404 Not Found の場合とある。
-				// リダイレクト先を確認すべきか・・何回もリダイレクトされる可能性も考えると・・。
-				// @ITの記事もこのリダイレクト方式で、他にもちょくちょく見かける。
+				// TODO:時事ドットコムや@ITの記事は <meta http-equiv=refresh content="0:URL=新URL"> で
+				// 転送されるが、時事ドットコムはHTTP応答 200 OK、<title> は「時事ドットコム」のみで
+				// 個別タイトルはなく、転送先のURLがちゃんと存在する場合と 404 Not Found の場合とある。
+				// 転送先を確認すべきか。他にも転送先が404のサイトがちょくちょくある。
 				// TODO:みんくちゃんねるの個別記事URLは記事がなくなってても 200 が返ってくる。判別不能。
-				{ // <meta http-equiv="refresh" content="0:URL=新URL">リダイレクト
-					UCHAR* body = rsp->body;
-					UCHAR* meta;
+				if( rsp->ContentType==TYPE_HTML ){
+					// <meta http-equiv="refresh" content="0:URL=新URL"> 方式の転送
+					UCHAR* body ,*meta;
+					HTTPGetHtmlToUTF8( cp ,rsp );
+					body = HTMLmodify( rsp->body ); // rsp->body破壊
 					while( meta = stristr(body,"<meta ") ){
 						UCHAR* endtag = strchr(meta,'>');
 						if( endtag ){
@@ -3233,6 +3334,10 @@ unsigned __stdcall alive( void* p )
 				ico = newurl?'!':'O';
 				break;
 			case '3': // 転送
+				// TODO:http://www.ec-current.com/は匿名閲覧でもクッキーを使っているようで、Cookie: なしで
+				// アクセスすると302で飛ばされて、クッキー発行してまた302で元のURLに戻すという動作になって
+				// いるもよう。これも技術的には転送だけど全体としては転送じゃないパターンなのに転送と判定
+				// してしまう・・ぐぬぬ・・。
 				// TODO:Coccoc は Location: http://localhost/ を返してくるけど、ポート番号なくてもいいの？
 				// http://localhost:4474/ じゃないの？でもブラウザはちゃんとポート4474にアクセスしている謎…。
 				// localhost通信だからキャプチャできないし…
@@ -3246,17 +3351,17 @@ unsigned __stdcall alive( void* p )
 				ico='!';
 				break;
 			case '4': // クライアントエラー
-				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しいHTML
-				// が返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になるだけで、
-				// コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わらないのでブラ
-				// ウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスはなんでも xxx.jpg
-				// でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。正しいURLは 200 が返
-				// ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクトせずこういう応答するサー
-				// バーもあるのか。しかし判定処理どうしよう・・トップページを取得して比較するとかしないと判定
-				// できない？もしトップページと同じだったら 200 OK に変更して返却する？でもそれもよろしくない
-				// ような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫されているようだ。
-				// http://tuitui.jp/2011/10/404page.html
-				// ていうか 404 専用ページじゃなくてトップとおなじHTMLが返ってくるパターンもあるという問題。
+				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
+				// HTMLが返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になる
+				// だけで、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わら
+				// ないのでブラウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスは
+				// なんでも xxx.jpg でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。
+				// 正しいURLは 200 が返ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクト
+				// せずこういう応答するサーバーもあるのか。しかし判定処理どうしよう・・トップページを取得
+				// して比較するとかしないと判定できない？もしトップページと同じだったら 200 OK に変更して
+				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
+				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
+				// トップとおなじHTMLが返ってくるパターンもあるという問題。
 				ico='D';
 				break;
 			case '5': // サーバーエラー
@@ -5245,7 +5350,6 @@ void SocketAccept( SOCKET sock )
 				// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら
 				// メッセージが来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
 				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
-					// TODO:初期バッファサイズ拡大は滅多にない程度の大きさに調節
 					#define REQUEST_BUFSIZE		1024
 					#define RESPONSE_HEADSIZE	512
 					#define RESPONSE_BODYSIZE	512
