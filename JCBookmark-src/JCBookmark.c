@@ -5040,48 +5040,6 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 // http://dev.ariel-networks.com/column/tech/windows-ipconfig/
 // http://frog.raindrop.jp/knowledge/archives/002204.html
 // http://atamoco.boy.jp/cpp/windows/network/get-adapters-addresses.php
-// IPが変更された場合に通知をもらう関数もあるようだが、XPにはIPv6対応の関数がないもよう。
-// http://togarasi.wordpress.com/2011/07/08/ip-%E3%82%A2%E3%83%89%E3%83%AC%E3%82%B9%E3%81%AE%E5%A4%89%E6%9B%B4%E3%82%92%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF%E3%81%99%E3%82%8B/
-// http://msdn.microsoft.com/en-us/library/windows/desktop/aa366329(v=vs.85).aspx
-// http://msdn.microsoft.com/en-us/library/windows/desktop/aa814450(v=vs.85).aspx
-#if 0
-typedef struct SelfIPaddr {
-	struct SelfIPaddr*	next;
-	WCHAR				text[1];
-} SelfIPaddr;
-
-SelfIPaddr* SelfIPaddrTop = NULL;
-
-void SelfIPaddrFree( void )
-{
-	SelfIPaddr* ip = SelfIPaddrTop;
-	while( ip ){
-		SelfIPaddr* next = ip->next;
-		free( ip );
-		ip = next;
-	}
-}
-void SelfIPaddrPrepend( const WCHAR* text )
-{
-	// リスト先頭に追加
-	SelfIPaddr* ip = malloc( sizeof(SelfIPaddr) + wcslen(text)*sizeof(WCHAR) );
-	if( ip ){
-		wcscpy( ip->text ,text );
-		ip->next = SelfIPaddrTop;
-		SelfIPaddrTop = ip;
-	}
-	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(SelfIPaddr)+wcslen(text)*sizeof(WCHAR));
-}
-BOOL SelfIPaddrHas( const WCHAR* text )
-{
-	SelfIPaddr* ip;
-	for( ip=SelfIPaddrTop; ip; ip=ip->next ){
-		//LogW(L"SelfIP=%s",ip->text);
-		if( wcsicmp(ip->text,text)==0 ) return TRUE;
-	}
-	return FALSE;
-}
-#endif
 BOOL AdapterHas( const WCHAR* text )
 {
 	IP_ADAPTER_ADDRESSES*	adps;
@@ -6762,6 +6720,8 @@ typedef struct {
 	HWND		hWebPasswdState;
 	HWND		hWebPasswdRemote;
 	HWND		hWebPasswdLocal;
+	HWND		hLinkRemote;
+	HWND		hLinkLocal;
 	HWND		hHttpsTxt;
 	HWND		hHttpsRemote;
 	HWND		hHttpsLocal;
@@ -6786,6 +6746,84 @@ typedef struct {
 
 BOOL isChecked( HWND hwnd ){ return (SendMessage(hwnd,BM_GETCHECK,0,0)==BST_CHECKED)? TRUE:FALSE; }
 
+// WebパスワードとHTTPS(SSL)のチェックボックスで、クリックしたところと違うところに勝手にチェックが
+// 付く連結チェックになることを示す線を表示するためのウィンドウプロシージャ。マウスが乗ったら連結線
+// ウィンドウを表示する。チェックの付け外し処理は親ウィンドウで、ここでは連結線ウィンドウの表示制御
+// のみ。
+WNDPROC DefButtonProc = NULL; // 既定ボタンコントロールウィンドウプロシージャ
+LRESULT CALLBACK LinkCheckboxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+{
+	ConfigDialogData* my;
+	TRACKMOUSEEVENT tme;
+	HWND hParent;
+
+	switch( msg ){
+	case WM_MOUSEMOVE:
+		hParent = GetParent( hwnd );
+		if( hParent ){
+			my = (ConfigDialogData*)GetWindowLong( hParent ,GWL_USERDATA );
+			if( my ){
+				tme.cbSize = sizeof(tme);
+				tme.dwFlags = TME_LEAVE;
+				if( hwnd==my->hWebPasswdRemote ){
+					if( !isChecked(my->hWebPasswdRemote) && !isChecked(my->hHttpsRemote) ){
+						// Webパスワード有効時はHTTP(SSL)必要
+						if( !IsWindowVisible( my->hLinkRemote ) ){
+							ShowWindow( my->hLinkRemote ,SW_SHOW );
+							tme.hwndTrack = my->hWebPasswdRemote;
+							TrackMouseEvent( &tme );
+						}
+					}
+				}
+				else if( hwnd==my->hHttpsRemote ){
+					if( isChecked(my->hWebPasswdRemote) && isChecked(my->hHttpsRemote) ){
+						// HTTP(SSL)無効時はWebパスワードも無効
+						if( !IsWindowVisible( my->hLinkRemote ) ){
+							ShowWindow( my->hLinkRemote ,SW_SHOW );
+							tme.hwndTrack = my->hHttpsRemote;
+							TrackMouseEvent( &tme );
+						}
+					}
+				}
+				if( hwnd==my->hWebPasswdLocal ){
+					if( !isChecked(my->hWebPasswdLocal) && !isChecked(my->hHttpsLocal) ){
+						// Webパスワード有効時はHTTP(SSL)必要
+						if( !IsWindowVisible( my->hLinkLocal ) ){
+							ShowWindow( my->hLinkLocal ,SW_SHOW );
+							tme.hwndTrack = my->hWebPasswdLocal;
+							TrackMouseEvent( &tme );
+						}
+					}
+				}
+				else if( hwnd==my->hHttpsLocal ){
+					if( isChecked(my->hWebPasswdLocal) && isChecked(my->hHttpsLocal) ){
+						// HTTP(SSL)無効時はWebパスワードも無効
+						if( !IsWindowVisible( my->hLinkLocal ) ){
+							ShowWindow( my->hLinkLocal ,SW_SHOW );
+							tme.hwndTrack = my->hHttpsLocal;
+							TrackMouseEvent( &tme );
+						}
+					}
+				}
+			}
+		}
+		break;
+
+	case WM_MOUSELEAVE:
+		hParent = GetParent( hwnd );
+		if( hParent ){
+			my = (ConfigDialogData*)GetWindowLong( hParent ,GWL_USERDATA );
+			if( my ){
+				// 線隠す
+				ShowWindow( my->hLinkRemote ,SW_HIDE );
+				ShowWindow( my->hLinkLocal ,SW_HIDE );
+			}
+		}
+		break;
+	}
+	return CallWindowProc( DefButtonProc ,hwnd ,msg ,wp ,lp );
+}
+
 LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
 	ConfigDialogData* my = (ConfigDialogData*)GetWindowLong( hwnd ,GWL_USERDATA );
@@ -6793,15 +6831,15 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		switch( msg ){
 		case WM_CREATE_AFTER:
 			{
-				BrowserInfo* br;
 				HINSTANCE hinst = (HINSTANCE)wp;
+				BrowserInfo* br;
 				TCITEMW item;
 				WCHAR* sslcrt = AppFilePath( SSL_CRT );
 				WCHAR* sslkey = AppFilePath( SSL_KEY );
 				UINT tabid;
 				RECT rc;
 				UINT i;
-
+				// フォント
 				my->hFontM = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 				my->hFontS = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 				// タブコントロール
@@ -6856,6 +6894,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							L"static",WebPasswd(NULL,0)? L"(登録済み・変更する時は入力)" :L"(未登録)"
 							,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
+				my->hLinkRemote = CreateWindowW(
+							L"static",L"" ,WS_CHILD |WS_BORDER ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
+				my->hLinkLocal = CreateWindowW(
+							L"static",L"" ,WS_CHILD |WS_BORDER ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+				);
 				my->hWebPasswdRemote = CreateWindowW(
 							L"button",L"localhost以外" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
 							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_WEBPASSWD_REMOTE ,hinst,NULL
@@ -6906,6 +6950,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							L"button",L"起動時から最小化（タスクトレイ収納）"
 							,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
+				DefButtonProc = (WNDPROC)GetWindowLong( my->hHttpsLocal ,GWLP_WNDPROC );
+				SetWindowLong( my->hWebPasswdRemote ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
+				SetWindowLong( my->hWebPasswdLocal ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
+				SetWindowLong( my->hHttpsRemote ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
+				SetWindowLong( my->hHttpsLocal ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
 				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
 				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX+1 ,0 ); // エラー通知用＋1文字
 				if( WebPasswdRemote ) SendMessage( my->hWebPasswdRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
@@ -7033,11 +7082,13 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hWebPasswdTxt	,31  ,rc.top+90+2  ,110 ,22 ,TRUE );
 				MoveWindow( my->hWebPasswd		,135 ,rc.top+90    ,180 ,22 ,TRUE );
 				MoveWindow( my->hWebPasswdState	,320 ,rc.top+90+2  ,180 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdRemote,135 ,rc.top+115   ,110 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,85  ,22 ,TRUE );
+				MoveWindow( my->hWebPasswdRemote,135 ,rc.top+115   ,110 ,21 ,TRUE );
+				MoveWindow( my->hLinkRemote		,138 ,rc.top+115   ,6   ,50 ,TRUE );
+				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,85  ,21 ,TRUE );
+				MoveWindow( my->hLinkLocal		,258 ,rc.top+115   ,6   ,50 ,TRUE );
 				MoveWindow( my->hHttpsTxt		,31  ,rc.top+150+2 ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,22 ,TRUE );
-				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,22 ,TRUE );
+				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,21 ,TRUE );
+				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,21 ,TRUE );
 				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
@@ -7110,6 +7161,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( my->hWebPasswdState	,SW_HIDE );
 				ShowWindow( my->hWebPasswdLocal	,SW_HIDE );
 				ShowWindow( my->hWebPasswdRemote,SW_HIDE );
+				ShowWindow( my->hLinkRemote		,SW_HIDE );
+				ShowWindow( my->hLinkLocal		,SW_HIDE );
 				ShowWindow( my->hHttpsTxt		,SW_HIDE );
 				ShowWindow( my->hHttpsLocal		,SW_HIDE );
 				ShowWindow( my->hHttpsRemote	,SW_HIDE );
@@ -7281,9 +7334,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					// パス入力有効
 					EnableWindow( my->hWebPasswd ,TRUE );
 					// SSLも有効
-					// TODO:勝手にチェックが付いたことがグラフィカルにわかるといい
 					SendMessage(my->hHttpsRemote,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_REMOTE,0);
+					ShowWindow( my->hLinkRemote ,SW_HIDE );
 				}
 				else if( !isChecked( my->hWebPasswdLocal ) ){
 					// パス入力無効
@@ -7298,9 +7351,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					// パス入力有効
 					EnableWindow( my->hWebPasswd ,TRUE );
 					// SSLも有効
-					// TODO:勝手にチェックが付いたことがグラフィカルにわかるといい
 					SendMessage(my->hHttpsLocal,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_LOCAL,0);
+					ShowWindow( my->hLinkLocal ,SW_HIDE );
 				}
 				else if( !isChecked( my->hWebPasswdRemote ) ){
 					// パス入力無効
@@ -7321,9 +7374,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
 					// Webパスワード無効
-					// TODO:勝手にチェックが外れたことがグラフィカルにわかるといい
 					SendMessage(my->hWebPasswdRemote,BM_SETCHECK,BST_UNCHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_REMOTE,0);
+					ShowWindow( my->hLinkRemote ,SW_HIDE );
 				}
 				// 証明書・秘密鍵テキスト色
 				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
@@ -7341,9 +7394,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
 					// Webパスワード無効
-					// TODO:勝手にチェックが外れたことがグラフィカルにわかるといい
 					SendMessage(my->hWebPasswdLocal,BM_SETCHECK,BST_UNCHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_LOCAL,0);
+					ShowWindow( my->hLinkLocal ,SW_HIDE );
 				}
 				// 証明書・秘密鍵テキスト色
 				InvalidateRect( my->hSSLCrt ,NULL ,FALSE );
