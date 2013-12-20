@@ -4915,19 +4915,6 @@ unsigned __stdcall authenticate( void* p )
 //---------------------------------------------------------------------------------------------------------------
 // ソケット通信・HTTPプロトコル処理関連
 //
-// "%23"を"#"に戻す(TwitterのURLの/#!/対策)
-// TODO:HashBangサイトは対応できない(JavaScriptリダイレクトとおなじ)
-/*
-void URLfix( UCHAR* p )
-{
-	UCHAR* end = strchr(p,'\0');
-
-	while( p = strstr(p,"%23") ){
-		*p++ = '#';
-		memmove( p, p+2, end-p-1 );
-	}
-}
-*/
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
 BOOL FileBackup( const WCHAR* path )
@@ -5800,14 +5787,12 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					if( stricmp(req->method,"GET")==0 ){
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
-							//URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, analyze, (void*)cp, 0,NULL );
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":alive")==0 && cp->req.param ){
 							// URL死活確認
-							//URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, alive, (void*)cp, 0,NULL );
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない

@@ -672,7 +672,7 @@ var itemTable = function(){
 				if( $item.hasClass('item') && $item.hasClass('select') ){
 					(function( $url ){
 						$.ajax({
-							url:':alive?'+$url.text()/*.myURLenc()*/
+							url:':alive?'+$url.text()
 							,error:function(xhr){
 								$url.next().replaceWith(
 									$span.clone().text( xhr.status+' '+xhr.statusText )
@@ -898,7 +898,7 @@ $('#newitem').on({
 		// 選択フォルダID=folderXXならノードID=XX
 		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
 		if( url.length ){
-			$.get(':analyze?'+url/*.myURLenc()*/,function(data){
+			$.get(':analyze?'+url,function(data){
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1949,7 +1949,7 @@ function itemContextMenu(ev){
 					function analyze(){
 						var url = $(item).find('.url').text();
 						$.ajax({
-							url:':analyze?'+url/*.myURLenc()*/
+							url:':analyze?'+url
 							,error:function(){
 								if( url==$(item).find('.url').text() ){
 									$title.val('');
@@ -2204,7 +2204,7 @@ function edit( element, opt ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nid );
 									if( node.title=='新規ブックマーク' ){
-										$.get(':analyze?'+value/*.myURLenc()*/,function(data){
+										$.get(':analyze?'+value,function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLdec( data.title );
 												if( tree.nodeAttr( nid, 'title', data.title ) >1 )
@@ -2349,7 +2349,7 @@ function clipboardTo( pnode, index ){
 		var node = tree.newURL( pnode, url, url.noProto(), '', index );
 		if( node ){
 			// タイトル/favicon取得
-			$.get(':analyze?'+url/*.myURLenc()*/,function(data){
+			$.get(':analyze?'+url,function(data){
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -2426,7 +2426,6 @@ function HTMLdec( html ){
 	return dec;
 }
 // index.js参照
-//String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); }; // TODO:HashBangどうするか
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 String.prototype.myNormal = function(){
 	// 変換用キャッシュ

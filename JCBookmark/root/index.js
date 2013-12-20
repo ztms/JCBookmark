@@ -790,7 +790,7 @@ var paneler = function(){
 						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// URLタイトル/favicon取得
-							$.get(':analyze?'+this.value/*.myURLenc()*/,function(data){
+							$.get(':analyze?'+this.value,function(data){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1159,7 +1159,7 @@ function setEvents(){
 						var node = tree.newURL( pnode, url, url.noProto() );
 						if( node ){
 							// タイトル/favicon取得
-							$.get(':analyze?'+url/*.myURLenc()*/,function(data){
+							$.get(':analyze?'+url,function(data){
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -2358,7 +2358,7 @@ function panelEdit( pid ){
 						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
-						$.get(':analyze?'+this.value/*.myURLenc()*/,function(data){
+						$.get(':analyze?'+this.value,function(data){
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
 						});
@@ -2644,7 +2644,7 @@ function analyzer( nodeTop ){
 				ajaxs[index] = {
 					done: false
 					,xhr: $.ajax({
-						url		 :':analyze?'+node.url/*.myURLenc()*/
+						url		 :':analyze?'+node.url
 						,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
 						,complete:function(){ ajaxs[index].done = true; }
 					})
@@ -3009,34 +3009,6 @@ function HTMLdec( html ){
 	$a.remove();
 	return dec;
 }
-// Twitterで昔http://twitter.com/#!/hogeなど'#'が含まれるURLがあり、$.get()で
-// '#'以降の文字列が消えてリクエストされてしまっていた。'#'がページ内リンクと
-// みなされて消される？jQueryの仕様？encodeURIComponent()を使えば'#'を'%23'に
-// エンコードできるが、他にもいっぱいエンコードされてサーバ側のデコード処理が
-// たいへん。'#'以外は$.get()が自動でエンコードしてくれる内容で問題なさそうな
-// のでそうしたい。とりあえず'#'だけ'%23'に置換して送信する。Twitterサーバは
-// '#'が'%23'になってると404を返すので、サーバ側で'#'に戻してリクエストを送る。
-// が、Twitterはいまは/#!/の応答では200を返すけどタイトルは単なる「Twitter」で、
-// 結局/#!/無しURLにリダイレクトされるようだ。他サイトで悪影響が出ないといいが…
-// 知らなかったがescape()関数もあったようだ。これは#を%23にしてくれるが…
-// http://groundwalker.com/blog/2007/02/javascript_escape_encodeuri_encodeuricomponent_.html
-// まあいいかとりあえず動いてるし…。と思ったが、http://homepage1.nifty.com/herumi/diary/1303.html#15
-// がエラーになってしまうので、#! を %23! に置換することにした。これで通常の
-// ページ内リンクは削除されたURLがリクエストされることに。だいじょぶかな？
-// TODO:#!はHashBangという名前でいまは廃止に向かっているもよう。URLの#は元々
-// ページ内リンクに使っていたものでサーバへのリクエストには含まれず#以降は
-// ブラウザで処理する機能であったが、twitterなどは#以降をJavaScriptで処理して
-// いたようだ。おそらくhttp://twitter.com/#!/hogeというURLは、ブラウザからの
-// リクエストは GET / HTTP/1.x つまり http://twitter.com/ トップページであり、
-// JavaScriptで #!/hoge を認識してアカウントページを取得するという動きだった
-// と思われる。それで当時はブラウザのアドレス欄もそのままだったが、いまは#!
-// のないURLに変わる挙動になり、#!付きURLも廃止されたようだ。結局#を%23に書き
-// 変えてHTTPリクエストに含めていたのは正しくない挙動だったのだ。が、昔は
-// twitterではそれで動いていた。今は動かなくなった。結局どうすればよいのか。
-// やはり # はHTTPリクエストには含めないのが正しい。それでHashBang型サイト、
-// つまりJavaScriptリダイレクト相当のWebサイトは、JCBookmarkではタイトル等の
-// 取得はできない。ということでいいのかな。
-//String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
 // URL先頭プロトコル文字列除去
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 // 検索用に文字列を正規化
