@@ -357,34 +357,23 @@ void ErrorBoxW( const WCHAR* fmt, ... )
 
 	MessageBoxW( MainForm, msg, L"エラー", MB_ICONERROR );
 }
+#define isCRLF(c) ((c)=='\r' || (c)=='\n')
+#define isCRLFW(c) ((c)==L'\r' || (c)==L'\n')
 void CRLFtoSPACE( UCHAR* s )
 {
-	if( s ) for( ; *s; s++ ) if( *s=='\n' || *s=='\r' ) *s=' ';
+	if( s ) for( ; *s; s++ ) if( isCRLF(*s) ) *s=' ';
 }
 void CRLFtoSPACEW( WCHAR* s )
 {
-	if( s ) for( ; *s; s++ ) if( *s==L'\n' || *s==L'\r' ) *s=L' ';
+	if( s ) for( ; *s; s++ ) if( isCRLFW(*s) ) *s=L' ';
 }
 UCHAR* chomp( UCHAR* s )
 {
 	if( s ){
 		UCHAR* p;
 		for( p=s; *p; p++ ){
-			if( *p=='\r' || *p=='\n' ){
+			if( isCRLF(*p) ){
 				*p = '\0';
-				break;
-			}
-		}
-	}
-	return s;
-}
-WCHAR* chompw( WCHAR* s )
-{
-	if( s ){
-		WCHAR* p;
-		for( p=s; *p; p++ ){
-			if( *p==L'\r' || *p==L'\n' ){
-				*p = L'\0';
 				break;
 			}
 		}
@@ -518,21 +507,25 @@ WCHAR* MultiByteToWideCharAlloc( const UCHAR* utf8, UINT cp )
 }
 // 文字列連結
 // 実装が面倒なので可変引数は使わない。
-UCHAR* strjoin( const UCHAR* s1, const UCHAR* s2, const UCHAR* s3 ) 
+UCHAR* strjoin( const UCHAR* s1 ,const UCHAR* s2 ,const UCHAR* s3 ,const UCHAR* s4 ,const UCHAR* s5 )
 {
 	if( s1 && s2 ){
 		size_t len1 = strlen( s1 );
 		size_t len2 = strlen( s2 );
 		size_t len3 = s3? strlen( s3 ) : 0;
-		UCHAR* ss = malloc( len1 +len2 +len3 +1 );
+		size_t len4 = s4? strlen( s4 ) : 0;
+		size_t len5 = s5? strlen( s5 ) : 0;
+		UCHAR* ss = malloc( len1 +len2 +len3 +len4 +len5 +1 );
 		if( ss ){
 			memcpy( ss, s1, len1 );
 			memcpy( ss +len1, s2, len2 );
 			if( len3 ) memcpy( ss +len1 +len2, s3, len3 );
-			ss[len1+len2+len3] = '\0';
+			if( len4 ) memcpy( ss +len1 +len2 +len3, s4, len4 );
+			if( len5 ) memcpy( ss +len1 +len2 +len3 +len4, s5, len5 );
+			ss[len1+len2+len3+len4+len5] = '\0';
 			return ss;
 		}
-		else LogW(L"L%u:malloc(%u)エラー",__LINE__,len1+len2+len3+1);
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,len1+len2+len3+len4+len5+1);
 	}
 	return NULL;
 }
@@ -613,10 +606,11 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 UCHAR* stristr( const UCHAR* buf, const UCHAR* word )
 {
 	if( buf && word ){
-		size_t len = strlen( word );
-		while( *buf ){
-			if( strnicmp( buf, word, len )==0 ) return buf;
-			buf++;
+		UCHAR* p = strstr( buf ,word );
+		if( p ) return p;
+		{
+			size_t len = strlen( word );
+			for( ; *buf; buf++ ) if( strnicmp( buf, word, len )==0 ) return buf;
 		}
 	}
 	return NULL;
@@ -1265,6 +1259,9 @@ void ClientShutdown( TClient* cp )
 	WCHAR wpath[MAX_PATH+1]=L"";
 	if( cp ){
 		CloseHandle( cp->thread );
+		CloseHandle( cp->req.writefh );
+		CloseHandle( cp->rsp.readfh );
+		DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
 		if( cp->sslp ){
 			// 非ブロックソケットSSL_shutdownリトライ考慮してない…
 			SSL_shutdown( cp->sslp );
@@ -1274,12 +1271,9 @@ void ClientShutdown( TClient* cp )
 			shutdown( cp->sock, SD_BOTH );
 			closesocket( cp->sock );
 		}
-		CloseHandle( cp->req.writefh );
-		CloseHandle( cp->rsp.readfh );
 		if( cp->req.buf ) free( cp->req.buf );
 		if( cp->rsp.head.top ) free( cp->rsp.head.top );
 		if( cp->rsp.body.top ) free( cp->rsp.body.top );
-		DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
 		ClientInit( cp );
 	}
 }
@@ -1390,6 +1384,33 @@ void ResponseEmpty( TClient* cp )
 {
 	cp->rsp.head.bytes = cp->rsp.body.bytes = 0;
 	cp->rsp.head.top[0] = cp->rsp.body.top[0] = '\0';
+}
+#define isblank(c) ((c)==' ' || (c)=='\t') // C99にあるらしい
+UCHAR* strHeaderValue( const UCHAR* buf, const UCHAR* name )
+{
+	if( buf && name ){
+		UCHAR* value = buf;
+		size_t len = strlen( name );
+		for( ; *value; value++ ){
+			if( strnicmp( value, name, len )==0 ){
+				if( buf==value || (buf < value && *(value-1)=='\n') ){
+					value += len;
+					if( *value==':' || isblank(*value) ){
+						while( isblank(*value) ) value++;
+						if( *value==':' ){
+							value++;
+							while( isblank(*value) ) value++;
+							//LogA("%s:%s",name,value);
+							return value;
+						}
+					}
+					else value--;
+				}
+				else value += len-1;
+			}
+		}
+	}
+	return NULL;
 }
 
 
@@ -2062,32 +2083,6 @@ BOOL readable( SOCKET sock, DWORD msec )
 	return select( 0, &fdset, NULL, NULL, &wait );
 }
 
-UCHAR* strHeaderValue( const UCHAR* buf, const UCHAR* name )
-{
-	if( buf && name ){
-		UCHAR* value = buf;
-		size_t len = strlen( name );
-		for( ; *value; value++ ){
-			if( strnicmp( value, name, len )==0 ){
-				if( buf==value || (buf < value && *(value-1)=='\n') ){
-					value += len;
-					if( *value==':' || *value==' ' || *value=='\t' ){
-						while( *value==' ' || *value=='\t' ) value++;
-						if( *value==':' ){
-							value++;
-							while( *value==' ' || *value=='\t' ) value++;
-							return value;
-						}
-					}
-					else value--;
-				}
-				else value += len-1;
-			}
-		}
-	}
-	return NULL;
-}
-
 UCHAR* strWeekday( WORD wDayOfWeek )
 {
 	switch( wDayOfWeek ){
@@ -2129,6 +2124,7 @@ UINT64 UINT64InetTime( const UCHAR* intime )
 	SystemTimeToFileTime( &st, &ft );
 	return *(UINT64*)&ft;
 }
+/*
 // タイムアウト指定connectラッパ
 // http://azskyetc.client.jp/program/timeout.html
 // http://tip.sakura.ne.jp/htm/netframe.htm
@@ -2179,11 +2175,14 @@ int connect2( SOCKET sock, const SOCKADDR* name, int namelen, DWORD timeout_msec
 
 	return result;
 }
+*/
 
-// HTTPクライアント
+// 外部URL GET結果
 typedef struct {
 	size_t		bufsize;		// 受信バッファサイズ
 	size_t		bytes;			// 受信バッファ有効バイト
+	UCHAR*		head;			// レスポンスヘッダ開始
+	UCHAR*		body;			// レスポンス本文開始
 	UINT		ContentLength;	// Content-Length値
 	UCHAR		ContentType;	// Content-Type識別
 	#define		TYPE_HTML		0x01
@@ -2198,27 +2197,376 @@ typedef struct {
 	#define		ENC_GZIP		0x01
 	#define		ENC_DEFLATE		0x02
 	#define		ENC_OTHER		0xff
-	UCHAR*		body;			// レスポンス本文開始
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
+// 死活確認結果報告用
+typedef struct {
+	UCHAR	ico;		// アイコン用識別子
+	UCHAR	msg[256];	// メッセージ
+	UCHAR*	newurl;		// 転送結果URL
+} AliveReport;
+
+// 外部クッキー
+// Set-Cookie: NAME=VALUE; expires=DATE; domain=DOMAIN; path=PATH; secure HttpOnly
+typedef struct Cookie {
+	struct Cookie* next;	// 次のクッキー
+	UCHAR*	value;			// VALUE
+	UCHAR*	domain;			// ドメイン
+	size_t	domainlen;		// ドメインバイト数
+	UCHAR*	path;			// パス
+	size_t	pathlen;		// パスバイト数
+	UCHAR*	expire;			// 期限
+	UCHAR	secure;			// secure属性有無
+	UCHAR	match;			// リクエストクッキー生成時に使うフラグ変数
+	UCHAR	name[1];		// NAME(と他のメンバのポイント先になる可変長バッファ)
+} Cookie;
+
+// HTTPクライアント
+HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,AliveReport* rp ,const UCHAR* cookie )
+{
+	#define		HTTPGET_BUFSIZE	(1024*16) // 初期バッファサイズあまり拡大が発生しない程度の大きさに
+	HTTPGet*	rsp				= NULL;
+	BOOL		isSSL			= FALSE;
+	// プロトコル
+	if( !url || !*url ){
+		LogW(L"URLが空です");
+		if( rp ) rp->ico='E', strcpy(rp->msg,"URLが空です");
+		goto fin;
+	}
+	if( strnicmp(url,"http://",7)==0 ){
+		url += 7;
+	}
+	else if( strncmp(url,"//",2)==0 ){ // スキーム省略:呼び出し側でないとhttpなのかhttpsなのか不明だがhttpとして処理
+		url += 2;
+	}
+	else if( strnicmp(url,"https://",8)==0 ){
+		url += 8;
+		if( ssl_ctx ) isSSL = TRUE;
+		else{
+			LogW(L"SSL利用できません");
+			if( rp ) rp->ico='?', strcpy(rp->msg,"SSL利用できません");
+			goto fin;
+		}
+	}
+	else{
+		LogA("不明なプロトコル:%s",url);
+		if( rp ) rp->ico='E', strcpy(rp->msg,"不明なプロトコル");
+		goto fin;
+	}
+	// ホスト名
+	if( *url ){
+		UCHAR* host;
+		UCHAR* path = strchr(url,'/');
+		if( path ){
+			host = strndup( url, path - url );
+			path++;
+		}
+		else{
+			host = strdup( url );
+			path = "";
+		}
+		if( host ){
+			// 名前解決(タイムアウト処理は難しいもよう・・)
+			ADDRINFOA*	addr = NULL;
+			ADDRINFOA	hint;
+			UCHAR*		port = strrchr(host,':');
+			if( port ) *port++ ='\0'; else port = isSSL?"443":"80";
+			memset( &hint, 0, sizeof(hint) );
+			hint.ai_socktype = SOCK_STREAM;
+			hint.ai_protocol = IPPROTO_TCP;
+			if( GetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
+				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
+				BOOL		connected	= FALSE;
+				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
+				WSAEVENT	ev			= WSACreateEvent();
+				if( WSAEventSelect( sock, ev, FD_CONNECT ) !=SOCKET_ERROR ){
+					u_long off = 0;
+					int err = connect( sock, addr->ai_addr, (int)addr->ai_addrlen );
+					if( err !=SOCKET_ERROR || WSAGetLastError()==WSAEWOULDBLOCK ){
+						WSANETWORKEVENTS nev;
+						DWORD dwRes = WSAWaitForMultipleEvents( 1, &ev, FALSE, 5000, FALSE );
+						switch( dwRes ){
+						case WSA_WAIT_EVENT_0:
+							if( WSAEnumNetworkEvents( sock, ev, &nev ) !=SOCKET_ERROR ){
+								if( (nev.lNetworkEvents & FD_CONNECT) && nev.iErrorCode[FD_CONNECT_BIT]==0 ){
+									connected = TRUE; // 接続成功
+								}
+								else{
+									LogW(L"[%u]WSAEnumNetworkEventsエラー？",sock);
+									if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+								}
+							}
+							else{
+								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
+								if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+							}
+							break;
+						case WSA_WAIT_TIMEOUT:
+							LogW(L"[%u]connectタイムアウト",sock);
+							if( rp ) rp->ico='?', strcpy(rp->msg,"接続タイムアウト");
+							break;
+						case WSA_WAIT_FAILED:
+						default:
+							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
+							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+						}
+					}
+					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
+					ioctlsocket( sock, FIONBIO, &off );		// ブロッキングに戻す
+				}
+				else{
+					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
+					if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+				}
+				WSACloseEvent( ev );
+				// 送受信
+				if( connected && !*abort ){
+					struct timeval tv = { 5, 0 };
+					SSL* sslp = NULL;
+					BOOL ssl_ok = TRUE;
+					// send/recvタイムアウト指定
+					// 受信はreadable()も使っているので変かもしれないけどまあいいか…
+					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
+					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
+					if( isSSL ){
+						sslp = SSL_new( ssl_ctx );
+						if( sslp ){
+							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
+							RAND_poll();
+							while( RAND_status()==0 ){		// PRNG初期化
+								unsigned short rand_ret = rand() % 65536;
+								RAND_seed(&rand_ret, sizeof(rand_ret));
+							}
+							if( SSL_connect( sslp )==1 ){	// SSLハンドシェイク
+								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
+							}
+							else{
+								LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
+								if( rp ) rp->ico='!', strcpy(rp->msg,"SSL接続できません");
+								ssl_ok = FALSE;
+							}
+						}
+						else{
+							LogW(L"[%u]SSL_newエラー",sock);
+							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+							ssl_ok = FALSE;
+						}
+					}
+					else LogA("[%u]外部接続:%s:%s",sock,host,port);
+					// リクエスト送信
+					if( ssl_ok && !*abort ){
+						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+						if( rsp ){
+							DWORD timelimit;
+							int len;
+							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+							rsp->bufsize = HTTPGET_BUFSIZE;
+							len = _snprintf(rsp->buf,rsp->bufsize,
+								"GET /%s HTTP/1.0\r\n"
+								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
+								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+								"Accept-Encoding: identity\r\n"			// 無圧縮
+								//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
+								"%s"									// Cookie:ヘッダ
+								"Connection: close\r\n"
+								"\r\n"
+								,path ,host
+								,(ua && *ua)? ua :"Mozilla/4.0"
+								,cookie? cookie :""
+							);
+							if( len<0 ){
+								LogW(L"[%u]送信バッファ不足",sock);
+								len = rsp->bufsize;
+							}
+							if( sslp ){
+								if( SSL_write( sslp, rsp->buf, len )<1 )
+									LogW(L"[%u]SSL_writeエラー",sock);
+							}
+							else{
+								if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
+									LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
+							}
+							rsp->buf[rsp->bufsize-1]='\0';
+							LogA("[%u]外部送信:%s",sock,rsp->buf);
+							// レスポンス受信4秒待つ
+							*rsp->buf = '\0';
+							timelimit = timeGetTime() +4000;
+							while( !*abort && readable(sock, timelimit - timeGetTime()) ){
+								if( *abort ) break;
+								if( sslp )
+									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+								else
+									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+								if( len >0 ){
+									if( *abort ) break;
+									rsp->bytes += len;
+									rsp->buf[rsp->bytes] = '\0';
+									if( !rsp->body ){
+										// ヘッダと本文の区切り空行をさがす
+										rsp->body = strstr(rsp->buf,"\r\n\r\n");
+										if( rsp->body ){
+											*rsp->body = '\0';
+											rsp->body += 4;
+										}else{
+											rsp->body = strstr(rsp->buf,"\n\n");
+											if( rsp->body ){
+												*rsp->body = '\0';
+												rsp->body += 2;
+											}
+										}
+										// 空行みつかったらヘッダ解析
+										if( rsp->body ){
+											rsp->head = rsp->buf;
+											while( *rsp->head && !isCRLF(*rsp->head) ) rsp->head++;
+											while( isCRLF(*rsp->head) ) *rsp->head++ ='\0';
+											if( !rsp->ContentLength ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Length");
+												if( p ){
+													UINT n = 0;
+													for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
+													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+												}
+												//else LogW(L"Content-Lengthなし");
+											}
+											if( !rsp->ContentEncoding ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
+												if( p ){
+													if( strnicmp(p,"deflate",7)==0 ){
+														rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+													}
+													else if( strnicmp(p,"gzip",4)==0 ){
+														rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+													}
+													else{
+														rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+													}
+												}
+												//else LogW(L"Content-Encodingなし");
+											}
+											if( !rsp->ContentType ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
+												if( p ){
+													if( strnicmp(p,"text/html",9)==0 ){
+														rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+													}
+													else{
+														rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+													}
+													p = stristr(p,"charset=");
+													if( p ){
+														p += 8;
+														if( *p=='"') p++;
+														if( strnicmp(p,"utf-8",5)==0 ){
+															rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+														}
+														else if( strnicmp(p,"shift_jis",9)==0 ){
+															rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+														}
+														else if( strnicmp(p,"euc-jp",6)==0 ){
+															rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+														}
+														else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+															rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+														}
+														else{
+															rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+														}
+													}
+												}
+												//else LogW(L"Content-Typeなし");
+											}
+										}
+									}
+									// 受信終了チェック
+									if( rsp->ContentLength ){
+										// Content-Lengthぶん受信したらおわり
+										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+									}
+									if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+										// 非圧縮HTMLなら</head>まであればおわり
+										if( stristr(rsp->body,"</head>") ) break;
+									}
+									if( rsp->bytes >1024*1024*10 ){
+										LogW(L"10MBを超える受信データ破棄します");
+										break;
+									}
+									if( rsp->bytes >= rsp->bufsize ){
+										// バッファ拡大して受信継続
+										size_t newsize = rsp->bufsize * 2;
+										HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+										if( newrsp ){
+											int distance = (BYTE*)newrsp - (BYTE*)rsp;
+											memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+											if( rsp->body ){
+												newrsp->head += distance;
+												newrsp->body += distance;
+											}
+											newrsp->bufsize = newsize;
+											free(rsp), rsp=newrsp;
+											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+										}
+										else{
+											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+											break;
+										}
+									}
+								}
+								else{
+									LogW(L"[%u]%s()=%d",sock,sslp?L"SSL_read":L"recv",len);
+									break;
+								}
+							}
+							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head);
+							if( !*rsp->buf && rp ) rp->ico='?', strcpy(rp->msg,"受信タイムアウト");
+						}
+						else{
+							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
+							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+						}
+					}
+					if( sslp ){
+						SSL_shutdown( sslp );
+						SSL_free( sslp );
+					}
+				}
+				shutdown( sock, SD_BOTH );
+				closesocket( sock );
+			}
+			else{
+				LogA("ホスト%sが見つかりません",host);
+				if( rp ) rp->ico='!', strcpy(rp->msg,"ホストが見つかりません");
+			}
+			if( addr ) FreeAddrInfoA( addr );
+			free( host );
+		}
+		else{
+			LogW(L"L%u:strdupエラー",__LINE__);
+			if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+		}
+	}
+	else{
+		LogA("不正なURL:%s",url);
+		if( rp ) rp->ico='E', strcpy(rp->msg,"不正なURL");
+	}
+fin:
+	if( rsp ){
+		if( *rsp->buf ) return rsp;
+		free( rsp );
+	}
+	return NULL;
+}
+/*
 HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 {
-	BOOL		ssl_enable		= FALSE;
-	BOOL		success			= FALSE;
 	#define		HTTPGET_BUFSIZE	(1024*16) // 初期バッファサイズあまり拡大が発生しない程度の大きさに
-	HTTPGet*	rsp;
+	HTTPGet*	rsp				= NULL;
+	BOOL		isSSL			= FALSE;
 
 	if( !url || !*url ){
 		LogW(L"URLが空です"); return NULL;
 	}
-	rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-	if( !rsp ){
-		LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
-		return NULL;
-	}
-	memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-	rsp->bufsize = HTTPGET_BUFSIZE;
 	if( strnicmp(url,"http://",7)==0 ){
 		url += 7;
 	}
@@ -2227,7 +2575,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	}
 	else if( strnicmp(url,"https://",8)==0 ){
 		url += 8;
-		if( ssl_ctx ) ssl_enable = TRUE;
+		if( ssl_ctx ) isSSL = TRUE;
 		else goto fin;
 	}
 	else{
@@ -2249,7 +2597,7 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 			ADDRINFOA	hint;
 			ADDRINFOA*	adr = NULL;
 			UCHAR*		port = strrchr(host,':');
-			if( port ) *port++ = '\0'; else port = (ssl_enable)?"443":"80";
+			if( port ) *port++ = '\0'; else port = isSSL?"443":"80";
 			memset( &hint, 0, sizeof(hint) );
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
@@ -2258,17 +2606,15 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 				SOCKET sock = socket( adr->ai_family, adr->ai_socktype, adr->ai_protocol );
 				// タイムアウト5秒
 				if( connect2( sock, adr->ai_addr, (int)adr->ai_addrlen, 5000 ) !=SOCKET_ERROR ){
-					DWORD timelimit;
-					struct timeval timeout = { 5, 0 };
+					struct timeval tv = { 5, 0 };
 					SSL* sslp = NULL;
-					int len;
 					// send/recvタイムアウトセット
 					// SO_SNDTIMEOはconnectにも効く、いや効かないといういろんな情報があって謎。
 					// 受信はreadable()も使っているので変な感じかもしれないけどまあいいか…。
-					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
-					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
-					if( ssl_enable ){
-						BOOL success = FALSE;
+					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
+					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
+					if( isSSL ){
+						BOOL ssl_ok = FALSE;
 						// SSL構造体生成
 						sslp = SSL_new( ssl_ctx );
 						if( sslp ){
@@ -2284,177 +2630,184 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 							// SSLハンドシェイク
 							if( SSL_connect( sslp )==1 ){
 								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
-								success = TRUE;
+								ssl_ok = TRUE;
 							}
 							else LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
 						}
 						else LogW(L"[%u]SSL_newエラー",sock);
 
-						if( !success ) goto shutdown;
+						if( !ssl_ok ) goto shutdown;
 					}
 					else LogA("[%u]外部接続:%s:%s",sock,host,port);
 					// リクエスト送信
-					len =_snprintf(rsp->buf,rsp->bufsize,
-						"GET /%s HTTP/1.0\r\n"
-						"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
-						"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
-						"Accept-Encoding: identity\r\n"			// 無圧縮
-						//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
-						"Connection: close\r\n"
-						"\r\n"
-						,path, host, (ua && *ua)? ua : "Mozilla/4.0"
-					);
-					if( len<0 ){
-						LogW(L"[%u]送信バッファ不足",sock);
-						len = rsp->bufsize;
-					}
-					if( ssl_enable ){
-						if( SSL_write( sslp, rsp->buf, len )<1 ){
-							LogW(L"[%u]SSL_writeエラー",sock);
+					rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+					if( rsp ){
+						DWORD timelimit;
+						int len;
+						memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+						rsp->bufsize = HTTPGET_BUFSIZE;
+						len =_snprintf(rsp->buf,rsp->bufsize,
+							"GET /%s HTTP/1.0\r\n"
+							"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
+							"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+							"Accept-Encoding: identity\r\n"			// 無圧縮
+							//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
+							"Connection: close\r\n"
+							"\r\n"
+							,path, host, (ua && *ua)? ua : "Mozilla/4.0"
+						);
+						if( len<0 ){
+							LogW(L"[%u]送信バッファ不足",sock);
+							len = rsp->bufsize;
 						}
-					}
-					else{
-						if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR ){
-							LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
-						}
-					}
-					rsp->buf[rsp->bufsize-1]='\0';
-					LogA("[%u]外部送信:%s",sock,rsp->buf);
-					// レスポンス受信4秒待つ
-					*rsp->buf = '\0';
-					timelimit = timeGetTime() +4000;
-					while( readable(sock, timelimit - timeGetTime()) ){
-						if( ssl_enable )
-							len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
-						else
-							len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-						if( len >0 ){
-							rsp->bytes += len;
-							rsp->buf[rsp->bytes] = '\0';
-							if( !rsp->body ){
-								// ヘッダと本文の区切り空行をさがす
-								rsp->body = strstr(rsp->buf,"\r\n\r\n");
-								if( rsp->body ){
-									*rsp->body = '\0';
-									rsp->body += 4;
-								}else{
-									rsp->body = strstr(rsp->buf,"\n\n");
-									if( rsp->body ){
-										*rsp->body = '\0';
-										rsp->body += 2;
-									}
-								}
-								// 空行みつかったらヘッダ解析
-								if( rsp->body ){
-									// Content-Length
-									if( !rsp->ContentLength ){
-										UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
-										if( p ){
-											UINT n = 0;
-											while( isdigit(*p) ){
-												n = n*10 + *p - '0';
-												p++;
-											}
-											rsp->ContentLength = n; //LogW(L"%uバイトです",n);
-										}
-										//else LogW(L"Content-Lengthなし");
-									}
-									// Content-Encoding
-									if( !rsp->ContentEncoding ){
-										UCHAR* p = strHeaderValue(rsp->buf,"Content-Encoding");
-										if( p ){
-											if( strnicmp(p,"deflate",7)==0 ){
-												rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
-											}
-											else if( strnicmp(p,"gzip",4)==0 ){
-												rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
-											}
-											else{
-												rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
-											}
-										}
-										//else LogW(L"Content-Encodingなし");
-									}
-									// Content-Type
-									if( !rsp->ContentType ){
-										UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
-										if( p ){
-											if( strnicmp(p,"text/html",9)==0 ){
-												rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
-											}
-											else{
-												rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
-											}
-											p = stristr(p,"charset=");
-											if( p ){
-												p += 8;
-												if( *p=='"') p++;
-												if( strnicmp(p,"utf-8",5)==0 ){
-													rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
-												}
-												else if( strnicmp(p,"shift_jis",9)==0 ){
-													rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
-												}
-												else if( strnicmp(p,"euc-jp",6)==0 ){
-													rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
-												}
-												else if( strnicmp(p,"iso-2022-jp",11)==0 ){
-													rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
-												}
-												else{
-													rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
-												}
-											}
-										}
-										//else LogW(L"Content-Typeなし");
-									}
-								}
-							}
-							// 受信終了チェック
-							if( rsp->ContentLength ){
-								// Content-Lengthぶん受信したらおわり
-								if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
-							}
-							if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
-								// 非圧縮HTMLなら</head>まであればおわり
-								if( stristr(rsp->body,"</head>") ) break;
-							}
-							if( rsp->bytes >1024*1024*10 ){
-								LogW(L"10MBを超える受信データ破棄します");
-								break;
-							}
-							if( rsp->bytes >= rsp->bufsize ){
-								// バッファ拡大して受信継続
-								size_t newsize = rsp->bufsize * 2;
-								HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
-								if( newrsp ){
-									int distance = (BYTE*)newrsp - (BYTE*)rsp;
-									memset( newrsp, 0, sizeof(HTTPGet) + newsize );
-									memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-									if( rsp->body ) newrsp->body += distance;
-									newrsp->bufsize = newsize;
-									LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
-									free(rsp), rsp=newrsp;
-								}
-								else{
-									LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
-									break;
-								}
+						if( sslp ){
+							if( SSL_write( sslp, rsp->buf, len )<1 ){
+								LogW(L"[%u]SSL_writeエラー",sock);
 							}
 						}
 						else{
-							LogW(L"[%u]%s()=%d",sock,(ssl_enable)?L"SSL_read":L"recv",len);
-							break;
+							if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR ){
+								LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
+							}
 						}
+						rsp->buf[rsp->bufsize-1]='\0';
+						LogA("[%u]外部送信:%s",sock,rsp->buf);
+						// レスポンス受信4秒待つ
+						*rsp->buf = '\0';
+						timelimit = timeGetTime() +4000;
+						while( readable(sock, timelimit - timeGetTime()) ){
+							if( sslp )
+								len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+							else
+								len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+							if( len >0 ){
+								rsp->bytes += len;
+								rsp->buf[rsp->bytes] = '\0';
+								if( !rsp->body ){
+									// ヘッダと本文の区切り空行をさがす
+									rsp->body = strstr(rsp->buf,"\r\n\r\n");
+									if( rsp->body ){
+										*rsp->body = '\0';
+										rsp->body += 4;
+									}else{
+										rsp->body = strstr(rsp->buf,"\n\n");
+										if( rsp->body ){
+											*rsp->body = '\0';
+											rsp->body += 2;
+										}
+									}
+									// 空行みつかったらヘッダ解析
+									if( rsp->body ){
+										// Content-Length
+										if( !rsp->ContentLength ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
+											if( p ){
+												UINT n = 0;
+												while( isdigit(*p) ){
+													n = n*10 + *p - '0';
+													p++;
+												}
+												rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+											}
+											//else LogW(L"Content-Lengthなし");
+										}
+										// Content-Encoding
+										if( !rsp->ContentEncoding ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Encoding");
+											if( p ){
+												if( strnicmp(p,"deflate",7)==0 ){
+													rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+												}
+												else if( strnicmp(p,"gzip",4)==0 ){
+													rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+												}
+												else{
+													rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+												}
+											}
+											//else LogW(L"Content-Encodingなし");
+										}
+										// Content-Type
+										if( !rsp->ContentType ){
+											UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
+											if( p ){
+												if( strnicmp(p,"text/html",9)==0 ){
+													rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+												}
+												else{
+													rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+												}
+												p = stristr(p,"charset=");
+												if( p ){
+													p += 8;
+													if( *p=='"') p++;
+													if( strnicmp(p,"utf-8",5)==0 ){
+														rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+													}
+													else if( strnicmp(p,"shift_jis",9)==0 ){
+														rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+													}
+													else if( strnicmp(p,"euc-jp",6)==0 ){
+														rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+													}
+													else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+														rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+													}
+													else{
+														rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+													}
+												}
+											}
+											//else LogW(L"Content-Typeなし");
+										}
+									}
+								}
+								// 受信終了チェック
+								if( rsp->ContentLength ){
+									// Content-Lengthぶん受信したらおわり
+									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+								}
+								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+									// 非圧縮HTMLなら</head>まであればおわり
+									if( stristr(rsp->body,"</head>") ) break;
+								}
+								if( rsp->bytes >1024*1024*10 ){
+									LogW(L"10MBを超える受信データ破棄します");
+									break;
+								}
+								if( rsp->bytes >= rsp->bufsize ){
+									// バッファ拡大して受信継続
+									size_t newsize = rsp->bufsize * 2;
+									HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+									if( newrsp ){
+										int distance = (BYTE*)newrsp - (BYTE*)rsp;
+										memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+										memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+										if( rsp->body ) newrsp->body += distance;
+										newrsp->bufsize = newsize;
+										free(rsp), rsp=newrsp;
+										LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+									}
+									else{
+										LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+										break;
+									}
+								}
+							}
+							else{
+								LogW(L"[%u]%s()=%d",sock,sslp?L"SSL_read":L"recv",len);
+								break;
+							}
+						}
+						LogA("[%u]外部受信%dbytes:%s",sock,rsp->bytes,rsp->buf);
 					}
-					LogA("[%u]外部受信%dbytes:%s",sock,rsp->bytes,rsp->buf);
+					else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
 				  shutdown:
-					if( ssl_enable ){
+					if( sslp ){
 						SSL_shutdown( sslp );
 						SSL_free( sslp ); 
 					}
 					shutdown( sock, SD_BOTH );
-					success = TRUE;
 				}
 				else LogA("[%u]connect(%s:%s)エラー%u",sock,host,port,WSAGetLastError());
 				closesocket( sock );
@@ -2467,9 +2820,13 @@ HTTPGet* httpGET( const UCHAR* url, const UCHAR* ua )
 	}
 	else LogA("不正なURL:%s",url);
 fin:
-	if( !success ) free(rsp), rsp=NULL;
-	return rsp;
+	if( rsp ){
+		if( *rsp->buf ) return rsp;
+		free( rsp );
+	}
+	return NULL;
 }
+*/
 
 // zlib伸張
 // たとえばhttp://api.jquery.com/jQuery.ajax/やhttp://www.hide10.com/archives/6186は、
@@ -2546,7 +2903,7 @@ size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes
 }
 
 // HTTP圧縮コンテンツ伸長
-HTTPGet* HTTPGetContentDecode( TClient* cp ,HTTPGet* rsp )
+HTTPGet* HTTPGetContentDecode( HTTPGet* rsp )
 {
 	if( rsp ){
 		// gzip,deflate伸長
@@ -2562,15 +2919,16 @@ HTTPGet* HTTPGetContentDecode( TClient* cp ,HTTPGet* rsp )
 				int bytes;
 				memset( newrsp, 0, sizeof(HTTPGet) + newsize );
 				memcpy( newrsp, rsp, sizeof(HTTPGet) + headbytes );
+				newrsp->head += distance;
 				newrsp->body += distance;
 				newrsp->bufsize = newsize;
-				LogW(L"[%u]伸長バッファ確保%ubytes",Num(cp),newsize);
+				LogW(L"伸長バッファ確保%ubytes",newsize);
 				bytes = zlibInflate( rsp->body, bodybytes, newrsp->body, newsize - headbytes );
 				if( bytes )
-					LogW(L"[%u]伸長[%u]%u->%ubyte(%.1f倍)"
-							,Num(cp),rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+					LogW(L"伸長[%u]%u->%ubyte(%.1f倍)"
+							,rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
 				else
-					LogW(L"[%u]圧縮コンテンツ伸長エラー%u",Num(cp),rsp->ContentEncoding);
+					LogW(L"圧縮コンテンツ伸長エラー%u",rsp->ContentEncoding);
 				newrsp->bytes = headbytes + bytes;
 				free(rsp), rsp=newrsp;
 			}
@@ -2588,7 +2946,7 @@ struct {
 	CONVERTINETSTRING	Convert;
 } mlang = { NULL, NULL };
 
-void HTTPGetHtmlToUTF8( TClient* cp ,HTTPGet* rsp )
+void HTTPGetHtmlToUTF8( HTTPGet* rsp )
 {
 	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
@@ -2654,21 +3012,669 @@ void HTTPGetHtmlToUTF8( TClient* cp ,HTTPGet* rsp )
 					tmp[tmpbytes]='\0';
 					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
 					mode=0;
-					// 次にSJISからUTF8に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
+					// 次にSJISからUTF8(65001)に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
 					res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
 					if( res==S_OK ){
 						rsp->body[tmpbytes]='\0';
-						LogW(L"[%u]文字コード%u->65001変換",Num(cp),CP);
+						rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
+						LogW(L"文字コード%u->65001変換",CP);
 					}
-					else LogW(L"[%u]ConvertINetString(932->65001)エラー",Num(cp));
+					else LogW(L"ConvertINetString(932->65001)エラー");
 				}
-				else LogW(L"[%u]ConvertINetString(%u->932)エラー",Num(cp),CP);
+				else LogW(L"ConvertINetString(%u->932)エラー",CP);
 
 				free(tmp);
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
 		}
 	}
+}
+
+// <meta http-equiv=refresh ..>転送の誤検出を防ぐためHTMLを書き換える。
+// http://www.nifty.com/ や facebook で <noscript>タグ内に<meta http-equiv=refresh ..>があり、
+// 単純に<meta>を検索しただけでは誤検出(転送じゃないのに転送と判定)になってしまう。<noscript>
+// は無視でよいと思うので、<noscript>～</noscript>はあらかじめスペースで塗りつぶす。ついでに
+// HTMLコメント<!-- -->や<script>～</script>、<style>～</style>も誤検出の元なので塗りつぶす。
+UCHAR* htmlBotherErase( UCHAR* top )
+{
+	UCHAR* p = top;
+	UCHAR* end;
+	// 1.<script>～</script>をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* script = stristr(p,"<script");
+		if( script && (script[7]==' ' || script[7]=='>') ){
+			end = stristr(script+7,"</script>");
+			if( end ){
+				UCHAR quote1=0 ,quote2=0;
+				// クォート解析
+				p = script + 7;
+			retry:
+				for( ; p<end; p++ ){
+					if( *p=='\'' ){ if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; } else quote1=1; }
+					else if( *p=='"' ){ if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; } else quote2=1; }
+				}
+				if( quote1 || quote2 ){
+					// </script>がクォートの中
+					UCHAR* newend = stristr(end+9,"</script>");
+					if( newend ){ end=newend; goto retry; }
+					//LogW(L"<script>閉タグが文字列として存在するが新たな閉タグが見つからない構文エラー？");
+				}
+				p = end + 9 ;
+				//LogW(L"<script>%u文字塗りつぶし",p-script);
+				memset( script ,' ' ,p-script );
+				// 再検索
+			}
+			else{
+				//LogW(L"<script>閉タグがありません");
+				*script='\0';
+				break;
+			}
+		}
+		else break; // <script>なし
+	}
+	// 2.HTMLコメント<!-- -->をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* comment = strstr(p,"<!--");
+		if( comment ){
+			end = strstr(comment+4,"-->");
+			if( end ){
+				p = end + 3;
+				//LogW(L"HTMLコメント%u文字塗りつぶし",p-comment);
+				memset( comment ,' ' ,p-comment );
+				// 再検索
+			}
+			else{
+				//LogW(L"HTMLコメント閉タグがありません");
+				*comment='\0';
+				break;
+			}
+		}
+		else break; // コメントなし
+	}
+	// 3.<noscript>～</noscript>をスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* noscript = stristr(p,"<noscript");
+		if( noscript && (noscript[9]==' ' || noscript[9]=='>') ){
+			end = stristr(noscript+9,"</noscript>");
+			if( end ){
+				p = end + 11;
+				//LogW(L"<noscript>%u文字塗りつぶし",p-noscript);
+				memset( noscript ,' ' ,p-noscript );
+				// 再検索
+			}
+			else{
+				//LogW(L"<noscript>閉タグがありません");
+				*noscript='\0';
+				break;
+			}
+		}
+		else break; // <noscript>なし
+	}
+	// 4.ついでに<style>～</style>もスペースで塗りつぶし
+	for( p=top; *p; ){
+		UCHAR* style = stristr(p,"<style");
+		if( style && (style[6]==' ' || style[6]=='>') ){
+			end = stristr(style+6,"</style>");
+			if( end ){
+				p = end + 8;
+				//LogW(L"<style>%u文字塗りつぶし",p-style);
+				memset( style ,' ' ,p-style );
+				// 再検索
+			}
+			else{
+				//LogW(L"<style>閉タグがありません");
+				*style='\0';
+				break;
+			}
+		}
+		else break; // <style>なし
+	}
+	return top;
+}
+
+// 文字列先頭からN個まですべてアルファベットなら真
+// schemeの判定に使っているがschemeってアルファベットのみでいいんだっけ？
+BOOL isalphaN( const UCHAR* p ,size_t N )
+{
+	const UCHAR* end;
+	for( end=p+N; *p && p<end; p++ ){
+		if( ('A'<=*p && *p<='Z') || ('a'<=*p && *p<='z') ) continue;
+		return FALSE;
+	}
+	return TRUE;
+}
+// リダイレクト先URLが相対パスの場合は絶対URLを生成
+// mallocして返却するので呼び出し側で解放
+UCHAR* absoluteURL( const UCHAR* url ,const UCHAR* base )
+{
+	const UCHAR* p = url;
+	UCHAR* target = strstr(p,"://");
+	UCHAR* abs;
+	size_t len;
+	if( target && p<target && isalphaN(p,target-p) ) return strdup( url ); // もともと絶対URLそのまま
+	// 相対URL
+	while( *p==':') p++;
+	if( p[0]=='/' ){
+		// "://"または"//"ではじまる:ベースURLからschemeを補完
+		if( p[1]=='/' ){
+			target = strchr(base,':');
+			if( target && isalphaN(base,target-base) ){
+			make: // 絶対URL作成
+				len = target - base; // ベースURLのscheme長orホスト名部分まで長orディレクトリパスまで長
+				abs = malloc( len + strlen(p) +1 );
+				if( abs ){
+					memcpy( abs ,base ,len );
+					strcpy( abs+len ,p );
+					//LogA("absoluteURL:%s (from %s)",abs,url);
+					return abs;
+				}
+				else{
+					LogW(L"L%u:malloc(%u)エラー",__LINE__,len+strlen(p)+1);
+					return strdup( url );
+				}
+			}
+			else{
+				LogW(L"ベースURLが絶対URLではありません");
+				return strdup( url );
+			}
+		}
+		// "/"ではじまる:ベースURLからホスト名部分までを補完
+		else{
+			target = strstr(base,"://");
+			if( target && isalphaN(base,target-base) ){
+				target += 3;
+				while( *target && *target !='/' ) target++;
+				goto make;
+			}
+			else{
+				LogW(L"ベースURLが絶対URLではありません");
+				return strdup( url );
+			}
+		}
+	}
+	// その他:ベースURLのディレクトリパスまで補完
+	target = strchr(base,'?');
+	if( target ) while( *target !='/' ) target--;
+	else target = strrchr(base,'/');
+	target++;
+	goto make;
+}
+
+// URL部品
+typedef struct {
+	UCHAR* scheme;
+	UCHAR* host;
+	UCHAR* path;
+} URLparts;
+
+// URL文字列からURL部品を抽出
+// URL文字列を破壊して部品先頭へのポインタを取得する。
+// 部品ポインタはurlcmp()でstrcmp()系に渡すためNULL禁止。
+void URLparse( URLparts* part ,UCHAR* url )
+{
+	part->scheme = url? url :"";
+	part->host = strstr(part->scheme,"://");
+	if( part->host ){
+		part->host[0] = '\0';
+		part->host += 3;
+		part->path = strchr(part->host,'/');
+		if( part->path ){
+			part->path[0] = '\0';
+			part->path++;
+		}
+		else part->path = "";
+	}
+	else part->host = part->path = "";
+}
+// URL比較
+// schemeとホスト名は文字ケース無視でよかったっけ？
+// パス文字列は文字ケース区別(するサーバがあるので)。
+int urlcmp( const UCHAR* url0 ,const UCHAR* url1 )
+{
+	int ret = strcmp( url0 ,url1 );
+	if( ret ){
+		UCHAR* s0 = strdup( url0 );
+		UCHAR* s1 = strdup( url1 );
+		if( s0 && s1 ){
+			URLparts p0 ,p1;
+			URLparse( &p0 ,s0 );
+			URLparse( &p1 ,s1 );
+			if( stricmp( p0.scheme ,p1.scheme )==0 &&
+				stricmp( p0.host ,p1.host )==0 &&
+				strcmp( p0.path ,p1.path )==0
+			) ret = 0; // 同じ
+		}
+		else LogW(L"L%u:strdupエラー",__LINE__);
+		if( s0 ) free( s0 );
+		if( s1 ) free( s1 );
+	}
+	return ret;
+}
+// 文字列ダブルクォート除去
+UCHAR* dequote( UCHAR* top )
+{
+	if( *top=='"' ){
+		UCHAR* end = strchr(++top,'"');
+		if( end ) *end='\0';
+	}
+	return top;
+}
+// 同じクッキーがあったら削除
+Cookie* CookieObsoleteRemove( Cookie* cookie0 ,Cookie* newer )
+{
+	Cookie* target = cookie0;
+	Cookie* prev = NULL;
+	while( target ){
+		if( stricmp(target->name,newer->name)==0 &&			// NAME文字ケース無視
+			stricmp(target->domain,newer->domain)==0 &&		// ドメイン文字ケース無視
+			strcmp(target->path,newer->path)==0				// パス完全一致
+		){
+			if( prev )
+				prev->next = target->next;
+			else
+				cookie0 = target->next;
+			free( target );
+			return cookie0;
+		}
+		prev = target;
+		target = target->next;
+	}
+	return cookie0;
+}
+// HTTPヘッダSet-Cookie:の値を取得解析
+// Set-Cookie: NAME=VALUE; expires=DATE; domain=DOMAIN; path=PATH; secure HttpOnly
+// DATEはインターネット時刻形式(例: Fri, 06-Dec-2013 16:13:40 GMT)
+//   引数	head		HTTPヘッダバッファ
+//			cookie0		既存クッキーリスト先頭
+//   戻り値				更新クッキーリスト先頭
+// TODO:サードパーティクッキーは無視すべき？
+// http://d.hatena.ne.jp/R-H/20111101
+// http://ascii.jp/elem/000/000/654/654929/
+// TODO:Max-Age属性対応すべき？
+Cookie* SetCookieParse( const UCHAR* url ,const UCHAR* head ,Cookie* cookie0 )
+{
+	FILETIME	now;			// 現在時刻
+	UCHAR*		host;			// URLホスト名開始位置
+	UCHAR*		path=NULL;		// URLパス開始位置
+	size_t		hostlen=0;		// URLホスト名長さ
+	size_t		pathlen=0;		// URLパス長さ
+	UCHAR*		name;			// Set-Cookieヘッダ値開始位置
+
+	host = strstr(url,"//");
+	if( host ){
+		host += 2;
+		path = strchr(host,'/');
+		if( path ){
+			UCHAR* end = strchr(path,'?');
+			if( !end ) end = strchr(path,'#');
+			pathlen = end? end - path : strlen(path);
+			hostlen = path - host;
+		}
+		else hostlen = strlen(host);
+	}
+	if( !hostlen ){
+		LogA("不正なURL:%s",url);
+		return cookie0;
+	}
+	if( !pathlen ) path="/" ,pathlen=1;
+
+	GetSystemTimeAsFileTime( &now );
+
+	while( name = strHeaderValue(head,"Set-Cookie") ){
+		UCHAR* end = name;
+		size_t len;
+		while( *end && !isCRLF(*end) ) end++;
+		len = end - name;
+		if( len ){
+			Cookie* cook = malloc( sizeof(Cookie) +len +hostlen +pathlen +2 );
+			if( cook ){
+				UCHAR* attr;
+				memset( cook ,0 ,sizeof(Cookie) );
+				// Cookie構造体name変数は可変長文字列
+				// +--------------------+----+-------------+----+---------+----+
+				// | Set-Cookieヘッダ値 | \0 | URLホスト名 | \0 | URLパス | \0 |
+				// +--------------------+----+-------------+----+---------+----+
+				memcpy( cook->name ,name ,len );
+				cook->name[len]='\0';
+				// クッキードメイン初期値＝URLホスト名
+				cook->domain = cook->name +len +1;
+				memcpy( cook->domain ,host ,hostlen );
+				cook->domain[hostlen]='\0';
+				cook->domainlen = hostlen;
+				// クッキーパス初期値＝URLパス
+				cook->path = cook->domain +hostlen +1;
+				memcpy( cook->path ,path ,pathlen );
+				cook->path[pathlen]='\0';
+				cook->pathlen = pathlen;
+				// 属性解析
+				attr = cook->name;
+				while( *attr && *attr !=' ' && *attr !=';' ) attr++; // NAME=VALUEを通過
+				if( *attr ){
+					*attr++ ='\0';
+					while( *attr==' ' || *attr==';' ) attr++;
+					while( attr && *attr ){
+						// 属性１つ取り出し
+						UCHAR* next = strchr(attr,';');
+						if( next ){
+							while( *next==' ' || *next==';' ) next--; // 末尾の空白除去
+							next++ ,*next++ ='\0';
+							while( *next==' ' || *next==';' ) next++; // 次の属性の先頭
+						}
+						else{
+							UCHAR* end = attr + strlen(attr) -1;
+							while( *end==' ' ) *end-- ='\0'; // 末尾の空白除去
+						}
+						// 判定
+						if( strnicmp(attr,"expires=",8)==0 && attr[8] ){
+							UCHAR* p = dequote( attr +8 );
+							if( *p ) cook->expire=p;
+						}
+						else if( strnicmp(attr,"domain=",7)==0 && attr[7] ){
+							UCHAR* p = dequote( attr +7 );
+							if( *p ) cook->domain=p ,cook->domainlen=strlen(p);
+						}
+						else if( strnicmp(attr,"path=",5)==0 && attr[5] ){
+							UCHAR* p = dequote( attr +5 );
+							if( *p ) cook->path=p ,cook->pathlen=strlen(p);
+						}
+						else if( stricmp(attr,"secure")==0 ){
+							cook->secure = 1;
+						}
+						// 次の属性
+						attr = next;
+					}
+				}
+				// VALUE
+				cook->value = strchr(cook->name,'=');
+				if( cook->value ) *cook->value='\0' ,cook->value++; else cook->value="";
+				if( *cook->name ){
+					// 同じクッキーがあったら削除
+					cookie0 = CookieObsoleteRemove( cookie0 ,cook );
+					// 有効期限
+					if( cook->expire ){
+						SYSTEMTIME st;
+						FILETIME ft;
+						InternetTimeToSystemTimeA( cook->expire ,&st ,0 );
+						SystemTimeToFileTime( &st ,&ft );
+						if( *(UINT64*)&ft < *(UINT64*)&now ){
+							/*
+							LogA("期限切れ:%s=%s; domain=%s; path=%s; expire=%s"
+								,cook->name ,cook->value ,cook->domain ,cook->path ,cook->expire);
+							*/
+							free(cook) ,cook=NULL;
+						}
+					}
+				}
+				else free(cook) ,cook=NULL;
+				if( cook ){
+					/*
+					SYSTEMTIME st;
+					if( cook->expire ) InternetTimeToSystemTimeA( cook->expire ,&st ,0 );
+					LogA("クッキー:%s=%s; domain=%s; path=%s; expire=%04u/%02u/%02u %02u:%02u:%02u; secure=%u"
+							,cook->name ,cook->value ,cook->domain ,cook->path
+							,cook->expire? st.wYear :0
+							,cook->expire? st.wMonth :0
+							,cook->expire? st.wDay :0
+							,cook->expire? st.wHour :0
+							,cook->expire? st.wMinute :0
+							,cook->expire? st.wSecond :0
+							,cook->secure
+					);
+					*/
+					// リスト先頭に追加
+					cook->next = cookie0;
+					cookie0 = cook;
+				}
+			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(Cookie)+len);
+		}
+		head = end; // 次のSet-Cookie
+	}
+	return cookie0;
+}
+// 指定URLリクエスト用Cookie:ヘッダ(改行つき)を生成する。呼び出し側で解放。
+// http://www.studyinghttp.net/cookies#Cookie
+UCHAR* CookieRequestHeaderAlloc( Cookie* cookie0 ,const UCHAR* url )
+{
+	UCHAR* value = NULL;
+	UCHAR* urltmp = strdup(url);
+	if( urltmp ){
+		Cookie* cook;
+		URLparts part;
+		URLparse( &part ,urltmp );
+		// 一巡目：属性が適合するクッキーにフラグ立て
+		// ★有効期限内かどうかは判定しない(httpGETsで連続的に呼ばれる間しか保持しないクッキーなので)
+		for( cook=cookie0; cook; cook=cook->next ){
+			UCHAR* p;
+			cook->match = 0;
+			// secure属性があったらhttpsのみ
+			if( cook->secure && stricmp(part.scheme,"https") ) continue;
+			// ドメイン
+			p = stristr( part.host ,cook->domain );
+			if( p && strlen(p)==cook->domainlen ){
+				// パス(part.path は先頭 / なし)
+				if( cook->path[0]=='/' ){
+					if( cook->path[1]=='\0' ){
+						cook->match = 1;
+					}
+					else if( strncmp( part.path ,cook->path+1 ,cook->pathlen-1 )==0 ){
+						cook->match = 1;
+					}
+				}
+				else if( strncmp( part.path ,cook->path ,cook->pathlen )==0 ){
+					cook->match = 1;
+				}
+			}
+		}
+		free( urltmp );
+		// 二巡目：おなじNAMEのクッキーはパス最大長の１つだけ
+		// TODO:この↓ページにはおなじNAMEが複数あってもよい(正しい)ように書いてあるが
+		// http://www.futomi.com/lecture/cookie/specification.html
+		// こっち↓はそうではない、パスが短いのは上書き(で複数にはならない)と書いてある。
+		// http://www.studyinghttp.net/cookies#Cookie
+		// どっちだよ・・
+		for( cook=cookie0; cook; cook=cook->next ){
+			if( cook->match ){
+				Cookie* comp;
+				for( comp=cookie0; comp; comp=comp->next ){
+					if( comp->match ){
+						if( stricmp(cook->name,comp->name)==0 && cook->pathlen < comp->pathlen ){
+							cook->match = 0;
+							break;
+						}
+					}
+				}
+			}
+		}
+		// 三巡目：有効クッキー名を連結
+		for( cook=cookie0; cook; cook=cook->next ){
+			if( cook->match ){
+				UCHAR* newval = strjoin( cook->name ,"=" ,cook->value ,value? "; ":"" ,value );
+				if( newval ){
+					if( value ) free( value );
+					value = newval;
+				}
+			}
+		}
+	}
+	if( value ){
+		UCHAR* newval = strjoin( "Cookie: " ,value ,"\r\n" ,0,0 );
+		free( value );
+		value = newval;
+	}
+	return value;
+}
+// クッキーリスト全破棄
+void CookieDestroy( Cookie* cookie )
+{
+	while( cookie ){
+		Cookie* next = cookie->next;
+		free( cookie );
+		cookie = next;
+	}
+}
+
+// httpGET()の結果が転送の場合はさらにhttpGET()して返却
+HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,AliveReport* rp )
+{
+	HTTPGet* rsp = httpGET( url0 ,ua ,abort ,rp ,0 );
+	Cookie* cookie = NULL;
+	UCHAR* newurl = NULL;
+	UINT hop = 0;
+	if( rsp ){
+	retry:
+		if( *abort ) goto fin;
+		if( hop++ >9 ){ LogW(L"転送回数が多すぎます"); goto fin; }
+		rsp = HTTPGetContentDecode( rsp );
+		// HTTP/1.x 200 OK
+		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
+			UCHAR* code = rsp->buf +9;	// 応答コードテキスト("200 OK"など)
+			switch( code[0] ){
+			case '2': // 成功
+				// TODO:gihyo.jpの記事で<title>が取得できない問題が発生した時、ここでrsp->bodyを破壊してる
+				// 事が原因だった。<meta>より後に<title>があり、<meta>解析でrsp->bodyを破壊したため<title>
+				// がなくなってしまった。とりあえず<meta>の処理でrsp->body破壊をピンポイントで元に戻すよう
+				// にしたら大丈夫になったけど、本当は最初から破壊しないようにしないと怖い…。
+				// TODO:Set-Cookieはヘッダだけじゃなくて<meta http-equiv="set-cookie" content="...">も？
+				// http://www.tohoho-web.com/wwwcook.htm
+				// http://q.hatena.ne.jp/1326164005
+				// TODO:みんくちゃんねるの個別記事URLは記事がなくなってても 200 が返ってくる。判別不能。
+				if( rsp->ContentType==TYPE_HTML ){
+					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送
+					// 時事ドットコムや@ITの記事、他でもしばしば使われている
+					UCHAR* body ,*meta;
+					HTTPGetHtmlToUTF8( rsp );
+					body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
+					while( meta = stristr(body,"<meta ") ){
+						UCHAR* endtag = strchr(meta,'>');
+						if( endtag ){
+							*endtag='\0'; // rsp->body一時破壊
+							if( stristr(meta,"http-equiv=") && stristr(meta,"refresh") ){
+								UCHAR* content = stristr(meta,"content=");
+								if( content ){
+									content += 8;
+									// 最初に出てくる数字かセミコロンを探して
+									for( ; *content; content++ ) if( isdigit(*content) || *content==';' ) break;
+									if( *content=='0' ){ // 数字(秒数)がゼロなら
+										UCHAR* url = stristr(content,"URL=");
+										if( url ){
+											UCHAR* end ,ch ,*abs;
+											url += 4;
+											end = strchr(url,'"');
+											if( !end ) for( end=url; *end && *end !=' '; end++ );
+											ch=*end ,*end='\0'; // rsp->body一時破壊
+											//LogA("refresh URL=%s",url);
+											abs = absoluteURL( url ,newurl? newurl :url0 );
+											*end=ch; // 元に戻す
+											if( abs ){
+												HTTPGet* newrsp;
+												UCHAR* value;
+												cookie = SetCookieParse( newurl? newurl :url0 ,rsp->head ,cookie );
+												value = CookieRequestHeaderAlloc( cookie ,abs );
+												newrsp = httpGET( abs ,ua ,abort ,rp ,value );
+												if( value ) free( value );
+												if( newurl ) free( newurl );
+												newurl = abs;
+												if( newrsp ){
+													free(rsp), rsp=newrsp;
+													goto retry;
+												}
+											}
+											else{ if( rp ) rp->ico='E', strcpy(rp->msg,"サーバー内部エラー"); }
+											*endtag='>'; // 元に戻す
+											goto fin;
+										}
+									}
+								}
+							}
+							*endtag='>'; // 元に戻す
+							body = endtag +1; // 次
+						}
+						else break;
+					}
+				}
+				// 転送先URL(newurl)が最初のURLと同じ場合は転送されなかったのと同等とみなす。
+				// http://www.ec-current.com/ が302でクッキー発行して元のURLに戻ってくるので、それを
+				// 転送とみなさないため。
+				if( rp ){
+					if( newurl && urlcmp(newurl,url0) )
+						rp->ico='!';
+					else
+						rp->ico='O', free(newurl), newurl=NULL;
+				}
+				break;
+			case '3': // 転送
+				// http://www.ec-current.com/ は匿名閲覧でもクッキーを使っているようで、Cookie: なしで
+				// アクセスすると302で飛ばされ、クッキー発行してまた302で元のURLに戻すという仕様のもよう。
+				// クッキー有効クライアントは戻ってきた時のURLは最初とおなじだが、クッキー無効クライアントは
+				// top.aspx?cookie=no とかパラメータついており初回URLと同じではない。技術的には転送だが全体
+				// としては転送じゃないので、転送と判定しないため、クッキー認識とURL比較を行う。
+				// gihyo.jpの記事(例:http://gihyo.jp/dev/clip/01/orangenews/vol62/0005)も匿名閲覧でクッキー
+				// 発行301飛ばしがあるようだ。しかもSet-Cookie:ヘッダが複数。
+				// TODO:Coccoc は Location: http://localhost/ を返してくるけど、ポート番号なくてもいいの？
+				// http://localhost:4474/ じゃないの？でもブラウザはちゃんとポート4474にアクセスしている謎…。
+				// localhost通信だからキャプチャできないし…
+				{
+					UCHAR* url = strHeaderValue(rsp->head,"Location");
+					if( url ){
+						UCHAR* end ,ch ,*abs;
+						for( end=url; *end && !isCRLF(*end); end++ );
+						ch=*end ,*end='\0'; // rsp->head一時破壊
+						//LogA("location URL=%s",url);
+						abs = absoluteURL( url ,newurl? newurl :url0 );
+						*end=ch; // 元に戻す
+						if( abs ){
+							HTTPGet* newrsp;
+							UCHAR* value;
+							cookie = SetCookieParse( newurl? newurl :url0 ,rsp->head ,cookie );
+							value = CookieRequestHeaderAlloc( cookie ,abs );
+							newrsp = httpGET( abs ,ua ,abort ,rp ,value );
+							if( value ) free( value );
+							if( newurl ) free( newurl );
+							newurl = abs;
+							if( newrsp ){
+								free(rsp), rsp=newrsp;
+								goto retry;
+							}
+						}
+						else{ if( rp ) rp->ico='E', strcpy(rp->msg,"サーバー内部エラー"); }
+						goto fin;
+					}
+					else LogW(L"3xxリダイレクト応答でLocationヘッダがありません");
+				}
+				if( rp ) rp->ico='!';
+				break;
+			case '4': // クライアントエラー
+				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
+				// HTMLが返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になる
+				// だけで、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わら
+				// ないのでブラウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスは
+				// なんでも xxx.jpg でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。
+				// 正しいURLは 200 が返ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクト
+				// せずこういう応答するサーバーもあるのか。しかし判定処理どうしよう・・トップページを取得
+				// して比較するとかしないと判定できない？もしトップページと同じだったら 200 OK に変更して
+				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
+				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
+				// トップとおなじHTMLが返ってくるパターンもあるという問題。
+				if( rp ) rp->ico='D'; // Dead
+				break;
+			case '5': // サーバーエラー
+			case '1': // 情報(HTTP/1.1以降)
+			default:
+				if( rp ) rp->ico='!';
+			}
+			if( rp ){
+				strncpy( rp->msg ,code ,sizeof(rp->msg) );
+				rp->msg[sizeof(rp->msg)-1]='\0';
+			}
+		}
+		else{ if( rp ) rp->ico='!', strcpy(rp->msg,"不正なHTTP応答"); }
+	}
+fin:
+	CookieDestroy( cookie );
+	if( rp ) rp->newurl = newurl;
+	else if( newurl ) free( newurl );
+	return rsp;
 }
 
 // 指定サイトのタイトルとか解析するスレッド関数
@@ -2688,19 +3694,19 @@ void HTTPGetHtmlToUTF8( TClient* cp ,HTTPGet* rsp )
 unsigned __stdcall analyze( void* p )
 {
 	TClient*	cp = p;
-	UCHAR*		url = cp->req.param;
+	UCHAR*		ua = cp->req.UserAgent;
 	HTTPGet*	rsp;
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
 	// URL取得。req.paramは今のところURLのみ。
-	rsp = httpGET( url, cp->req.UserAgent );
+	rsp = httpGETs( cp->req.param ,ua ,&(cp->abort) ,0 );
 	if( rsp ){
 		UCHAR* title=NULL, *icon=NULL;
 		if( cp->abort ) goto fin;
-		rsp = HTTPGetContentDecode( cp ,rsp );
+		rsp = HTTPGetContentDecode( rsp );
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
-			HTTPGetHtmlToUTF8( cp ,rsp );
+			HTTPGetHtmlToUTF8( rsp );
 			// タイトル取得
 			begin = stristr(rsp->body,"<title");
 			if( begin ){
@@ -2716,9 +3722,9 @@ unsigned __stdcall analyze( void* p )
 						CRLFtoSPACE( title );
 					}
 				}
-				else LogW(L"[%u]</title>が見つかりません(%s)",Num(cp),url);
+				else LogW(L"[%u]</title>が見つかりません(%s)",Num(cp),cp->req.param);
 			}
-			else LogA("[%u]<title>が見つかりません(%s)",Num(cp),url);
+			else LogA("[%u]<title>が見つかりません(%s)",Num(cp),cp->req.param);
 			// favicon取得まず<link rel=icon href="xxx">をさがす
 			begin = rsp->body;
 			while( begin=stristr(begin,"<link") ){
@@ -2761,13 +3767,13 @@ unsigned __stdcall analyze( void* p )
 				if( strncmp(icon,"//",2)==0 ){
 					// スキームが省略された完全URL
 					// はてなhotentryの<link>タグが「href="//b.hatena.ne.jp/favicon.ico"」となっている。
-					// 相対URLでなく完全URLとみなすべきもののようだ。先頭のhttp:を省略して「//」で
+					// 相対URLでなく完全URLとみなすべきもののようだ。先頭のhttp(s):を省略して「//」で
 					// 始まってもいいらしい。この場合はスキームを補完した完全URLを生成する。
 					UCHAR* slash = strstr(cp->req.param,"://");
 					if( slash ){
 						slash++;
 						*slash='\0';
-						url = strjoin( cp->req.param, icon, 0 );
+						url = strjoin( cp->req.param ,icon ,0,0,0 );
 						*slash='/';
 					}
 				}
@@ -2780,14 +3786,14 @@ unsigned __stdcall analyze( void* p )
 							// href="/img/favicon.ico"
 							UCHAR* slash = strchr(host,'/');
 							if( slash ) *slash = '\0';
-							url = strjoin( cp->req.param, icon, 0 );
+							url = strjoin( cp->req.param ,icon ,0,0,0 );
 							if( slash ) *slash = '/';
 						}
 						else{
 							// href="img/favicon.ico"
 							UCHAR* slash = strrchr(host,'/');
 							if( slash ) *slash = '\0';
-							url = strjoin( cp->req.param, "/", icon );
+							url = strjoin( cp->req.param ,"/" ,icon ,0,0 );
 							if( slash ) *slash = '/';
 						}
 					}
@@ -2796,12 +3802,12 @@ unsigned __stdcall analyze( void* p )
 			}
 			// URL取得確認
 			if( icon ){
-				HTTPGet* tmp = httpGET( icon, cp->req.UserAgent );
-				BOOL success=FALSE;
+				BOOL success = FALSE;
+				HTTPGet* tmp = httpGET( icon ,ua ,&(cp->abort) ,0,0 );
 				if( tmp ){
 					// HTTP/1.x 200 OK
 					// あまり厳密チェックせず2xxか3xxならオッケーとする
-					if( tmp->buf[9]=='2' || tmp->buf[9]=='3' ) success=TRUE;
+					if( tmp->bytes >12 &&( tmp->buf[9]=='2' || tmp->buf[9]=='3') ) success=TRUE;
 					free( tmp );
 				}
 				if( !success ) free(icon), icon=NULL;
@@ -2814,12 +3820,12 @@ unsigned __stdcall analyze( void* p )
 					host += 3;
 					slash = strchr(host,'/');
 					if( slash ) *slash = '\0';
-					icon = strjoin( cp->req.param, "/favicon.ico", 0 );
+					icon = strjoin( cp->req.param ,"/favicon.ico" ,0,0,0 );
 					if( icon ){
 						BOOL success = FALSE;
-						HTTPGet* tmp = httpGET( icon, cp->req.UserAgent );
+						HTTPGet* tmp = httpGET( icon ,ua ,&(cp->abort) ,0,0 );
 						if( tmp ){
-							if( strnicmp(tmp->buf+8," 200 ",5)==0 ) // HTTP/1.x 200 OK
+							if( tmp->bytes >12 && strnicmp(tmp->buf+8," 200",4)==0 ) // HTTP/1.x 200 OK
 								if( tmp->ContentType !=TYPE_HTML ) // text/html 除外
 									success = TRUE;
 							free( tmp );
@@ -2862,109 +3868,6 @@ unsigned __stdcall analyze( void* p )
 	return 0;
 }
 
-// <meta http-equiv=refresh ..>方式転送検出のためHTMLを書き換える。
-// http://www.nifty.com/ や facebook で <noscript>タグ内に<meta http-equiv=refresh ..>があり、
-// 単純に検索しただけでは誤検出(転送じゃないのに転送と判定)っぽくなってしまう。<noscript>は
-// 無視でよいと思うので、<noscript>～</noscript>はあらかじめスペースで塗りつぶす。
-// ついでにHTMLコメント<!-- -->や<script>～</script>、<style>～</style>も誤検出の元なので
-// スペースで塗りつぶす。
-UCHAR* HTMLmodify( UCHAR* top )
-{
-	UCHAR* p = top;
-	UCHAR* end;
-	// 1.<script>～</script>をスペースで塗りつぶし
-	for( p=top; *p; ){
-		UCHAR* script = stristr(p,"<script");
-		if( script && (script[7]==' ' || script[7]=='>') ){
-			end = stristr(script+7,"</script>");
-			if( end ){
-				UCHAR quote1=0 ,quote2=0;
-				// クォート解析
-				p = script + 7;
-			retry:
-				for( ; p<end; p++ ){
-					if( *p=='\'' ){ if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; } else quote1=1; }
-					else if( *p=='"' ){ if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; } else quote2=1; }
-				}
-				if( quote1 || quote2 ){
-					// </script>がクォートの中
-					UCHAR* newend = stristr(end+9,"</script>");
-					if( newend ){ end=newend; goto retry; }
-					LogW(L"<script>閉タグが文字列として存在するが新たな閉タグが見つからない構文エラー？");
-				}
-				p = end + 9 ;
-				LogW(L"<script>%u文字塗りつぶし",p-script);
-				memset( script ,' ' ,p-script );
-				// 再検索
-			}
-			else{
-				LogW(L"<script>閉タグがありません");
-				*script='\0';
-				break;
-			}
-		}
-		else break; // <script>なし
-	}
-	// 2.HTMLコメント<!-- -->をスペースで塗りつぶし
-	for( p=top; *p; ){
-		UCHAR* comment = strstr(p,"<!--");
-		if( comment ){
-			end = strstr(comment+4,"-->");
-			if( end ){
-				p = end + 3;
-				LogW(L"HTMLコメント%u文字塗りつぶし",p-comment);
-				memset( comment ,' ' ,p-comment );
-				// 再検索
-			}
-			else{
-				LogW(L"HTMLコメント閉タグがありません");
-				*comment='\0';
-				break;
-			}
-		}
-		else break; // コメントなし
-	}
-	// 3.<noscript>～</noscript>をスペースで塗りつぶし
-	for( p=top; *p; ){
-		UCHAR* noscript = stristr(p,"<noscript");
-		if( noscript && (noscript[9]==' ' || noscript[9]=='>') ){
-			end = stristr(noscript+9,"</noscript>");
-			if( end ){
-				p = end + 11;
-				LogW(L"<noscript>%u文字塗りつぶし",p-noscript);
-				memset( noscript ,' ' ,p-noscript );
-				// 再検索
-			}
-			else{
-				LogW(L"<noscript>閉タグがありません");
-				*noscript='\0';
-				break;
-			}
-		}
-		else break; // <noscript>なし
-	}
-	// 4.ついでに<style>～</style>もスペースで塗りつぶし
-	for( p=top; *p; ){
-		UCHAR* style = stristr(p,"<style");
-		if( style && (style[6]==' ' || style[6]=='>') ){
-			end = stristr(style+6,"</style>");
-			if( end ){
-				p = end + 8;
-				LogW(L"<style>%u文字塗りつぶし",p-style);
-				memset( style ,' ' ,p-style );
-				// 再検索
-			}
-			else{
-				LogW(L"<style>閉タグがありません");
-				*style='\0';
-				break;
-			}
-		}
-		else break; // <style>なし
-	}
-	return top;
-}
-
 // 指定URL死活確認を行うスレッド関数
 // クライアントからの要求 GET /:alive?URL HTTP/1.x で開始され、
 // - 調査URLに接続しGETリクエストを送って応答を確認する。
@@ -2975,315 +3878,19 @@ UCHAR* HTMLmodify( UCHAR* top )
 // http://likealunatic.jp/2007/10/21_redirect.php
 unsigned __stdcall alive( void* p )
 {
-	TClient*	cp			= p;
-	UCHAR*		url			= cp->req.param;
-	BOOL		proto_ssl	= FALSE;
-	UCHAR		ico			= '?';
-	UCHAR		msg[256]	= "不明な処理結果です";
-	UCHAR*		newurl		= NULL;
-	HTTPGet*	rsp			= NULL;
+	TClient*	cp		= p;
+	//UCHAR*		ua		= cp->req.UserAgent;
+	AliveReport rp		= { '?',"不明な処理結果です",NULL };
+	HTTPGet*	rsp		= NULL;
+	//UCHAR*		newurl	= NULL;
 
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
-	// プロトコル
-	if( !url || !*url ){
-		ico='E'; strcpy(msg,"URLが空です"); goto fin;
-	}
-	else if( strnicmp(url,"http://",7)==0 ){
-		url += 7;
-	}
-	else if( strncmp(url,"//",2)==0 ){ // "http:"は省略できるらしい(はてなhotentryのファビコン<link>タグ)
-		url += 2;
-	}
-	else if( strnicmp(url,"https://",8)==0 ){
-		url += 8;
-		if( ssl_ctx ) proto_ssl = TRUE;
-		else{ ico='?'; strcpy(msg,"SSL利用できません"); goto fin; }
-	}
-	else{ ico='E'; strcpy(msg,"不明なプロトコルです"); goto fin; }
-	// ホスト名
-	if( *url ){
-		UCHAR* path = strchr(url,'/');
-		UCHAR* host = NULL;
-		if( path ){
-			host = strndup( url, path - url );
-			path++;
-		}
-		else{
-			host = strdup( url );
-			path = "";
-		}
-		if( host ){
-			// 名前解決(タイムアウト処理は難しいもよう・・)
-			ADDRINFOA*	addr = NULL;
-			ADDRINFOA	hint;
-			UCHAR*		port = strrchr(host,':');
-			if( port ) *port++ = '\0'; else port = (proto_ssl)?"443":"80";
-			memset( &hint, 0, sizeof(hint) );
-			hint.ai_socktype = SOCK_STREAM;
-			hint.ai_protocol = IPPROTO_TCP;
-			if( GetAddrInfoA( host, port, &hint, &addr )==0 && !cp->abort ){
-				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
-				BOOL		connected	= FALSE;
-				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
-				WSAEVENT	ev			= WSACreateEvent();
-				if( WSAEventSelect( sock, ev, FD_CONNECT ) !=SOCKET_ERROR ){
-					u_long off = 0;
-					int err = connect( sock, addr->ai_addr, (int)addr->ai_addrlen );
-					if( err !=SOCKET_ERROR || WSAGetLastError()==WSAEWOULDBLOCK ){
-						WSANETWORKEVENTS nev;
-						DWORD dwRes = WSAWaitForMultipleEvents( 1, &ev, FALSE, 5000, FALSE );
-						switch( dwRes ){
-						case WSA_WAIT_EVENT_0:
-							if( WSAEnumNetworkEvents( sock, ev, &nev ) !=SOCKET_ERROR ){
-								if( (nev.lNetworkEvents & FD_CONNECT) && nev.iErrorCode[FD_CONNECT_BIT]==0 ){
-									connected = TRUE; // 接続成功
-								}
-								else{
-									LogW(L"[%u]WSAEnumNetworkEventsエラー？",sock);
-									ico='?'; strcpy(msg,"サーバー内部エラー");
-								}
-							}
-							else{
-								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
-								ico='?'; strcpy(msg,"サーバー内部エラー");
-							}
-							break;
-						case WSA_WAIT_TIMEOUT:
-							ico='?'; strcpy(msg,"接続がタイムアウトしました");
-							break;
-						case WSA_WAIT_FAILED:
-						default:
-							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
-							ico='?'; strcpy(msg,"サーバー内部エラー");
-						}
-					}
-					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
-					ioctlsocket( sock, FIONBIO, &off );		// ブロッキングに戻す
-				}
-				else{
-					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
-					ico='?'; strcpy(msg,"サーバー内部エラー");
-				}
-				WSACloseEvent( ev );
-				// 送受信
-				if( connected && !cp->abort ){
-					struct timeval tv = { 5, 0 };
-					SSL* sslp = NULL;
-					BOOL ssl_ok = TRUE;
-					// send/recvタイムアウト指定
-					// 受信はreadable()も使っているので変かもしれないけどまあいいか…
-					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
-					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
-					if( proto_ssl ){
-						sslp = SSL_new( ssl_ctx );
-						if( sslp ){
-							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
-							RAND_poll();
-							while( RAND_status()==0 ){		// PRNG初期化
-								unsigned short rand_ret = rand() % 65536;
-								RAND_seed(&rand_ret, sizeof(rand_ret));
-							}
-							if( SSL_connect( sslp )==1 ){	// SSLハンドシェイク
-								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
-							}
-							else{
-								LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
-								ico='?'; strcpy(msg,"SSL接続できませんでした");
-								ssl_ok = FALSE;
-							}
-						}
-						else{
-							LogW(L"[%u]SSL_newエラー",sock);
-							ico='?'; strcpy(msg,"サーバー内部エラー");
-							ssl_ok = FALSE;
-						}
-					}
-					else LogA("[%u]外部接続:%s:%s",sock,host,port);
-					// リクエスト送信
-					if( ssl_ok && !cp->abort ){
-						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-						if( rsp ){
-							DWORD timelimit;
-							UCHAR* ua = cp->req.UserAgent;
-							int len;
-							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-							rsp->bufsize = HTTPGET_BUFSIZE;
-							len = _snprintf(rsp->buf,rsp->bufsize,
-								"GET /%s HTTP/1.0\r\n"
-								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
-								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
-								"Accept-Encoding: identity\r\n"			// 無圧縮
-								//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
-								"Connection: close\r\n"
-								"\r\n"
-								,path, host, (ua && *ua)? ua : "Mozilla/4.0"
-							);
-							if( len<0 ){
-								LogW(L"[%u]送信バッファ不足",sock);
-								len = rsp->bufsize;
-							}
-							if( sslp ){
-								if( SSL_write( sslp, rsp->buf, len )<1 )
-									LogW(L"[%u]SSL_writeエラー",sock);
-							}
-							else{
-								if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
-									LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
-							}
-							rsp->buf[rsp->bufsize-1]='\0';
-							LogA("[%u]外部送信:%s",sock,rsp->buf);
-							// レスポンス受信4秒待つ
-							*rsp->buf = '\0';
-							timelimit = timeGetTime() +4000;
-							while( !cp->abort && readable(sock, timelimit - timeGetTime()) ){
-								if( cp->abort ) break;
-								if( sslp )
-									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
-								else
-									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-								if( len >0 ){
-									if( cp->abort ) break;
-									rsp->bytes += len;
-									rsp->buf[rsp->bytes] = '\0';
-									if( !rsp->body ){
-										// ヘッダと本文の区切り空行をさがす
-										rsp->body = strstr(rsp->buf,"\r\n\r\n");
-										if( rsp->body ){
-											*rsp->body = '\0';
-											rsp->body += 4;
-										}else{
-											rsp->body = strstr(rsp->buf,"\n\n");
-											if( rsp->body ){
-												*rsp->body = '\0';
-												rsp->body += 2;
-											}
-										}
-										// 空行みつかったらヘッダ解析
-										if( rsp->body ){
-											if( !rsp->ContentLength ){
-												UCHAR* p = strHeaderValue(rsp->buf,"Content-Length");
-												if( p ){
-													UINT n = 0;
-													for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
-													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
-												}
-												//else LogW(L"Content-Lengthなし");
-											}
-											if( !rsp->ContentEncoding ){
-												UCHAR* p = strHeaderValue(rsp->buf,"Content-Encoding");
-												if( p ){
-													if( strnicmp(p,"deflate",7)==0 ){
-														rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
-													}
-													else if( strnicmp(p,"gzip",4)==0 ){
-														rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
-													}
-													else{
-														rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
-													}
-												}
-												//else LogW(L"Content-Encodingなし");
-											}
-											if( !rsp->ContentType ){
-												UCHAR* p = strHeaderValue(rsp->buf,"Content-Type");
-												if( p ){
-													if( strnicmp(p,"text/html",9)==0 ){
-														rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
-													}
-													else{
-														rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
-													}
-													p = stristr(p,"charset=");
-													if( p ){
-														p += 8;
-														if( *p=='"') p++;
-														if( strnicmp(p,"utf-8",5)==0 ){
-															rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
-														}
-														else if( strnicmp(p,"shift_jis",9)==0 ){
-															rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
-														}
-														else if( strnicmp(p,"euc-jp",6)==0 ){
-															rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
-														}
-														else if( strnicmp(p,"iso-2022-jp",11)==0 ){
-															rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
-														}
-														else{
-															rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
-														}
-													}
-												}
-												//else LogW(L"Content-Typeなし");
-											}
-										}
-									}
-									// 受信終了チェック
-									if( rsp->ContentLength ){
-										// Content-Lengthぶん受信したらおわり
-										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
-									}
-									if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
-										// 非圧縮HTMLなら</head>まであればおわり
-										if( stristr(rsp->body,"</head>") ) break;
-									}
-									if( rsp->bytes >1024*1024*10 ){
-										LogW(L"10MBを超える受信データ破棄します");
-										break;
-									}
-									if( rsp->bytes >= rsp->bufsize ){
-										// バッファ拡大して受信継続
-										size_t newsize = rsp->bufsize * 2;
-										HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
-										if( newrsp ){
-											int distance = (BYTE*)newrsp - (BYTE*)rsp;
-											memset( newrsp, 0, sizeof(HTTPGet) + newsize );
-											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-											if( rsp->body ) newrsp->body += distance;
-											newrsp->bufsize = newsize;
-											free(rsp), rsp=newrsp;
-											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
-										}
-										else{
-											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
-											break;
-										}
-									}
-								}
-								else{
-									LogW(L"[%u]%s()=%d",sock,(sslp)?L"SSL_read":L"recv",len);
-									break;
-								}
-							}
-							LogA("[%u]外部受信%ubytes:%s",sock,rsp->bytes,rsp->buf);
-							if( !*rsp->buf ){ ico='?'; strcpy(msg,"受信タイムアウト"); }
-						}
-						else{
-							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
-							ico='?'; strcpy(msg,"サーバー内部エラー");
-						}
-					}
-					if( sslp ){
-						SSL_shutdown( sslp );
-						SSL_free( sslp );
-					}
-				}
-				shutdown( sock, SD_BOTH );
-				closesocket( sock );
-			}
-			else{ ico='?'; strcpy(msg,"ホストが見つかりません"); }
-			if( addr ) FreeAddrInfoA( addr );
-			free( host );
-		}
-		else{
-			LogW(L"L%u:strdupエラー",__LINE__);
-			ico='?'; strcpy(msg,"サーバー内部エラー");
-		}
-	}
-	else{ ico='E'; strcpy(msg,"不正なURLです"); }
-
-	if( rsp && *rsp->buf ){
+	// URL取得。req.paramは今のところURLのみ。
+	rsp = httpGETs( cp->req.param ,cp->req.UserAgent ,&(cp->abort) ,&rp );
+	/*
+	if( rsp ){
+	retry:
 		if( cp->abort ) goto fin;
 		rsp = HTTPGetContentDecode( cp ,rsp );
 		// HTTP/1.x 200 OK
@@ -3294,16 +3901,16 @@ unsigned __stdcall alive( void* p )
 			while( *head=='\r' || *head=='\n' ) *head++ = '\0'; // rsp->buf破壊
 			switch( code[0] ){
 			case '2': // 成功
-				// TODO:時事ドットコムや@ITの記事は <meta http-equiv=refresh content="0:URL=新URL"> で
+				// TODO:時事ドットコムや@ITの記事は <meta http-equiv=refresh content="0;URL=新URL"> で
 				// 転送されるが、時事ドットコムはHTTP応答 200 OK、<title> は「時事ドットコム」のみで
 				// 個別タイトルはなく、転送先のURLがちゃんと存在する場合と 404 Not Found の場合とある。
 				// 転送先を確認すべきか。他にも転送先が404のサイトがちょくちょくある。
 				// TODO:みんくちゃんねるの個別記事URLは記事がなくなってても 200 が返ってくる。判別不能。
 				if( rsp->ContentType==TYPE_HTML ){
-					// <meta http-equiv="refresh" content="0:URL=新URL"> 方式の転送
+					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送
 					UCHAR* body ,*meta;
 					HTTPGetHtmlToUTF8( cp ,rsp );
-					body = HTMLmodify( rsp->body ); // rsp->body破壊
+					body = htmlBotherErase( rsp->body ); // rsp->body破壊
 					while( meta = stristr(body,"<meta ") ){
 						UCHAR* endtag = strchr(meta,'>');
 						if( endtag ){
@@ -3311,18 +3918,29 @@ unsigned __stdcall alive( void* p )
 							if( stristr(meta,"http-equiv=") && stristr(meta,"refresh") ){
 								UCHAR* content = stristr(meta,"content=");
 								if( content ){
-									newurl = stristr(content,"URL=");
-									if( newurl ){
-										UCHAR* end;
-										newurl += 4;
-										end = strchr(newurl,'"');
-										if( !end ){
-											end = newurl;
-											while( *end && *end !=' ' ) end++;
-										}
+									UCHAR* url = stristr(content,"URL=");
+									if( url ){
+										UCHAR* end ,*abs;
+										url += 4;
+										end = strchr(url,'"');
+										if( !end ) for( end=url; *end && *end !=' '; end++ );
 										*end = '\0';
-										//LogA("refresh URL=%s",newurl);
-										break;
+										//LogA("refresh URL=%s",url);
+										abs = absoluteURL( url ,newurl? newurl :cp->req.param );
+										if( abs ){
+											UCHAR* cookie = strHeaderValue(head,"Set-Cookie");
+											HTTPGet* newrsp = httpGET(
+												abs ,ua ,&(cp->abort) ,&rp ,cookie?chomp(cookie):NULL
+											);
+											if( newurl ) free( newurl );
+											newurl = abs;
+											if( newrsp ){
+												free(rsp), rsp=newrsp;
+												goto retry;
+											}
+										}
+										else rp.ico='E', strcpy(rp.msg,"サーバー内部エラー");
+										goto fin;
 									}
 								}
 							}
@@ -3331,24 +3949,47 @@ unsigned __stdcall alive( void* p )
 						else break;
 					}
 				}
-				ico = newurl?'!':'O';
+				// 転送先URL(newurl)が最初のURLと同じ場合は転送されなかったのと同等とみなす。
+				// http://www.ec-current/ がクッキー発行して元のURLに戻ってくるので、それを
+				// 転送とみなさないため。
+				if( newurl && urlcmp(newurl,cp->req.param) ){
+					rp.ico='!';
+				}
+				else{
+					free(newurl), newurl=NULL;
+					rp.ico='O';
+				}
 				break;
 			case '3': // 転送
 				// TODO:http://www.ec-current.com/は匿名閲覧でもクッキーを使っているようで、Cookie: なしで
 				// アクセスすると302で飛ばされて、クッキー発行してまた302で元のURLに戻すという動作になって
-				// いるもよう。これも技術的には転送だけど全体としては転送じゃないパターンなのに転送と判定
-				// してしまう・・ぐぬぬ・・。
+				// いるもよう。クッキー有効なクライアントは戻ってきた時のURLは最初とおなじだけど、クッキー
+				// 無効クライアントは top.aspx?cookie=no とかパラメータついてるから初回URLと同じではないし…。
+				// 技術的には転送だけど全体としては転送じゃないパターンなのに転送と判定してしまう・・ぐぬぬ・・。
 				// TODO:Coccoc は Location: http://localhost/ を返してくるけど、ポート番号なくてもいいの？
 				// http://localhost:4474/ じゃないの？でもブラウザはちゃんとポート4474にアクセスしている謎…。
 				// localhost通信だからキャプチャできないし…
-				{ // Locationヘッダ
-					newurl = strHeaderValue(head,"Location");
-					if( newurl ){
-						chomp(newurl); // rsp->buf破壊
-						//LogA("location URL=%s",newurl);
+				{
+					UCHAR* cookie = strHeaderValue(head,"Set-Cookie");
+					UCHAR* url = strHeaderValue(head,"Location");
+					if( url ){
+						UCHAR* abs = absoluteURL( chomp(url) ,newurl? newurl :cp->req.param ); // rsp->buf破壊
+						//LogA("location URL=%s",url);
+						if( abs ){
+							HTTPGet* newrsp = httpGET( abs ,ua ,&(cp->abort) ,&rp ,cookie?chomp(cookie):NULL );
+							if( newurl ) free( newurl );
+							newurl = abs;
+							if( newrsp ){
+								free(rsp), rsp=newrsp;
+								goto retry;
+							}
+						}
+						else rp.ico='E', strcpy(rp.msg,"サーバー内部エラー");
+						goto fin;
 					}
+					else LogW(L"3xxリダイレクト応答でLocationヘッダがありません");
 				}
-				ico='!';
+				rp.ico='!';
 				break;
 			case '4': // クライアントエラー
 				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
@@ -3362,19 +4003,20 @@ unsigned __stdcall alive( void* p )
 				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
 				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
 				// トップとおなじHTMLが返ってくるパターンもあるという問題。
-				ico='D';
+				rp.ico='D'; // Dead
 				break;
 			case '5': // サーバーエラー
 			case '1': // 情報(HTTP/1.1以降)
 			default:
-				ico='?';
+				rp.ico='!';
 			}
-			strncpy(msg,code,sizeof(msg));
-			msg[sizeof(msg)-1]='\0';
+			strncpy( rp.msg ,code ,sizeof(rp.msg) );
+			rp.msg[sizeof(rp.msg)-1]='\0';
 		}
-		else{ ico='E'; strcpy(msg,"不正なHTTP応答です"); }
+		else rp.ico='!', strcpy(rp.msg,"不正なHTTP応答");
 	}
 fin:
+	*/
 	if( cp->abort ){
 		LogW(L"[%u]中断します...",Num(cp));
 		cp->status = 0;
@@ -3382,7 +4024,7 @@ fin:
 	else{
 		BufferSendf( &(cp->rsp.body)
 				,"{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
-				,ico ,msg ,newurl?newurl:""
+				,rp.ico ,rp.msg ,rp.newurl?rp.newurl:""
 		);
 		BufferSendf( &(cp->rsp.head)
 				,"HTTP/1.0 200 OK\r\n"
@@ -3394,6 +4036,7 @@ fin:
 		cp->status = CLIENT_SEND_READY;
 		PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
 	}
+	if( rp.newurl ) free( rp.newurl );
 	if( rsp ) free( rsp );
 	_endthreadex(0);
 	return 0;
@@ -4089,7 +4732,7 @@ int DIAMONDAPI fdiNotify( FDINOTIFICATIONTYPE type, PFDINOTIFICATION ntfy )
 			WCHAR* wpath = NULL;
 			if( ntfy->attribs & _A_NAME_IS_UTF ){
 				// pv,psz1共にUTF-8
-				UCHAR* path = strjoin( ntfy->pv, "\\", ntfy->psz1 );
+				UCHAR* path = strjoin( ntfy->pv ,"\\" ,ntfy->psz1 ,0,0 );
 				if( path ){
 					wpath = MultiByteToWideCharAlloc( path, CP_UTF8 );
 					free( path );
@@ -4157,7 +4800,7 @@ int DIAMONDAPI fdiNotify( FDINOTIFICATIONTYPE type, PFDINOTIFICATION ntfy )
 			SetFileTime( (HANDLE)ntfy->hf, &local, NULL, &local );
 			CloseHandle( (HANDLE)ntfy->hf );
 			if( ntfy->attribs & _A_NAME_IS_UTF ){
-				UCHAR* path = strjoin( ntfy->pv, "\\", ntfy->psz1 );
+				UCHAR* path = strjoin( ntfy->pv ,"\\" ,ntfy->psz1 ,0,0 );
 				if( path ){
 					wpath = MultiByteToWideCharAlloc( path, CP_UTF8 );
 					free( path );
@@ -4507,7 +5150,7 @@ BOOL WebPasswd( UCHAR* digest ,size_t bytes )
 BOOL URLdecode( const UCHAR* src ,size_t srclen ,UCHAR* dst ,size_t dstlen )
 {
 	BOOL success = FALSE;
-	UCHAR* srcEnd = src + srclen;
+	const UCHAR* srcEnd = src + srclen;
 	UCHAR* dstEnd = dst + dstlen;
 	for( ; src <srcEnd && dst <dstEnd; src++, dst++ ){
 		if( *src=='%' ){
@@ -4542,7 +5185,7 @@ BOOL URLdecode( const UCHAR* src ,size_t srclen ,UCHAR* dst ,size_t dstlen )
 	}
 	return success;
 }
-// HTTPセッションクッキー
+// HTTPログインセッション
 // http://www.studyinghttp.net/cookies
 // http://ja.wikipedia.org/wiki/HTTP_cookie
 // http://sehermitage.web.fc2.com/security/cookie.html
@@ -4552,8 +5195,7 @@ BOOL URLdecode( const UCHAR* src ,size_t srclen ,UCHAR* dst ,size_t dstlen )
 // http://www.ipa.go.jp/security/awareness/vendor/programmingv2/contents/302.html
 // http://www.ipa.go.jp/security/awareness/vendor/programmingv2/contents/303.html
 CRITICAL_SECTION	SessionCS ={0};		// スレッド間排他
-Session*			Session0 = NULL;	// 先頭
-Session*			SessionN = NULL;	// 末尾
+Session*			Session0 = NULL;	// セッションリスト先頭
 // セッション１つ生成
 Session* SessionCreate( void )
 {
@@ -4575,12 +5217,10 @@ Session* SessionCreate( void )
 			if( sp ){
 				memcpy( sp->id, session, len );
 				sp->id[len] = '\0';
-				sp->next = NULL;
-				// リスト末尾追加
+				// リスト先頭に追加
 				EnterCriticalSection( &SessionCS );
-				if( SessionN ) SessionN->next = sp;
-				SessionN = sp;
-				if( !Session0 ) Session0 = sp;
+				sp->next = Session0;
+				Session0 = sp;
 				LeaveCriticalSection( &SessionCS );
 				return sp;
 			}
@@ -4590,26 +5230,22 @@ Session* SessionCreate( void )
 	else LogW(L"RAND_bytesエラー");
 	return NULL;
 }
-// セッション１つ破棄
-void SessionDestroy( Session* target )
+// セッション１つ削除
+void SessionRemove( Session* target )
 {
 	if( !target ) return;
 	if( target==Session0 ){ // 先頭
 		Session0 = target->next;
-		if( target==SessionN ) SessionN = NULL;
 		free( target );
 	}
 	else{ // 先頭以外
-		Session* sp = Session0;
-		Session* prev = NULL;
-		for( ; sp; sp=sp->next ){
+		Session* sp ,*prev;
+		for( prev=NULL ,sp=Session0; sp; prev=sp ,sp=sp->next ){
 			if( sp==target ){
 				prev->next = sp->next;
-				if( sp==SessionN ) SessionN = prev;
 				free( sp );
 				break;
 			}
-			prev = sp;
 		}
 	}
 }
@@ -4620,33 +5256,27 @@ void SessionDestroy( Session* target )
 // login.html用にjquery.jsに穴を開けているがそのせい？どちらかが有効ならよしとする…。
 Session* ClientSessionAlive( TClient* cp )
 {
-	UCHAR* cookie = cp->req.Cookie;
+	UCHAR* top = cp->req.Cookie;
 	UCHAR* sid;
-	if( cookie ){
-	next:
-		sid = stristr(cookie,"session=");
-		if( sid && *(sid+8) ){
-			sid += 8;
-			{
-				UCHAR ch;
-				UCHAR* end = strchr(sid,' ');
-				if( !end ) end = strchr(sid,';');
-				if( end ){ ch = *end; *end = '\0'; }
-				{
-					Session* sep = Session0;
-					while( sep ){
-						if( strcmp( sid ,sep->id )==0 ){
-							cp->session = sep;
-							break;
-						}
-						sep = sep->next;
-					}
+	while( sid = stristr(top,"session=") ){
+		sid += 8;
+		if( *sid ){
+			Session* sep = Session0;
+			UCHAR ch;
+			UCHAR* end = strchr(sid,' ');
+			if( !end ) end = strchr(sid,';');
+			if( end ) ch=*end, *end='\0'; // 一時破壊
+			for( sep=Session0; sep; sep=sep->next ){
+				if( strcmp( sid ,sep->id )==0 ){
+					cp->session = sep;
+					break;
 				}
-				if( end ) *end = ch;
 			}
-			cookie = sid;
-			goto next;
+			if( end ) *end=ch; // 破壊を戻す
+			if( cp->session ) break; // セッション１つ見つかればOK
+			top = sid; // 次
 		}
+		else break;
 	}
 	return cp->session;
 }
@@ -4739,6 +5369,8 @@ unsigned __stdcall authenticate( void* p )
 // ソケット通信・HTTPプロトコル処理関連
 //
 // "%23"を"#"に戻す(TwitterのURLの/#!/対策)
+// TODO:HashBangサイトは対応できない(JavaScriptリダイレクトとおなじ)
+/*
 void URLfix( UCHAR* p )
 {
 	UCHAR* end = strchr(p,'\0');
@@ -4748,6 +5380,7 @@ void URLfix( UCHAR* p )
 		memmove( p, p+2, end-p-1 );
 	}
 }
+*/
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
 BOOL FileBackup( const WCHAR* path )
@@ -5484,7 +6117,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 #ifdef HTTP_KEEPALIVE
 						UCHAR* ka = strHeaderValue(  req->head,"Connection");
 #endif
-						// TODO:Cookieヘッダて複数行の場合もあるんだっけ…？
 						UCHAR* ck = strHeaderValue(  req->head,"Cookie");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
@@ -5513,12 +6145,29 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					}
 				}
 				if( req->method && req->path && req->ver ){
+					UCHAR* file = req->path;
+					while( *file=='/' ) file++;
 					if( (WebPasswdRemote && !cp->loopback) || (WebPasswdLocal && cp->loopback) ){
 						// Webパスワード有効
-						if( ClientSessionAlive( cp ) ){
+						if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
+							// 通常処理へ
+							// faviconとjquery.jsはlogin.htmlで使うためセッションなくても返却する。
+							// この特別扱いのせいか、ログアウトしてセッション破棄後も、jquery.jsの
+							// リクエストには古いクッキーがついたままになってしまうもよう…。しかし
+							// jqueryに穴を空けずlogin.htmlで外部jqueryを参照する(最初はそうしてた)と、
+							// ログイン後に「$が見つからない」とかJavaScriptエラーになってしまう・・。
+							// ログイン画面もログイン後もURLが変わらないのに、jQueryが変わってるから
+							// だろうか？おなじURLでjQueryが変わるとダメ？HTTPリダイレクトを使って
+							// login.htmlに飛ばすようにすればURLが変わるのでjqueryエラーは解消する？
+							// ただリダイレクトで使うLocationヘッダは絶対URLしかダメらしく、Hostヘッダ
+							// から生成するとか面倒だったり、filer.htmlにアクセスしてログイン画面が出て
+							// ログインしたらfiler.htmlを表示したいけど、それを実現するには新しいGET/
+							// POSTパラメータを作るとかRefererヘッダを見るとか？そのあたりがいま機能が
+							// なくて実装しなければならぬ・・うーむ。jQueryローカル化をやめてぜんぶ
+							// 外部jQuery参照にしても解決するかな？せっかくjQueryローカルにしたが・・。
+						}
+						else if( ClientSessionAlive(cp) ){
 							// セッション有効ログイン済み
-							UCHAR* file = cp->req.path;
-							while( *file=='/' ) file++;
 							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
 								// index.htmlを返す
 								// TODO:セッション有効なのにログイン要求のパスワードが間違っている時は？
@@ -5549,36 +6198,18 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										,cp->rsp.body.bytes
 									);
 									LogA("[%u]ログアウト(%s)",Num(cp),cp->session->id);
-									SessionDestroy( cp->session );
+									SessionRemove( cp->session );
 									cp->session = NULL;
 								}
 								else ResponseError(cp,"500 Internal Server Error");
 								goto send_ready;
 							}
+							// 通常処理へ
 						}
 						else{
 							// セッションなし
 							if( stricmp(req->method,"GET")==0 ){
-								UCHAR* file = cp->req.path;
-								while( *file=='/' ) file++;
-								if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
-									// faviconとjquery.jsはクッキーなくても返却する(login.htmlで使うから)。
-									// この特別扱いのせいか、ログアウトしてセッション破棄後も、jquery.jsの
-									// リクエストには古いクッキーがついたままになってしまうもよう…。しかし
-									// jqueryに穴を空けずlogin.htmlは外部jqueryを参照する(最初はそうしてた)と
-									// ログイン後に「$が見つからない」とかJavaScriptエラーになってしまう・・。
-									// おそらくURLがおなじままでログイン画面もログイン後も返却しているせいか？
-									// おなじURLでjQueryが変わるとダメなのかな・・。HTTPリダイレクトを使って
-									// login.htmlに飛ばすような感じにすればURLが変わるのでjqueryエラーは
-									// 出なくなるのかな・・。ただリダイレクトで使うLocationヘッダは絶対URL
-									// しかダメらしく、Hostヘッダから生成するとかが面倒だったり、filer.htmlに
-									// アクセスしてログイン画面出してログインしたらfiler.htmlを表示したいけど、
-									// それを実現するには・・hiddenパラメータ埋め込むとかRefererヘッダを見る
-									// とか？そのあたりがいま機能がなくて実装しなければならぬ・・うーむ。
-									// jQueryローカル化をやめてぜんぶ外部jQuery参照にしても解決するかな？
-									// う～んせっかくjQueryローカルにしたが・・・。
-								}
-								else if( !*file || stricmp(FileContentTypeA(file),"text/html")==0 ){
+								if( !*file || stricmp(FileContentTypeA(file),"text/html")==0 ){
 									// リダイレクトは使わず直接login.htmlを返却する。
 									cp->rsp.readfh = CreateFileW(
 											RealPath("login.html",realpath,sizeof(realpath)/sizeof(WCHAR))
@@ -5599,8 +6230,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								else{ ResponseError(cp,"403 Forbidden"); goto send_ready; }
 							}
 							else if( stricmp(req->method,"POST")==0 ){
-								UCHAR* file = cp->req.path;
-								while( *file=='/' ) file++;
 								if( stricmp(file,":login")==0 && req->ContentLength && req->ContentLength <999 ){
 									// ログイン処理
 									UINT bodybytes = req->bytes - (req->body - req->buf);
@@ -5622,18 +6251,16 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 					}
 					if( stricmp(req->method,"GET")==0 ){
-						UCHAR* file = cp->req.path;
-						while( *file=='/' ) file++;
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
-							URLfix( cp->req.param );
+							//URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, analyze, (void*)cp, 0,NULL );
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":alive")==0 && cp->req.param ){
 							// URL死活確認
-							URLfix( cp->req.param );
+							//URLfix( cp->req.param );
 							cp->thread = (HANDLE)_beginthreadex( NULL,0, alive, (void*)cp, 0,NULL );
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
@@ -6111,8 +6738,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					}
 					else if( stricmp(req->method,"PUT")==0 ){
 						if( req->ContentLength ){
-							UCHAR* file = req->path;
-							while( *file=='/' ) file++;
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
 							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							// リクエスト本文を一時ファイルに書き出す
@@ -6190,8 +6815,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 					}
 					else if( stricmp(req->method,"DEL")==0 ){
-						UCHAR* file = req->path;
-						while( *file=='/' ) file++;
 						// スナップショットメモのみ
 						if( strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0 ){
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
@@ -6266,7 +6889,7 @@ void SocketWrite( SOCKET sock )
 			CloseHandle( cp->thread ), cp->thread=NULL;
 			// 共通レスポンスヘッダ
 			if( cp->session ){
-				BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s\r\n" ,cp->session->id );
+				BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/;\r\n" ,cp->session->id );
 			}
 			BufferSendf( &(rsp->head)
 					,"Connection: %s\r\n"
