@@ -397,8 +397,8 @@ var option = {
 	function go(){ setTimeout(function(){ folderTree({ click0:true }); },0); }
 })();
 // CSSルール追加
-// http://d.hatena.ne.jp/ofk/20090716/1247719727
-$.css.add=function(a,b){var c=$.css.sheet,d=!$.browser.msie,e=document,f,g,h=-1,i="replace",j="appendChild";if(!c){if(d){c=e.createElement("style");c[j](e.createTextNode(""));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf("{"))!==-1){a=a[i](/[\{\}]/g,"");c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,""),a.slice(f)[i](g,""),h=b||c.rules.length)}return h};
+// http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わないよう変更
+$.css.add=function(a,b){var c=$.css.sheet,e=document,d=!('createStyleSheet' in e),f,g,h=-1,i='replace',j='appendChild';if(!c){if(d){c=e.createElement('style');c[j](e.createTextNode(''));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf('{'))!==-1){a=a[i](/[\{\}]/g,'');c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,''),a.slice(f)[i](g,''),h=b||c.rules.length)}return h};
 // フォルダツリー生成
 // folderTree({
 //   click0		: true/false 最初のフォルダをクリックするかどうか
@@ -672,7 +672,7 @@ var itemTable = function(){
 				if( $item.hasClass('item') && $item.hasClass('select') ){
 					(function( $url ){
 						$.ajax({
-							url:':alive?'+$url.text().myURLenc()
+							url:':alive?'+$url.text()/*.myURLenc()*/
 							,error:function(xhr){
 								$url.next().replaceWith(
 									$span.clone().text( xhr.status+' '+xhr.statusText )
@@ -898,7 +898,7 @@ $('#newitem').on({
 		// 選択フォルダID=folderXXならノードID=XX
 		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
 		if( url.length ){
-			$.get(':analyze?'+url.myURLenc(),function(data){
+			$.get(':analyze?'+url/*.myURLenc()*/,function(data){
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1949,7 +1949,7 @@ function itemContextMenu(ev){
 					function analyze(){
 						var url = $(item).find('.url').text();
 						$.ajax({
-							url:':analyze?'+url.myURLenc()
+							url:':analyze?'+url/*.myURLenc()*/
 							,error:function(){
 								if( url==$(item).find('.url').text() ){
 									$title.val('');
@@ -2204,7 +2204,7 @@ function edit( element, opt ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nid );
 									if( node.title=='新規ブックマーク' ){
-										$.get(':analyze?'+value.myURLenc(),function(data){
+										$.get(':analyze?'+value/*.myURLenc()*/,function(data){
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLdec( data.title );
 												if( tree.nodeAttr( nid, 'title', data.title ) >1 )
@@ -2349,7 +2349,7 @@ function clipboardTo( pnode, index ){
 		var node = tree.newURL( pnode, url, url.noProto(), '', index );
 		if( node ){
 			// タイトル/favicon取得
-			$.get(':analyze?'+url.myURLenc(),function(data){
+			$.get(':analyze?'+url/*.myURLenc()*/,function(data){
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -2426,7 +2426,7 @@ function HTMLdec( html ){
 	return dec;
 }
 // index.js参照
-String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); };
+//String.prototype.myURLenc = function(){ return this.replace(/#!/g,'%23!'); }; // TODO:HashBangどうするか
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
 String.prototype.myNormal = function(){
 	// 変換用キャッシュ
