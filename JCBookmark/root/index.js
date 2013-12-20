@@ -1993,7 +1993,7 @@ function setEvents(){
 					if( index < panels.length ) timer = setTimeout(callee,0);
 					else{
 						$tab.find('.stop').click();
-						if( $found[0].childNodes.length<=0 ) $found.text('見つかりません');
+						if( $found[0].children.length<=0 ) $found.text('見つかりません');
 					}
 				})();
 			});
@@ -2780,7 +2780,7 @@ function DragDrop( opt ){
 					}
 				}
 				else if( $this.hasClass( opt.boxClass ) ){
-					if( !this.childNodes.length ) $this.append( $place );
+					if( !this.children.length ) $this.append( $place );
 				}
 			}
 		})
