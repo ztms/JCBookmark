@@ -528,17 +528,21 @@ var itemTable = function(){
 	var timer = null;	// setTimeoutID
 	var $head = $('#itemhead');
 	var $finding = $('#finding').offset($('#keyword').offset()).progressbar();
-	return function( node ){
-		// 古いのキャンセル
-		function findStop(){
-			clearTimeout( timer );
+	var ajaxs = [];		// ajax配列
+	return function( node0 ,node1 ){
+		function finalize(){
+			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
+			ajaxs.length = 0;
+			clearTimeout( timer ); // 実行中キャンセル
+			// 検索終了
 			$('#itembox').children('.spacer').empty();
 			$finding.progressbar('value',0);
 			$('#findstop').hide();
 			$('#find').show();
 		}
-		findStop();
-		if( node==='find' ){
+		finalize();
+		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
+		if( node0==='find' ){
 			// 検索
 			var words = $('#keyword').val().split(/[ 　]+/);
 			for( var i=words.length-1; i>=0; i-- ){
@@ -547,11 +551,11 @@ var itemTable = function(){
 			}
 			if( words.length<=0 ) return;
 			findItems = true;
-			$head.find('.iconurl').removeClass('iconurl').addClass('place').text('場所');
+			$head3.removeClass('iconurl').removeClass('status').addClass('place').text('場所');
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
 			$finding.progressbar('value',0);
 			$('#find').hide();
-			$('#findstop').off().click(findStop).show();
+			$('#findstop').off().click(finalize).show();
 			// フォルダ配列生成・ノード総数カウント
 			// ちょっともたつくのでsetTimeout実行して中止ボタンをすぐに表示する。
 			var folders = [{ node:tree.top(), place:'' }];	// フォルダ配列
@@ -595,7 +599,7 @@ var itemTable = function(){
 					var $icon = $('<img class=icon>');
 					var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
 					var $url = $('<span class=url></span>').width( $head.find('.url').width() +4 );
-					var $place = $('<span class=place></span>').width( $head.find('.place').width() +4 );
+					var $place = $('<span class=place></span>').width( $head3.width() +4 );
 					var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
 					var $e = $('<div class=item tabindex=0></div>')
 						.append($icon).append($title).append($url).append($place).append($date)
@@ -654,56 +658,160 @@ var itemTable = function(){
 					// 次
 					if( index < folders.length ) timer = setTimeout(finder,0);
 					else{
-						findStop();
-						if( items.childNodes.length<=0 )
-							$('#itembox').children('.spacer').text('見つかりません');
+						finalize();
+						if( items.children.length<=0 ) $('#itembox').children('.spacer').text('見つかりません');
 					}
 				})();
 			};
 		}
-		else if( node==='deadlink' ){
+		else if( node0==='deadlink' ){
 			// リンク切れ調査
-			// TODO:項目ヘッダの「アイコン」または「場所」を「アイコン/調査結果」とかに変更する？
-			var $span = $('<span class=status></span>')
-						.width( $('#itemhead .url').next().next().width() +4 );
-			var $img = $('<img class=icon style="margin-left:0">');
-			$('#items').children().each(function(){
-				var $item = $(this);
-				if( $item.hasClass('item') && $item.hasClass('select') ){
-					(function( $url ){
-						$.ajax({
-							url:':alive?'+$url.text()
+			if( node1==='item' ){
+				// アイテム欄の選択ブックマークを調査(フォルダは無視)
+				// TODO:項目ヘッダの「アイコン」または「場所」を「アイコン/調査結果」とかに変更する？
+				// TODO:ajax中断機能を作ってないので、大量アイテム実行してから表示フォルダ切り替えるとajaxが
+				// 残ったままになるはずだが、表示上は無視されるから特に問題ないか…？ちゃんと中断処理すべき？
+				var $span = $('<span class=status></span>').width( $head3.width() +4 );
+				var $img = $('<img class=icon style="margin-left:0">');
+				var items = doc.getElementById('items').children;
+				for( var i=0, n=items.length; i<n; i++ ){
+					var $item = $(items[i]);
+					if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
+						(function( $url ){
+							$url.next().text('調査中...');
+							$.ajax({
+								url:':alive?'+$url.text()
+								,error:function(xhr){
+									$url.next().replaceWith(
+										$span.clone().text( xhr.status+' '+xhr.statusText )
+										.prepend( $img.clone().attr('src','delete.png') )
+									);
+								}
+								,success:function(data){
+									var ico = 'question.png';				// 不明
+									switch( data.ico ){
+									case 'O': ico = 'ok.png'; break;		// 正常
+									case 'E': ico = 'delete.png'; break;	// エラー
+									case 'D': ico = 'skull.png'; break;		// 死亡
+									case '!': ico = 'warn.png'; break;		// 注意
+									}
+									$url.next().replaceWith(
+										$span.clone().text( data.msg +(data.url.length? ', '+data.url :'') )
+										.prepend( $img.clone().attr('src',ico) )
+									);
+								}
+							});
+						})( $item.children('.url') );
+					}
+				}
+			}
+			else if( node1==='folder' ){
+				// アイテム欄の選択ブックマークとフォルダ内を調査
+				// TODO:調査中に同時に属性項目の幅をドラッグすると追従できず表示崩れるが対策難しいか・・
+				// TODO:調査中の進捗表示をどうするか
+				// TODO:すべて問題なかった時アイテム欄に何もなく本当に調べたのか不安になる
+				findItems = true;
+				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
+				$('#itembox').children('.spacer').html('<img src=wait.gif>');
+				var items = doc.getElementById('items');
+				// アイテム生成関数
+				var $itemAppend = function(){
+					var $e = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
+					var $icon = $('<img class=icon>');
+					var $title = $('<span class=title></span>');
+					var $url = $('<span class=url></span>');
+					var $stat = $('<span class=status></span>');
+					var $img = $('<img class=icon style="margin-left:0">');
+					var $date = $('<span class=date></span>');
+					var $br = $('<br class=clear>');
+					var $hTitle = $head.find('.title');
+					var $hUrl = $head.find('.url');
+					var $hDate = $head.find('.date');
+					var date = new Date();
+					var index = 0;
+					$e.append($icon).append($title).append($url).append($stat).append($date).append($br);
+					return function( node ,ico ,txt ,now ){
+						date.setTime( node.dateAdded ||0 );
+						$icon.attr('src', node.icon ||'item.png');
+						$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
+						$url.text( node.url ).width( $hUrl.width() +4 );
+						$stat.text( txt ).prepend( $img.attr('src',ico).clone() ).width( $head3.width() +4 );
+						$date.text( myFmt(date,now) ).width( $hDate.width() +2 );
+						var $item = $e.clone(true).attr('id','item'+node.id);
+						if( index++ %2 ) $item.addClass('bgcolor');
+						items.appendChild( $item[0] );
+					};
+				}();
+				var now = (new Date()).getTime();
+				// ajax発行
+				var ajaxer = function( node ){
+					var index = ajaxs.length;
+					ajaxs[index] = {
+						done :false
+						,xhr :$.ajax({
+							url:':alive?'+node.url
 							,error:function(xhr){
-								$url.next().replaceWith(
-									$span.clone().text( xhr.status+' '+xhr.statusText )
-									.prepend( $img.clone().attr('src','delete.png') )
-								);
+								$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText ,now );
 							}
 							,success:function(data){
-								var ico = 'question.png';
+								var ico = 'question.png';				// 不明
 								switch( data.ico ){
-								case 'O': ico = 'ok.png'; break;
-								case 'E': ico = 'delete.png'; break;
-								case 'D': ico = 'skull.png'; break;
-								case '!': ico = 'warn.png'; break;
+								case 'O': return;						// 正常
+								case 'E': ico = 'delete.png'; break;	// エラー
+								case 'D': ico = 'skull.png'; break;		// 死亡
+								case '!': ico = 'warn.png'; break;		// 注意
 								}
-								$url.next().replaceWith(
-									$span.clone().text( data.msg +(data.url.length? ', '+data.url :'') )
-									.prepend( $img.clone().attr('src',ico) )
-								);
+								$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') ,now );
 							}
-						});
-					})( $item.children('.url') );
+							,complete:function(){ ajaxs[index].done = true; }
+						})
+					};
+				};
+				// 下層フォルダ処理
+				var childer = function( child ){
+					for( var i=child.length-1; i>=0; i-- ){
+						if( child[i].child ) childer( child[i].child );
+						else ajaxer( child[i] );
+					}
+				};
+				// 選択アイテム
+				for( var i=0, n=items.children.length; i<n; i++ ){
+					var item = items.children[i];
+					if( $(item).hasClass('select') ){
+						var node = tree.node( item.id.slice(4) );
+						if( node ){
+							if( node.child ) childer( node.child );
+							else ajaxer( node );
+						}
+					}
 				}
-			});
+				items.innerHTML = '';
+				// 完了待ちループ
+				(function waiter(){
+					var waiting=0;
+					for( var i=ajaxs.length-1; i>=0; i-- ) if( !ajaxs[i].done ) waiting++;
+					if( waiting ){ setTimeout(waiter,500); return; }
+					// 完了
+					var allgreen = ajaxs.length +'個のURLはすべてリンク正常でした';
+					finalize();
+					if( items.children.length<=0 ) $('#itembox').children('.spacer').text(allgreen);
+				})();
+			}
+			else{
+				// TODO:指定フォルダを調査
+				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
+				findItems = true;
+				var items = doc.getElementById('items');
+				items.innerHTML = '';
+			}
 		}
 		else{
 			// フォルダ表示
 			findItems = false;
-			$head.find('.place').removeClass('place').addClass('iconurl').text('アイコン');
+			$head3.removeClass('place').removeClass('status').addClass('iconurl').text('アイコン');
 			var $item = function(){
 				var urlWidth = $head.find('.url').width() +4;
-				var iurlWidth = $head.find('.iconurl').width() +4;
+				var iurlWidth = $head3.width() +4;
 				var $e = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
 				var $icon = $('<img class=icon>');
 				var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
@@ -744,7 +852,7 @@ var itemTable = function(){
 			items.innerHTML = '';
 			selectItemClear();
 			var now = (new Date()).getTime();
-			var child = node.child;
+			var child = node0.child;
 			var length = child.length;
 			var index = 0;
 			(function lister(){
@@ -959,14 +1067,15 @@ $('#keyword').keypress(function(ev){
 	}
 });
 // すべて選択
+// TODO:アイテム欄が表示中だとぜんぶ選択されない
 $('#selectall').click(function(){
 	$('#editbox').trigger('decide');
 	// 選択フォルダ非アクティブ
 	$(selectFolder).addClass('inactive');
 	// アイテム全選択
-	$('#items').children().each(function(){
-		$(select=this).removeClass('inactive').addClass('select').focus();
-	});
+	for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+		$(select=items[i]).removeClass('inactive').addClass('select').focus();
+	}
 });
 // 削除
 // TODO:削除後に選択フォルダ選択アイテムが初期化されてしまう。近いエントリを選択すべきか。
@@ -976,14 +1085,15 @@ $('#delete').click(function(){
 		if( findItems ){
 			// 検索結果
 			var hasFolder=false, trashIDs=[], otherIDs=[];
-			$('#items').children().each(function(){
-				if( $(this).hasClass('select') ){
-					if( $(this).hasClass('folder') ) hasFolder = true;
-					var nid = this.id.slice(4);
+			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+				var item = items[i];
+				if( $(item).hasClass('select') ){
+					if( $(item).hasClass('folder') ) hasFolder = true;
+					var nid = item.id.slice(4);
 					if( tree.trashHas(nid) ) trashIDs.push(nid);
 					else otherIDs.push(nid);
 				}
-			});
+			}
 			var redraw = function(){
 				tree.moveChild( otherIDs, tree.trash() );
 				if( hasFolder ) folderTree({});
@@ -1001,13 +1111,14 @@ $('#delete').click(function(){
 		}
 		else{
 			var hasFolder=false, titles='', ids=[];
-			$('#items').children().each(function(){
-				if( $(this).hasClass('select') ){
-					if( $(this).hasClass('folder') ) hasFolder = true;
-					titles += '・' +$('.title',this).text() +'#BR#';
-					ids.push(this.id.slice(4));
+			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+				var item = items[i];
+				if( $(item).hasClass('select') ){
+					if( $(item).hasClass('folder') ) hasFolder = true;
+					titles += '・' +$('.title',item).text() +'#BR#';
+					ids.push(item.id.slice(4));
 				}
-			});
+			}
 			if( ids.length<=0 ) return;
 			var redraw = function(){
 				if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
@@ -1149,9 +1260,9 @@ $('#itembox').on({
 			$(selectFolder).addClass('inactive');
 			if( ev.ctrlKey ){
 				// 選択アイテムをアクティブに
-				$items.children().each(function(){
-					$(this).removeClass('inactive');
-				});
+				for( var items=$items[0].children ,i=items.length-1; i>=0; i-- ){
+					$(items[i]).removeClass('inactive');
+				}
 			}else{
 				// 選択なし
 				selectItemClear();
@@ -1321,12 +1432,13 @@ function treeSave( arg ){
 function folderClick(ev){
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
-	if( $(this).hasClass('select') ){
+	if( !findItems && $(this).hasClass('select') ){
 		var $this = $(select=this);
 		// 選択アイテムを非アクティブに
-		$('#items').children().each(function(){
-			if( $(this).hasClass('select') ) $(this).addClass('inactive');
-		});
+		for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+			var $item = $(items[i]);
+			if( $item.hasClass('select') ) $item.addClass('inactive');
+		}
 		if( $this.hasClass('inactive') ){
 			// 非アクティブはアクティブに
 			$this.removeClass('inactive').focus();
@@ -1351,7 +1463,7 @@ function folderClick(ev){
 		// ノード取得:自身ID=folderXXならノードID=XX
 		var node = tree.node( this.id.slice(6) );
 		if( node ){
-			// クリックをフォルダ選択状態に
+			// クリックフォルダ選択状態に
 			$(selectFolder).removeClass('select inactive');
 			$(select=selectFolder=this).addClass('select').focus();
 			// アイテム欄作成
@@ -1363,7 +1475,7 @@ function folderDblClick(ev){
 	// ＋－ボタンダブルクリック無視
 	if( ev.target.className=='sub' ) return;
 	// サブツリー展開
-	for( var e=this.childNodes, i=0, n=e.length; i<n; i++ ){
+	for( var e=this.children, i=0, n=e.length; i<n; i++ ){
 		if( e[i].className=='sub' ) return subTreeIcon.call( e[i] );
 	}
 }
@@ -1389,9 +1501,9 @@ function itemMouseDown( ev, shiftKey ){
 	// 選択フォルダ非アクティブ
 	$(selectFolder).addClass('inactive');
 	// 選択アイテムをアクティブに
-	$('#items').children().each(function(){
-		$(this).removeClass('inactive');
-	});
+	for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+		$(items[i]).removeClass('inactive');
+	}
 	// アイテムはマウスダウンで選択状態にする(ちなみにフォルダツリーはクリック)
 	// "単選択"とは、通常クリックおよびCtrl+クリックのこと。
 	if( ev.ctrlKey && ev.shiftKey ){
@@ -1412,11 +1524,12 @@ function itemMouseDown( ev, shiftKey ){
 				id.end = this.id;
 			}
 			var isTarget = false;
-			$('#items').children().each(function(){
-				if( this.id==id.begin ) isTarget = true;
-				isTarget? $(this).addClass('select') :$(this).removeClass('select');
-				if( this.id==id.end ) isTarget = false;
-			});
+			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+				var item=items[i];
+				if( item.id==id.begin ) isTarget = true;
+				isTarget? $(item).addClass('select') :$(item).removeClass('select');
+				if( item.id==id.end ) isTarget = false;
+			}
 			// ドラッグ開始
 			itemDragStart( this, ev.pageX, ev.pageY );
 		}else{
@@ -1442,13 +1555,10 @@ function itemMouseDown( ev, shiftKey ){
 		if( $(this).hasClass('select') ){
 			$(select=selectItemLast=this).focus();
 			// 選択済みアイテムの数
-			var selectCount = function(children){
-				var count=0;
-				for( var i=children.length-1; i>=0; i-- ){
-					if( $(children[i]).hasClass('select') ) count++;
-				}
-				return count;
-			}( $('#items').children() );
+			var selectCount=0;
+			for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+				if( $(items[i]).hasClass('select') ) selectCount++;
+			}
 			// 複数選択されていた場合、mouseup(click)で単選択に差し替え。
 			// (ここで選択解除するとドラッグできなくなるダメ)
 			// 単選択だった場合、mouseup(click)で名前変更。
@@ -1505,7 +1615,7 @@ function subTreeIcon(){
 	}
 	// サブツリー表示状態を(アイコンで判定して)復帰
 	function subView( $fo ){
-		var child0 = $fo[0].childNodes[0];
+		var child0 = $fo[0].children[0];
 		if( child0.className=='sub' ){
 			var show = /minus.png$/.test(child0.src);
 			var paddingLeft = parseInt($fo.css('padding-left')) +15;	// +15px <img class=sub> の幅
@@ -1615,16 +1725,17 @@ function itemDragStart( element, downX, downY ){
 			if( draggie.id.indexOf('item')==0 ){
 				// アイテム欄でドラッグ
 				dragItem = { ids:[], itemCount:0, folderCount:0 };
-				$('#items').children().each(function(){
-					if( $(this).hasClass('select') ){
-						$(this).addClass('draggie');
-						dragItem.ids.push( this.id.slice(4) );
-						if( $(this).hasClass('folder') )
+				for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+					var item=items[i] ,$item=$(item);
+					if( $item.hasClass('select') ){
+						$item.addClass('draggie');
+						dragItem.ids.push( item.id.slice(4) );
+						if( $item.hasClass('folder') )
 							dragItem.folderCount++;
 						else
 							dragItem.itemCount++;
 					}
-				});
+				}
 			}else{
 				// フォルダツリーでドラッグ
 				$(draggie).addClass('draggie');
@@ -1777,9 +1888,9 @@ function itemDragStart( element, downX, downY ){
 		if( draggie ){
 			if( draggie.id.indexOf('item')==0 ){
 				// アイテム欄でドラッグ
-				$('#items').children().each(function(){
-					$(this).removeClass('draggie');
-				});
+				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					$(items[i]).removeClass('draggie');
+				}
 			}else{
 				// フォルダツリーでドラッグ
 				$(draggie).removeClass('draggie');
@@ -1860,7 +1971,6 @@ function itemContextMenu(ev){
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).find('.icon').attr('src');
-	var isURL = false;
 	var width = 210;
 	// 開く
 	if( $(item).hasClass('folder') ){
@@ -1868,6 +1978,10 @@ function itemContextMenu(ev){
 		$box.append($('<a><img src='+iopen+'>フォルダを開く</a>').click(function(){
 			$menu.hide();
 			$(item).dblclick();
+		}))
+		.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
+			$menu.hide();
+			itemTable('deadlink','folder');
 		}))
 		.append('<hr>');
 	}
@@ -1886,12 +2000,11 @@ function itemContextMenu(ev){
 				}));
 			}
 			else{
-				isURL = true;
 				$box.append($('<a><img src='+iopen+'>URLを開く</a>').click(function(){
 					$menu.hide();
 					win.open( url );
-				}));
-				$box.append($('<a><img src=question.png>タイトル/アイコンを取得</a>').click(function(){
+				}))
+				.append($('<a><img src=question.png>タイトル/アイコンを取得</a>').click(function(){
 					$menu.hide();
 					var $title = $('<input id=antitle>');
 					var $icon = $('<img src=wait.gif class=icon>');
@@ -1977,6 +2090,10 @@ function itemContextMenu(ev){
 							analyze(item);
 						},1);
 					}
+				}))
+				.append($('<a><img src=skull.png>リンク切れ調査(アイテム)</a>').click(function(){
+					$menu.hide();
+					itemTable('deadlink','item');
 				}));
 			}
 			$box.append('<hr>');
@@ -1995,12 +2112,6 @@ function itemContextMenu(ev){
 			clipboardTo( pnode, index );
 		}))
 		.append('<hr>');
-	}
-	if( isURL ){
-		$box.append($('<a><img src=skull.png>リンク切れ調査</a>').click(function(){
-			$menu.hide();
-			itemTable('deadlink');
-		}));
 	}
 	// 削除
 	var idelete = tree.trashHas( nid )? 'delete.png' :'trash.png';
@@ -2036,12 +2147,18 @@ function folderContextMenu(ev){
 			$menu.hide();
 			onContextHide();
 			// クリックフォルダ先頭に登録
-			clipboardTo( tree.node( nid ), 0 );
-		}))
-		.append('<hr>');
+			clipboardTo( tree.node( nid ),0 );
+		}));
 	}
+	if( width<210 ) width=210;
+	$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
+		$menu.hide();
+		onContextHide();
+		itemTable('deadlink',tree.node( nid ));
+	}));
 	if( nid==tree.trash().id ){
 		if( width<170 ) width=170;
+		$box.append('<hr>');
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide();
 			onContextHide();
@@ -2060,6 +2177,7 @@ function folderContextMenu(ev){
 		}));
 	}
 	else if( tree.movable(nid) ){
+		$box.append('<hr>');
 		if( tree.trashHas(nid) ){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide();
@@ -2148,9 +2266,9 @@ function itemKeyPress(ev){
 	}
 }
 function selectItemClear(){
-	$('#items').children().each(function(){
-		$(this).removeClass('select inactive');
-	});
+	for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+		$(items[i]).removeClass('select').removeClass('inactive');
+	}
 	selectItemLast = null;
 }
 // TODO:Firefoxのブックマーク管理画面みたいに右下に編集画面があるタイプのが使いやすいかな？
