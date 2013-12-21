@@ -1168,7 +1168,7 @@ typedef struct {
 	UINT		ContentLength;		// Content-Length値
 	UINT		bytes;				// 受信バッファ有効バイト
 	size_t		bufsize;			// 受信バッファサイズ
-#define HTTP_KEEPALIVE
+//#define HTTP_KEEPALIVE
 #ifdef HTTP_KEEPALIVE
 	UCHAR		KeepAlive;			// Connection:Keep-Aliveかどうか(1/0)
 #endif
@@ -5548,7 +5548,26 @@ void SocketAccept( SOCKET sock )
 		}
 		else LogW(L"[%u]同時接続数オーバー切断:%s",sock_new,ip);
 
-		if( !success ){
+		if( success ){
+#ifdef HTTP_KEEPALIVE
+			// TODO:ブラウザでリロードを繰り返すとしばしば表示まで待たされる事があり、JCBookmarkのログ
+			// 出力タイミングと見比べると、どうもKeepAlive切断ログと同時にブラウザ側も表示されるような。
+			// ひょっとしてJCBookmarkは送信したつもりでもデータがブラウザに届いておらず、KeepAlive切断
+			// のタイミングでブラウザにデータが届いているのか？バッファリングされている？
+			// http://support.microsoft.com/kb/214397/ja
+			// TCP_NODELAYというsetsockoptオプションでNagleバッファリングを無効にできるらしい。
+			// またSO_SNDBUFを0に設定してWinsockバッファリングを無効にすることも可能と書いてある。
+			// が、どっちもやってみたが特に効果はなく、やはりしばしばブラウザが待たされる現象は発生する。
+			// うーむわからない回避できない…とりあえずKeepAlive機能を殺した。うむ問題解消した。
+			int on=1 ,zero=0;
+			LogW(L"setsockopt(TCP_NODELAY,SO_SNDBUF=0)");
+			if( setsockopt( sock_new ,IPPROTO_TCP ,TCP_NODELAY ,(char*)&on ,sizeof(on) )==SOCKET_ERROR )
+				LogW(L"setsockopt(TCP_NODELAY)エラー%u",WSAGetLastError());
+			if( setsockopt( sock_new ,SOL_SOCKET ,SO_SNDBUF ,(char*)&zero ,sizeof(zero) )==SOCKET_ERROR )
+				LogW(L"setsockopt(SO_SNDBUF)エラー%u",WSAGetLastError());
+#endif
+		}
+		else{
 			if( sslp ) SSL_free( sslp );
 			shutdown( sock_new, SD_BOTH );
 			closesocket( sock_new );
