@@ -529,9 +529,11 @@ var itemTable = function(){
 	var $head = $('#itemhead');
 	var $finding = $('#finding').offset($('#keyword').offset()).progressbar();
 	var ajaxs = [];		// ajax配列
+	var ajaxer = null;	// ajax発行中断関数
 	return function( arg0 ,arg1 ){
 		function finalize(){
 			// ajax中止
+			if( ajaxer ) ajaxer('abort') ,ajaxer=null;
 			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
 			ajaxs.length = 0;
 			// タイマー中止
@@ -711,7 +713,6 @@ var itemTable = function(){
 				// フォルダ内を再帰的に調査
 				findItems = true;
 				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
-				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				var items = doc.getElementById('items');
 				var $total = $('<span class=count>0</span>');
 				var $ok = $('<span class=count>0</span>');
@@ -721,7 +722,7 @@ var itemTable = function(){
 				var $unknown = $('<span class=count>0</span>');
 				var $pgbar = $('<div class=pgbar></div>').progressbar();
 				var $stop =	$('<button><img class=icon src=stop.png><span>中止</span></button>')
-							.button().click(function(){ ajaxer('abort'); finalize(); $stop.remove(); })
+							.button().click(function(){ finalize(); $stop.remove(); })
 				var $statis = $('<div class=statis><span>リンク切れ調査：&nbsp;</span></div>')
 							.append('<img class=icon src=item.png><span>総数</span>').append($total)
 							.append('<img class=icon src=ok.png><span>正常</span>').append($ok)
@@ -760,10 +761,10 @@ var itemTable = function(){
 						items.appendChild( $item[0] );
 					};
 				}();
-				// 統計
+				// 進捗表示情報
 				var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
-				// ajax発行
-				var ajaxer = function(){
+				// ajax発行中断関数
+				ajaxer = function(){
 					var abort = false;
 					return function( node ){
 						if( node==='abort' ){ abort=true; return; }
@@ -795,11 +796,17 @@ var itemTable = function(){
 					};
 				}();
 				// 下層フォルダ処理 
+				var pushed=0 ,popped=0; // 完了待ちループで判定を間違えないためのカウント
 				var childer = function( child ){
-					for( var i=child.length-1; i>=0; i-- ){
-						if( child[i].child ) childer( child[i].child );
-						else ajaxer( child[i] );
-					}
+					// 大量フォルダ実行すると画面切り替わるまで固まるのでsetTimeout
+					setTimeout(function(){
+						for( var i=child.length-1; i>=0; i-- ){
+							if( child[i].child ) childer( child[i].child );
+							else ajaxer( child[i] );
+						}
+						popped++;
+					},0);
+					pushed++;
 				};
 				if( arg1==='folder' ){
 					// アイテム欄の選択ブックマークとフォルダ内を調査
@@ -818,19 +825,20 @@ var itemTable = function(){
 					// 指定フォルダ1つ調査
 					childer( arg1.child );
 				}
-				$total.text( ajaxs.length );
 				items.innerHTML = '';
 				$info.appendTo( items );
+				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				// 完了待ち進捗表示ループ
-				timer = setTimeout(function waiter(){
+				(function waiter(){
 					var waiting=0;
 					for( var i=ajaxs.length-1; i>=0; i-- ) if( !ajaxs[i].done ) waiting++;
+					$total.text( ajaxs.length );
 					$ok.text( count.ok );
 					$err.text( count.err );
 					$dead.text( count.dead );
 					$warn.text( count.warn );
 					$unknown.text( count.unknown );
-					if( waiting ){
+					if( waiting || pushed > popped ){
 						$pgbar.progressbar('value',(ajaxs.length-waiting)*100/ajaxs.length);
 						timer = setTimeout(waiter,200);
 						return;
@@ -844,7 +852,7 @@ var itemTable = function(){
 					$pgbar.remove();
 					$stop.remove();
 					finalize();
-				},200);
+				})();
 			}
 		}
 		else{
