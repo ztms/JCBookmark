@@ -529,11 +529,13 @@ var itemTable = function(){
 	var $head = $('#itemhead');
 	var $finding = $('#finding').offset($('#keyword').offset()).progressbar();
 	var ajaxs = [];		// ajax配列
-	return function( node0 ,node1 ){
+	return function( arg0 ,arg1 ){
 		function finalize(){
+			// ajax中止
 			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
 			ajaxs.length = 0;
-			clearTimeout( timer ); // 実行中キャンセル
+			// タイマー中止
+			clearTimeout( timer );
 			// 検索終了
 			$('#itembox').children('.spacer').empty();
 			$finding.progressbar('value',0);
@@ -542,7 +544,7 @@ var itemTable = function(){
 		}
 		finalize();
 		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
-		if( node0==='find' ){
+		if( arg0==='find' ){
 			// 検索
 			var words = $('#keyword').val().split(/[ 　]+/);
 			for( var i=words.length-1; i>=0; i-- ){
@@ -664,13 +666,11 @@ var itemTable = function(){
 				})();
 			};
 		}
-		else if( node0==='deadlink' ){
+		else if( arg0==='deadlink' ){
 			// リンク切れ調査
-			if( node1==='item' ){
-				// アイテム欄の選択ブックマークを調査(フォルダは無視)
+			if( arg1==='item' ){
+				// アイテム欄の選択ブックマークのみ調査(フォルダは無視)
 				// TODO:項目ヘッダの「アイコン」または「場所」を「アイコン/調査結果」とかに変更する？
-				// TODO:ajax中断機能を作ってないので、大量アイテム実行してから表示フォルダ切り替えるとajaxが
-				// 残ったままになるはずだが、表示上は無視されるから特に問題ないか…？ちゃんと中断処理すべき？
 				var $span = $('<span class=status></span>').width( $head3.width() +4 );
 				var $img = $('<img class=icon style="margin-left:0">');
 				var items = doc.getElementById('items').children;
@@ -679,41 +679,58 @@ var itemTable = function(){
 					if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
 						(function( $url ){
 							$url.next().text('調査中...');
-							$.ajax({
-								url:':alive?'+$url.text()
-								,error:function(xhr){
-									$url.next().replaceWith(
-										$span.clone().text( xhr.status+' '+xhr.statusText )
-										.prepend( $img.clone().attr('src','delete.png') )
-									);
-								}
-								,success:function(data){
-									var ico = 'question.png';				// 不明
-									switch( data.ico ){
-									case 'O': ico = 'ok.png'; break;		// 正常
-									case 'E': ico = 'delete.png'; break;	// エラー
-									case 'D': ico = 'skull.png'; break;		// 死亡
-									case '!': ico = 'warn.png'; break;		// 注意
+							ajaxs.push({
+								xhr:$.ajax({
+									url:':alive?'+$url.text()
+									,error:function(xhr){
+										$url.next().replaceWith(
+											$span.clone().text( xhr.status+' '+xhr.statusText )
+											.prepend( $img.clone().attr('src','delete.png') )
+										);
 									}
-									$url.next().replaceWith(
-										$span.clone().text( data.msg +(data.url.length? ', '+data.url :'') )
-										.prepend( $img.clone().attr('src',ico) )
-									);
-								}
+									,success:function(data){
+										var ico = 'question.png';				// 不明
+										switch( data.ico ){
+										case 'O': ico = 'ok.png'; break;		// 正常
+										case 'E': ico = 'delete.png'; break;	// エラー
+										case 'D': ico = 'skull.png'; break;		// 死亡
+										case '!': ico = 'warn.png'; break;		// 注意
+										}
+										$url.next().replaceWith(
+											$span.clone().text( data.msg +(data.url.length? ', '+data.url :'') )
+											.prepend( $img.clone().attr('src',ico) )
+										);
+									}
+								})
 							});
 						})( $item.children('.url') );
 					}
 				}
 			}
-			else if( node1==='folder' ){
-				// アイテム欄の選択ブックマークとフォルダ内を調査
-				// TODO:調査中に同時に属性項目の幅をドラッグすると追従できず表示崩れるが対策難しいか・・
-				// TODO:調査中の進捗表示をどうするか
-				// TODO:すべて問題なかった時アイテム欄に何もなく本当に調べたのか不安になる
+			else{
+				// フォルダ内を再帰的に調査
 				findItems = true;
 				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
 				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				var items = doc.getElementById('items');
+				var $total = $('<span class=count>0</span>');
+				var $ok = $('<span class=count>0</span>');
+				var $err = $('<span class=count>0</span>');
+				var $dead = $('<span class=count>0</span>');
+				var $warn = $('<span class=count>0</span>');
+				var $unknown = $('<span class=count>0</span>');
+				var $pgbar = $('<div class=pgbar></div>').progressbar();
+				var $stop =	$('<button><img class=icon src=stop.png><span>中止</span></button>')
+							.button().click(function(){ ajaxer('abort'); finalize(); $stop.remove(); })
+				var $statis = $('<div class=statis><span>リンク切れ調査：&nbsp;</span></div>')
+							.append('<img class=icon src=item.png><span>総数</span>').append($total)
+							.append('<img class=icon src=ok.png><span>正常</span>').append($ok)
+							.append('<img class=icon src=delete.png><span>エラー</span>').append($err)
+							.append('<img class=icon src=skull.png><span>リンク切れ</span>').append($dead)
+							.append('<img class=icon src=warn.png><span>注意</span>').append($warn)
+							.append('<img class=icon src=question.png><span>不明</span>').append($unknown)
+							.append($stop).append('<br claer=all>');
+				var $info = $('<div id=deadinfo></div>').append( $statis ).append( $pgbar );
 				// アイテム生成関数
 				var $itemAppend = function(){
 					var $e = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
@@ -728,9 +745,10 @@ var itemTable = function(){
 					var $hUrl = $head.find('.url');
 					var $hDate = $head.find('.date');
 					var date = new Date();
+					var now = (new Date()).getTime();
 					var index = 0;
 					$e.append($icon).append($title).append($url).append($stat).append($date).append($br);
-					return function( node ,ico ,txt ,now ){
+					return function( node ,ico ,txt ){
 						date.setTime( node.dateAdded ||0 );
 						$icon.attr('src', node.icon ||'item.png');
 						$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
@@ -742,67 +760,91 @@ var itemTable = function(){
 						items.appendChild( $item[0] );
 					};
 				}();
-				var now = (new Date()).getTime();
+				// 統計
+				var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 				// ajax発行
-				var ajaxer = function( node ){
-					var index = ajaxs.length;
-					ajaxs[index] = {
-						done :false
-						,xhr :$.ajax({
-							url:':alive?'+node.url
-							,error:function(xhr){
-								$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText ,now );
-							}
-							,success:function(data){
-								var ico = 'question.png';				// 不明
-								switch( data.ico ){
-								case 'O': return;						// 正常
-								case 'E': ico = 'delete.png'; break;	// エラー
-								case 'D': ico = 'skull.png'; break;		// 死亡
-								case '!': ico = 'warn.png'; break;		// 注意
+				var ajaxer = function(){
+					var abort = false;
+					return function( node ){
+						if( node==='abort' ){ abort=true; return; }
+						var index = ajaxs.length;
+						ajaxs.push({
+							done :false
+							,xhr :$.ajax({
+								url:':alive?'+node.url
+								,error:function(xhr){
+									if( abort ) return;
+									count.err++;
+									$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
 								}
-								$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') ,now );
-							}
-							,complete:function(){ ajaxs[index].done = true; }
-						})
+								,success:function(data){
+									if( abort ) return;
+									var ico = 'question.png';							// 不明
+									switch( data.ico ){
+									case 'O': count.ok++; return;						// 正常
+									case 'E': count.err++; ico = 'delete.png'; break;	// エラー
+									case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
+									case '!': count.warn++; ico = 'warn.png'; break;	// 注意
+									default: count.unknown++;
+									}
+									$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
+								}
+								,complete:function(){ if( !abort ) ajaxs[index].done = true; }
+							})
+						});
 					};
-				};
-				// 下層フォルダ処理
+				}();
+				// 下層フォルダ処理 
 				var childer = function( child ){
 					for( var i=child.length-1; i>=0; i-- ){
 						if( child[i].child ) childer( child[i].child );
 						else ajaxer( child[i] );
 					}
 				};
-				// 選択アイテム
-				for( var i=0, n=items.children.length; i<n; i++ ){
-					var item = items.children[i];
-					if( $(item).hasClass('select') ){
-						var node = tree.node( item.id.slice(4) );
-						if( node ){
-							if( node.child ) childer( node.child );
-							else ajaxer( node );
+				if( arg1==='folder' ){
+					// アイテム欄の選択ブックマークとフォルダ内を調査
+					for( var i=0, n=items.children.length; i<n; i++ ){
+						var item = items.children[i];
+						if( $(item).hasClass('select') ){
+							var node = tree.node( item.id.slice(4) );
+							if( node ){
+								if( node.child ) childer( node.child );
+								else ajaxer( node );
+							}
 						}
 					}
 				}
+				else{
+					// 指定フォルダ1つ調査
+					childer( arg1.child );
+				}
+				$total.text( ajaxs.length );
 				items.innerHTML = '';
-				// 完了待ちループ
-				(function waiter(){
+				$info.appendTo( items );
+				// 完了待ち進捗表示ループ
+				timer = setTimeout(function waiter(){
 					var waiting=0;
 					for( var i=ajaxs.length-1; i>=0; i-- ) if( !ajaxs[i].done ) waiting++;
-					if( waiting ){ setTimeout(waiter,500); return; }
+					$ok.text( count.ok );
+					$err.text( count.err );
+					$dead.text( count.dead );
+					$warn.text( count.warn );
+					$unknown.text( count.unknown );
+					if( waiting ){
+						$pgbar.progressbar('value',(ajaxs.length-waiting)*100/ajaxs.length);
+						timer = setTimeout(waiter,200);
+						return;
+					}
 					// 完了
-					var allgreen = ajaxs.length +'個のURLはすべてリンク正常でした';
+					if( count.ok==0 ) $ok.hide().prev().hide().prev().hide();
+					if( count.err==0 ) $err.hide().prev().hide().prev().hide();
+					if( count.dead==0 ) $dead.hide().prev().hide().prev().hide();
+					if( count.warn==0 ) $warn.hide().prev().hide().prev().hide();
+					if( count.unknown==0 ) $unknown.hide().prev().hide().prev().hide();
+					$pgbar.remove();
+					$stop.remove();
 					finalize();
-					if( items.children.length<=0 ) $('#itembox').children('.spacer').text(allgreen);
-				})();
-			}
-			else{
-				// TODO:指定フォルダを調査
-				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
-				findItems = true;
-				var items = doc.getElementById('items');
-				items.innerHTML = '';
+				},200);
 			}
 		}
 		else{
@@ -852,7 +894,7 @@ var itemTable = function(){
 			items.innerHTML = '';
 			selectItemClear();
 			var now = (new Date()).getTime();
-			var child = node0.child;
+			var child = arg0.child;
 			var length = child.length;
 			var index = 0;
 			(function lister(){
@@ -1159,6 +1201,13 @@ $('#delete').click(function(){
 			}
 		}
 	}
+});
+// リンク切れ調査(全体)
+$('#deadlink').click(function(){
+	Confirm({
+		msg:'全ブックマークURLのリンク切れ調査を行います。'
+		,ok:function(){ itemTable('deadlink',tree.root); }
+	});
 });
 // ツールバーボタンキー入力
 $('.barbtn')

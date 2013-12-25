@@ -355,6 +355,37 @@ body {
 	text-align:center;
 	padding-top:40px;
 }
+/* リンク切れ調査 */
+#deadinfo {
+	background:#ffa;
+}
+#deadinfo .statis {
+	padding-left:5px;
+	min-width:650px;
+	height:20px;
+}
+#deadinfo .count {
+	margin:0 13px 0 3px;
+}
+#deadinfo .pgbar {
+	height:7px;
+	border:0;
+	border-radius:0;
+}
+#deadinfo button { /* 中止 */
+	height:20px;
+	margin-left:9px;
+	padding:0;
+}
+#deadinfo .ui-button-text {
+	padding:0 8px 0 8px;
+}
+#deadinfo button .icon {
+	margin:0 2px 0 0;
+}
+#deadinfo button span {
+	line-height:18px;
+}
 /* jQuery UI Dialog */
 .ui-dialog {
 	font-size:14px;
