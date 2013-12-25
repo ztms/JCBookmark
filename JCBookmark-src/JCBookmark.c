@@ -2291,7 +2291,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,AliveRe
 							}
 							else{
 								LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
-								if( rp ) rp->ico='!', strcpy(rp->msg,"SSL接続できません");
+								if( rp ) rp->ico='?', strcpy(rp->msg,"SSL接続できません");
 								ssl_ok = FALSE;
 							}
 						}
@@ -2484,7 +2484,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,AliveRe
 			}
 			else{
 				LogA("ホスト%sが見つかりません",host);
-				if( rp ) rp->ico='!', strcpy(rp->msg,"ホストが見つかりません");
+				if( rp ) rp->ico='?', strcpy(rp->msg,"ホストが見つかりません");
 			}
 			if( addr ) FreeAddrInfoA( addr );
 			free( host );
@@ -3272,8 +3272,8 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,Alive
 					}
 				}
 				// 転送先URL(newurl)が最初のURLと同じ場合は転送されなかったのと同等とみなす。
-				// http://www.ec-current.com/ が302でクッキー発行して元のURLに戻ってくるので、それを
-				// 転送とみなさないため。
+				// http://www.ec-current.com/ が302でクッキー発行して元のURLに戻ってくるので、
+				// それを転送とみなさないため。
 				if( rp ){
 					if( newurl && urlcmp(newurl,url0) )
 						rp->ico='!';
@@ -3337,6 +3337,8 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,Alive
 				if( rp ) rp->ico='D'; // Dead
 				break;
 			case '5': // サーバーエラー
+				if( rp ) rp->ico='E'; // Error
+				break;
 			case '1': // 情報(HTTP/1.1以降)
 			default:
 				if( rp ) rp->ico='!';
