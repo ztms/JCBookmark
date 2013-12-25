@@ -1865,16 +1865,6 @@ function setEvents(){
 		});
 		if( IE && IE<9 ) $doc.on('mouseleave.findbox',function(){ $doc.mouseup(); });
 	});
-	$('#findhide').click(function(){
-		// 閉じる
-		$('#findstart').off('click');
-		$('#new100').off('click');
-		$('#findstop').click().off('click');
-		$('#findtab').hide();
-		$('#findbox').hide();
-		$wall.css('padding-bottom',50); // 50px初期値
-		$win.off('resize.findbox');
-	});
 	$('#findtab').find('button').button().end()
 	.find('input').keypress(function(ev){
 		// Enterで検索実行
@@ -1885,8 +1875,47 @@ function setEvents(){
 	$('#findico').click(function(){
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
-		var $found = $('#foundbox');
 		if( $tab.css('display')=='block' ){ $tab.find('input').focus(); return; }
+		var $found = $('#foundbox');
+		var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+		var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
+		function foundBoxInit(){
+			// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
+			var fontSize = option.font.size();
+			var iconSize = option.font.size() + 3 +option.icon.size();
+			var width = $found.width() -17;
+			var count = width /460 |0;
+			width = width /(count?count:1) -4 |0;
+			$url.width(width).find('img').width(iconSize).height(iconSize);
+			$pnl.width(width).find('img').width(iconSize).height(iconSize);
+			$found.empty().css('font-size',fontSize);
+		}
+		function foundUrl( node ){
+			$found.append(
+				$url.clone()
+				.attr({ id:'fd'+node.id, href:node.url, title:node.title })
+				.find('img').attr('src',node.icon ||'item.png').end()
+				.find('span').text(node.title).end()
+			);
+		}
+		function foundPanel( node ){
+			$found.append(
+				$pnl.clone().find('span').text(node.title).end()
+			);
+		}
+		$('#findhide').off('click').click(function(){
+			// 閉じる
+			$url.remove();
+			$pnl.remove();
+			$('#findstart').off('click');
+			$('#new100').off('click');
+			$('#old100').off('click');
+			$('#findstop').click().off('click');
+			$('#findtab').hide();
+			$('#findbox').hide();
+			$wall.css('padding-bottom',50); // 50px初期値
+			$win.off('resize.findbox');
+		});
 		$win.on('resize.findbox',function(){
 			// TODO:設定でパネル幅を変更してウィンドウ横スクロールバーが出たり消えたりするのに追従できない
 			var h = $win.height() - $box.outerHeight();
@@ -1932,25 +1961,13 @@ function setEvents(){
 				// 検索中表示・準備
 				// wait.gifは黒背景で見た目が汚いので使えない…
 				var $pgbar = $('#finding').progressbar('value',0);
-				var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
-				var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
-				// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
-				var fontSize = option.font.size();
-				var iconSize = fontSize + 3 +option.icon.size();
-				var width = $found.width() -17;
-				var count = width /460 |0;
-				width = width /(count?count:1) -4 |0;
-				$found.empty().css('font-size',fontSize);
-				$url.width(width).find('img').width(iconSize).height(iconSize);
-				$pnl.width(width).find('img').width(iconSize).height(iconSize);
+				foundBoxInit();
 				$(this).hide();
 				$('#findstop').off('click').click(function(){
 					clearTimeout( timer );
 					$(this).hide();
 					$('#findstart').show();
 					$pgbar.progressbar('value',0);
-					$url.remove();
-					$pnl.remove();
 				}).show();
 				// 検索実行
 				String.prototype.myFound = function(){
@@ -1966,24 +1983,13 @@ function setEvents(){
 					var limit = total +21; // 20ノード以上ずつ
 					while( index < panels.length && total<limit ){
 						// パネル名
-						if( panels[index].title.myNormal().myFound() ){
-							$found.append(
-								$pnl.clone().find('span').text(panels[index].title).end()
-							);
-						}
+						if( panels[index].title.myNormal().myFound() ) foundPanel( panels[index] );
 						total++;
 						// ブックマークタイトルとURL
 						var child = panels[index].child;
 						for( var i=0, n=child.length; i<n; i++ ){
 							if( child[i].child ) continue;
-							if( (child[i].title +child[i].url).myNormal().myFound() ){
-								$found.append(
-									$url.clone()
-									.attr({ id:'fd'+child[i].id, href:child[i].url, title:child[i].title })
-									.find('img').attr('src',child[i].icon ||'item.png').end()
-									.find('span').text(child[i].title).end()
-								);
-							}
+							if( (child[i].title +child[i].url).myNormal().myFound() ) foundUrl( child[i] );
 							total++;
 						}
 						index++;
@@ -1998,42 +2004,34 @@ function setEvents(){
 					}
 				})();
 			});
-			// 新100
-			$('#new100').off('click').click(function(){
+			// 新旧100
+			function sortUrlTop( max ,fromRecent ){
 				var urls = [];
 				for( var i=panels.length-1; i>=0; i-- ){
 					var child = panels[i].child;
 					for( var j=child.length-1; j>=0; j-- ){
 						var node = child[j];
-						if( !node.child && node.dateAdded-0 >0 ){
-							for( var k=urls.length-1; k>=0; k-- ){
-								if( urls[k].dateAdded-0 >= node.dateAdded-0 ) break;
+						if( node.child ) continue;
+						var date = node.dateAdded ||0;
+						for( var k=urls.length-1; k>=0; k-- ){
+							if( fromRecent ){
+								if( (urls[k].dateAdded||0) >=date ) break;
 							}
-							if( ++k < 100 ){
-								urls.splice( k ,0 ,node );
-								if( urls.length >= 100 ) urls.length = 100;
+							else{
+								if( (urls[k].dateAdded||0) <=date ) break;
 							}
+						}
+						if( ++k < max ){
+							urls.splice( k ,0 ,node );
+							if( urls.length >= max ) urls.length = max;
 						}
 					}
 				}
-				var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
-				var fontSize = option.font.size();
-				var iconSize = fontSize + 3 +option.icon.size();
-				var width = $found.width() -17;
-				var count = width /460 |0;
-				width = width /(count?count:1) -4 |0;
-				$url.width(width).find('img').width(iconSize).height(iconSize);
-				$found.empty().css('font-size',fontSize);
-				for( var i=0 ,n=urls.length; i<n; i++ ){
-					$found.append(
-						$url.clone()
-						.attr({ id:'fd'+urls[i].id, href:urls[i].url, title:urls[i].title })
-						.find('img').attr('src',urls[i].icon ||'item.png').end()
-						.find('span').text(urls[i].title).end()
-					);
-				}
-				$url.remove();
-			});
+				foundBoxInit();
+				for( var i=0 ,n=urls.length; i<n; i++ ) foundUrl( urls[i] );
+			}
+			$('#new100').off('click').click(function(){ sortUrlTop( 100 ,true ); });
+			$('#old100').off('click').click(function(){ sortUrlTop( 100 ); });
 		},0);
 	});
 	// パネル並べ替え
