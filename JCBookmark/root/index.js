@@ -1845,13 +1845,12 @@ function setEvents(){
 	}
 	// 検索
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利か？
-	$('#findbox')
-	.find('.progress').progressbar().mousedown(function(ev){
+	$('#finding').progressbar().mousedown(function(ev){
 		// プログレスバーをD&Dで検索領域高さ変更
 		var $bar = $(this).addClass('active');
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
-		var $found = $box.find('.found');
+		var $found = $('#foundbox');
 		var foundHeight = $found.height();
 		var downY = ev.clientY;
 		$doc.on('mousemove.findbox',function(ev){
@@ -1866,30 +1865,33 @@ function setEvents(){
 		});
 		if( IE && IE<9 ) $doc.on('mouseleave.findbox',function(){ $doc.mouseup(); });
 	});
-	$('#findtab')
-	.find('.close').click(function(){
+	$('#findhide').click(function(){
 		// 閉じる
-		$('#findtab').hide().find('.start').off('click').end().find('.stop').click('click').off();
+		$('#findstart').off('click');
+		$('#new100').off('click');
+		$('#findstop').click().off('click');
+		$('#findtab').hide();
 		$('#findbox').hide();
 		$wall.css('padding-bottom',50); // 50px初期値
 		$win.off('resize.findbox');
-	}).end()
-	.find('button').button().end()
+	});
+	$('#findtab').find('button').button().end()
 	.find('input').keypress(function(ev){
 		// Enterで検索実行
 		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 13: $('#findtab').find('.start').click(); return false;
+		case 13: $('#findstart').click(); return false;
 		}
 	});
 	$('#findico').click(function(){
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
+		var $found = $('#foundbox');
 		if( $tab.css('display')=='block' ){ $tab.find('input').focus(); return; }
 		$win.on('resize.findbox',function(){
 			// TODO:設定でパネル幅を変更してウィンドウ横スクロールバーが出たり消えたりするのに追従できない
 			var h = $win.height() - $box.outerHeight();
 			$box.css('top', h ).width( $win.width() -5 );	// -5px適当微調整
-			$tab.css('top', h -$tab.outerHeight() +1 );			// +1px下にずらして枠線を消す
+			$tab.css('top', h -$tab.outerHeight() +1 );		// +1px下にずらして枠線を消す
 		})
 		.trigger('resize.findbox');
 		$box.show();
@@ -1918,7 +1920,7 @@ function setEvents(){
 			nodeTotal += panels.length;
 			// キーワード検索
 			var timer = null;
-			$tab.find('.start').off('click').click(function(){
+			$('#findstart').off('click').click(function(){
 				clearTimeout( timer );
 				// 検索ワード
 				var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
@@ -1929,8 +1931,7 @@ function setEvents(){
 				if( words.length<=0 ) return;
 				// 検索中表示・準備
 				// wait.gifは黒背景で見た目が汚いので使えない…
-				var $found = $box.find('.found').empty();
-				var $pgbar = $box.find('.progress').progressbar('value',0);
+				var $pgbar = $('#finding').progressbar('value',0);
 				var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 				var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
 				// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
@@ -1939,14 +1940,14 @@ function setEvents(){
 				var width = $found.width() -17;
 				var count = width /460 |0;
 				width = width /(count?count:1) -4 |0;
-				$found.css('font-size',fontSize);
+				$found.empty().css('font-size',fontSize);
 				$url.width(width).find('img').width(iconSize).height(iconSize);
 				$pnl.width(width).find('img').width(iconSize).height(iconSize);
 				$(this).hide();
-				$tab.find('.stop').off('click').click(function(){
+				$('#findstop').off('click').click(function(){
 					clearTimeout( timer );
 					$(this).hide();
-					$tab.find('.start').show();
+					$('#findstart').show();
 					$pgbar.progressbar('value',0);
 					$url.remove();
 					$pnl.remove();
@@ -1992,10 +1993,46 @@ function setEvents(){
 					// 次
 					if( index < panels.length ) timer = setTimeout(callee,0);
 					else{
-						$tab.find('.stop').click();
+						$('#findstop').click();
 						if( $found[0].children.length<=0 ) $found.text('見つかりません');
 					}
 				})();
+			});
+			// 新100
+			$('#new100').off('click').click(function(){
+				var urls = [];
+				for( var i=panels.length-1; i>=0; i-- ){
+					var child = panels[i].child;
+					for( var j=child.length-1; j>=0; j-- ){
+						var node = child[j];
+						if( !node.child && node.dateAdded-0 >0 ){
+							for( var k=urls.length-1; k>=0; k-- ){
+								if( urls[k].dateAdded-0 >= node.dateAdded-0 ) break;
+							}
+							if( ++k < 100 ){
+								urls.splice( k ,0 ,node );
+								if( urls.length >= 100 ) urls.length = 100;
+							}
+						}
+					}
+				}
+				var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+				var fontSize = option.font.size();
+				var iconSize = fontSize + 3 +option.icon.size();
+				var width = $found.width() -17;
+				var count = width /460 |0;
+				width = width /(count?count:1) -4 |0;
+				$url.width(width).find('img').width(iconSize).height(iconSize);
+				$found.empty().css('font-size',fontSize);
+				for( var i=0 ,n=urls.length; i<n; i++ ){
+					$found.append(
+						$url.clone()
+						.attr({ id:'fd'+urls[i].id, href:urls[i].url, title:urls[i].title })
+						.find('img').attr('src',urls[i].icon ||'item.png').end()
+						.find('span').text(urls[i].title).end()
+					);
+				}
+				$url.remove();
 			});
 		},0);
 	});
@@ -2875,7 +2912,7 @@ function optionApply(){
 	$('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
 	$('.pen, .plusminus').width( fontSize +iconSize ).height( fontSize +iconSize );
 	$('#newurl').css('font-size',fontSize).height( fontSize +3 );
-	$('#findbox .found').css('font-size',fontSize);
+	$('#foundbox').css('font-size',fontSize);
 	// パネル元要素
 	$panelBase.width( panelWidth ).css({
 		'font-size':fontSize

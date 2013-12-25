@@ -10,9 +10,11 @@
 </head>
 <body style="visibility:hidden;">
 <div id=wall></div>
-<div id=findbox><div class=progress></div><div class=found></div></div>
+<div id=findbox><div id=finding></div><div id=foundbox></div></div>
 <div id=findtab>
-  <input placeholder="キーワード" title="キーワード"><button class=start>検 索 <img src=find.png></button><button class=stop>中 止 <img src=stop.png></button> <img class=close src=delete.png title="閉じる">
+  <input placeholder="キーワード" title="検索キーワード"><button id=findstart>検 索 <img src=find.png></button><button id=findstop>中 止 <img src=stop.png></button>
+  <button id=new100 title="最近登録したブックマーク100個">新100</button><button id=old100 title="古いブックマーク100個">旧100</button>
+  <img id=findhide src=delete.png title="閉じる">
 </div>
 <div id=progress><img src=progress.gif></div>
 <div id=modified>

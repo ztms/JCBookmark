@@ -93,11 +93,11 @@ body {
 #contextmenu {
 	box-shadow:3px 3px 4px #000;
 }
-#findbox .found {
+#foundbox {
 	color:#eee;
 	background:#111;
 	background:linear-gradient(#1c1c1c,#111111);
 }
-#findbox .found div {
+#foundbox div {
 	color:#eee;
 }

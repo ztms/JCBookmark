@@ -461,7 +461,7 @@
 	line-height:1;
 }
 #findtab {
-	width:380px;
+	width:490px;
 	border-bottom:1px solid #fff;
 	border-radius:7px 7px 0 0;
 	padding:7px 7px 0 11px;
@@ -472,10 +472,10 @@
 	border-radius:0; /* Firefoxメイリオ劣化対策 */
 }
 #findtab input {
-	width:250px;
+	width:230px;
 	height:27px;
 	line-height:25px;
-	border:1px solid #ccc;
+	border:1px solid #bbb;
 	border-radius:5px 0 0 5px;
 	padding:1px 0 0 7px;
 	vertical-align:top;
@@ -484,6 +484,9 @@
 	border-color:#e92;
 }
 #findtab button {
+	border-radius:5px;
+}
+#findstart, #findstop {
 	border-radius:0 5px 5px 0;
 }
 #findtab button img {
@@ -491,10 +494,10 @@
 	height:18px;
 	vertical-align:top;
 }
-#findtab .stop {
+#findstop {
 	display:none;
 }
-#findtab .close {
+#findhide {
 	float:right;
 	width:16px; height:16px;
 	padding:1px;
@@ -504,25 +507,25 @@
 	filter:alpha(opacity=30);
 	opacity:0.3;
 }
-#findtab .close:hover {
+#findhide:hover {
 	border-color:#ddd;
 	filter:alpha(opacity=100);
 	opacity:1;
 }
-#findbox .progress {
+#finding {
 	width:100%;
 	height:9px;
 	border:0;
 	border-radius:0;
 	cursor:n-resize;
 }
-#findbox .progress:hover {
+#finding:hover {
 	background:#e5e5e5;
 }
-#findbox .progress.active {
+#finding.active {
 	background:#fdc;
 }
-#findbox .found {
+#foundbox {
 	width:100%;
 	height:100px;
 	padding:2px 1px;
@@ -532,7 +535,7 @@
 #findbox .item {
 	float:left;
 }
-#findbox .found div { /* パネル */
+#foundbox div { /* パネル */
 	color:#707070;
 	padding:2px;
 	font-weight:bold;
