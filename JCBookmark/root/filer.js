@@ -741,6 +741,7 @@ var itemTable = function(){
 						.append($totalbox).append($okbox).append($errbox)
 						.append($deadbox).append($warnbox).append($unknownbox)
 						.append($pgbar)
+						.width($(items).width())
 				);
 				// アイテム生成関数
 				var $itemAppend = function(){
@@ -1429,6 +1430,8 @@ function resize(){
 		.find('.iconurl, .place, .status').width( iconWidth +4 ).end()		// itemborderのぶん+4px
 		.find('.summary').width( urlWidth +iconWidth +14 ).end()	// 見た目で合うように+14px
 		.find('.date').width( dateWidth -36);					// float対策適当-36px
+	$('#deadinfo')
+		.width( itemsWidth );
 }
 // 画面サイズ縦のみ変更
 function resizeV( padding ){

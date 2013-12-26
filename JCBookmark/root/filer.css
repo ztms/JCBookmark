@@ -382,10 +382,10 @@ body {
 	border-radius:0;
 	background:transparent;
 }
-#deadinfo button { /* 中止 */
+#deadinfo button { /* 中止ボタン */
 	float:right;
 	height:20px;
-	margin:1px 20px 0 0;
+	margin:1px 1px 0 0;
 	padding:0;
 }
 #deadinfo .ui-button-text {
