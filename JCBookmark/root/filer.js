@@ -384,7 +384,7 @@ var option = {
 	option.load(function(){
 		// 準備
 		var fontSize = (option.font.css()=='gothic.css')? 13 : 12;
-		$.css.add('#toolbar input, #folders span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
+		$.css.add('#toolbar input, #folders span, #itemhead span, #items span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
 		$('#fontcss').attr('href',option.font.css());
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
@@ -531,18 +531,21 @@ var itemTable = function(){
 	var ajaxs = [];		// ajax配列
 	var ajaxer = null;	// ajax発行中断関数
 	return function( arg0 ,arg1 ){
-		function finalize(){
+		function finalize( arg0 ){
 			// ajax中止
 			if( ajaxer ) ajaxer('abort') ,ajaxer=null;
 			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
 			ajaxs.length = 0;
 			// タイマー中止
-			clearTimeout( timer );
+			clearTimeout(timer), timer=null;
 			// 検索終了
 			$('#itembox').children('.spacer').empty();
 			$finding.progressbar('value',0);
 			$('#findstop').hide();
 			$('#find').show();
+			// リンク切れ調査
+			if( arg0==='deadlink' ) $('#deadinfo').find('button').remove();
+			else $('#deadinfo').remove();
 		}
 		finalize();
 		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
@@ -559,7 +562,7 @@ var itemTable = function(){
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
 			$finding.progressbar('value',0);
 			$('#find').hide();
-			$('#findstop').off().click(finalize).show();
+			$('#findstop').off().click(function(){ finalize(); }).show();
 			// フォルダ配列生成・ノード総数カウント
 			// ちょっともたつくのでsetTimeout実行して中止ボタンをすぐに表示する。
 			var folders = [{ node:tree.top(), place:'' }];	// フォルダ配列
@@ -713,6 +716,7 @@ var itemTable = function(){
 				// フォルダ内を再帰的に調査
 				findItems = true;
 				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
+				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				var items = doc.getElementById('items');
 				var $total = $('<span class=count>0</span>');
 				var $ok = $('<span class=count>0</span>');
@@ -720,18 +724,26 @@ var itemTable = function(){
 				var $dead = $('<span class=count>0</span>');
 				var $warn = $('<span class=count>0</span>');
 				var $unknown = $('<span class=count>0</span>');
+				var $totalbox = $('<span class=kind><img class=icon src=item.png>総数</span>').append($total);
+				var $okbox = $('<span class=kind><img class=icon src=ok.png>正常</span>').append($ok);
+				var $errbox = $('<span class=kind><img class=icon src=delete.png>エラー</span>').append($err);
+				var $deadbox = $('<span class=kind><img class=icon src=skull.png>リンク切れ</span>').append($dead);
+				var $warnbox = $('<span class=kind><img class=icon src=warn.png>注意</span>').append($warn);
+				var $unknownbox = $('<span class=kind><img class=icon src=question.png>不明</span>').append($unknown);
 				var $pgbar = $('<div class=pgbar></div>').progressbar();
-				var $stop =	$('<button><img class=icon src=stop.png><span>中止</span></button>')
-							.button().click(function(){ finalize(); $stop.remove(); })
-				var $statis = $('<div class=statis><span>リンク切れ調査：&nbsp;</span></div>')
-							.append('<img class=icon src=item.png><span>総数</span>').append($total)
-							.append('<img class=icon src=ok.png><span>正常</span>').append($ok)
-							.append('<img class=icon src=delete.png><span>エラー</span>').append($err)
-							.append('<img class=icon src=skull.png><span>リンク切れ</span>').append($dead)
-							.append('<img class=icon src=warn.png><span>注意</span>').append($warn)
-							.append('<img class=icon src=question.png><span>不明</span>').append($unknown)
-							.append($stop).append('<br claer=all>');
-				var $info = $('<div id=deadinfo></div>').append( $statis ).append( $pgbar );
+				var $folderName = $('<span></span>');
+				$('#itembox').prepend(
+						$('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
+						.prepend(
+							$('<button><img class=icon src=stop.png>中止</button>')
+							.button().click(function(){ finalize(arg0); })
+						)
+						.append($folderName)
+						.append('<br>')
+						.append($totalbox).append($okbox).append($errbox)
+						.append($deadbox).append($warnbox).append($unknownbox)
+						.append($pgbar)
+				);
 				// アイテム生成関数
 				var $itemAppend = function(){
 					var $e = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
@@ -810,24 +822,30 @@ var itemTable = function(){
 				};
 				if( arg1==='folder' ){
 					// アイテム欄の選択ブックマークとフォルダ内を調査
+					$folderName.text('(選択フォルダ)');
+					var titles='';
 					for( var i=0, n=items.children.length; i<n; i++ ){
 						var item = items.children[i];
 						if( $(item).hasClass('select') ){
 							var node = tree.node( item.id.slice(4) );
 							if( node ){
-								if( node.child ) childer( node.child );
+								if( node.child ){
+									if( !titles ) titles=node.title; else titles+=', '+node.title;
+									childer( node.child );
+								}
 								else ajaxer( node );
 							}
 						}
 					}
+					$folderName.text( titles );
 				}
-				else{
+				else if( arg1 ){
 					// 指定フォルダ1つ調査
+					$folderName.text( (arg1===tree.root)?'全ブックマーク':arg1.title );
 					childer( arg1.child );
 				}
+				else return;
 				items.innerHTML = '';
-				$info.appendTo( items );
-				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				// 完了待ち進捗表示ループ
 				(function waiter(){
 					var waiting=0;
@@ -844,14 +862,13 @@ var itemTable = function(){
 						return;
 					}
 					// 完了
-					if( count.ok==0 ) $ok.hide().prev().hide().prev().hide();
-					if( count.err==0 ) $err.hide().prev().hide().prev().hide();
-					if( count.dead==0 ) $dead.hide().prev().hide().prev().hide();
-					if( count.warn==0 ) $warn.hide().prev().hide().prev().hide();
-					if( count.unknown==0 ) $unknown.hide().prev().hide().prev().hide();
+					if( count.ok==0 ) $okbox.remove();
+					if( count.err==0 ) $errbox.remove();
+					if( count.dead==0 ) $deadbox.remove();
+					if( count.warn==0 ) $warnbox.remove();
+					if( count.unknown==0 ) $unknownbox.remove();
 					$pgbar.remove();
-					$stop.remove();
-					finalize();
+					finalize(arg0);
 				})();
 			}
 		}
@@ -1210,7 +1227,7 @@ $('#delete').click(function(){
 		}
 	}
 });
-// リンク切れ調査(全体)
+// リンク切れ調査(全ブックマーク)
 $('#deadlink').click(function(){
 	Confirm({
 		msg:'全ブックマークURLのリンク切れ調査を行います。'

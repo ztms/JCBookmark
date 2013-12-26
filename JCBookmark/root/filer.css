@@ -163,7 +163,7 @@ body {
 	background:#ccc;
 }
 /* フォルダ名、アイテム名、アイテム項目 */
-#folders span, #itembox span {
+#folders span, #itemhead span, #items span {
 	display:block;
 	float:left;
 	height:19px;
@@ -340,6 +340,9 @@ body {
 	width:64px;
 	line-height:1;
 }
+#analybox .icon {
+	margin:4px 5px 0 3px;
+}
 #antitle {
 	border:1px solid #888;
 	padding:1px;
@@ -358,12 +361,14 @@ body {
 /* リンク切れ調査 */
 #deadinfo {
 	background:#ffa;
+	border-bottom:1px solid #bbb;
+	text-align:center;
+	font-size:14px;
+	color:#333;
 }
-#deadinfo .statis {
-	padding-left:5px;
-	min-width:650px;
-	height:20px;
-	border-bottom:1px solid #eee;
+#deadinfo .icon {
+	float:none;
+	vertical-align:-3px;
 }
 #deadinfo .count {
 	margin:0 13px 0 3px;
@@ -372,11 +377,12 @@ body {
 	height:7px;
 	border:0;
 	border-radius:0;
-	border-bottom:1px solid #eee;
+	background:transparent;
 }
 #deadinfo button { /* 中止 */
+	float:right;
 	height:20px;
-	margin-left:9px;
+	margin:1px 20px 0 0;
 	padding:0;
 }
 #deadinfo .ui-button-text {
@@ -386,7 +392,7 @@ body {
 	margin:0 2px 0 0;
 }
 #deadinfo button span {
-	line-height:18px;
+	font-size:13px;
 }
 /* jQuery UI Dialog */
 .ui-dialog {
