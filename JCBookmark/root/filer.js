@@ -531,7 +531,7 @@ var itemTable = function(){
 	var ajaxs = [];		// ajax配列
 	var ajaxer = null;	// ajax発行中断関数
 	return function( arg0 ,arg1 ){
-		function finalize( arg0 ){
+		function finalize(){
 			// ajax中止
 			if( ajaxer ) ajaxer('abort') ,ajaxer=null;
 			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
@@ -543,9 +543,6 @@ var itemTable = function(){
 			$finding.progressbar('value',0);
 			$('#findstop').hide();
 			$('#find').show();
-			// リンク切れ調査
-			if( arg0==='deadlink' ) $('#deadinfo').find('button').remove();
-			else $('#deadinfo').remove();
 		}
 		finalize();
 		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
@@ -558,9 +555,9 @@ var itemTable = function(){
 			}
 			if( words.length<=0 ) return;
 			findItems = true;
+			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('status').addClass('place').text('場所');
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
-			$finding.progressbar('value',0);
 			$('#find').hide();
 			$('#findstop').off().click(function(){ finalize(); }).show();
 			// フォルダ配列生成・ノード総数カウント
@@ -715,6 +712,7 @@ var itemTable = function(){
 			else{
 				// フォルダ内を再帰的に調査
 				findItems = true;
+				$('#deadinfo').remove();
 				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
 				$('#itembox').children('.spacer').html('<img src=wait.gif>');
 				var items = doc.getElementById('items');
@@ -736,7 +734,7 @@ var itemTable = function(){
 						$('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
 						.prepend(
 							$('<button><img class=icon src=stop.png>中止</button>')
-							.button().click(function(){ finalize(arg0); })
+							.button().click(function(){ $(this).remove(); finalize(); })
 						)
 						.append($folderName)
 						.append('<br>')
@@ -867,14 +865,16 @@ var itemTable = function(){
 					if( count.dead==0 ) $deadbox.remove();
 					if( count.warn==0 ) $warnbox.remove();
 					if( count.unknown==0 ) $unknownbox.remove();
+					$('#deadinfo').find('button').remove();
 					$pgbar.remove();
-					finalize(arg0);
+					finalize();
 				})();
 			}
 		}
 		else{
 			// フォルダ表示
 			findItems = false;
+			$('#deadinfo').remove();
 			$head3.removeClass('place').removeClass('status').addClass('iconurl').text('アイコン');
 			var $item = function(){
 				var urlWidth = $head.find('.url').width() +4;

@@ -192,6 +192,9 @@ body {
 	padding-left:5px;
 	border-left:1px solid #ddd;
 }
+#items .status {
+    color:#555;
+}
 #itembox .itemborder {
 	width:3px;
 	border-left:1px solid #ccc;
