@@ -1473,6 +1473,7 @@ function setEvents(){
 	});
 	// ブックマークの整理
 	$('#filerico').click(function(){
+		$('#findstop').click();
 		if( tree.modified() || option.modified() ) Confirm({
 			width:380
 			,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
@@ -1485,6 +1486,7 @@ function setEvents(){
 	// ログアウト
 	if( /session=.+/.test(document.cookie) ){
 		$('#logout').click(function(){
+			$('#findstop').click();
 			if( tree.modified() || option.modified() ) Confirm({
 				width:380
 				,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'

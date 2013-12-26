@@ -546,6 +546,7 @@ var itemTable = function(){
 		}
 		finalize();
 		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
+		if( arg0==='stop' ) return;
 		if( arg0==='find' ){
 			// 検索
 			var words = $('#keyword').val().split(/[ 　]+/);
@@ -1001,6 +1002,7 @@ if( IE && IE<9 ){
 $('#modified').click(function(){ treeSave(); });
 // パネル画面に戻る
 $('#home').click(function(){
+	itemTable('stop');
 	if( tree.modified() ) Confirm({
 		msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 		,width:380
@@ -1013,6 +1015,7 @@ $('#home').click(function(){
 // ログアウト
 if( /session=.+/.test(document.cookie) ){
 	$('#logout').click(function(){
+		itemTable('stop');
 		if( tree.modified() ) Confirm({
 			msg	:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
 			,width:380
