@@ -2531,24 +2531,30 @@ function clipboardTo( pnode, index ){
 		url:':clipboard.txt'
 		,complete:function(){ $('#dialog').dialog('destroy'); }
 		,success:function(data){
-			var lines = data.split(/[\r\n]+/);			// 一行一URLとして解析
+			var lines = data.split(/[\r\n]+/);				// 行分割
 			var regTrim = /^\s+|\s+$/g;
 			var regUrl = /^[A-Za-z]+:.+/;
-			for( var i=lines.length-1; i>=0; i-- ){
-				var url = lines[i].replace(regTrim,'');	// 前後の空白削除(trim()はIE8ダメ)
-				if( regUrl.test(url) ) itemAdd( url );	// URLなら登録
+			var url = '';
+			for( var i=lines.length-1; i>=0; i-- ){			// 最後の行から
+				var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
+				if( regUrl.test(str) ){						// URL発見
+					if( url ) itemAdd( url );
+					url = str;
+				}
+				else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
 			}
+			if( url ) itemAdd( url );
 			// 表示更新
 			$('#folder'+pnode.id).removeClass('select').click();
 		}
 	});
-	function itemAdd( url ){
+	function itemAdd( url ,title ){
 		// ノード作成
-		var node = tree.newURL( pnode, url, url.noProto(), '', index );
+		var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
 		if( node ){
 			// タイトル/favicon取得
 			$.get(':analyze?'+url,function(data){
-				if( data.title.length ){
+				if( !title && data.title.length ){
 					data.title = HTMLdec( data.title );
 					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 						$('#item'+node.id).find('.title').text( data.title );

@@ -1,9 +1,10 @@
 // vim:set ts=4:vim modeline
-// TODO:ツイッターアカウントのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了エラーになる事が
-// TODO:リンク切れ検査機能。単にGETして200/304/404を緑/黄/赤アイコンで表示すればいいかな。
-// TODO:パネル色分け。既定のセットがいくつか選べて、さらにRGBかHSVのバーの任意色って感じかな。
-// TODO:検索・ソート機能。う～んまずは「最近登録したものから昇順に」かな・・結果は別ウィンドウかな。
+// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了エラーになる事が
+// TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:一括でパネル開閉
+// TODO:パネルの中にパネル。フォルダ構造をそのままで。
+// TODO:Firefoxのタグ機能。整理画面はFirefox相当でいいけどパネル画面はタグ機能をどう使うか・・タグパネル？無視？
+// TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。
 (function( $, $win, $doc, oStr, IE, $wall, $sidebar ){
 'use strict';
 /*
@@ -1142,25 +1143,31 @@ function setEvents(){
 				$.get(':clipboard.txt',function(data){
 					var pnode = tree.node( panel.id );
 					var $itembox = $(panel).find('.itembox');
-					var lines = data.split(/[\r\n]+/);							// 一行一URLとして解析
-					var index = lines.length -1;
+					var lines = data.split(/[\r\n]+/);							// 行分割
+					var index = lines.length -1;								// 最後の行からはじめ
+					var url = '';
 					(function callee(){
-						var count = 10;											// 10個ずつ
+						var count = 10;											// 10行ずつ
 						while( index >=0 && count>0 ){
-							var url = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
-							if( /^[A-Za-z]+:.+/.test(url) ) itemAdd( url );		// URLなら登録
+							var str = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
+							if( /^[A-Za-z]+:\/\/.+/.test(str) ){				// URL発見
+								if( url ) itemAdd( url );
+								url = str;
+							}
+							else if( url ) itemAdd( url ,str ) ,url='';			// タイトル付URL発見
 							index--; count--;
 						}
 						// 次
 						if( index >=0 ) setTimeout(callee,0);
+						else if( url ) itemAdd( url );
 					})();
-					function itemAdd( url ){
+					function itemAdd( url ,title ){
 						// ノード作成
-						var node = tree.newURL( pnode, url, url.noProto() );
+						var node = tree.newURL( pnode, url, title || url.noProto() );
 						if( node ){
 							// タイトル/favicon取得
 							$.get(':analyze?'+url,function(data){
-								if( data.title.length ){
+								if( !title && data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
