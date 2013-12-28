@@ -22,7 +22,6 @@ var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
 var selectFolder = null;		// 選択フォルダ
 var selectItemLast = null;		// 最後に単選択(通常クリックおよびCtrl+クリック)したアイテム
-var findItems = false;			// アイテム欄が検索結果か否か
 var draggie = null;				// ドラッグしている要素
 var dragItem = {};				// 複数選択ドラッグ情報
 var tree = {
@@ -530,38 +529,44 @@ var folderTree = function(){
 // アイテム欄作成
 var itemTable = function(){
 	var $head = $('#itemhead');
-	var $finding = $('#finding').offset($('#keyword').offset()).progressbar();
-	var $itemAppend = null;	// アイテム１つ生成関数
-	var timer = null;		// setTimeoutID
-	var ajaxs = [];			// ajax配列
-	var ajaxer = null;		// ajax発行中断関数
+	var $head3 = $head.find('.url').next().next();	// 可変項目ヘッダ(アイコン/場所/調査結果)
+	var $itemAppend = null;							// アイテム１つ生成関数
+	var kind = 'item';								// アイテム欄の種類
+	var timer = null;								// setTimeoutID
+	var ajaxs = [];									// ajax配列
+	var ajaxer = null;								// ajax発行中断関数
+	var keywords = [];								// 検索キーワード
+	$('#finding').offset($('#keyword').offset()).progressbar();
+	function finalize(){
+		// タイマー中止
+		clearTimeout(timer) ,timer=null;
+		// ajax中止
+		if( ajaxer ) ajaxer(false) ,ajaxer=null;
+		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
+		ajaxs.length = 0;
+		// 検索終了
+		$('#itembox').children('.spacer').empty();
+		$('#finding').progressbar('value',0);
+		$('#findstop').hide();
+		$('#find').show();
+		// 解放
+		if( $itemAppend ) $itemAppend(false) ,$itemAppend=null;
+	}
 	return function( arg0 ,arg1 ){
-		function finalize(){
-			if( $itemAppend ) $itemAppend(false);
-			// ajax中止
-			if( ajaxer ) ajaxer('abort') ,ajaxer=null;
-			for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
-			ajaxs.length = 0;
-			// タイマー中止
-			clearTimeout(timer), timer=null;
-			// 検索終了
-			$('#itembox').children('.spacer').empty();
-			$finding.progressbar('value',0);
-			$('#findstop').hide();
-			$('#find').show();
-		}
+		if( arg0==='?' ) return kind;
 		finalize();
-		var $head3 = $head.find('.url').next().next(); // 可変項目ヘッダ(アイコン/場所/調査結果)
-		if( arg0==='stop' ) return;
+		if( arg0===false ) return;
 		if( arg0==='find' ){
 			// 検索
-			var words = $('#keyword').val().split(/[ 　]+/);
-			for( var i=words.length-1; i>=0; i-- ){
-				if( words[i].length<=0 ) words.splice(i,1);
-				else words[i] = words[i].myNormal();
+			if( arg1 ){ // 新規検索
+				keywords = $('#keyword').val().split(/[ 　]+/);
+				for( var i=keywords.length-1; i>=0; i-- ){
+					if( keywords[i].length<=0 ) keywords.splice(i,1);
+					else keywords[i] = keywords[i].myNormal();
+				}
 			}
-			if( words.length<=0 ) return;
-			findItems = true;
+			if( keywords.length<=0 ) return;
+			kind = 'find';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('status').addClass('place').text('場所');
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
@@ -635,12 +640,13 @@ var itemTable = function(){
 				// 検索実行
 				String.prototype.myFound = function(){
 					// AND検索(TODO:OR検索・大小文字区別対応する？)
-					for( var i=words.length-1; i>=0; i-- ){
-						if( this.indexOf(words[i])<0 ) return false;
+					for( var i=keywords.length-1; i>=0; i-- ){
+						if( this.indexOf(keywords[i])<0 ) return false;
 					}
 					return true;
 				};
 				items.innerHTML = '';
+				var $finding = $('#finding');
 				var now = (new Date()).getTime();
 				var index = 0;
 				var total = 0;
@@ -717,7 +723,7 @@ var itemTable = function(){
 			}
 			else{
 				// フォルダ内を再帰的に調査
-				findItems = true;
+				kind = 'deadlink';
 				$('#deadinfo').remove();
 				$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
 				$('#itembox').children('.spacer').html('<img src=wait.gif>');
@@ -784,7 +790,7 @@ var itemTable = function(){
 				ajaxer = function(){
 					var abort = false;
 					return function( node ){
-						if( node==='abort' ){ abort=true; return; }
+						if( node===false ){ abort=true; return; }
 						var index = ajaxs.length;
 						ajaxs.push({
 							done :false
@@ -880,7 +886,7 @@ var itemTable = function(){
 		}
 		else{
 			// フォルダ表示
-			findItems = false;
+			kind = 'item';
 			$('#deadinfo').remove();
 			$head3.removeClass('place').removeClass('status').addClass('iconurl').text('アイコン');
 			var items = doc.getElementById('items');
@@ -1009,10 +1015,10 @@ if( IE && IE<9 ){
 	$(doc).mouseleave(function(){ $(this).mouseup(); } );
 }
 // 変更保存リンク
-$('#modified').click(function(){ treeSave(); });
+$('#modified').click(function(){ $('#editbox').blur(); treeSave(); });
 // パネル画面に戻る
 $('#home').click(function(){
-	itemTable('stop');
+	itemTable(false);
 	if( tree.modified() ) Confirm({
 		msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 		,width:380
@@ -1025,7 +1031,7 @@ $('#home').click(function(){
 // ログアウト
 if( /session=.+/.test(document.cookie) ){
 	$('#logout').click(function(){
-		itemTable('stop');
+		itemTable(false);
 		if( tree.modified() ) Confirm({
 			msg	:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
 			,width:380
@@ -1139,9 +1145,7 @@ $('#newurl').keypress(function(ev){
 	}
 });
 // 検索
-$('#find').click(function(){
-	$('#editbox').trigger('decide'); itemTable('find');
-});
+$('#find').click(function(){ itemTable('find',true); });
 $('#keyword').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 13: $('#find').click(); return false;
@@ -1150,7 +1154,6 @@ $('#keyword').keypress(function(ev){
 // すべて選択
 // TODO:アイテム欄が表示中だとぜんぶ選択されない
 $('#selectall').click(function(){
-	$('#editbox').trigger('decide');
 	// 選択フォルダ非アクティブ
 	$(selectFolder).addClass('inactive');
 	// アイテム全選択
@@ -1161,12 +1164,13 @@ $('#selectall').click(function(){
 });
 // 削除
 // TODO:削除後に選択フォルダ選択アイテムが初期化されてしまう。近いエントリを選択すべきか。
-// TODO:リンク切れ調査結果アイテムを削除した時に画面上なにも起きず実はツリーが変更される・・・
+// TODO:リンク切れ調査結果アイテムを削除した時に画面上なにも起きず実はツリーが変更される。
+// というかここでアイテム欄を再描画する処理は、リンク切れ調査結果をまったく考慮していない。
 $('#delete').click(function(){
 	if( select.id.indexOf('item')==0 ){
 		// アイテム欄
-		if( findItems ){
-			// 検索結果
+		switch( itemTable('?') ){
+		case 'find': // 検索結果
 			var hasFolder=false, trashIDs=[], otherIDs=[];
 			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
 				var item = items[i];
@@ -1191,8 +1195,10 @@ $('#delete').click(function(){
 				});
 			}
 			else if( otherIDs.length>0 ) redraw();
-		}
-		else{
+			break;
+		case 'deadlink': // TODO:リンク切れ調査結果
+			break;
+		case 'item': // 通常アイテム欄
 			var hasFolder=false, titles='', ids=[];
 			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
 				var item = items[i];
@@ -1217,6 +1223,7 @@ $('#delete').click(function(){
 				});
 			}
 			else{ tree.moveChild( ids, tree.trash() ); redraw(); }
+			break;
 		}
 	}
 	else{
@@ -1230,15 +1237,28 @@ $('#delete').click(function(){
 					,height	:200
 					,ok		:function(){
 						tree.eraseNode( nid );
-						if( findItems ) folderTree({}), itemTable('find');
-						else folderTree({ click0:true });
+						// TODO:アイテム欄がリンク切れ調査結果の場合
+						switch( itemTable('?') ){
+						case 'find':
+							folderTree({}), itemTable('find');
+							break;
+						case 'item':
+							folderTree({ click0:true });
+							break;
+						}
 					}
 				});
 			}
 			else{
 				tree.moveChild( [nid], tree.trash() );
-				if( findItems ) folderTree({}), itemTable('find');
-				else folderTree({ clickID:nid });
+				// TODO:アイテム欄がリンク切れ調査結果の場合
+				switch( itemTable('?') ){
+				case 'find':
+					folderTree({}), itemTable('find');
+					break;
+				case 'item':
+					folderTree({ clickID:nid });
+				}
 			}
 		}
 	}
@@ -1264,11 +1284,11 @@ $('.barbtn')
 		case 9: if( !ev.shiftKey ){ $(selectFolder).trigger('selfclick'); return false; }
 		}
 	});
-// スクロールで編集を確定して消す(編集ボックスはスクロールで動かないので)
-$('#folderbox,#itembox').on('scroll',function(){ $('#editbox').trigger('decide'); });
+// スクロールで編集ボックス確定(blurが発生しないので強制発行)
+$('#folderbox,#itembox').on('scroll',function(){ $('#editbox').blur(); });
 // ボーダードラッグ
 $('#border').mousedown(function(ev){
-	$('#editbox').trigger('decide');
+	$('#editbox').blur();
 	var $border = $(this).addClass('active');
 	var $folderbox = $('#folderbox');
 	var $itembox = $('#itembox');
@@ -1292,7 +1312,7 @@ $('#border').mousedown(function(ev){
 });
 // アイテム欄項目ヘッダのボーダー
 $('.itemborder').mousedown(function(ev){
-	$('#editbox').trigger('decide');
+	$('#editbox').blur();
 	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.iconurl/.place/.status)
 	var $lasthead = $('#itemhead span').last();	// 右端の項目ヘッダ(.date)
 	var $attr='', $smry='';
@@ -1361,7 +1381,7 @@ $('#itembox').on({
 		}
 	}
 	,contextmenu:function(ev){
-		if( !findItems && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
+		if( itemTable('?')=='item' && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
 			var $menu = $('#contextmenu').width(250);
 			var $box = $menu.children('div').empty();
 			// クリップボードから登録
@@ -1406,7 +1426,7 @@ function myFmt( date, now ){
 }
 // 画面縦横サイズ変更：windowから呼ばれた時はフォルダ欄の幅を維持し、それ以外は一定比率で決める
 function resize(){
-	$('#editbox').trigger('decide');
+	$('#editbox').blur();
 	var windowWidth = $(win).width() -1; // 適当-1px
 	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.3)|0;
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
@@ -1450,7 +1470,6 @@ function resize(){
 }
 // 画面サイズ縦のみ変更
 function resizeV( padding ){
-	$('#editbox').trigger('decide');
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -padding;
 	$('#folderbox').height( folderboxHeight );
 	$('#border').height( folderboxHeight );
@@ -1460,7 +1479,7 @@ function resizeV( padding ){
 // TODO:アイテム欄の上下自動スクロール
 function itemSelectStart( element, downX, downY ){
 	// 変更を反映
-	$('#editbox').trigger('decide');
+	$('#editbox').blur();
 	// 矩形表示
 	$('#selectbox').css({ left:downX, top:downY, width:1, height:1 }).show();
 	// アイテム状態保持
@@ -1524,7 +1543,7 @@ function treeSave( arg ){
 function folderClick(ev){
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
-	if( !findItems && $(this).hasClass('select') ){
+	if( itemTable('?')=='item' && $(this).hasClass('select') ){
 		var $this = $(select=this);
 		// 選択アイテムを非アクティブに
 		for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
@@ -1584,8 +1603,6 @@ function itemSelfClick( ev, shiftKey ){
 	}
 }
 function itemMouseDown( ev, shiftKey ){
-	// 変更を反映
-	$('#editbox').trigger('decide');
 	// イベント間通知
 	ev.data.itemID = this.id;
 	ev.data.itemNotify = '';
@@ -1671,8 +1688,6 @@ function itemMouseDown( ev, shiftKey ){
 	if( IE && IE<9 )xxxxx;
 }
 function folderMouseDown(ev){
-	// 変更を反映
-	$('#editbox').trigger('decide');
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
 	// ドラッグ開始
@@ -1869,13 +1884,14 @@ function itemDragStart( element, downX, downY ){
 						// アイテム欄の…
 						if( $this.hasClass('folder') ){
 							// フォルダへドロップ
-							if( findItems ) ChildOnly();	// アイテム欄が検索結果
-							else SiblingAndChild();			// 通常
+							switch( itemTable('?') ){
+							case 'item': SiblingAndChild();	break;	// 通常
+							case 'find': ChildOnly();		break;	// 検索結果
+							}
 						}
 						else{
 							// アイテムへドロップ
-							if( findItems ) return;		// 検索結果ドロップ不可
-							else SiblingOnly();			// 通常
+							if( itemTable('?')=='item' ) SiblingOnly();	// 通常
 						}
 					}else{
 						// フォルダツリーへドロップ
@@ -1887,13 +1903,14 @@ function itemDragStart( element, downX, downY ){
 						// アイテム欄の…
 						if( $this.hasClass('folder') ){
 							// フォルダへドロップ
-							if( findItems ) ChildOnly();	// アイテム欄が検索結果
-							else SiblingAndChild();			// 通常
+							switch( itemTable('?') ){
+							case 'item': SiblingAndChild();	break;	// 通常
+							case 'find': ChildOnly();		break;	// 検索結果
+							}
 						}
 						else{
 							// アイテムへドロップ
-							if( findItems ) return;		// 検索結果ドロップ不可
-							else SiblingOnly();			// 通常
+							if( itemTable('?')=='item' ) SiblingOnly();	// 通常
 						}
 					}else{
 						// フォルダツリーの…
@@ -1907,13 +1924,14 @@ function itemDragStart( element, downX, downY ){
 					// アイテム欄の…
 					if( $this.hasClass('folder') ){
 						// フォルダへドロップ
-						if( findItems ) ChildOnly();	// アイテム欄が検索結果
-						else SiblingAndChild();			// 通常
+						switch( itemTable('?') ){
+						case 'item': SiblingAndChild();	break;	// 通常
+						case 'find': ChildOnly();		break;	// アイテム欄が検索結果
+						}
 					}
 					else{
 						// アイテムへドロップ
-						if( findItems ) return;		// 検索結果ドロップ不可
-						else SiblingOnly();			// 通常
+						if( itemTable('?')=='item' ) SiblingOnly();	// 通常
 					}
 				}else{
 					// フォルダツリーの…
@@ -1958,12 +1976,17 @@ function itemDragStart( element, downX, downY ){
 			else return; // ドロップ不可
 			$this.removeClass('dropTop dropBottom dropIN');
 			// 表示更新
-			if( findItems ){
+			// TODO:アイテム欄がリンク切れ調査結果の場合
+			switch( itemTable('?') ){
+			case 'find':
 				if( dragItem.folderCount >0 ) folderTree({});
 				itemTable('find');
+				break;
+			case 'item':
+				if( dragItem.folderCount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
+				else itemTable( tree.node(selectFolder.id.slice(6)) );
+				break;
 			}
-			else if( dragItem.folderCount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
-			else itemTable( tree.node(selectFolder.id.slice(6)) );
 			// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
 			// $(document).mouseup()が実行されていないような挙動にみえるので
 			// 実行したらとりあえず問題ないように見える。
@@ -2036,15 +2059,6 @@ function itemDblClick(){
 		var url = $(this).find('.url').text();
 		if( url.length ) win.open(url);
 	}
-	// 編集ボックス隠す
-	// TODO:[Chrome]ブックマークトップのフォルダをダブルクリックすると
-	// 左上に編集ボックスが出現してしまうしかも幅がやたら長い。他の階層
-	// にあるフォルダなら発生しないので詳細不明だが、とりあえずsetTimeout
-	// で実行するようにしたら解消した。dblclickの後にclickが発生してしまう
-	// のか？でもトップノードとその他フォルダで挙動が違うのはなぜ？？？
-	//$('#editbox').off().hide();
-	//$('#editbox').trigger('decide');
-	setTimeout(function(){$('#editbox').trigger('decide');},3);
 	return false;
 }
 // TODO:Opera12で未選択アイテムのコンテキストメニューが出ない。選択アイテムは出る。
@@ -2191,7 +2205,7 @@ function itemContextMenu(ev){
 			$box.append('<hr>');
 		}
 	}
-	if( !findItems && isLocalServer ){
+	if( itemTable('?')=='item' && isLocalServer ){
 		// クリップボードから登録
 		if( width<250 ) width=250;
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
@@ -2261,9 +2275,16 @@ function folderContextMenu(ev){
 				,ok		:function(){
 					var selectTrash = tree.trashHas( selectFolder.id.slice(6) );
 					tree.trashEmpty();
-					if( findItems ) folderTree({}), itemTable('find');
-					else if( selectTrash ) folderTree({ click0:true });
-					else folderTree({ clickID:selectFolder.id.slice(6) });
+					// TODO:アイテム欄がリンク切れ調査結果の場合
+					switch( itemTable('?') ){
+					case 'find':
+						folderTree({}), itemTable('find');
+						break;
+					case 'item':
+						if( selectTrash ) folderTree({ click0:true });
+						else folderTree({ clickID:selectFolder.id.slice(6) });
+						break;
+					}
 				}
 			});
 		}));
@@ -2280,9 +2301,16 @@ function folderContextMenu(ev){
 					,height	:200
 					,ok		:function(){
 						tree.eraseNode( nid );
-						if( findItems ) folderTree({}), itemTable('find');
-						else if( folder==selectFolder ) folderTree({ click0:true });
-						else folderTree({ clickID:selectFolder.id.slice(6) });
+						// TODO:アイテム欄がリンク切れ調査結果の場合
+						switch( itemTable('?') ){
+						case 'find':
+							folderTree({}), itemTable('find');
+							break;
+						case 'item':
+							if( folder==selectFolder ) folderTree({ click0:true });
+							else folderTree({ clickID:selectFolder.id.slice(6) });
+							break;
+						}
 					}
 				});
 			}));
@@ -2292,8 +2320,11 @@ function folderContextMenu(ev){
 				$menu.hide();
 				onContextHide();
 				tree.moveChild( [nid], tree.trash() );
-				if( findItems ) folderTree({}), itemTable('find');
-				else folderTree({ clickID:selectFolder.id.slice(6) });
+				// TODO:アイテム欄がリンク切れ調査結果の場合
+				switch( itemTable('?') ){
+				case 'find': folderTree({}), itemTable('find'); break;
+				case 'item': folderTree({ clickID:selectFolder.id.slice(6) }); break;
+				}
 			}));
 		}
 	}
@@ -2392,8 +2423,8 @@ function edit( element, opt ){
 				})
 				.val( $e.text() )
 				.on({
-					// 反映カスタムイベント
-					decide:function(){
+					// 変更反映
+					blur:function(){
 						// ノードツリー反映
 						var nid = element.parentNode.id.replace(/^\D*/,'');
 						var attrName = (element.className=='iconurl')? 'icon' : element.className;
@@ -2407,7 +2438,8 @@ function edit( element, opt ){
 								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
 								var $parent = $(element.parentNode);
 								if( $parent.hasClass('item') && $parent.hasClass('folder') ) folderTree({});
-								if( findItems ) itemTable('find');
+								// TODO:アイテム欄がリンク切れ調査結果の場合
+								if( itemTable('?')=='find' ) itemTable('find');
 								break;
 							case 'url':
 								if( value.length ){
@@ -2442,18 +2474,17 @@ function edit( element, opt ){
 							}
 						}
 						// 終了隠す
-						$(element.parentNode).focus();
 						$(this).off().hide();
 					}
 					// TAB,Enterで反映
 					,keydown:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 9: $(this).trigger('decide'); return false; // TAB
+						case 9: $(this).blur(); return false; // TAB
 						}
 					}
 					,keypress:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 13: $(this).trigger('decide'); return false; // Enter
+						case 13: $(this).blur(); return false; // Enter
 						}
 					}
 				}).show().focus();
@@ -2476,21 +2507,15 @@ function edit( element, opt ){
 				})
 				.val( $e.text() )
 				.on({
-					// なにもしない消えるだけ
-					decide:function(){
-						$(element.parentNode).focus();
-						$(this).off().hide();
-					}
-					// TAB
+					blur:function(){ $(this).off().hide(); } // なにもしない消えるだけ
 					,keydown:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 9: $(this).trigger('decide'); return false;
+						case 9: $(this).blur(); return false; // TAB
 						}
 					}
-					// Enter
 					,keypress:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
-						case 13: $(this).trigger('decide'); return false;
+						case 13: $(this).blur(); return false; // Enter
 						}
 					}
 				}).show().focus();
