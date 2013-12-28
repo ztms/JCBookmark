@@ -1,5 +1,5 @@
 @charset "utf-8";
-* {
+body,span,div,input,button,select,textarea {
 	margin:0;
 	padding:0;
 	white-space:nowrap;
@@ -284,8 +284,7 @@ body {
 	display:none;
 	position:absolute;
 	left:0; top:0;
-	border:1px solid;
-	border-color:#999;
+	border:1px solid #999;
 	background:#e7e7e7;
 	box-shadow:3px 3px 4px #555;
 }
@@ -331,6 +330,24 @@ body {
 /* ダイアログ */
 #dialog {
 	display:none;
+	line-height:1.5;
+	padding:20px;
+	white-space:normal;
+}
+#dialog ul {
+	padding-left:20px;
+}
+#dialog li {
+	font-size:12px;
+	white-space:nowrap;
+}
+#notify {
+	display:none;
+	position:absolute;
+	border:1px solid #000;
+	border-radius:5px;
+	box-shadow:3px 3px 4px #555;
+	background:#ffd;
 	line-height:1.5;
 	padding:20px;
 	white-space:normal;

@@ -396,8 +396,38 @@ var option = {
 	function go(){ setTimeout(function(){ folderTree({ click0:true }); },0); }
 })();
 // CSSルール追加
-// http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わないよう変更
-$.css.add=function(a,b){var c=$.css.sheet,e=document,d=!('createStyleSheet' in e),f,g,h=-1,i='replace',j='appendChild';if(!c){if(d){c=e.createElement('style');c[j](e.createTextNode(''));e.documentElement[j](c);c=c.sheet}else{c=e.createStyleSheet()}$.css.sheet=c}if(d)return c.insertRule(a,b||c.cssRules.length);if((f=a.indexOf('{'))!==-1){a=a[i](/[\{\}]/g,'');c.addRule(a.slice(0,f)[i](g=/^\s+|\s+$/g,''),a.slice(f)[i](g,''),h=b||c.rules.length)}return h};
+// http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
+$.css.add = function( rule ,index ){
+	var sheet = $.css.sheet;
+	if( !sheet ){
+		if('createStyleSheet' in document) sheet = document.createStyleSheet();
+		else{
+			sheet = document.createElement('style');
+			sheet.appendChild( document.createTextNode('') );
+			document.documentElement.appendChild( sheet );
+			sheet = sheet.sheet;
+		}
+		$.css.sheet = sheet;
+	}
+	if('insertRule' in sheet) return sheet.insertRule( rule ,index || sheet.cssRules.length );
+
+	var idx = rule.indexOf('{');
+	rule = rule.replace(/[\{\}]/g,'');
+	var rgx = /^\s+|\s+$/g;
+	var selector = rule.slice(0,idx).replace(rgx,'');
+	var value = rule.slice(idx).replace(rgx,'');
+	var indexAdded = -1;
+	if( idx !==-1 ){
+		if( IE && IE<8 ){
+			indexAdded = index || sheet.rules.length;
+			var sels = selector.split(',');
+			for( var i=0; i<sels.length; i++ ) sheet.addRule( sels[i] ,value ,indexAdded++ );
+			indexAdded--;
+		}
+		else sheet.addRule( selector ,value ,indexAdded = index || sheet.rules.length );
+	}
+	return indexAdded;
+};
 // フォルダツリー生成
 // folderTree({
 //   click0		: true/false 最初のフォルダをクリックするかどうか
@@ -463,7 +493,7 @@ var folderTree = function(){
 				.append($icon).append($title).append('<br class=clear>')
 				.on('mouseleave',itemMouseLeave);
 			// 現在のサブツリー開閉状態を取得
-			var subs = $folders[0].querySelectorAll('.sub');
+			var subs = $folders.find('.sub'); //$folders[0].querySelectorAll('.sub');
 			var close = {};
 			for( var i=subs.length-1; i>=0; i-- ){
 				close[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
@@ -1164,47 +1194,16 @@ $('#selectall').click(function(){
 });
 // 削除
 // TODO:削除後に選択フォルダ選択アイテムが初期化されてしまう。近いエントリを選択すべきか。
-// TODO:リンク切れ調査結果アイテムを削除した時に画面上なにも起きず実はツリーが変更される。
-// というかここでアイテム欄を再描画する処理は、リンク切れ調査結果をまったく考慮していない。
 $('#delete').click(function(){
 	if( select.id.indexOf('item')==0 ){
 		// アイテム欄
-		switch( itemTable('?') ){
-		case 'find': // 検索結果
-			var hasFolder=false, trashIDs=[], otherIDs=[];
+		if( itemTable('?')=='item' ){
+			// 通常
+			var hasFolder=false, ids=[];
 			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
 				var item = items[i];
 				if( $(item).hasClass('select') ){
 					if( $(item).hasClass('folder') ) hasFolder = true;
-					var nid = item.id.slice(4);
-					if( tree.trashHas(nid) ) trashIDs.push(nid);
-					else otherIDs.push(nid);
-				}
-			}
-			var redraw = function(){
-				tree.moveChild( otherIDs, tree.trash() );
-				if( hasFolder ) folderTree({});
-				itemTable('find');
-			};
-			if( trashIDs.length>0 ){
-				Confirm({
-					msg		:trashIDs.length+'個のごみ箱アイテムを完全に消去します。'
-					,width	:400
-					,height	:200
-					,ok:function(){ tree.eraseNodes( trashIDs ); redraw(); }
-				});
-			}
-			else if( otherIDs.length>0 ) redraw();
-			break;
-		case 'deadlink': // TODO:リンク切れ調査結果
-			break;
-		case 'item': // 通常アイテム欄
-			var hasFolder=false, titles='', ids=[];
-			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
-				var item = items[i];
-				if( $(item).hasClass('select') ){
-					if( $(item).hasClass('folder') ) hasFolder = true;
-					titles += '・' +$('.title',item).text() +'#BR#';
 					ids.push(item.id.slice(4));
 				}
 			}
@@ -1216,14 +1215,54 @@ $('#delete').click(function(){
 			if( tree.trashHas(ids[0]) ){
 				// ごみ箱
 				Confirm({
-					msg		:((ids.length>1)?ids.length+'個の':'') +'アイテムを完全に消去します。#BR#'+titles
-					,width	:400
-					,height	:ids.length *21 +200
+					msg:ids.length+'個のアイテムを完全に消去します。'
 					,ok:function(){ tree.eraseNodes( ids ); redraw(); }
 				});
 			}
 			else{ tree.moveChild( ids, tree.trash() ); redraw(); }
-			break;
+		}
+		else{
+			// 検索結果・リンク切れ調査結果
+			var hasFolder=false, trashIDs=[], otherIDs=[], trashTitles='<ul>';
+			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
+				var item = items[i];
+				if( $(item).hasClass('select') ){
+					if( $(item).hasClass('folder') ) hasFolder = true;
+					var nid = item.id.slice(4);
+					if( tree.trashHas(nid) ){
+						trashIDs.push(nid);
+						trashTitles += '<li>'+$(item).children('.title').text()+'</li>';
+					}
+					else otherIDs.push(nid);
+				}
+			}
+			trashTitles += '</ul>';
+			var redraw = function(){
+				tree.moveChild( otherIDs.concat(), tree.trash() );
+				if( hasFolder ) folderTree({});
+				switch( itemTable('?') ){
+				case 'find': itemTable('find'); break;
+				case 'deadlink':
+					for( var i=otherIDs.length-1; i>=0; i-- ) $('#item'+otherIDs[i]).remove();
+					// 調査中にごみ箱を空にした場合など既にノードが存在しない場合がある。
+					// 存在しないノードは「移動しました」メッセージは出さずに消えるのみ。
+					for( var i=otherIDs.length-1; i>=0; i-- ) if( !tree.node(otherIDs[i]) ) otherIDs.splice(i,1);
+					if( otherIDs.length ) Notify(otherIDs.length+'個のアイテムをごみ箱に移動しました。');
+					for( var i=trashIDs.length-1; i>=0; i-- ) $('#item'+trashIDs[i]).remove();
+					break;
+				}
+			};
+			if( trashIDs.length>0 ){
+				Confirm({
+					msg:trashIDs.length+'個のごみ箱アイテムを完全に消去します。'
+					,$e:$(trashTitles)
+					,width:400
+					,height:210 + trashIDs.length *19
+					,resize:true
+					,ok:function(){ tree.eraseNodes( trashIDs.concat() ); redraw(); }
+				});
+			}
+			else if( otherIDs.length>0 ) redraw();
 		}
 	}
 	else{
@@ -1232,32 +1271,29 @@ $('#delete').click(function(){
 		if( tree.movable(nid) ){
 			if( tree.trashHas(nid) ){
 				Confirm({
-					msg		:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
-					,width	:400
-					,height	:200
-					,ok		:function(){
+					msg:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
+					,ok:function(){
 						tree.eraseNode( nid );
-						// TODO:アイテム欄がリンク切れ調査結果の場合
 						switch( itemTable('?') ){
-						case 'find':
-							folderTree({}), itemTable('find');
+						case 'deadlink':
+							folderTree({});
+							// アイテム欄で既に存在しないものを消去
+							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
+							}
 							break;
-						case 'item':
-							folderTree({ click0:true });
-							break;
+						case 'find': folderTree({}), itemTable('find'); break;
+						case 'item': folderTree({ click0:true }); break;
 						}
 					}
 				});
 			}
 			else{
 				tree.moveChild( [nid], tree.trash() );
-				// TODO:アイテム欄がリンク切れ調査結果の場合
 				switch( itemTable('?') ){
-				case 'find':
-					folderTree({}), itemTable('find');
-					break;
-				case 'item':
-					folderTree({ clickID:nid });
+				case 'deadlink': folderTree({}); break;
+				case 'find': folderTree({}), itemTable('find'); break;
+				case 'item': folderTree({ clickID:nid }); break;
 				}
 			}
 		}
@@ -1963,21 +1999,25 @@ function itemDragStart( element, downX, downY ){
 			// ドロップ処理
 			if( $this.hasClass('dropTop') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
-				tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,'') );
+				tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
 			}
 			else if( $this.hasClass('dropBottom') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropBottomされました');
-				tree.moveSibling( dragItem.ids, this.id.replace(/^\D*/,''), true );
+				tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,''), true );
 			}
 			else if( $this.hasClass('dropIN') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropINされました');
-				tree.moveChild( dragItem.ids, this.id.replace(/^\D*/,'') );
+				tree.moveChild( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
 			}
 			else return; // ドロップ不可
 			$this.removeClass('dropTop dropBottom dropIN');
 			// 表示更新
-			// TODO:アイテム欄がリンク切れ調査結果の場合
 			switch( itemTable('?') ){
+			case 'deadlink':
+				if( dragItem.folderCount >0 ) folderTree({});
+				// リンク切れ調査結果からドラッグ移動したアイテムはアイテム欄から消す
+				for( var i=dragItem.ids.length-1; i>=0; i-- ) $('#item'+dragItem.ids[i]).remove();
+				break;
 			case 'find':
 				if( dragItem.folderCount >0 ) folderTree({});
 				itemTable('find');
@@ -2161,7 +2201,7 @@ function itemContextMenu(ev){
 						title	:'タイトル/アイコンを取得'
 						,modal	:true
 						,width	:560
-						,height	:235
+						,height	:237
 						,close	:function(){ $(this).dialog('destroy'); }
 					});
 					analyze();
@@ -2275,11 +2315,15 @@ function folderContextMenu(ev){
 				,ok		:function(){
 					var selectTrash = tree.trashHas( selectFolder.id.slice(6) );
 					tree.trashEmpty();
-					// TODO:アイテム欄がリンク切れ調査結果の場合
 					switch( itemTable('?') ){
-					case 'find':
-						folderTree({}), itemTable('find');
+					case 'deadlink':
+						folderTree({});
+						// アイテム欄で既に存在しないものを消去
+						for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+							if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
+						}
 						break;
+					case 'find': folderTree({}), itemTable('find'); break;
 					case 'item':
 						if( selectTrash ) folderTree({ click0:true });
 						else folderTree({ clickID:selectFolder.id.slice(6) });
@@ -2301,11 +2345,15 @@ function folderContextMenu(ev){
 					,height	:200
 					,ok		:function(){
 						tree.eraseNode( nid );
-						// TODO:アイテム欄がリンク切れ調査結果の場合
 						switch( itemTable('?') ){
-						case 'find':
-							folderTree({}), itemTable('find');
+						case 'deadlink':
+							folderTree({});
+							// アイテム欄で既に存在しないものを消去
+							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
+							}
 							break;
+						case 'find': folderTree({}), itemTable('find'); break;
 						case 'item':
 							if( folder==selectFolder ) folderTree({ click0:true });
 							else folderTree({ clickID:selectFolder.id.slice(6) });
@@ -2320,8 +2368,8 @@ function folderContextMenu(ev){
 				$menu.hide();
 				onContextHide();
 				tree.moveChild( [nid], tree.trash() );
-				// TODO:アイテム欄がリンク切れ調査結果の場合
 				switch( itemTable('?') ){
+				case 'deadlink': folderTree({}); break;
 				case 'find': folderTree({}), itemTable('find'); break;
 				case 'item': folderTree({ clickID:selectFolder.id.slice(6) }); break;
 				}
@@ -2438,7 +2486,6 @@ function edit( element, opt ){
 								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
 								var $parent = $(element.parentNode);
 								if( $parent.hasClass('item') && $parent.hasClass('folder') ) folderTree({});
-								// TODO:アイテム欄がリンク切れ調査結果の場合
 								if( itemTable('?')=='find' ) itemTable('find');
 								break;
 							case 'url':
@@ -2632,8 +2679,9 @@ function Confirm( arg ){
 		else if( arg.height < 150 ) arg.height = 150;
 		opt.height = arg.height;
 	}
+	if( arg.resize ) opt.resizable = true;
 
-	$('#dialog').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+	$('#dialog').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).append( arg.$e ).dialog( opt );
 }
 function Alert( msg ){
 	var opt ={
@@ -2645,6 +2693,20 @@ function Alert( msg ){
 		,buttons	:{ 'O K':function(){ $(this).dialog('destroy'); } }
 	};
 	$('#dialog').html( HTMLenc( msg ).replace(/#BR#/g,'<br>') ).dialog( opt );
+}
+// ふわっと表示して徐々に消えるメッセージ
+// http://jsdo.it/honda0510/bELN
+// IE8のメイリオだとfadeIn/fadeOutでアンチエイリアスが効かず汚いためゴシックに変更する。
+// http://blog.tackikaku.jp/2010/11/ie78opacity.html
+if( IE && IE<9 ) $('#notify').addClass('nomeiryo');
+// TODO:IE8でfadeIn動作にチラツキが発生。IE7では問題なし。IE8固有問題か？
+function Notify( msg ){
+	var $em = $('#notify').html( HTMLenc( msg ).replace(/#BR#/g,'<br>') );
+	$em.css({
+		left:$(win).width()/2 - $em.outerWidth()/2
+		,top:$(win).height()/2 - $em.outerHeight()/2
+	})
+	.fadeIn(400).delay(999).fadeOut(600);
 }
 // HTMLエンコード
 function HTMLenc( html ){
