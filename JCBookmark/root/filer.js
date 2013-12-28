@@ -1611,7 +1611,7 @@ function folderClick(ev){
 		var node = tree.node( this.id.slice(6) );
 		if( node ){
 			// クリックフォルダ選択状態に
-			$(selectFolder).removeClass('select inactive');
+			$(selectFolder).removeClass('select').removeClass('inactive');
 			$(select=selectFolder=this).addClass('select').focus();
 			// アイテム欄作成
 			itemTable( node );
@@ -1909,7 +1909,7 @@ function itemDragStart( element, downX, downY ){
 			// 複数選択ドラッグアイテムどうしは何もしない(ドロップ不可)
 			if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
 			// ドロップ要素スタイル適用
-			$this.removeClass('dropTop dropBottom dropIN');
+			$this.removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
 			// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
 			var Y = ev.pageY - $this.offset().top;
 			if( draggie.id.indexOf('item')==0 ){
@@ -2010,7 +2010,7 @@ function itemDragStart( element, downX, downY ){
 				tree.moveChild( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
 			}
 			else return; // ドロップ不可
-			$this.removeClass('dropTop dropBottom dropIN');
+			$this.removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
 			// 表示更新
 			switch( itemTable('?') ){
 			case 'deadlink':
@@ -2056,7 +2056,7 @@ function itemDragStart( element, downX, downY ){
 	});
 }
 function itemMouseLeave(){
-	if( draggie ) $(this).removeClass('dropTop dropBottom dropIN');
+	if( draggie ) $(this).removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
 }
 function itemClick(ev){
 	// 単選択(選択解除)

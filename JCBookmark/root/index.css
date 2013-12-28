@@ -1,5 +1,5 @@
 @charset "utf-8";
-body,span,div,input,button,select,textarea {
+body,a,img,span,div,input,button,textarea,th,td {
 	margin:0;
 	padding:0;
 }

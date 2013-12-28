@@ -1,5 +1,5 @@
 /* フォント：MS Pゴシック */
 @charset "utf-8";
-span,div,input,button,select,textarea {
+span,a,img,div,input,button,textarea,th,td {
 	font-family:"MS PGothic",sans-serif !important;
 }
