@@ -724,11 +724,13 @@ var itemTable = function(){
 					var $item = $(items[i]);
 					if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
 						(function( $url ){
+							var url = $url.text();
+							if( /^javascript:/i.test(url) ) return;
 							$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
 							var $img = $imgsrc.clone();
 							ajaxs.push({
 								xhr:$.ajax({
-									url:':alive?'+$url.text()
+									url:':alive?'+url
 									,error:function(xhr){
 										$url.next().text( xhr.status+' '+xhr.statusText )
 										.prepend( $img.attr('src','delete.png') );
@@ -821,6 +823,7 @@ var itemTable = function(){
 					var abort = false;
 					return function( node ){
 						if( node===false ){ abort=true; return; }
+						if( /^javascript:/i.test(node.url) ) return;
 						var index = ajaxs.length;
 						ajaxs.push({
 							done :false
