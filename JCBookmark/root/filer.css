@@ -1,5 +1,5 @@
 @charset "utf-8";
-body,a,img,span,div,input,button {
+body,span,div {
 	margin:0;
 	padding:0;
 	white-space:nowrap;
@@ -361,22 +361,24 @@ body {
 	line-height:1;
 }
 #analybox .icon {
-	margin:4px 5px 0 3px;
+	float:none;
+	width:20px; height:20px;
+	vertical-align:-5px;
 }
-#antitle {
+#analybox #antitle {
 	border:1px solid #888;
 	padding:1px;
 	width:96%;
 	margin-left:5px;
 }
-#anicon {
-	border:1px solid #ddd;
+#analybox #anicon {
+	border:1px solid #eee;
 	padding:1px;
 	width:90%;
 }
-#anmove {
+#analybox #anmove {
 	text-align:center;
-	padding-top:40px;
+	padding-top:20px;
 }
 /* リンク切れ調査 */
 #deadinfo {

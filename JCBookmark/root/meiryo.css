@@ -1,6 +1,6 @@
 /* フォント：メイリオ */
 @charset "utf-8";
-span,a,img,div,input,button,textarea,th,td {
+span,div,input,button,textarea {
 	font-family:"メイリオ",Meiryo,"MS PGothic",sans-serif !important;
 }
 .nomeiryo {

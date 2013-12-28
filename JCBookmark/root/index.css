@@ -1,5 +1,5 @@
 @charset "utf-8";
-body,a,img,span,div,input,button,textarea,th,td {
+body {
 	margin:0;
 	padding:0;
 }
@@ -484,10 +484,12 @@ body,a,img,span,div,input,button,textarea,th,td {
 	border-color:#e92;
 }
 #findtab button {
-	border-radius:5px;
-}
-#findstart, #findstop {
 	border-radius:0 5px 5px 0;
+	margin:0;
+}
+#findtab #new100 {
+	border-radius:5px 0 0 5px;
+	margin-left:3px;
 }
 #findtab button img {
 	width:18px;

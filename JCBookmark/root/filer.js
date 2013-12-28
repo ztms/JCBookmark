@@ -2201,7 +2201,7 @@ function itemContextMenu(ev){
 						title	:'タイトル/アイコンを取得'
 						,modal	:true
 						,width	:560
-						,height	:237
+						,height	:217
 						,close	:function(){ $(this).dialog('destroy'); }
 					});
 					analyze();
