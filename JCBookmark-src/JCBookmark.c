@@ -1279,26 +1279,29 @@ void ClientShutdown( TClient* cp )
 }
 BOOL BufferSize( Buffer* bp, size_t bytes )
 {
-	size_t need = bp->bytes + bytes;
-	if( need > bp->size ){
-		// バッファ拡大
-		UCHAR* newtop;
-		size_t newsize = bp->size * 2;
-		while( need > newsize ){ newsize *= 2; }
-		newtop = malloc( newsize );
-		if( newtop ){
-			memset( newtop, 0, newsize );
-			memcpy( newtop, bp->top, bp->bytes );
-			free( bp->top );
-			bp->top = newtop;
-			bp->size = newsize;
-			LogW(L"送信バッファ拡大%ubytes",newsize);
-			return TRUE;
+	if( bp->top && bp->size >0 ){ // 高負荷時bp->sizeが0で無限ループした事があり事前チェック
+		size_t need = bp->bytes + bytes;
+		if( need > bp->size ){
+			// バッファ拡大
+			UCHAR* newtop;
+			size_t newsize = bp->size * 2;
+			while( need > newsize ) newsize *= 2;
+			newtop = malloc( newsize );
+			if( newtop ){
+				memset( newtop, 0, newsize );
+				memcpy( newtop, bp->top, bp->bytes );
+				free( bp->top );
+				bp->top = newtop;
+				bp->size = newsize;
+				LogW(L"送信バッファ拡大%ubytes",newsize);
+				return TRUE;
+			}
+			LogW(L"L%u:malloc(%u)エラー",__LINE__,newsize);
+			return FALSE;
 		}
-		LogW(L"L%u:malloc(%u)エラー",__LINE__,newsize);
-		return FALSE;
+		return TRUE;
 	}
-	return TRUE;
+	return FALSE;
 }
 void BufferSend( Buffer* bp, const UCHAR* data, size_t bytes )
 {
@@ -2466,7 +2469,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,AliveRe
 									break;
 								}
 							}
-							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head);
+							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
 							if( !*rsp->buf && rp ) rp->ico='?', strcpy(rp->msg,"受信タイムアウト");
 						}
 						else{
@@ -3553,9 +3556,12 @@ unsigned __stdcall analyze( void* p )
 // - 調査URLに接続しGETリクエストを送って応答を確認する。
 // - 名前解決エラー、接続タイムアウトなどはその旨の短文テキストを生成する。
 // - クライアントへの応答は基本「200 OK」で本文にJSON形式で調査結果を記載する。
-// JavaScriptを使ったリダイレクトもあるようだが、JavaScriptの解析は自力では無理…。
+// - 転送されたら転送先を確認
+// 転送はJavaScriptを使う方法もあるが、JavaScriptの解析は自力では無理…。
 // リダイレクト手法まとめ
 // http://likealunatic.jp/2007/10/21_redirect.php
+// TODO:HTTP以外のスキーム(javascript,ftp等)はどうするか。
+// javascript:はブラウザ側でリクエストしないのが正解かな？ftpとかどうしよう・・。
 unsigned __stdcall alive( void* p )
 {
 	TClient*	cp		= p;
