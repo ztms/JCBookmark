@@ -388,8 +388,7 @@ var option = {
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
 		// ツリー描画
-		option_ok = true;
-		if( tree_ok ) go();
+		option_ok=true; if( tree_ok ) go();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });

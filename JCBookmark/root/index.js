@@ -619,23 +619,17 @@ var option = {
 };
 // ブックマークデータ取得
 (function(){
-	var $loading = $('<div id=loading>データ取得中...</div>');
+	var $loading = $('<div style="color:#888;text-align:center;">データ取得中...</div>');
 	var option_ok = false;
 	var tree_ok = false;
 	option.load(function(){
 		panelReady();
 		// 表示(チラツキ低減)
 		$loading.prependTo( $('body').css('visibility','visible') );
-		option_ok = true;
-		if( tree_ok ) go();
+		option_ok=true; if( tree_ok ) go();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
-	function go(){
-		setTimeout(function(){
-			$loading.remove();
-			paneler( tree.top(), setEvents );
-		},0);
-	}
+	function go(){ setTimeout(function(){ paneler( tree.top(), setEvents ); $loading.remove(); },0); }
 })();
 // カラム生成関数
 var $columnBase = $('<div class=column></div>');
@@ -1134,11 +1128,9 @@ function setEvents(){
 		.append('<hr>');
 		if( isLocalServer ){
 			$box.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
-				// TODO:大量URLだとタイトル/favicon取得のajaxが終わるまでUIが固まってしまう。
-				// ajaxが終わるまでは変更保存リンクをクリックしない方がよいが、そのタイミング
-				// も実装を知らないユーザにはわからない。ajax終わるまでモーダルダイアログの
-				// プログレスバー出した方がよいか？そうするなら、先にDOM更新した後タイトル変更
-				// ではなく、先にタイトル取得して最後にDOM更新でいいような気もする。
+				// TODO:ajaxが終わるまでは変更保存リンクをクリックしないでほしいが、実装を知らないユーザ
+				// にはわからない。ajax終わるまでモーダルダイアログのプログレスバー出した方がいい？
+				// 変更保存リンクをプログレス状態で表示しておくのがいいかな？
 				$menu.hide();
 				$.get(':clipboard.txt',function(data){
 					var pnode = tree.node( panel.id );
