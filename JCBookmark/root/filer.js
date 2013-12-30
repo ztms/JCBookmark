@@ -388,11 +388,10 @@ var option = {
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
 		// ツリー描画
-		option_ok=true; if( tree_ok ) go();
+		option_ok=true; if( tree_ok ) folderTree({ click0:true });
 	});
-	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
+	tree.load(function(){ tree_ok=true; if( option_ok ) folderTree({ click0:true }); });
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
-	function go(){ setTimeout(function(){ folderTree({ click0:true }); },0); }
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
@@ -414,16 +413,16 @@ $.css.add = function( rule ,index ){
 	rule = rule.replace(/[\{\}]/g,'');
 	var rgx = /^\s+|\s+$/g;
 	var selector = rule.slice(0,idx).replace(rgx,'');
-	var value = rule.slice(idx).replace(rgx,'');
+	var style = rule.slice(idx).replace(rgx,'');
 	var indexAdded = -1;
 	if( idx !==-1 ){
 		if( IE && IE<8 ){
 			indexAdded = index || sheet.rules.length;
 			var sels = selector.split(',');
-			for( var i=0; i<sels.length; i++ ) sheet.addRule( sels[i] ,value ,indexAdded++ );
+			for( var i=0; i<sels.length; i++ ) sheet.addRule( sels[i] ,style ,indexAdded++ );
 			indexAdded--;
 		}
-		else sheet.addRule( selector ,value ,indexAdded = index || sheet.rules.length );
+		else sheet.addRule( selector ,style ,indexAdded = index || sheet.rules.length );
 	}
 	return indexAdded;
 };
@@ -754,6 +753,7 @@ var itemList = function(){
 			// リンク切れ調査(フォルダ)
 			// TODO:アイテム欄と排他利用じゃなくて独立させて裏で実行を続けられるように。今の#deadinfoの右上に
 			// 最小化ボタンつけて一行に縮むようにするといいかな。その一行にプログレスバーも入るといいけど。
+			// createDocumentFragmentでアイテム要素を退避するのがいいかな？
 			// TODO:負荷制御ajax並列数を1～5まで変更できるといいかな？1は並列じゃなくて直列。5くらいでブラウザ
 			// の上限もあって頭打ちだろう。自分でキュー行列作って順次ajax発行しないといけない面倒くさいが。
 			kind = 'deads';
@@ -2680,7 +2680,7 @@ function Alert( msg ){
 }
 // ふわっと表示して徐々に消えるメッセージ
 // http://jsdo.it/honda0510/bELN
-// IE8のメイリオだとfadeIn/fadeOutでアンチエイリアスが効かず汚いためゴシックに変更する。
+// IE8のメイリオだとfadeIn/fadeOutでアンチエイリアスが効かず汚いためゴシックに変更する
 // http://blog.tackikaku.jp/2010/11/ie78opacity.html
 if( IE && IE<9 ) $('#notify').addClass('nomeiryo');
 // TODO:IE8でfadeIn動作にチラツキが発生。IE7では問題なし。IE8固有問題か？

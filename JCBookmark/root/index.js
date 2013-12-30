@@ -629,7 +629,7 @@ var option = {
 		option_ok=true; if( tree_ok ) go();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) go(); });
-	function go(){ setTimeout(function(){ paneler( tree.top(), setEvents ); $loading.remove(); },0); }
+	function go(){ $loading.remove(); paneler( tree.top(), setEvents ); }
 })();
 // カラム生成関数
 var $columnBase = $('<div class=column></div>');
