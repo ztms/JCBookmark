@@ -560,18 +560,19 @@ var itemList = function(){
 	var $head3 = $head.find('.url').next().next();	// 可変項目ヘッダ(アイコン/場所/調査結果)
 	var $itemAppend = null;							// アイテム１つ生成関数
 	var kind = 'child';								// アイテム欄の種類
-	var timer = null;								// setTimeoutID
-	var ajaxs = [];									// ajax配列
-	var ajaxer = null;								// ajax発行中断関数
 	var keywords = [];								// 検索キーワード
+	var timer = null;								// setTimeoutID
+	var ajaxer = null;								// ajax発行関数
+	var ajaxs = [];									// ajax配列
+	var queue = [];									// ajax用ノード配列キュー
 	$('#finding').offset($('#keyword').offset()).progressbar();
 	function finalize(){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
 		// ajax中止
 		if( ajaxer ) ajaxer(false) ,ajaxer=null;
-		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].xhr.abort();
-		ajaxs.length = 0;
+		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].abort();
+		ajaxs.length = queue.length = 0;
 		// 検索終了
 		$('#itembox').children('.spacer').empty();
 		$('#finding').progressbar('value',0);
@@ -724,26 +725,24 @@ var itemList = function(){
 						if( /^javascript:/i.test(url) ) return;
 						$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
 						var $img = $imgsrc.clone();
-						ajaxs.push({
-							xhr:$.ajax({
-								url:':alive?'+url
-								,error:function(xhr){
-									$url.next().text( xhr.status+' '+xhr.statusText )
-									.prepend( $img.attr('src','delete.png') );
+						ajaxs.push($.ajax({
+							url:':alive?'+url
+							,error:function(xhr){
+								$url.next().text( xhr.status+' '+xhr.statusText )
+								.prepend( $img.attr('src','delete.png') );
+							}
+							,success:function(data){
+								var ico = 'question.png';				// 不明
+								switch( data.ico ){
+								case 'O': ico = 'ok.png'; break;		// 正常
+								case 'E': ico = 'delete.png'; break;	// エラー
+								case 'D': ico = 'skull.png'; break;		// 死亡
+								case '!': ico = 'warn.png'; break;		// 注意
 								}
-								,success:function(data){
-									var ico = 'question.png';				// 不明
-									switch( data.ico ){
-									case 'O': ico = 'ok.png'; break;		// 正常
-									case 'E': ico = 'delete.png'; break;	// エラー
-									case 'D': ico = 'skull.png'; break;		// 死亡
-									case '!': ico = 'warn.png'; break;		// 注意
-									}
-									$url.next().text( data.msg +(data.url.length? ', '+data.url :'') )
-									.prepend( $img.attr('src',ico) )
-								}
-							})
-						});
+								$url.next().text( data.msg +(data.url.length? ', '+data.url :'') )
+								.prepend( $img.attr('src',ico) )
+							}
+						}));
 					})( $item.children('.url') );
 				}
 			}
@@ -754,8 +753,6 @@ var itemList = function(){
 			// TODO:アイテム欄と排他利用じゃなくて独立させて裏で実行を続けられるように。今の#deadinfoの右上に
 			// 最小化ボタンつけて一行に縮むようにするといいかな。その一行にプログレスバーも入るといいけど。
 			// createDocumentFragmentでアイテム要素を退避するのがいいかな？
-			// TODO:負荷制御ajax並列数を1～5まで変更できるといいかな？1は並列じゃなくて直列。5くらいでブラウザ
-			// の上限もあって頭打ちだろう。自分でキュー行列作って順次ajax発行しないといけない面倒くさいが。
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
@@ -818,52 +815,49 @@ var itemList = function(){
 				};
 			}();
 			// 進捗表示情報
-			var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
-			// ajax発行中断関数
+			var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 ,total:0 };
+			// ajax用ノード配列キュー
+			var queuer = function( node ){
+				if( /^javascript:/i.test(node.url) ) return;
+				queue.push( node );
+			};
+			// ajax発行関数
 			ajaxer = function(){
-				var abort = false;
-				return function( node ){
-					if( node===false ){ abort=true; return; }
-					if( /^javascript:/i.test(node.url) ) return;
-					var index = ajaxs.length;
-					ajaxs.push({
-						done :false
-						,xhr :$.ajax({
-							url:':alive?'+node.url
-							,error:function(xhr){
-								if( abort ) return;
-								count.err++;
-								$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
+				var abort = false;			// 中断フラグ
+				var	qix = 0;				// ノード配列(キュー)インデックス
+				return function( aix ){		// ajax配列インデックス
+					if( aix===false ){ abort=true; return; }
+					if( qix >= queue.length ) return;
+					var node = queue[qix++];
+					ajaxs[aix] = $.ajax({
+						url:':alive?'+node.url
+						,error:function(xhr){
+							if( abort ) return;
+							count.err++;
+							$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
+						}
+						,success:function(data){
+							if( abort ) return;
+							var ico = 'question.png';							// 不明
+							switch( data.ico ){
+							case 'O': count.ok++; return;						// 正常
+							case 'E': count.err++; ico = 'delete.png'; break;	// エラー
+							case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
+							case '!': count.warn++; ico = 'warn.png'; break;	// 注意
+							default: count.unknown++;
 							}
-							,success:function(data){
-								if( abort ) return;
-								var ico = 'question.png';							// 不明
-								switch( data.ico ){
-								case 'O': count.ok++; return;						// 正常
-								case 'E': count.err++; ico = 'delete.png'; break;	// エラー
-								case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
-								case '!': count.warn++; ico = 'warn.png'; break;	// 注意
-								default: count.unknown++;
-								}
-								$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
-							}
-							,complete:function(){ if( !abort ) ajaxs[index].done = true; }
-						})
+							$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
+						}
+						,complete:function(){ count.total++; if( ajaxer ) ajaxer(aix); }
 					});
 				};
 			}();
 			// 下層フォルダ処理 
-			var pushed=0 ,popped=0; // 完了待ちループで判定を間違えないためのカウント
 			var childer = function( child ){
-				// 大量フォルダ実行すると画面切り替わるまで固まるのでsetTimeout
-				setTimeout(function(){
-					for( var i=child.length-1; i>=0; i-- ){
-						if( child[i].child ) childer( child[i].child );
-						else ajaxer( child[i] );
-					}
-					popped++;
-				},0);
-				pushed++;
+				for( var i=child.length-1; i>=0; i-- ){
+					if( child[i].child ) childer( child[i].child );
+					else queuer( child[i] );
+				}
 			};
 			if( arg1==='folder' ){
 				// アイテム欄の選択ブックマークとフォルダ内を調査
@@ -878,7 +872,7 @@ var itemList = function(){
 								if( !titles ) titles=node.title; else titles+=', '+node.title;
 								childer( node.child );
 							}
-							else ajaxer( node );
+							else queuer( node );
 						}
 					}
 				}
@@ -890,19 +884,18 @@ var itemList = function(){
 				childer( arg1.child );
 			}
 			else return;
+			ajaxer(0); ajaxer(1); ajaxer(2); ajaxer(3); ajaxer(4); // 5並列
 			items.innerHTML = '';
+			$total.text( queue.length );
 			// 完了待ち進捗表示ループ
 			(function waiter(){
-				var waiting=0;
-				for( var i=ajaxs.length-1; i>=0; i-- ) if( !ajaxs[i].done ) waiting++;
-				$total.text( ajaxs.length );
 				$ok.text( count.ok );
 				$err.text( count.err );
 				$dead.text( count.dead );
 				$warn.text( count.warn );
 				$unknown.text( count.unknown );
-				if( waiting || pushed > popped ){
-					$pgbar.progressbar('value',(ajaxs.length-waiting)*100/ajaxs.length);
+				if( count.total < queue.length ){
+					$pgbar.progressbar('value',count.total*100/queue.length);
 					timer = setTimeout(waiter,200);
 					return;
 				}
