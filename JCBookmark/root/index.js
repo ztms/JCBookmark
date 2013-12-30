@@ -421,7 +421,7 @@ var option = {
 			}
 			var page = option.data.page;
 			// 一度目の参照時に規定値を設定
-			if( page.title==null ) page.title = 'ブックマーク';
+			if( page.title===null ) page.title = 'ブックマーク';
 			return page.title;
 		}
 	}
@@ -434,7 +434,7 @@ var option = {
 			}
 			var color = option.data.color;
 			// 一度目の参照時に規定値を設定
-			if( color.css=='' ) color.css = 'black.css';
+			if( color.css==='' ) color.css = 'black.css';
 			return color.css;
 		}
 	}
@@ -447,7 +447,7 @@ var option = {
 			}
 			var wall = option.data.wall;
 			// 一度目の参照時に規定値を設定
-			if( wall.margin=='' ) wall.margin = 'auto';
+			if( wall.margin==='' ) wall.margin = 'auto';
 			return wall.margin;
 		}
 	}
@@ -471,7 +471,7 @@ var option = {
 			}
 			var font = option.data.font;
 			// 一度目の参照時に規定値を設定
-			if( font.css=='' ) font.css = 'gothic.css';
+			if( font.css==='' ) font.css = 'gothic.css';
 			return font.css;
 		}
 	}
@@ -2251,7 +2251,7 @@ var panelPopper = function(){
 		if( IE && IE<9 && ev.stopPropagation ) ev.stopPropagation();
 	}
 	return function( panel, prevX, prevY ){
-		if( panel==false ){
+		if( panel===false ){
 			// ポップアップ解除
 			clearTimeout( itemTimer );
 			$doc.off('mousemove.itempop');
