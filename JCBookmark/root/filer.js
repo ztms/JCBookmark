@@ -542,7 +542,7 @@ var folderTree = function(){
 				if( hide && hideDepth < node.depth ) $node.hide();
 				// アイテム欄表示オプション
 				if( opt.click0 ){
-					if( index===0 ) $node.click();
+					if( index==0 ) $node.click();
 				}
 				else if( opt.clickID ){
 					if( node.id==opt.clickID ) $node.click();
@@ -907,11 +907,11 @@ var itemList = function(){
 					return;
 				}
 				// 完了
-				if( count.ok===0 ) $okbox.remove();
-				if( count.err===0 ) $errbox.remove();
-				if( count.dead===0 ) $deadbox.remove();
-				if( count.warn===0 ) $warnbox.remove();
-				if( count.unknown===0 ) $unknownbox.remove();
+				if( count.ok==0 ) $okbox.remove();
+				if( count.err==0 ) $errbox.remove();
+				if( count.dead==0 ) $deadbox.remove();
+				if( count.warn==0 ) $warnbox.remove();
+				if( count.unknown==0 ) $unknownbox.remove();
 				$('#deadinfo').find('button').remove();
 				$pgbar.remove();
 				finalize();
@@ -1193,7 +1193,7 @@ $('#selectall').click(function(){
 $('#delete').click(function(){
 	if( select.id.indexOf('item')==0 ){
 		// アイテム欄
-		if( itemList('?')==='child' ){
+		if( itemList('?')=='child' ){
 			// 通常
 			var hasFolder=false, ids=[];
 			for( var items=doc.getElementById('items').children ,i=0 ,n=items.length; i<n; i++ ){
@@ -1413,7 +1413,7 @@ $('#itembox').on({
 		}
 	}
 	,contextmenu:function(ev){
-		if( itemList('?')==='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
+		if( itemList('?')=='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
 			var $menu = $('#contextmenu').width(250);
 			var $box = $menu.children('div').empty();
 			// クリップボードから登録
@@ -1575,7 +1575,7 @@ function treeSave( arg ){
 function folderClick(ev){
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
-	if( itemList('?')==='child' && $(this).hasClass('select') ){
+	if( itemList('?')=='child' && $(this).hasClass('select') ){
 		var $this = $(select=this);
 		// 選択アイテムを非アクティブに
 		for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
@@ -1923,7 +1923,7 @@ function itemDragStart( element, downX, downY ){
 						}
 						else{
 							// アイテムへドロップ
-							if( itemList('?')==='child' ) SiblingOnly();	// 通常
+							if( itemList('?')=='child' ) SiblingOnly();	// 通常
 						}
 					}else{
 						// フォルダツリーへドロップ
@@ -1942,7 +1942,7 @@ function itemDragStart( element, downX, downY ){
 						}
 						else{
 							// アイテムへドロップ
-							if( itemList('?')==='child' ) SiblingOnly();	// 通常
+							if( itemList('?')=='child' ) SiblingOnly();	// 通常
 						}
 					}else{
 						// フォルダツリーの…
@@ -1963,7 +1963,7 @@ function itemDragStart( element, downX, downY ){
 					}
 					else{
 						// アイテムへドロップ
-						if( itemList('?')==='child' ) SiblingOnly();	// 通常
+						if( itemList('?')=='child' ) SiblingOnly();	// 通常
 					}
 				}else{
 					// フォルダツリーの…
@@ -2235,7 +2235,7 @@ function itemContextMenu(ev){
 			$box.append('<hr>');
 		}
 	}
-	if( itemList('?')==='child' && isLocalServer ){
+	if( itemList('?')=='child' && isLocalServer ){
 		// クリップボードから登録
 		if( width<250 ) width=250;
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
@@ -2470,15 +2470,15 @@ function edit( element, opt ){
 								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
 								var $parent = $(element.parentNode);
 								if( $parent.hasClass('item') && $parent.hasClass('folder') ) folderTree({});
-								if( itemList('?')==='finds' ) itemList('finds');
+								if( itemList('?')=='finds' ) itemList('finds');
 								break;
 							case 'url':
 								if( value.length ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nid );
-									if( node.title==='新規ブックマーク' ){
+									if( node.title=='新規ブックマーク' ){
 										$.get(':analyze?'+value,function(data){
-											if( data.title.length && node.title==='新規ブックマーク' ){
+											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLdec( data.title );
 												if( tree.nodeAttr( nid, 'title', data.title ) >1 )
 													$('#item'+nid).find('.title').text( data.title );
