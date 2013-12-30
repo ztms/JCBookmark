@@ -892,7 +892,10 @@ function setEvents(){
 								MsgBox('処理中です...');
 								$.ajax({
 									url		:':chrome.json'
-									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
+									,error	:function(xhr){
+										$('#dialog').dialog('destroy');
+										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+									}
 									,success:function( data ){
 										bookmarks = data;
 										$.ajax({
@@ -972,7 +975,7 @@ function setEvents(){
 							if( 'synced' in bookmarks )
 								root.child[0].child.push( chrome2node(bookmarks.synced) );
 							// 完了
-							analyzer( root );
+							$('#dialog').dialog('destroy'); analyzer( root );
 						}
 					});
 				}
@@ -989,8 +992,13 @@ function setEvents(){
 								$.ajax({
 									url		:':favorites.json'
 									//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
-									,success:function(data){ analyzer( data ); }
+									,error	:function(xhr){
+										$('#dialog').dialog('destroy');
+										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+									}
+									,success:function(data){
+										$('#dialog').dialog('destroy'); analyzer( data );
+									}
 								});
 							}
 						});
@@ -1008,8 +1016,13 @@ function setEvents(){
 								$.ajax({
 									url		:':firefox.json'
 									//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr){ Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText); }
-									,success:function(data){ analyzer( data ); }
+									,error	:function(xhr){
+										$('#dialog').dialog('destroy');
+										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+									}
+									,success:function(data){
+										$('#dialog').dialog('destroy'); analyzer( data );
+									}
 								});
 							}
 						});
@@ -1539,6 +1552,7 @@ function setEvents(){
 				$impexp.find('iframe').off().one('load',function(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
+						$('#dialog').dialog('destroy');
 						try{ analyzer( $.parseJSON(jsonText) ); }
 						catch( e ){ Alert(e); }
 					}
@@ -2640,18 +2654,26 @@ function modifySave( arg ){
 	}
 }
 // favicon解析してから移行データ取り込み
-// TODO:Chromeで解析件数が多いとスキップしてもajax通信がいつまでたっても終わらず続いてしまう。
-// abort()がぜんぜん効いていないかのよう…Chrome以外はわりとすぐ終わってくれるのに…
 function analyzer( nodeTop ){
 	var total = 0;			// URL総数
-	var ajaxs = [];			// URL解析中配列
-	var skipped = false;	// スキップフラグ
+	var ajaxs = [];			// ajax配列
+	var queue = [];			// ノード配列
+	var qix = 0;			// ノード配列インデックス
+	var complete = 0;		// 解析完了数
+	var timer = null;		// タイマーID
+	var ajaxer = function( aix ){
+		if( qix >= queue.length ) return;
+		var node = queue[qix++];
+		ajaxs[aix] = $.ajax({
+			url		 :':analyze?'+node.url
+			,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
+			,complete:function(){ complete++; if( ajaxer ) ajaxer(aix); }
+		});
+	};
 	function skip(){
-		skipped = true;
-		for( var i=ajaxs.length-1; i>=0; i-- ){
-			ajaxs[i].xhr.abort();
-			ajaxs[i].done = true;
-		}
+		clearTimeout(timer) ,timer=null, ajaxer=null;
+		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].abort();
+		ajaxs.length = queue.length = 0;
 		$('#dialog').dialog('destroy');
 		importer( nodeTop );
 	}
@@ -2668,43 +2690,29 @@ function analyzer( nodeTop ){
 		,close	:skip
 		,buttons:{ 'スキップして次に進む':skip }
 	});
-	// ajaxリクエスト
-	(function ajaxer( node ){
+	// ノード配列作成
+	(function queuer( node ){
 		if( node.child ){
-			for( var i=0, n=node.child.length; i<n; i++ ) ajaxer( node.child[i] );
+			for( var i=0, n=node.child.length; i<n; i++ ) queuer( node.child[i] );
 		}
 		else{
 			total++;
-			if( node.url.length && !node.icon.length ){
-				var index = ajaxs.length;
-				ajaxs[index] = {
-					done: false
-					,xhr: $.ajax({
-						url		 :':analyze?'+node.url
-						,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
-						,complete:function(){ ajaxs[index].done = true; }
-					})
-				};
-			}
+			if( node.url.length && !node.icon.length && !/^javascript:/i.test(node.url) )
+				queue.push( node );
 		}
 	}( nodeTop ));
+	// ajax発行
+	for( var i=0; i<9; i++ ) ajaxer(i);
 	// 進捗表示
-	$msg.text('ブックマーク'+total+'個のうち、'+ajaxs.length+'個のファビコンがありません。ファビコンを取得しています...' );
-	$count.text('(0/'+ajaxs.length+')');
+	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
+	$count.text('(0/'+queue.length+')');
 	$pgbar.progressbar('value',0);
-	// 解析完了待ちループ
+	// 完了待ちループ
 	(function waiter(){
-		if( skipped ) return;
-		var waiting=0;
-		for( var i=ajaxs.length-1; i>=0; i-- ){
-			if( !ajaxs[i].done ) waiting++;
-		}
-		if( waiting ){
-			// 進捗表示
-			var count = ajaxs.length - waiting;
-			$count.text('('+count+'/'+ajaxs.length+')');
-			$pgbar.progressbar('value',count*100/ajaxs.length);
-			setTimeout(waiter,500);
+		if( complete < queue.length ){
+			$count.text('('+complete+'/'+queue.length+')');
+			$pgbar.progressbar('value',complete*100/queue.length);
+			timer = setTimeout(waiter,500);
 			return;
 		}
 		// 完了
