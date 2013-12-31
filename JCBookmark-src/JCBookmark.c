@@ -1279,7 +1279,7 @@ void ClientShutdown( TClient* cp )
 }
 BOOL BufferSize( Buffer* bp, size_t bytes )
 {
-	if( bp->top && bp->size >0 ){ // 高負荷時bp->sizeが0で無限ループした事があり事前チェック
+	if( bp->top && bp->size >0 ){ // 高負荷時bp->sizeが0で無限ループした事があり事前チェック TODO:この後一度アクセス違反で落ちたことがあったが再現せず原因不明…スレッド関連だろうか…
 		size_t need = bp->bytes + bytes;
 		if( need > bp->size ){
 			// バッファ拡大
@@ -2156,7 +2156,7 @@ typedef struct {
 	UCHAR	ico;		// アイコン用識別子
 	UCHAR	msg[256];	// メッセージ
 	UCHAR*	newurl;		// 転送結果URL
-} AliveReport;
+} PokeReport;
 
 // 外部クッキー
 // Set-Cookie: NAME=VALUE; expires=DATE; domain=DOMAIN; path=PATH; secure HttpOnly
@@ -2174,7 +2174,7 @@ typedef struct Cookie {
 } Cookie;
 
 // HTTPクライアント
-HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,AliveReport* rp ,const UCHAR* cookie )
+HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeReport* rp ,const UCHAR* cookie )
 {
 	#define		HTTPGET_BUFSIZE	(1024*16) // 初期バッファサイズあまり拡大が発生しない程度の大きさに
 	HTTPGet*	rsp				= NULL;
@@ -3196,7 +3196,7 @@ void CookieDestroy( Cookie* cookie )
 }
 
 // httpGET()の結果が転送の場合はさらにhttpGET()して返却
-HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,AliveReport* rp )
+HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeReport* rp )
 {
 	HTTPGet* rsp = httpGET( url0 ,ua ,abort ,rp ,0 );
 	Cookie* cookie = NULL;
@@ -3552,7 +3552,7 @@ unsigned __stdcall analyze( void* p )
 }
 
 // 指定URL死活確認を行うスレッド関数
-// クライアントからの要求 GET /:alive?URL HTTP/1.x で開始され、
+// クライアントからの要求 GET /:poke?URL HTTP/1.x で開始され、
 // - 調査URLに接続しGETリクエストを送って応答を確認する。
 // - 名前解決エラー、接続タイムアウトなどはその旨の短文テキストを生成する。
 // - クライアントへの応答は基本「200 OK」で本文にJSON形式で調査結果を記載する。
@@ -3560,13 +3560,12 @@ unsigned __stdcall analyze( void* p )
 // 転送はJavaScriptを使う方法もあるが、JavaScriptの解析は自力では無理…。
 // リダイレクト手法まとめ
 // http://likealunatic.jp/2007/10/21_redirect.php
-// TODO:HTTP以外のスキーム(javascript,ftp等)はどうするか。
-// javascript:はブラウザ側でリクエストしないのが正解かな？ftpとかどうしよう・・。
-unsigned __stdcall alive( void* p )
+// TODO:HTTP以外のスキーム(ftp:等)
+unsigned __stdcall poke( void* p )
 {
-	TClient*	cp		= p;
-	AliveReport rp		= { '?',"不明な処理結果です",NULL };
-	HTTPGet*	rsp		= NULL;
+	TClient*	cp	= p;
+	PokeReport	rp	= { '?',"不明な処理結果です",NULL };
+	HTTPGet*	rsp	= NULL;
 
 	// メインスレッドなにもしない
 	cp->status = CLIENT_THREADING;
@@ -5818,9 +5817,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}
-						else if( stricmp(file,":alive")==0 && cp->req.param ){
+						else if( stricmp(file,":poke")==0 && cp->req.param ){
 							// URL死活確認
-							cp->thread = (HANDLE)_beginthreadex( NULL,0, alive, (void*)cp, 0,NULL );
+							cp->thread = (HANDLE)_beginthreadex( NULL,0, poke, (void*)cp, 0,NULL );
 							Sleep(10);	// なんとなくちょっと待つ
 							break; // スレッド終了まで何もしない
 						}

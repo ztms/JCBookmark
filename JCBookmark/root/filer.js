@@ -715,7 +715,18 @@ var itemList = function(){
 			// アイテム欄の選択ブックマークをリンク切れ調査(フォルダ/javascriptは無視)
 			var title = $head3.text();
 			if( !/調査/.test(title) ) $head3.text( title +' / 調査結果' );
-			// ajax発行関数
+			// ノード配列作成
+			var items = doc.getElementById('items').children;
+			for( var i=0, n=items.length; i<n; i++ ){
+				var $item = $(items[i]);
+				if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
+					var $url = $item.children('.url');
+					if( /^javascript:/i.test($url.text()) ) continue;
+					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
+					queue.push( $url );
+				}
+			}
+			// ajax発行
 			var $imgsrc = $('<img class=icon style="margin-left:0">');
 			var qix = 0;
 			ajaxer = function( aix ){
@@ -723,7 +734,7 @@ var itemList = function(){
 				if( qix >= queue.length ) return;
 				var $url = queue[qix++];
 				ajaxs[aix] = $.ajax({
-					url:':alive?'+$url.text()
+					url:':poke?'+$url.text()
 					,error:function(xhr){
 						if( !ajaxer ) return;
 						$url.next().text( xhr.status+' '+xhr.statusText )
@@ -744,18 +755,6 @@ var itemList = function(){
 					,complete:function(){ if( ajaxer ) ajaxer(aix); }
 				});
 			};
-			// ノード配列作成
-			var items = doc.getElementById('items').children;
-			for( var i=0, n=items.length; i<n; i++ ){
-				var $item = $(items[i]);
-				if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
-					var $url = $item.children('.url');
-					if( /^javascript:/i.test($url.text()) ) continue;
-					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
-					queue.push( $url );
-				}
-			}
-			// ajax発行
 			for( var i=0; i<9; i++ ) ajaxer(i);
 		}
 		else if( arg0==='deads' ){
@@ -795,68 +794,11 @@ var itemList = function(){
 					.append($pgbar)
 					.width($(items).width())
 			);
-			$itemAppend = function(){
-				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
-				var $icon = $('<img class=icon>');
-				var $title = $('<span class=title></span>');
-				var $url = $('<span class=url></span>');
-				var $stat = $('<span class=status></span>');
-				var $img = $('<img class=icon style="margin-left:0">');
-				var $date = $('<span class=date></span>');
-				var $br = $('<br class=clear>');
-				var $hTitle = $head.find('.title');
-				var $hUrl = $head.find('.url');
-				var $hDate = $head.find('.date');
-				var date = new Date();
-				var now = (new Date()).getTime();
-				var index = 0;
-				$item.append($icon).append($title).append($url).append($stat).append($date).append($br);
-				return function( node ,ico ,txt ){
-					if( node===false ){ $item.remove(); return; }
-					date.setTime( node.dateAdded ||0 );
-					$icon.attr('src', node.icon ||'item.png');
-					$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
-					$url.text( node.url ).width( $hUrl.width() +4 );
-					$stat.text( txt ).prepend( $img.attr('src',ico) ).width( $head3.width() +4 );
-					$date.text( myFmt(date,now) ).width( $hDate.width() +2 );
-					var $e = $item.clone(true).attr('id','item'+node.id);
-					if( index++ %2 ) $e.addClass('bgcolor');
-					items.appendChild( $e[0] );
-				};
-			}();
-			// 進捗情報
-			var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 ,total:0 };
-			var queuer = function( node ){		// ajax用ノード配列キュー
+			// ノード配列作成
+			var queuer = function( node ){
 				if( /^javascript:/i.test(node.url) ) return;
 				queue.push( node );
 			};
-			var	qix = 0;						// ノード配列(キュー)インデックス
-			ajaxer = function( aix ){			// ajax発行関数
-				if( aix===false || qix >= queue.length ) return;
-				var node = queue[qix++];
-				ajaxs[aix] = $.ajax({
-					url:':alive?'+node.url
-					,error:function(xhr){
-						if( !ajaxer ) return;
-						count.err++;
-						$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
-					}
-					,success:function(data){
-						if( !ajaxer ) return;
-						var ico = 'question.png';							// 不明
-						switch( data.ico ){
-						case 'O': count.ok++; return;						// 正常
-						case 'E': count.err++; ico = 'delete.png'; break;	// エラー
-						case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
-						case '!': count.warn++; ico = 'warn.png'; break;	// 注意
-						default: count.unknown++;
-						}
-						$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
-					}
-					,complete:function(){ if( ajaxer ) count.total++ ,ajaxer(aix); }
-				});
-			};
-			// 下層フォルダ処理 
 			var childer = function( child ){
 				for( var i=child.length-1; i>=0; i-- ){
 					if( child[i].child ) childer( child[i].child );
@@ -889,6 +831,62 @@ var itemList = function(){
 			}
 			else return;
 			// ajax発行
+			$itemAppend = function(){
+				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
+				var $icon = $('<img class=icon>');
+				var $title = $('<span class=title></span>');
+				var $url = $('<span class=url></span>');
+				var $stat = $('<span class=status></span>');
+				var $img = $('<img class=icon style="margin-left:0">');
+				var $date = $('<span class=date></span>');
+				var $br = $('<br class=clear>');
+				var $hTitle = $head.find('.title');
+				var $hUrl = $head.find('.url');
+				var $hDate = $head.find('.date');
+				var date = new Date();
+				var now = (new Date()).getTime();
+				var index = 0;
+				$item.append($icon).append($title).append($url).append($stat).append($date).append($br);
+				return function( node ,ico ,txt ){
+					if( node===false ){ $item.remove(); return; }
+					date.setTime( node.dateAdded ||0 );
+					$icon.attr('src', node.icon ||'item.png');
+					$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
+					$url.text( node.url ).width( $hUrl.width() +4 );
+					$stat.text( txt ).prepend( $img.attr('src',ico) ).width( $head3.width() +4 );
+					$date.text( myFmt(date,now) ).width( $hDate.width() +2 );
+					var $e = $item.clone(true).attr('id','item'+node.id);
+					if( index++ %2 ) $e.addClass('bgcolor');
+					items.appendChild( $e[0] );
+				};
+			}();
+			var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 ,total:0 };
+			var	qix = 0;
+			ajaxer = function( aix ){
+				if( aix===false || qix >= queue.length ) return;
+				var node = queue[qix++];
+				ajaxs[aix] = $.ajax({
+					url:':poke?'+node.url
+					,error:function(xhr){
+						if( !ajaxer ) return;
+						count.err++;
+						$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
+					}
+					,success:function(data){
+						if( !ajaxer ) return;
+						var ico = 'question.png';							// 不明
+						switch( data.ico ){
+						case 'O': count.ok++; return;						// 正常
+						case 'E': count.err++; ico = 'delete.png'; break;	// エラー
+						case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
+						case '!': count.warn++; ico = 'warn.png'; break;	// 注意
+						default: count.unknown++;
+						}
+						$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
+					}
+					,complete:function(){ if( ajaxer ) count.total++ ,ajaxer(aix); }
+				});
+			};
 			for( var i=0; i<9; i++ ) ajaxer(i);
 			items.innerHTML = '';
 			$total.text( queue.length );
