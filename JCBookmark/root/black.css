@@ -3,6 +3,12 @@
 body {
 	background:#171300;
 }
+.column:hover {
+	background:#1c1b13;
+}
+.column:active {
+	background:#262520;
+}
 .panel {
 	border:1px solid #444;
 	background:#222;
@@ -18,15 +24,14 @@ body {
 .panel:hover .title {
 	color:#fff;
 	background:#443;
-	background:linear-gradient(#555544,#2e2e1d);
+	background:linear-gradient(#5f5f4f,#2e2e17);
 }
 .panel.active {
 	border-color:#997;
 }
 .panel.active .title {
-	color:#fff;
 	background:#554;
-	background:linear-gradient(#666655,#3e3e2d);
+	background:linear-gradient(#6f6f5f,#3e3e27);
 }
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
@@ -82,6 +87,9 @@ body {
 	border-color:#477;
 	background:#112a15;
 	background:linear-gradient(#27372f,#112a15);
+}
+.columndrop {
+	background:#44443a;
 }
 .paneldrop {
 	border:1px dashed #f88;

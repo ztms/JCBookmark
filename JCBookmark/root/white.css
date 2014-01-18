@@ -3,6 +3,12 @@
 body {
 	background:#f6faff;
 }
+.column:hover {
+	background:#eaf7f9;
+}
+.column:active {
+	background:#e0eeef;
+}
 .panel {
 	border:1px solid #d0d0d0;
 	background:#f3f3f5;
@@ -18,13 +24,12 @@ body {
 .panel:hover .title {
 	color:#335;
 	background:#e5e9f5;
-	background:linear-gradient(#f5f5ff,#d5d5dd);
+	background:linear-gradient(#f5f5ff,#c5c5cd);
 }
 .panel.active {
 	border-color:#dd9;
 }
 .panel.active .title {
-	color:#335;
 	background:#f0f0f0;
 	background:linear-gradient(#ffffff,#e3e3e3);
 }
@@ -82,6 +87,9 @@ body {
 	border-color:#eca9a9;
 	background:#f9ecf2;
 	background:linear-gradient(#fff8fa,#f3e0e7);
+}
+.columndrop {
+	background:#daeef5;
 }
 .paneldrop {
 	border:1px dashed #d55;

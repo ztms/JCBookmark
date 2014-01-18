@@ -47,11 +47,14 @@ body {
 }
 #wall {
 	margin:auto;
-	padding-bottom:50px;
+	cursor:e-resize;
 }
 .column {
 	float:left;
-	padding-bottom:1px; /* パネルが０個になった時にカラム消えないように必要 */
+	padding-bottom:50px;
+}
+.columndrop {
+	float:left;
 }
 .panel {
 	font-size:13px;
@@ -177,6 +180,9 @@ body {
 	vertical-align:middle;
 	border:0;
 }
+#option label {
+	vertical-align:middle;
+}
 #option button {
 	width:18px;
 	height:18px;
@@ -296,7 +302,7 @@ body {
 	background:#f7f7f7;
 	border-color:#ddd;
 }
-#editbox div .edit.active {
+#editbox div .edit.drag {
 	background:#f9f5f5;
 	border-color:#eaa;
 }
@@ -520,7 +526,7 @@ body {
 #finding:hover {
 	background:#e5e5e5;
 }
-#finding.active {
+#finding.drag {
 	background:#fdc;
 }
 #foundbox {

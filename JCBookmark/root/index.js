@@ -1,5 +1,6 @@
 // vim:set ts=4:vim modeline
-// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了エラーになる事が
+// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了する事しばしば
+// TODO:インターネット経由だと待たされるのを改善するためツリーをsessionStorageに保存して整理画面と共有？
 // TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:一括でパネル開閉
 // TODO:パネルの中にパネル。フォルダ構造をそのままで。
@@ -54,8 +55,7 @@ var tree = {
 		// ノードIDつけて
 		(function callee( node ){
 			node.id = tree.root.nextid++;
-			if( node.child )
-				for( var i=0, n=node.child.length; i<n; i++ ) callee( node.child[i] );
+			if( node.child ) for( var i=0, n=node.child.length; i<n; i++ ) callee( node.child[i] );
 		}( subtree ));
 		// トップノード(固定)child配列に登録
 		tree.top().child.push( subtree ); // 最後に
@@ -69,10 +69,7 @@ var tree = {
 	// 指定ノードIDを持つノードオブジェクト(既定はごみ箱は探さない)
 	,node:function( id, root ){
 		return function callee( node ){
-			if( node.id==id ){
-				// 見つけた
-				return node;
-			}
+			if( node.id==id ) return node; // 見つけた
 			if( node.child ){
 				for( var i=node.child.length-1; i>=0; i-- ){
 					var found = callee( node.child[i] );
@@ -189,10 +186,7 @@ var tree = {
 	,nodeParent:function( id ){
 		return function callee( node ){
 			for( var i=0, n=node.child.length; i<n; i++ ){
-				if( node.child[i].id==id ){
-					// 見つけた
-					return node;
-				}
+				if( node.child[i].id==id ) return node; // 見つけた
 				if( node.child[i].child ){
 					var found = callee( node.child[i] );
 					if( found ) return found;
@@ -254,9 +248,7 @@ var tree = {
 				var movenodes = [];
 				(function callee( child ){
 					for( var i=0; i<child.length; i++ ){
-						if( ids.length && child[i].child ){
-							callee( child[i].child );
-						}
+						if( ids.length && child[i].child ) callee( child[i].child );
 						for( var j=0; j<ids.length; j++ ){
 							if( child[i].id==ids[j] ){
 								// 見つけた:コピーしてから削除
@@ -729,8 +721,7 @@ var paneler = function(){
 				// 開パネルアイテム追加
 				var $box = $p.find('.itembox').empty();
 				for( var i=0, child=node.child, n=child.length; i<n; i++ ){
-					if( !child[i].child )
-						$box.append( $newItem( child[i] ) );
+					if( !child[i].child ) $box.append( $newItem( child[i] ) );
 				}
 			}
 			// カラム高さ
@@ -753,9 +744,7 @@ var paneler = function(){
 		function afterLayout(){
 			var nodeList = [];	// 未配置ノードオブジェクト配列
 			(function lister( node ){
-				if( !(node.id in placeList) ){
-					nodeList.push( node );
-				}
+				if( !(node.id in placeList) ) nodeList.push( node );
 				for( var i=0, n=node.child.length; i<n; i++ ){
 					if( node.child[i].child ){
 						lister( node.child[i] );
@@ -791,9 +780,10 @@ var paneler = function(){
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
 								}
-								if( data.icon.length )
+								if( data.icon.length ){
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
 										$('#'+node.id).find('img').attr('src',data.icon);
+								}
 							});
 							// DOM
 							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
@@ -830,13 +820,27 @@ var paneler = function(){
 					},10);
 				})
 			);
+			columnHeightAdjust();
 			if( postEvent ) postEvent();
 			// 測定
 			//$debug.text('paneler='+((new Date()).getTime() -start.getTime())+'ms');
 		}
 	};
 }();
-// イベント設定
+// カラム高さ揃え
+function columnHeightAdjust(){
+	var height = 0;
+	var padding = 50; // 50px初期値
+	var columns = $('.column');
+	for( var i=columns.length-1; i>=0; i-- ){
+		if( height < $(columns[i]).height() ) height = $(columns[i]).height();
+	}
+	if( $('#findtab').css('display')=='block' ) padding += $('#findtab').height();
+	if( $('#findbox').css('display')=='block' ) padding += $('#findbox').height();
+	for( var i=columns.length-1; i>=0; i-- ){
+		columns[i].style.paddingBottom = height - $(columns[i]).height() + padding +'px';
+	}
+}
 function setEvents(){
 	// ブラウザ情報＋インポートイベント
 	(function(){
@@ -1039,8 +1043,7 @@ function setEvents(){
 		var animate = null;
 		return function(ev){
 			if( ev.clientX <37 && ev.clientY <sidebarHeight ){	// サイドバー周辺にある程度近づいた
-				if( !animate )
-					animate = $sidebar.animate({width:65},'fast');
+				if( !animate ) animate = $sidebar.animate({width:65},'fast');
 			}
 			else if( animate ){							// サイドバーから離れてるとき隠す
 				$sidebar.stop(true).width(34);
@@ -1048,39 +1051,31 @@ function setEvents(){
 			}
 		};
 	}())
-	// ウォール右クリック新規パネル作成メニュー
-	.on('contextmenu','#wall',function(ev){
+	// カラム右クリック新規パネル作成メニュー
+	.on('contextmenu','.column',function(ev){
 		var column = null;	// 新規パネルが入るカラム
 		var above = null;	// 新規パネルの上のパネル
 		var below = null;	// 新規パネルの下のパネル
-		$('.column').each(function(){
-			if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
-				var $panels = $(this).children('.panel');
-				if( $panels.length ){
-					if( ev.pageX < $panels[0].offsetLeft ){
-						return false;			// パネル左右余白クリック無視
-					}
-					if( ev.pageY < $panels[0].offsetTop ){
-						below = $panels[0];		// 一番上に新規パネル
-						return false;
-					}
-					var panel = $panels[$panels.length-1];
-					if( panel.offsetTop +panel.offsetHeight < ev.pageY ){
-						above = panel;			// 一番下に新規パネル
-						return false;
-					}
-					for( var i=$panels.length-1; i>0; i-- ){
-						if( ev.pageY < $panels[i].offsetTop &&
-							$panels[i-1].offsetTop +$panels[i-1].offsetHeight < ev.pageY ){
-							below = $panels[i]; // パネルとパネルの間
-							return false;
-						}
-					}
-				}
-				else column = this; // 空カラムに新規パネル
-				return false;
+		var $panels = $(this).children('.panel');
+		if( $panels.length ){
+			if( ev.pageX < $panels[0].offsetLeft ){
+				return true;			// パネル左右余白クリック無視
 			}
-		});
+			if( ev.pageY < $panels[0].offsetTop ){
+				below = $panels[0];		// 一番上に新規パネル
+			}
+			var panel = $panels[$panels.length-1];
+			if( panel.offsetTop +panel.offsetHeight < ev.pageY ){
+				above = panel;			// 一番下に新規パネル
+			}
+			for( var i=$panels.length-1; i>0; i-- ){
+				if( ev.pageY < $panels[i].offsetTop &&
+					$panels[i-1].offsetTop +$panels[i-1].offsetHeight < ev.pageY ){
+					below = $panels[i]; // パネルとパネルの間
+				}
+			}
+		}
+		else column = this; // 空カラムに新規パネル
 		if( column || above || below ){
 			var $menu = $('#contextmenu');
 			var $box = $menu.children('div').empty();
@@ -1098,15 +1093,16 @@ function setEvents(){
 						else if( above ) $(above).after( $p );
 						else if( below ) $(below).before( $p );
 						option.panel.layouted();
+						columnHeightAdjust();
 					}
 				});
 			}));
 			// メニュー表示
-			$menu.css({
+			$menu.width(190).css({
 				left: (($win.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
 				,top: (($win.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 			})
-			.width(190).show();
+			.show();
 			return false;
 		}
 		return true; // 既定右クリックメニュー
@@ -1135,6 +1131,7 @@ function setEvents(){
 					var $p = $newPanel( node );
 					$(panel).before( $p );
 					option.panel.layouted();
+					columnHeightAdjust();
 				}
 			});
 		}))
@@ -1177,9 +1174,10 @@ function setEvents(){
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
 										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
 								}
-								if( data.icon.length )
+								if( data.icon.length ){
 									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
 										$('#'+node.id).find('img').attr('src',data.icon);
+								}
 							});
 							// DOM増加
 							$newItem(node).prependTo( $itembox );
@@ -1197,9 +1195,7 @@ function setEvents(){
 			var text='';
 			var child = tree.node( panel.id ).child;
 			for( var i=0, n=child.length; i<n; i++ ){
-				if( !child[i].child ){
-					text += child[i].title + '\r' + child[i].url + '\r';
-				}
+				if( !child[i].child ) text += child[i].title + '\r' + child[i].url + '\r';
 			}
 			var $box = $('#editbox').empty().append($('<textarea></textarea>').text(text))
 			.dialog({
@@ -1236,14 +1232,15 @@ function setEvents(){
 				tree.moveChild( [panel.id], tree.trash() );
 				$(panel).remove();
 				option.panel.layouted();
+				columnHeightAdjust();
 			}));
 		}
 		// メニュー表示
-		$menu.css({
+		$menu.width(280).css({
 			left: (($win.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
 			,top: (($win.height() -ev.clientY) <$menu.height())? ev.pageY -$menu.height() : ev.pageY
 		})
-		.width(280).show();
+		.show();
 		return false;	// 既定右クリックメニュー出さない
 	})
 	.on('mousedown',function(ev){
@@ -1697,9 +1694,7 @@ function setEvents(){
 			if( $(this).hasClass('select') ){ item=this; return false; }
 		});
 		if( item ){
-			if( !tree.modified() && !option.modified() ){
-				shotView();
-			}
+			if( !tree.modified() && !option.modified() ) shotView();
 			else Confirm({
 				msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 				,width:380
@@ -1862,7 +1857,7 @@ function setEvents(){
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利か？
 	$('#finding').progressbar().mousedown(function(ev){
 		// プログレスバーをD&Dで検索領域高さ変更
-		var $bar = $(this).addClass('active');
+		var $bar = $(this).addClass('drag');
 		var $box = $('#findbox');
 		var $tab = $('#findtab');
 		var $found = $('#foundbox');
@@ -1872,11 +1867,11 @@ function setEvents(){
 			var h = foundHeight +(downY - ev.clientY);
 			$found.height( (h<1)? 1:h );
 			$win.trigger('resize.findbox');
-			$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
 		})
 		.one('mouseup',function(){
 			$doc.off('mousemove.findbox mouseleave.findbox');
-			$bar.removeClass('active');
+			$bar.removeClass('drag');
+			columnHeightAdjust();
 		});
 		if( IE && IE<9 ) $doc.on('mouseleave.findbox',function(){ $doc.mouseup(); });
 	});
@@ -1926,9 +1921,12 @@ function setEvents(){
 			$('#new100').off('click');
 			$('#old100').off('click');
 			$('#findstop').click().off('click');
+			var h = $('#findtab').height() +$('#findbox').height();
+			$('.column').each(function(){
+				this.style.paddingBottom = parseInt(this.style.paddingBottom) - h +'px';
+			});
 			$('#findtab').hide();
 			$('#findbox').hide();
-			$wall.css('padding-bottom',50); // 50px初期値
 			$win.off('resize.findbox');
 		});
 		$win.on('resize.findbox',function(){
@@ -1940,7 +1938,9 @@ function setEvents(){
 		.trigger('resize.findbox');
 		$box.show();
 		$tab.show().find('input').focus();
-		$wall.css('padding-bottom', 50 +$box.height() +$tab.height() ); // 50px初期値
+		$('.column').each(function(){
+			this.style.paddingBottom = parseInt(this.style.paddingBottom) +$box.height() +$tab.height() +'px';
+		});
 		setTimeout(function(){
 			// パネル(フォルダ)配列生成・URL総数カウント
 			// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
@@ -2049,142 +2049,10 @@ function setEvents(){
 			$('#old100').off('click').click(function(){ sortUrlTop( 100 ); });
 		},0);
 	});
-	// パネル並べ替え
-	DragDrop({
-		itemClass:'panel'
-		,boxClass:'column'
-		,start:function( item ){ // 並べ替えドラッグ開始
-			// item==パネル要素
-			var $panel = $(item);
-			// 閉パネルポップアップ停止(しないとおかしな場所にポップアップして幽霊のようになる)
-			if( $panel.find('.plusminus').attr('src')=='plus.png' ){
-				$panel.off().find('.itembox').hide();
-			}
-			// カーソルと共に移動するjQuery要素を返却
-			return $panel.css({ position:'absolute', opacity:0.4 });
-		}
-		,place:function( item ){ // ドロップ場所作成
-			// item==パネル要素
-			var $panel = $(item);
-			// ドロップ場所を示すjQueryオブジェクトを返却
-			return $('<div></div>')
-					.addClass('paneldrop')
-					.css('marginLeft',$panel.css('marginLeft'))
-					.css('marginTop',$panel.css('marginTop'))
-					.height( option.font.size() +option.icon.size() +5 );
-		}
-		,drag:function( ev, $panel, $place ){ // ドラッグ中
-			if( ev.target.id=='wall' ){
-				$('.column').each(function(){
-					if( this.offsetLeft <=ev.pageX && ev.pageX <=this.offsetLeft +this.offsetWidth ){
-						$(this).append( $place );
-						return false;
-					}
-				});
-			}
-		}
-		,stop:function( $panel, $place ){ // 並べ替え終了
-			// $panel==start()戻り値、$place==place()戻り値
-			if( $place.parent().hasClass('column') ) $place.after( $panel );
-			$place.remove();
-			$panel.css({ position:'', opacity:1 });
-			// 閉パネルポップアップ再開
-			if( $panel.find('.plusminus').attr('src')=='plus.png' ){
-				$panel.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });
-				panelOpenClose( $panel[0].id );
-			}
-			option.panel.layouted();
-		}
-	});
-	// アイテム移動
-	// TODO:閉パネルアイテムをドラッグして外に出て（ポップアップ消えて）、また戻る（ポップアップする）と
-	// ドラッグアイテムの半透明化が解除されている。ポップアップ処理の方でアイテムがドラッグ中かどうか判別
-	// しないとダメかな・・面倒くさそう・・。
-	(function(){
-		var node = null;
-		var isFindBox = false;
-		DragDrop({
-			itemClass:'item'
-			,boxClass:'itembox'
-			,start:function( item ){ // 並べ替えドラッグ開始
-				// item==アイテム要素は閉パネルポップアップで削除される事があるので、
-				// 要素の元ノード情報を保持、
-				if( /^fd\d+$/.test(item.id) ){
-					// 検索ボックスアイテム(ごみ箱も含む)
-					isFindBox = true;
-					node = tree.node( item.id.slice(2), tree.root );
-				}
-				else{
-					// パネルアイテム(ごみ箱は含まない)
-					node = tree.node( item.id );
-				}
-				if( node ){
-					var $item = $(item);
-					// 元の要素は半透明にして、
-					$item.css('opacity',0.4);
-					// カーソルと共に移動する要素は新規作成して返却
-					return $('<div class=panel></div>')
-							.css({ position:'absolute', 'font-size':option.font.size() })
-							.width( $item.width() )
-							.append( $('<a class=item></a>').append( $item.children().clone() ) )
-							.appendTo( document.body );
-				}
-			}
-			,place:function( item ){ // ドロップ場所作成
-				// item==アイテム要素
-				return $('<div></div>').addClass('itemdrop');
-			}
-			,stop:function( $item, $place, ev ){ // 並べ替え終了
-				// $item==start()戻り値、$place==place()戻り値
-				if( node ){
-					var apply = true;
-					if( isFindBox ){
-						// 検索ボックスアイテムは検索ボックス上or画面外ドロップでキャンセル
-						if( elementHasXY( document.getElementById('findbox'), ev.clientX, ev.clientY ) ||
-							elementHasXY( document.getElementById('findtab'), ev.clientX, ev.clientY ) ||
-							!elementHasXY( $wall[0], ev.pageX, ev.pageY )
-						){
-							apply = false;
-						}
-						$('#fd'+node.id).css('opacity',1);
-						isFindBox = false;
-					}
-					if( apply && !$place.parent().hasClass('itembox') ){
-						// ドロップ場所未定キャンセル
-						apply = false;
-						$('#'+node.id).css('opacity',1);
-					}
-					if( apply ){
-						var $prev = $place.prev();
-						var $next = $place.next();
-						if( $prev.hasClass('item') ){
-							if( $next.hasClass('item') ){
-								if( $prev[0].id !=node.id && $next[0].id !=node.id ){
-									tree.moveSibling( [node.id], $next[0].id );
-								}
-							}
-							else if( $prev[0].id !=node.id ){ // 末尾
-								tree.moveSibling( [node.id], $prev[0].id, true );
-							}
-						}
-						else if( $next.hasClass('item') ){
-							if( $next[0].id !=node.id ){ // 先頭
-								tree.moveSibling( [node.id], $next[0].id );
-							}
-						}
-						else{ // 空パネル
-							tree.moveChild( [node.id], $place.parent().parent()[0].id );
-						}
-						$('#'+node.id).remove();
-						$place.after( $newItem(node) );
-					}
-					node = null;
-				}
-				$item.remove();
-				$place.remove();
-			}
-		});
-	})();
+	// ドラッグドロップ並べ替えイベント
+	columnSortable()
+	panelSortable();
+	itemSortable();
 	// サイドバーボタンキー入力
 	$('.barico').on({
 		keypress:function(ev){
@@ -2261,7 +2129,7 @@ var panelPopper = function(){
 				panelPopper( nextPanel, ev.pageX, ev.pageY );
 			}
 		}
-		// IE8でなぜかこのあとmouseupが発生してDragDropのドラッグが解除されてしまう問題の回避
+		// IE8でなぜかこのあとmouseupが発生してSortableのドラッグが解除されてしまう問題の回避
 		if( IE && IE<9 && ev.stopPropagation ) ev.stopPropagation();
 	}
 	return function( panel, prevX, prevY ){
@@ -2375,8 +2243,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$btn.attr({ src:'minus.png', title:'閉じる' });
 		// アイテム追加
 		for( var child=tree.node( nodeID ).child, i=0, n=child.length; i<n; i++ ){
-			if( !child[i].child )
-				$box.append( $newItem( child[i] ) );
+			if( !child[i].child ) $box.append( $newItem( child[i] ) );
 		}
 	}else{
 		// 閉じる(hoverでアイテムをポップアップ)
@@ -2388,6 +2255,7 @@ function panelOpenClose( $panel, itemShow, pageX, pageY ){
 		$btn.attr({ src:'plus.png', title:'開く' });
 		if( itemShow ) panelPopper( $panel[0], pageX, pageY );
 	}
+	columnHeightAdjust();
 }
 // パネル編集
 // pid:パネルノードID
@@ -2460,10 +2328,10 @@ function panelEdit( pid ){
 			}
 			index++; count--;
 		}
-		if( index < length ) timer = setTimeout(callee,0); else itemDragDrop();
+		if( index < length ) timer = setTimeout(callee,0); else iconSortable();
 	})();
-	// ファビコンD&Dでアイテム並べ替え(TODO:DragDropとかぶる)
-	function itemDragDrop(){
+	// ファビコンD&Dでアイテム並べ替え(TODO:Sortableとかぶる)
+	function iconSortable(){
 		$doc.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
 			var downX = ev.pageX;
@@ -2474,7 +2342,7 @@ function panelEdit( pid ){
 			var scrollTop = $itembox.offset().top +30;
 			var scrollBottom = scrollTop + $itembox.height() -60;
 			var speed = 0;
-			var $item = $(item).addClass('active');	// ドラッグ中スタイル
+			var $item = $(item).addClass('drag');	// ドラッグ中スタイル
 			function dragStarter(ev){
 				// ある程度カーソル移動したらドラッグ開始
 				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
@@ -2536,7 +2404,7 @@ function panelEdit( pid ){
 					$place.after( item );
 					$place.remove();
 				}
-				$item.css('opacity',1).removeClass('active');
+				$item.css('opacity',1).removeClass('drag');
 			});
 			if( IE && IE<9 ){
 				$doc.on('mouseleave.paneledit',function(){
@@ -2593,6 +2461,7 @@ function panelEdit( pid ){
 				});
 				// おわり
 				close();
+				columnHeightAdjust();
 			}
 			,'キャンセル':close
 		}
@@ -2631,9 +2500,7 @@ function modifySave( arg ){
 	else optionSave();
 
 	function optionSave(){
-		if( option.modified() ){
-			option.save({ success:suc, error:err });
-		}
+		if( option.modified() ) option.save({ success:suc, error:err });
 		else suc();
 	}
 	function suc(){
@@ -2702,7 +2569,7 @@ function analyzer( nodeTop ){
 		}
 	}( nodeTop ));
 	// ajax発行
-	for( var i=0; i<9; i++ ) ajaxer(i);
+	for( var i=0; i<8; i++ ) ajaxer(i);
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+queue.length+')');
@@ -2745,7 +2612,7 @@ function importer( nodeTop ){
 }
 // ドラッグ中スクロール制御
 // TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
-var scroller = function(){
+var dragScroll = function(){
 	var timer = null;
 	return function( ev ){
 		clearTimeout( timer );
@@ -2776,11 +2643,82 @@ var scroller = function(){
 		}
 	};
 }();
-// ドラッグ＆ドロップ並べ替え
-function DragDrop( opt ){
-	$doc.on('mousedown', '.'+opt.itemClass, function(ev){
+// TODO:カラム並べ替え(列入れ替え)
+function columnSortable(){
+	$doc.on('mousedown','.column',function(ev){
+		if( ev.target.id=='newurl' ) return;
+		var element = this;
+		var downX = ev.pageX;
+		var downY = ev.pageY;
+		var $dragi = null;				// ドラッグ物
+		var $place = null;				// ドロップ場所
+		var origin = {left:0,top:0};	// 元々の座標
+		function dragStarter(ev){
+			// ある程度カーソル移動したらドラッグ開始
+			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
+				// カーソルと共に移動する要素
+				$dragi = $(element);
+				origin = $dragi.offset();
+				$dragi.css({ position:'absolute' ,top:origin.top ,opacity:0.4 });
+				// ドロップ場所
+				$place = $('<div class=columndrop></div>')
+						.width( $dragi.outerWidth() )
+						.height( $dragi.outerHeight() )
+						.insertAfter( $dragi );
+			}
+		}
+		$doc.on('mousemove.dragdrop','.column, .columndrop',function(ev){
+			if( !$dragi ) dragStarter(ev);
+			if( $dragi ){
+				// ドラッグ物
+				$dragi.css({ left:origin.left +ev.pageX -downX });
+				// ドロップ場所
+				$('.column').each(function(){
+					if( this==element ) return;
+					if( $(this).offset().left <= ev.pageX && ev.pageX <= $(this).offset().left + this.offsetWidth ){
+						if( $(this).prev().hasClass('columndrop') ) $(this).after( $place );
+						else $(this).before( $place );
+						return false;
+					}
+				});
+				// スクロール制御
+				dragScroll(ev);
+			}
+		})
+		.one('mouseup',function(ev){
+			// スクロール停止
+			dragScroll(false);
+			// イベント解除
+			$doc.off('mousemove.dragdrop mouseleave.dragdrop');
+			// ドロップ並べ替え終了
+			if( $place ){
+				if( $place.parent().attr('id')=='wall' ) $place.after( $dragi );
+				$place.remove(); $place=null;
+				$dragi.css({ position:'', opacity:1 }); $dragi=null;
+				// カラム要素ID付け直し
+				$('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
+				option.panel.layouted();
+			}
+		})
+		// 右クリックメニューが消えなくなったのでここで実行
+		.trigger('mousedown');
+		if( IE && IE<9 ){
+			// see panelSortable()
+			$doc.on('mouseleave.dragdrop',function(){
+				if( $place ) $(element).after( $place );	// 元の場所で
+				$doc.mouseup();								// ドロップ
+			});
+			// IE8はなぜかエラー発生させればドラッグ可能になる…
+			xxxxx;
+		}
+		// Firefoxはreturn falseしないとテキスト選択になってしまう…
+		else return false;
+	});
+}
+// パネル並べ替え
+function panelSortable(){
+	$doc.on('mousedown','.panel',function(ev){
 		// 新規ブックマーク入力欄と登録ボタンは何もしない
-		// TODO:.panelだけで必要(.itemは不要)な処理だけどまあいいか…
 		if( ev.target.id=='newurl' ) return;
 		if( ev.target.id=='commit' ) return false;
 		var element = this;
@@ -2788,12 +2726,20 @@ function DragDrop( opt ){
 		var downY = ev.pageY;
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
-		$(element).addClass('active');	// ドラッグ中スタイル
+		$(element).addClass('active');	// スタイル(FirefoxでなぜかCSSの:activeが効かないので)
 		function dragStarter(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
-				$dragi = opt.start( element );
-				$place = opt.place( element );
+				// カーソルと共に移動する要素
+				$dragi = $(element).css({ position:'absolute', opacity:0.4 });
+				// 閉パネルポップアップ停止(しないとおかしな場所にポップアップして幽霊のようになる)
+				if( $dragi.find('.plusminus').attr('src')=='plus.png' )
+					$dragi.off().find('.itembox').hide();
+				// ドロップ場所
+				$place = $('<div class=paneldrop></div>')
+						.css('marginLeft',$dragi.css('marginLeft'))
+						.css('marginTop',$dragi.css('marginTop'))
+						.height( option.font.size() +option.icon.size() +5 );
 			}
 		}
 		$doc.on('mousemove.dragdrop',function(ev){
@@ -2801,42 +2747,65 @@ function DragDrop( opt ){
 			if( $dragi ){
 				// ドラッグ物
 				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
-				// 個別処理
-				if( opt.drag ) opt.drag( ev, $dragi, $place );
 				// スクロール制御
-				scroller(ev);
+				dragScroll(ev);
 			}
 		})
-		.on('mousemove.dragdrop', '.'+opt.boxClass+', .'+opt.boxClass+' .'+opt.itemClass, function(ev){
+		.on('mousemove.dragdrop','.panel',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
 				// ドロップ場所
 				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
 				if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
 				var $this = $(this);
-				if( $this.hasClass( opt.itemClass ) ){
-					// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
-					if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
-						if( $this.prev() != $place ) $this.before( $place );
-					}
-					else{
-						if( $this.next() != $place ) $this.after( $place );
-					}
+				// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
+				if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
+					if( $this.prev() != $place ) $this.before( $place );
 				}
-				else if( $this.hasClass( opt.boxClass ) ){
-					if( !this.children.length ) $this.append( $place );
+				else{
+					if( $this.next() != $place ) $this.after( $place );
+				}
+			}
+		})
+		.on('mousemove.dragdrop','.column',function(ev){
+			if( !$dragi ) dragStarter(ev);
+			if( $dragi ){
+				// ドロップ場所
+				var $col = $(ev.target);
+				if( $col.hasClass('column') ){
+					var $next = null;
+					for( var i=ev.target.children.length-1; i>=0; i-- ){
+						var $panel = $(ev.target.children[i]);
+						if( $panel.hasClass('panel') && !$panel.hasClass('active') ){
+							if( ev.pageY < $panel.offset().top + $panel.outerHeight()/2 )
+								$next = $panel;
+						}
+					}
+					if( $next ) $next.before( $place );
+					else $col.append( $place );
 				}
 			}
 		})
 		.one('mouseup',function(ev){
 			// スクロール停止
-			scroller(false);
+			dragScroll(false);
 			// イベント解除
 			$doc.off('mousemove.dragdrop mouseleave.dragdrop');
-			// ドロップ
-			if( $dragi ) opt.stop( $dragi, $place, ev );
-			// スタイル解除
-			$(element).removeClass('active');
+			// ドロップ並べ替え終了
+			if( $place ){
+				if( $place.parent().hasClass('column') ) $place.after( $dragi );
+				$place.remove(); $place=null;
+				$dragi.css({ position:'', opacity:1 });
+				// 閉パネルポップアップ再開
+				if( $dragi.find('.plusminus').attr('src')=='plus.png' ){
+					$dragi.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });
+					panelOpenClose( $dragi[0].id );
+				}
+				$dragi=null;
+				option.panel.layouted();
+				columnHeightAdjust();
+			}
+			$(element).removeClass('active');	// スタイル解除
 		})
 		// 右クリックメニューが消えなくなったのでここで実行
 		.trigger('mousedown');
@@ -2862,7 +2831,145 @@ function DragDrop( opt ){
 				if( $place ) $(element).after( $place );	// 元の場所で
 				$doc.mouseup();								// ドロップ
 			});
-			// IE8はなぜかエラー発生させれば.itemドラッグ可能になる…
+			// IE8はなぜかエラー発生させればドラッグ可能になる…
+			xxxxx;
+		}
+		// Firefoxはreturn falseしないとテキスト選択になってしまう…
+		else return false;
+	});
+}
+// パネルアイテム並べ替え
+// TODO:閉パネルアイテムをドラッグして外に出て（ポップアップ消えて）、また戻る（ポップアップする）と
+// ドラッグアイテムの半透明化が解除されている。ポップアップ処理の方でアイテムがドラッグ中かどうか判別
+// しないとダメかな・・面倒くさそう・・。
+function itemSortable(){
+	var node = null;
+	var isFindBox = false;
+	$doc.on('mousedown','.item',function(ev){
+		var element = this;
+		var downX = ev.pageX;
+		var downY = ev.pageY;
+		var $dragi = null;				// ドラッグ物
+		var $place = null;				// ドロップ場所
+		$(element).addClass('active');	// スタイル(FirefoxでなぜかCSSの:activeが効かないので)
+		function dragStarter(ev){
+			// ある程度カーソル移動したらドラッグ開始
+			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
+				// 要素は閉パネルポップアップで削除される事があるので元ノード情報を保持
+				if( /^fd\d+$/.test(element.id) ){
+					// 検索ボックスアイテム(ごみ箱も含む)
+					isFindBox = true;
+					node = tree.node( element.id.slice(2), tree.root );
+				}
+				else{
+					// パネルアイテム(ごみ箱は含まない)
+					node = tree.node( element.id );
+				}
+				if( node ){
+					// 元の要素は半透明に
+					var $item = $(element).css('opacity',0.4);
+					// カーソルと共に移動する要素作成
+					$dragi = $('<div class=panel></div>')
+							.css({ position:'absolute', 'font-size':option.font.size() })
+							.width( $item.width() )
+							.append( $('<a class=item></a>').append( $item.children().clone() ) )
+							.appendTo( document.body );
+					// ドロップ場所要素作成
+					$place = $('<div></div>').addClass('itemdrop');
+				}
+			}
+		}
+		$doc.on('mousemove.dragdrop',function(ev){
+			if( !$dragi ) dragStarter(ev);
+			if( $dragi ){
+				// ドラッグ物
+				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
+				// スクロール制御
+				dragScroll(ev);
+			}
+		})
+		.on('mousemove.dragdrop','.item',function(ev){
+			if( !$dragi ) dragStarter(ev);
+			if( $dragi ){
+				// ドロップ場所
+				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
+				if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
+				var $this = $(this);
+				if( $this.hasClass('item') ){
+					// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
+					if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
+						if( $this.prev() != $place ) $this.before( $place );
+					}
+					else{
+						if( $this.next() != $place ) $this.after( $place );
+					}
+				}
+			}
+		})
+		.one('mouseup',function(ev){
+			// スクロール停止
+			dragScroll(false);
+			// イベント解除
+			$doc.off('mousemove.dragdrop mouseleave.dragdrop');
+			// ドロップ並べ替え終了
+			if( node ){
+				var apply = true;
+				if( isFindBox ){
+					// 検索ボックスアイテムは検索ボックス上or画面外ドロップでキャンセル
+					if( elementHasXY( document.getElementById('findbox'), ev.clientX, ev.clientY ) ||
+						elementHasXY( document.getElementById('findtab'), ev.clientX, ev.clientY ) ||
+						!elementHasXY( $wall[0], ev.pageX, ev.pageY )
+					){
+						apply = false;
+					}
+					$('#fd'+node.id).css('opacity',1);
+					isFindBox = false;
+				}
+				if( apply && !$place.parent().hasClass('itembox') ){
+					// ドロップ場所未定キャンセル
+					apply = false;
+					$('#'+node.id).css('opacity',1);
+				}
+				if( apply ){
+					var $prev = $place.prev();
+					var $next = $place.next();
+					if( $prev.hasClass('item') ){
+						if( $next.hasClass('item') ){
+							if( $prev[0].id !=node.id && $next[0].id !=node.id ){
+								tree.moveSibling( [node.id], $next[0].id );
+							}
+						}
+						else if( $prev[0].id !=node.id ){ // 末尾
+							tree.moveSibling( [node.id], $prev[0].id, true );
+						}
+					}
+					else if( $next.hasClass('item') ){
+						if( $next[0].id !=node.id ){ // 先頭
+							tree.moveSibling( [node.id], $next[0].id );
+						}
+					}
+					else{ // 空パネル
+						tree.moveChild( [node.id], $place.parent().parent()[0].id );
+					}
+					$('#'+node.id).remove();
+					$place.after( $newItem(node) );
+					columnHeightAdjust();
+				}
+				$dragi.remove(); $dragi=null;
+				$place.remove(); $place=null;
+				node = null;
+			}
+			$(element).removeClass('active');	// スタイル解除
+		})
+		// 右クリックメニューが消えなくなったのでここで実行
+		.trigger('mousedown');
+		if( IE && IE<9 ){
+			// see panelSortable()
+			$doc.on('mouseleave.dragdrop',function(){
+				if( $place ) $(element).after( $place );	// 元の場所で
+				$doc.mouseup();								// ドロップ
+			});
+			// IE8はなぜかエラー発生させればドラッグ可能になる…
 			xxxxx;
 		}
 		// Firefoxはreturn falseしないとテキスト選択になってしまう…
@@ -2909,7 +3016,7 @@ function optionApply(){
 	$wall.width( columnWidth * option.column.count() ).css({
 		'padding-right':panelMarginLeft
 	});
-	$wall.find('.column').width( columnWidth );
+	$('.column').width( columnWidth );
 	$wall.find('.panel').width( panelWidth ).css({
 		'font-size':fontSize
 		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
@@ -2959,6 +3066,7 @@ function columnCountChange( count ){
 			$column[i].remove();
 		}
 	}
+	columnHeightAdjust();
 }
 // 一行入力ダイアログ
 function InputDialog( arg ){
