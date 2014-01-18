@@ -110,7 +110,7 @@ body {
 	border-color:#555;
 	background:#e7e7e7;
 }
-#border.active {
+#border.drag {
 	border-color:#975;
 	background:#fed;
 }
@@ -140,6 +140,10 @@ body {
 .bgcolor {
 	background:#f0f2ff;
 }
+/* リンク切れアイテム */
+.dead {
+	background:#e3e3e3;
+}
 /* 選択行 */
 #folders .select, #folders .select:hover,
 #items .select, #items .select:hover {
@@ -164,8 +168,7 @@ body {
 }
 /* フォルダ名、アイテム名、アイテム項目 */
 #folders span, #itemhead span, #items span {
-	display:block;
-	float:left;
+	display:inline-block;
 	height:19px;
 	cursor:default;
 	line-height:20px;
@@ -182,6 +185,20 @@ body {
 	color:#888;
 	padding-left:5px;
 }
+#itemhead .drag {
+	background:#fed;
+}
+.itemborder {
+	width:3px;
+	border-left:1px solid #ccc;
+	border-right:1px solid #ccc;
+	background:#eee;
+	cursor:col-resize;
+}
+.itemborder:hover {
+	border-color:#975;
+	background:#fed;
+}
 #items .url,
 #items .iconurl,
 #items .status,
@@ -194,20 +211,6 @@ body {
 }
 #items .status {
 	color:#444;
-}
-#itembox .itemborder {
-	width:3px;
-	border-left:1px solid #ccc;
-	border-right:1px solid #ccc;
-	background:#eee;
-	cursor:col-resize;
-}
-#itembox .itemborder:hover {
-	border-color:#975;
-	background:#fed;
-}
-#itembox .active {
-	background:#fed;
 }
 /* アイコン */
 .icon {
@@ -384,6 +387,7 @@ body {
 #deadinfo {
 	background:#ffa;
 	border-bottom:1px solid #bbb;
+	padding:0 0 2px 0;
 	text-align:center;
 	font-size:14px;
 	color:#333;
@@ -395,16 +399,10 @@ body {
 #deadinfo .count {
 	margin:0 13px 0 3px;
 }
-#deadinfo .pgbar {
-	height:7px;
-	border:0;
-	border-radius:0;
-	background:transparent;
-}
 #deadinfo button { /* 中止ボタン */
 	float:right;
 	height:20px;
-	margin:1px 1px 0 0;
+	margin:1px 2px 0 0;
 	padding:0;
 }
 #deadinfo .ui-button-text {

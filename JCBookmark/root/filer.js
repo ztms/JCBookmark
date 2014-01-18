@@ -596,7 +596,7 @@ var itemList = function(){
 			}
 			if( keywords.length<=0 ) return;
 			kind = 'finds';
-			$('#deadinfo').remove();
+			$('#deadinfo').trigger('dying').remove();
 			$head3.removeClass('iconurl').removeClass('status').addClass('place').text('場所');
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
 			$('#find').hide();
@@ -723,6 +723,7 @@ var itemList = function(){
 					var $url = $item.children('.url');
 					if( /^javascript:/i.test($url.text()) ) continue;
 					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
+					$url.parent().removeClass('dead');
 					queue.push( $url );
 				}
 			}
@@ -742,30 +743,31 @@ var itemList = function(){
 					}
 					,success:function(data){
 						if( !ajaxer ) return;
-						var ico = 'question.png';				// 不明
+						var ico='question.png' ,cls='';					// 不明
 						switch( data.ico ){
-						case 'O': ico = 'ok.png'; break;		// 正常
-						case 'E': ico = 'delete.png'; break;	// エラー
-						case 'D': ico = 'skull.png'; break;		// 死亡
-						case '!': ico = 'warn.png'; break;		// 注意
+						case 'O': ico='ok.png'; break;					// 正常
+						case 'E': ico='delete.png'; break;				// エラー
+						case 'D': ico='skull.png'; cls='dead'; break;	// 死亡
+						case '!': ico='warn.png'; break;				// 注意
 						}
 						$url.next().text( data.msg +(data.url.length? ', '+data.url :'') )
 						.prepend( $imgsrc.clone().attr('src',ico) );
+						$url.parent().addClass( cls );
 					}
 					,complete:function(){ if( ajaxer ) ajaxer(aix); }
 				});
 			};
-			for( var i=0; i<9; i++ ) ajaxer(i);
+			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
+			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
+			// 1URL=1ajaxじゃなくて3URL=1ajaxとかにすると速くなるかな。サーバ側要改修。
+			for( var i=0; i<4; i++ ) ajaxer(i);
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
-			// TODO:アイテム欄と排他利用じゃなくて独立させて裏で実行を続けられるように。今の#deadinfoの右上に
-			// 最小化ボタンつけて一行に縮むようにするといいかな。その一行にプログレスバーも入るといいけど。
-			// createDocumentFragmentでアイテム要素を退避するのがいいかな？
+			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
-			$('#itembox').children('.spacer').html('<img src=wait.gif>');
 			var items = doc.getElementById('items');
 			var $total = $('<span class=count>0</span>');
 			var $ok = $('<span class=count>0</span>');
@@ -773,27 +775,27 @@ var itemList = function(){
 			var $dead = $('<span class=count>0</span>');
 			var $warn = $('<span class=count>0</span>');
 			var $unknown = $('<span class=count>0</span>');
-			var $totalbox = $('<span><img class=icon src=item.png>総数</span>').append($total);
-			var $okbox = $('<span><img class=icon src=ok.png>正常</span>').append($ok);
-			var $errbox = $('<span><img class=icon src=delete.png>エラー</span>').append($err);
-			var $deadbox = $('<span><img class=icon src=skull.png>リンク切れ</span>').append($dead);
-			var $warnbox = $('<span><img class=icon src=warn.png>注意</span>').append($warn);
-			var $unknownbox = $('<span><img class=icon src=question.png>不明</span>').append($unknown);
-			var $pgbar = $('<div class=pgbar></div>').progressbar();
+			var $totalbox = $('<span><img class=icon src=item.png>総数</span>').append( $total );
+			var $okbox = $('<span><img class=icon src=ok.png>正常</span>').append( $ok );
+			var $errbox = $('<span><img class=icon src=delete.png>エラー</span>').append( $err );
+			var $deadbox = $('<span><img class=icon src=skull.png>リンク切れ</span>').append( $dead );
+			var $warnbox = $('<span><img class=icon src=warn.png>注意</span>').append( $warn );
+			var $unknownbox = $('<span><img class=icon src=question.png>不明</span>').append( $unknown );
 			var $folderName = $('<span></span>');
-			$('#itembox').prepend(
-					$('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
-					.prepend(
-						$('<button><img class=icon src=stop.png>中止</button>')
-						.button().click(function(){ $(this).remove(); finalize(); })
-					)
-					.append($folderName)
-					.append('<br>')
-					.append($totalbox).append($okbox).append($errbox)
-					.append($deadbox).append($warnbox).append($unknownbox)
-					.append($pgbar)
-					.width($(items).width())
-			);
+			var $info = $('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
+				.on('dying',function(){ $('#itembox').height( $('#folderbox').height() -$head.outerHeight() ); })
+				.prepend(
+					$('<button><img class=icon src=stop.png>中止</button>')
+					.button().click(function(){ $(this).remove(); finalize(); })
+				)
+				.append( $folderName )
+				.append('<br>')
+				.append( $totalbox ).append( $okbox ).append( $errbox )
+				.append( $deadbox ).append( $warnbox ).append( $unknownbox )
+				.width( $head.width() )
+				.insertBefore( $head );
+			$('#itembox').height( $('#folderbox').height() -$head.outerHeight() -$info.outerHeight() )
+				.children('.spacer').html('<img src=wait.gif>');
 			// ノード配列作成
 			var queuer = function( node ){
 				if( /^javascript:/i.test(node.url) ) return;
@@ -847,7 +849,7 @@ var itemList = function(){
 				var now = (new Date()).getTime();
 				var index = 0;
 				$item.append($icon).append($title).append($url).append($stat).append($date).append($br);
-				return function( node ,ico ,txt ){
+				return function( node ,ico ,txt ,cls ){
 					if( node===false ){ $item.remove(); return; }
 					date.setTime( node.dateAdded ||0 );
 					$icon.attr('src', node.icon ||'item.png');
@@ -855,12 +857,12 @@ var itemList = function(){
 					$url.text( node.url ).width( $hUrl.width() +4 );
 					$stat.text( txt ).prepend( $img.attr('src',ico) ).width( $head3.width() +4 );
 					$date.text( myFmt(date,now) ).width( $hDate.width() +2 );
-					var $e = $item.clone(true).attr('id','item'+node.id);
+					var $e = $item.clone(true).attr('id','item'+node.id).addClass( cls );
 					if( index++ %2 ) $e.addClass('bgcolor');
 					items.appendChild( $e[0] );
 				};
 			}();
-			var count = { ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 ,total:0 };
+			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
 			ajaxer = function( aix ){
 				if( aix===false || qix >= queue.length ) return;
@@ -874,22 +876,24 @@ var itemList = function(){
 					}
 					,success:function(data){
 						if( !ajaxer ) return;
-						var ico = 'question.png';							// 不明
+						var ico='question.png' ,cls='';								// 不明
 						switch( data.ico ){
-						case 'O': count.ok++; return;						// 正常
-						case 'E': count.err++; ico = 'delete.png'; break;	// エラー
-						case 'D': count.dead++; ico = 'skull.png'; break;	// 死亡
-						case '!': count.warn++; ico = 'warn.png'; break;	// 注意
+						case 'O': count.ok++; return;								// 正常
+						case 'E': count.err++; ico='delete.png'; break;				// エラー
+						case 'D': count.dead++; ico='skull.png'; cls='dead'; break;	// 死亡
+						case '!': count.warn++; ico='warn.png'; break;				// 注意
 						default: count.unknown++;
 						}
-						$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') );
+						$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') ,cls );
 					}
 					,complete:function(){ if( ajaxer ) count.total++ ,ajaxer(aix); }
 				});
 			};
-			for( var i=0; i<9; i++ ) ajaxer(i);
+			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
+			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
+			// 1URL=1ajaxじゃなくて3URL=1ajaxとかにすると速くなるかな。サーバ側要改修。
+			for( var i=0; i<4; i++ ) ajaxer(i);
 			items.innerHTML = '';
-			$total.text( queue.length );
 			// 完了待ち進捗表示ループ
 			(function waiter(){
 				$ok.text( count.ok );
@@ -898,25 +902,25 @@ var itemList = function(){
 				$warn.text( count.warn );
 				$unknown.text( count.unknown );
 				if( count.total < queue.length ){
-					$pgbar.progressbar('value',count.total*100/queue.length);
+					$total.text( count.total +' / '+ queue.length );
 					timer = setTimeout(waiter,250);
 					return;
 				}
 				// 完了
+				$total.text( queue.length );
 				if( count.ok==0 ) $okbox.remove();
 				if( count.err==0 ) $errbox.remove();
 				if( count.dead==0 ) $deadbox.remove();
 				if( count.warn==0 ) $warnbox.remove();
 				if( count.unknown==0 ) $unknownbox.remove();
 				$('#deadinfo').find('button').remove();
-				$pgbar.remove();
 				finalize();
 			})();
 		}
 		else{
 			// フォルダ表示
 			kind = 'child';
-			$('#deadinfo').remove();
+			$('#deadinfo').trigger('dying').remove();
 			$head3.removeClass('place').removeClass('status').addClass('iconurl').text('アイコン');
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
@@ -1317,7 +1321,7 @@ $('#folderbox,#itembox').on('scroll',function(){ $('#editbox').blur(); });
 // ボーダードラッグ
 $('#border').mousedown(function(ev){
 	$('#editbox').blur();
-	var $border = $(this).addClass('active');
+	var $border = $(this).addClass('drag');
 	var $folderbox = $('#folderbox');
 	var $itembox = $('#itembox');
 	var folderboxWidth = $folderbox.width();
@@ -1330,15 +1334,18 @@ $('#border').mousedown(function(ev){
 		if( newFolderboxWidth >20 && newItemboxWidth >20 ){
 			$folderbox.width( newFolderboxWidth );
 			$itembox.width( newItemboxWidth );
+			$('#itemhead').width( newItemboxWidth );
+			$('#deadinfo').width( newItemboxWidth );
 		}
 	})
 	.one('mouseup',function(){
 		$(doc).off('mousemove.border');
-		$border.removeClass('active');
+		$border.removeClass('drag');
 		// TODO:位置保存する…？
 	});
 });
 // アイテム欄項目ヘッダのボーダー
+// TODO:タイトル欄を右に広げたら行き止まりなのを改善したい
 $('.itemborder').mousedown(function(ev){
 	$('#editbox').blur();
 	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.iconurl/.place/.status)
@@ -1353,7 +1360,7 @@ $('.itemborder').mousedown(function(ev){
 		$attr = $('#items').find( selector );
 		$smry = $('#items').find('.summary');
 	}
-	$attrhead.addClass('active');
+	$attrhead.addClass('drag');
 	var $last = $('#items').find('.'+$lasthead.attr('class'));
 	var attrheadWidth = $attrhead.width();
 	var lastheadWidth = $lasthead.width();
@@ -1378,7 +1385,7 @@ $('.itemborder').mousedown(function(ev){
 	})
 	.one('mouseup',function(){
 		$(doc).off('mousemove.itemborder');
-		$attrhead.removeClass('active');
+		$attrhead.removeClass('drag');
 		// TODO:位置保存する…？
 	});
 });
@@ -1455,7 +1462,7 @@ function myFmt( date, now ){
 // 画面縦横サイズ変更：windowから呼ばれた時はフォルダ欄の幅を維持し、それ以外は一定比率で決める
 function resize(){
 	$('#editbox').blur();
-	var windowWidth = $(win).width() -1; // 適当-1px
+	var windowWidth = $(win).width();// -1; // 適当-1px
 	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.3)|0;
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
 	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
@@ -1463,7 +1470,7 @@ function resize(){
 		folderboxWidth = (windowWidth /5.3)|0;
 		itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	}
-	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px
+	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px(?)
 	var titleWidth = (itemsWidth /2.3)|0;									// 割合適当
 	var urlWidth = ((itemsWidth -titleWidth) /2.6)|0;						// 割合適当
 	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
@@ -1478,30 +1485,33 @@ function resize(){
 		.height( folderboxHeight );
 	$('#itembox')
 		.width( itemboxWidth )
-		.height( folderboxHeight );
-	// アイテムヘッダのボーダーと合うよう適当に増減して設定
-	$('#itemhead')
-		.width( itemsWidth )
-		.find('.title').width( titleWidth ).end()
-		.find('.url').width( urlWidth ).end()
-		.find('.iconurl, .place, .status').width( iconWidth ).end()
-		.find('.date').width( dateWidth -38 );			// -38px適当float対策
+		.height(
+			folderboxHeight
+			- $('#itemhead') // アイテムヘッダのボーダーと合うよう適当に増減して設定
+				.width( itemboxWidth )
+				.find('.title').width( titleWidth ).end()
+				.find('.url').width( urlWidth ).end()
+				.find('.iconurl, .place, .status').width( iconWidth ).end()
+				.find('.date').width( dateWidth -38 ).end()			// -38px適当float対策
+				.outerHeight()
+			- $('#deadinfo')
+				.width( itemboxWidth )
+				.outerHeight()
+		);
 	$('#items')
 		.width( itemsWidth )
-		.find('.title').width( titleWidth -18 ).end()				// アイコンのぶん-18px
-		.find('.url').width( urlWidth +4 ).end()					// itemborderのぶん+4px
-		.find('.iconurl, .place, .status').width( iconWidth +4 ).end()		// itemborderのぶん+4px
-		.find('.summary').width( urlWidth +iconWidth +14 ).end()	// 見た目で合うように+14px
-		.find('.date').width( dateWidth -36);					// float対策適当-36px
-	$('#deadinfo')
-		.width( itemsWidth );
+		.find('.title').width( titleWidth -18 ).end()					// アイコンのぶん-18px
+		.find('.url').width( urlWidth +4 ).end()						// itemborderのぶん+4px
+		.find('.iconurl, .place, .status').width( iconWidth +4 ).end()	// itemborderのぶん+4px
+		.find('.summary').width( urlWidth +iconWidth +14 ).end()		// 見た目で合うように+14px
+		.find('.date').width( dateWidth -35);							// float対策適当-36px
 }
 // 画面サイズ縦のみ変更
 function resizeV( padding ){
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -padding;
 	$('#folderbox').height( folderboxHeight );
 	$('#border').height( folderboxHeight );
-	$('#itembox').height( folderboxHeight );
+	$('#itembox').height( folderboxHeight -$('#itemhead').outerHeight() -$('#deadinfo').outerHeight() );
 }
 // 矩形選択
 // TODO:アイテム欄の上下自動スクロール
