@@ -831,7 +831,7 @@ var paneler = function(){
 function columnHeightAdjust(){
 	var height = 0;
 	var padding = 50; // 50px初期値
-	var columns = $('.column');
+	var columns = $wall.children('.column');
 	for( var i=columns.length-1; i>=0; i-- ){
 		if( height < $(columns[i]).height() ) height = $(columns[i]).height();
 	}
@@ -1922,7 +1922,7 @@ function setEvents(){
 			$('#old100').off('click');
 			$('#findstop').click().off('click');
 			var h = $('#findtab').height() +$('#findbox').height();
-			$('.column').each(function(){
+			$wall.children('.column').each(function(){
 				this.style.paddingBottom = parseInt(this.style.paddingBottom) - h +'px';
 			});
 			$('#findtab').hide();
@@ -1938,7 +1938,7 @@ function setEvents(){
 		.trigger('resize.findbox');
 		$box.show();
 		$tab.show().find('input').focus();
-		$('.column').each(function(){
+		$wall.children('.column').each(function(){
 			this.style.paddingBottom = parseInt(this.style.paddingBottom) +$box.height() +$tab.height() +'px';
 		});
 		setTimeout(function(){
@@ -2673,7 +2673,7 @@ function columnSortable(){
 				// ドラッグ物
 				$dragi.css({ left:origin.left +ev.pageX -downX });
 				// ドロップ場所
-				$('.column').each(function(){
+				$wall.children('.column').each(function(){
 					if( this==element ) return;
 					if( $(this).offset().left <= ev.pageX && ev.pageX <= $(this).offset().left + this.offsetWidth ){
 						if( $(this).prev().hasClass('columndrop') ) $(this).after( $place );
@@ -2696,7 +2696,7 @@ function columnSortable(){
 				$place.remove(); $place=null;
 				$dragi.css({ position:'', opacity:1 }); $dragi=null;
 				// カラム要素ID付け直し
-				$('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
+				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
 				option.panel.layouted();
 			}
 		})
@@ -3016,7 +3016,7 @@ function optionApply(){
 	$wall.width( columnWidth * option.column.count() ).css({
 		'padding-right':panelMarginLeft
 	});
-	$('.column').width( columnWidth );
+	$wall.children('.column').width( columnWidth );
 	$wall.find('.panel').width( panelWidth ).css({
 		'font-size':fontSize
 		,margin:panelMarginTop +'px 0 0 ' +panelMarginLeft +'px'
