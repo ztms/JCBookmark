@@ -1096,7 +1096,36 @@ function setEvents(){
 						columnHeightAdjust();
 					}
 				});
+			}))
+			.append($('<a><img src=cabinet.png>空カラム(列)を挿入</a>').click(function(){
+				$menu.hide();
+				if( !column ) column = (above || below).parentNode;
+				var $col = $(column);
+				// 作成
+				$col.before( $('<div class=column></div>').width( $col.width() ) );
+				option.column.count( option.column.count()+1 );
+				// ID付け直し
+				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
+				// サイズ調整
+				$wall.width( $col.outerWidth() * option.column.count() );
+				columnHeightAdjust();
+				// レイアウト設定
+				option.panel.layouted();
 			}));
+			if( column ){
+				// 空カラム
+				$box.append($('<a><img src=delete.png>カラム(列)を削除</a>').click(function(){
+					$menu.hide();
+					// 削除
+					option.column.count( option.column.count()-1 );
+					$wall.width( $(column).outerWidth() * option.column.count() );
+					$(column).remove();
+					// ID付け直し
+					$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
+					// レイアウト設定
+					option.panel.layouted();
+				}));
+			}
 			// メニュー表示
 			$menu.width(190).css({
 				left: (($win.width() -ev.clientX) <$menu.width())? ev.pageX -$menu.width() : ev.pageX
@@ -2675,9 +2704,10 @@ function columnSortable(){
 				// ドロップ場所
 				$wall.children('.column').each(function(){
 					if( this==element ) return;
-					if( $(this).offset().left <= ev.pageX && ev.pageX <= $(this).offset().left + this.offsetWidth ){
-						if( $(this).prev().hasClass('columndrop') ) $(this).after( $place );
-						else $(this).before( $place );
+					var $this = $(this);
+					if( $this.offset().left <= ev.pageX && ev.pageX <= $this.offset().left + this.offsetWidth ){
+						if( $this.prev().hasClass('columndrop') ) $this.after( $place );
+						else $this.before( $place );
 						return false;
 					}
 				});
@@ -2695,7 +2725,7 @@ function columnSortable(){
 				if( $place.parent().attr('id')=='wall' ) $place.after( $dragi );
 				$place.remove(); $place=null;
 				$dragi.css({ position:'', opacity:1 }); $dragi=null;
-				// カラム要素ID付け直し
+				// 要素ID付け直し
 				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
 				option.panel.layouted();
 			}
@@ -3052,13 +3082,11 @@ function columnCountChange( count ){
 	else if( count.prev > count.next ){
 		// カラム減る
 		var $column = [];						// カラムオブジェクト配列
-		for( var i=0, n=count.prev; i<n; i++ ){
-			$column[i] = $('#co'+i);
-		}
+		for( var i=0, n=count.prev; i<n; i++ ) $column[i] = $('#co'+i);
 		// 消えるカラムにあるパネルを残るカラムに分配
 		var distination=0;
 		for( var i=count.next, n=count.prev; i<n; i++ ){
-			$column[i].find('.panel').each(function(){
+			$column[i].children('.panel').each(function(){
 				$(this).appendTo( $column[distination%count.next] );
 				distination++;
 			});
