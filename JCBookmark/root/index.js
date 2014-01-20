@@ -2359,7 +2359,7 @@ function panelEdit( pid ){
 		}
 		if( index < length ) timer = setTimeout(callee,0); else iconSortable();
 	})();
-	// ファビコンD&Dでアイテム並べ替え(TODO:Sortableとかぶる)
+	// ファビコンD&Dでアイテム並べ替え
 	function iconSortable(){
 		$doc.on('mousedown.paneledit','#editbox div .icon',function(ev){
 			var item = this.parentNode;
@@ -2433,7 +2433,7 @@ function panelEdit( pid ){
 					$place.after( item );
 					$place.remove();
 				}
-				$item.css('opacity',1).removeClass('drag');
+				$item.css('opacity','').removeClass('drag');
 			});
 			if( IE && IE<9 ){
 				$doc.on('mouseleave.paneledit',function(){
@@ -2672,7 +2672,7 @@ var dragScroll = function(){
 		}
 	};
 }();
-// TODO:カラム並べ替え(列入れ替え)
+// カラム並べ替え(列入れ替え)
 function columnSortable(){
 	$doc.on('mousedown','.column',function(ev){
 		if( ev.target.id=='newurl' ) return;
@@ -2688,7 +2688,7 @@ function columnSortable(){
 				// カーソルと共に移動する要素
 				$dragi = $(element);
 				origin = $dragi.offset();
-				$dragi.css({ position:'absolute' ,top:origin.top ,opacity:0.4 });
+				$dragi.css({ position:'absolute' ,top:origin.top });
 				// ドロップ場所
 				$place = $('<div class=columndrop></div>')
 						.width( $dragi.outerWidth() )
@@ -2724,7 +2724,7 @@ function columnSortable(){
 			if( $place ){
 				if( $place.parent().attr('id')=='wall' ) $place.after( $dragi );
 				$place.remove(); $place=null;
-				$dragi.css({ position:'', opacity:1 }); $dragi=null;
+				$dragi.css({ position:'' }); $dragi=null;
 				// 要素ID付け直し
 				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
 				option.panel.layouted();
@@ -2825,7 +2825,7 @@ function panelSortable(){
 			if( $place ){
 				if( $place.parent().hasClass('column') ) $place.after( $dragi );
 				$place.remove(); $place=null;
-				$dragi.css({ position:'', opacity:1 });
+				$dragi.css({ position:'', opacity:'' });
 				// 閉パネルポップアップ再開
 				if( $dragi.find('.plusminus').attr('src')=='plus.png' ){
 					$dragi.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });
@@ -2952,13 +2952,13 @@ function itemSortable(){
 					){
 						apply = false;
 					}
-					$('#fd'+node.id).css('opacity',1);
+					$('#fd'+node.id).css('opacity','');
 					isFindBox = false;
 				}
 				if( apply && !$place.parent().hasClass('itembox') ){
 					// ドロップ場所未定キャンセル
 					apply = false;
-					$('#'+node.id).css('opacity',1);
+					$('#'+node.id).css('opacity','');
 				}
 				if( apply ){
 					var $prev = $place.prev();
