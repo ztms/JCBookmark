@@ -107,7 +107,7 @@ body {
 }
 #border:hover {
 	border-color:#555;
-	background:#e7e7e7;
+	background:#ddd;
 }
 #border.drag {
 	border-color:#975;
@@ -187,14 +187,14 @@ body {
 #itemhead .drag {
 	background:#fed;
 }
-.itemborder {
+#itemhead .itemborder {
 	width:3px;
 	border-left:1px solid #ccc;
 	border-right:1px solid #ccc;
 	background:#eee;
 	cursor:col-resize;
 }
-.itemborder:hover {
+#itemhead .itemborder:hover {
 	border-color:#975;
 	background:#fed;
 }
