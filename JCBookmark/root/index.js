@@ -774,7 +774,9 @@ var paneler = function(){
 						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// URLタイトル/favicon取得
-							$.get(':analyze?'+this.value,function(data){
+							// TODO:encodeURI()が必要な時があるような
+							$.post(':analyze',this.value+'\r\n',function(data){
+								var data = data[0];
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1197,7 +1199,9 @@ function setEvents(){
 						var node = tree.newURL( pnode, url, title || url.noProto() );
 						if( node ){
 							// タイトル/favicon取得
-							$.get(':analyze?'+url,function(data){
+							// TODO:encodeURI()が必要な時があるような
+							$.post(':analyze',url+'\r\n',function(data){
+								var data = data[0];
 								if( !title && data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -2305,7 +2309,9 @@ function panelEdit( pid ){
 						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
-						$.get(':analyze?'+this.value,function(data){
+						// TODO:encodeURI()が必要な時があるような
+						$.post(':analyze',this.value+'\r\n',function(data){
+							var data = data[0];
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
 						});
@@ -2558,13 +2564,23 @@ function analyzer( nodeTop ){
 	var complete = 0;		// 解析完了数
 	var timer = null;		// タイマーID
 	var ajaxer = function( aix ){
-		if( qix >= queue.length ) return;
-		var node = queue[qix++];
-		ajaxs[aix] = $.ajax({
-			url		 :':analyze?'+node.url
-			,success :function(data){ if( data.icon.length ) node.icon = data.icon; }
-			,complete:function(){ complete++; if( ajaxer ) ajaxer(aix); }
-		});
+		var nodes = [] ,reqBody = '';
+		for( var i=3; i>0 && qix < queue.length; i-- ){
+			var node = queue[qix++];
+			nodes.push( node );
+			reqBody += node.url.replace(/#.*/,'') +'\r\n'; // TODO:encodeURI()が必要な時があるような
+		}
+		if( reqBody ){
+			ajaxs[aix] = $.ajax({
+				type:'post'
+				,url:':analyze'
+				,data:reqBody
+				,success:function(data){
+					for( var i=0; i<data.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
+				}
+				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(aix); }
+			});
+		}
 	};
 	function skip(){
 		clearTimeout(timer) ,timer=null, ajaxer=null;
@@ -2593,7 +2609,8 @@ function analyzer( nodeTop ){
 		}
 		else{
 			total++;
-			if( node.url.length && !node.icon.length && !/^javascript:/i.test(node.url) )
+			var url = node.url.replace(/#.*/,'');
+			if( url.length && !/^javascript:/i.test(url) && !node.icon.length )
 				queue.push( node );
 		}
 	}( nodeTop ));
@@ -2761,7 +2778,7 @@ function panelSortable(){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				// カーソルと共に移動する要素
-				$dragi = $(element).css({ position:'absolute', opacity:0.4 });
+				$dragi = $(element).css({ position:'absolute' ,opacity:0.4 });
 				// 閉パネルポップアップ停止(しないとおかしな場所にポップアップして幽霊のようになる)
 				if( $dragi.find('.plusminus').attr('src')=='plus.png' )
 					$dragi.off().find('.itembox').hide();
@@ -2825,7 +2842,7 @@ function panelSortable(){
 			if( $place ){
 				if( $place.parent().hasClass('column') ) $place.after( $dragi );
 				$place.remove(); $place=null;
-				$dragi.css({ position:'', opacity:'' });
+				$dragi.css({ position:'' ,opacity:'' });
 				// 閉パネルポップアップ再開
 				if( $dragi.find('.plusminus').attr('src')=='plus.png' ){
 					$dragi.find('.plusminus').attr({ src:'minus.png', title:'閉じる' });

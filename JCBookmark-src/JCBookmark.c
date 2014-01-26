@@ -3377,6 +3377,7 @@ fin:
 // しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
 // イマイチなのも確か…。なにかいい手はないものか…。
 // ブラウザのアドオンを使う手もあるか？
+/*
 unsigned __stdcall analyze( void* p )
 {
 	TClient*	cp = p;
@@ -3405,7 +3406,7 @@ unsigned __stdcall analyze( void* p )
 						CRLFtoSPACE( title );
 					}
 				}
-				else LogW(L"[%u]</title>が見つかりません(%s)",Num(cp),cp->req.param);
+				else LogA("[%u]</title>が見つかりません(%s)",Num(cp),cp->req.param);
 			}
 			else LogA("[%u]<title>が見つかりません(%s)",Num(cp),cp->req.param);
 			// favicon取得まず<link rel=icon href="xxx">をさがす
@@ -3542,6 +3543,236 @@ unsigned __stdcall analyze( void* p )
 	_endthreadex(0);
 	return 0;
 }
+*/
+typedef struct AnalysInfo {
+	struct AnalysInfo* next;
+	UCHAR*	url;
+	UCHAR*	userAgent;
+	UCHAR*	pAbort;
+	HANDLE	thread;
+	UCHAR*	pageTitle;
+	UCHAR*	favicon;
+} AnalysInfo;
+AnalysInfo* AnalysInfoAlloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
+{
+	AnalysInfo* info = malloc( sizeof(AnalysInfo) );
+	if( info ){
+		info->next		= NULL;
+		info->url		= url;
+		info->userAgent	= userAgent;
+		info->pAbort	= pAbort;
+		info->thread	= NULL;
+		info->pageTitle	= NULL;
+		info->favicon	= NULL;
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(AnalysInfo));
+	return info;
+}
+unsigned __stdcall analyze( void* tp )
+{
+	AnalysInfo* ip = tp;
+	HTTPGet* rsp = httpGETs( ip->url ,ip->userAgent ,ip->pAbort ,0 );
+	if( rsp ){
+		UCHAR* title=NULL, *icon=NULL;
+		if( *(ip->pAbort) ) goto fin;
+		rsp = HTTPGetContentDecode( rsp );
+		if( rsp->ContentType==TYPE_HTML ){
+			UCHAR* begin ,*end;
+			HTTPGetHtmlToUTF8( rsp );
+			// タイトル取得
+			begin = stristr(rsp->body,"<title");
+			if( begin ){
+				begin += 6;
+				end = stristr(begin,"</title>");
+				begin = strchr(begin,'>');
+				if( begin && end ){
+					begin++; end--;
+					while( isspace(*begin) ) begin++;
+					while( isspace(*end) ) end--;
+					if( begin < end ){
+						title = strndupJSON( begin, end - begin + 1 );
+						CRLFtoSPACE( title );
+					}
+				}
+				else LogA("</title>が見つかりません(%s)",ip->url);
+			}
+			else LogA("<title>が見つかりません(%s)",ip->url);
+			// favicon取得まず<link rel=icon href="xxx">をさがす
+			begin = rsp->body;
+			while( begin=stristr(begin,"<link") ){
+				begin += 5;
+				end = strchr(begin,'>');
+				if( end ){
+					UCHAR* rel = stristr(begin," rel=");
+					if( rel ){
+						rel += 5;
+						if( rel < end ){
+							if( strnicmp(rel,"\"shortcut icon\"",15)==0
+								|| strnicmp(rel,"\"icon\"",6)==0
+								|| strnicmp(rel,"icon ",5)==0 ){
+								UCHAR* href = stristr(begin," href=");
+								if( href ){
+									href += 6;
+									if( href < end ){
+										if( *href=='"' ){
+											UCHAR* endquote = strchr(++href,'"');
+											if( endquote )
+												icon = strndup( href, endquote - href );
+										}
+										else{
+											UCHAR* space = strchr(href,' ');
+											if( space )
+												icon = strndup( href, space - href );
+										}
+										if( icon ) break;
+									}
+								}
+							}
+						}
+					}
+					begin = end + 1;
+				}
+			}
+			// 相対URLは完全URLになおす
+			if( icon ){
+				UCHAR* url = NULL;
+				if( strncmp(icon,"//",2)==0 ){
+					// スキームが省略された完全URL
+					// はてなhotentryの<link>タグが「href="//b.hatena.ne.jp/favicon.ico"」となっている。
+					// 相対URLでなく完全URLとみなすべきもののようだ。先頭のhttp(s):を省略して「//」で
+					// 始まってもいいらしい。この場合はスキームを補完した完全URLを生成する。
+					UCHAR* slash = strstr(ip->url,"://");
+					if( slash ){
+						slash++;
+						*slash='\0';
+						url = strjoin( ip->url ,icon ,0,0,0 );
+						*slash='/';
+					}
+				}
+				else if( !strstr(icon,"://") ){
+					// 相対URL
+					UCHAR* host = strstr(ip->url,"://");
+					if( host ){
+						host += 3;
+						if( *icon=='/' ){
+							// href="/img/favicon.ico"
+							UCHAR* slash = strchr(host,'/');
+							if( slash ) *slash = '\0';
+							url = strjoin( ip->url ,icon ,0,0,0 );
+							if( slash ) *slash = '/';
+						}
+						else{
+							// href="img/favicon.ico"
+							UCHAR* slash = strrchr(host,'/');
+							if( slash ) *slash = '\0';
+							url = strjoin( ip->url ,"/" ,icon ,0,0 );
+							if( slash ) *slash = '/';
+						}
+					}
+				}
+				if( url ) free(icon), icon=url;
+			}
+			// URL取得確認
+			if( icon ){
+				BOOL success = FALSE;
+				HTTPGet* tmp = httpGET( icon ,ip->userAgent ,ip->pAbort ,0,0 );
+				if( tmp ){
+					// HTTP/1.x 200 OK
+					// あまり厳密チェックせず2xxか3xxならオッケーとする
+					if( tmp->bytes >12 &&( tmp->buf[9]=='2' || tmp->buf[9]=='3') ) success=TRUE;
+					free( tmp );
+				}
+				if( !success ) free(icon), icon=NULL;
+			}
+			// <link>がなかったらhttp(s)://host/favicon.icoがあるか確認
+			if( !icon ){
+				UCHAR* host = strstr(ip->url,"://");
+				UCHAR* slash;
+				if( host ){
+					host += 3;
+					slash = strchr(host,'/');
+					if( slash ) *slash = '\0';
+					icon = strjoin( ip->url ,"/favicon.ico" ,0,0,0 );
+					if( icon ){
+						BOOL success = FALSE;
+						HTTPGet* tmp = httpGET( icon ,ip->userAgent ,ip->pAbort ,0,0 );
+						if( tmp ){
+							if( tmp->bytes >12 && strnicmp(tmp->buf+8," 200",4)==0 ) // HTTP/1.x 200 OK
+								if( tmp->ContentType !=TYPE_HTML ) // text/html 除外
+									success = TRUE;
+							free( tmp );
+						}
+						if( !success ) free(icon), icon=NULL;
+					}
+					if( slash ) *slash = '/';
+				}
+			}
+		}
+		ip->pageTitle = title;
+		ip->favicon = icon;
+	fin:free( rsp );
+	}
+	_endthreadex(0);
+	return 0;
+}
+unsigned __stdcall analyzer( void* tp )
+{
+	TClient*	cp		= tp;
+	UCHAR*		url		= cp->req.body;
+	UCHAR*		bp		= url;
+	AnalysInfo*	info0	= NULL;
+	AnalysInfo*	infoN	= NULL;
+	AnalysInfo*	info;
+	// リクエストボディ1行1URL取得スレッド生成
+	while( *bp ){
+		if( isCRLF(*bp) ){
+			*bp++ = '\0'; // req.body破壊
+			while( isCRLF(*bp) ) bp++;
+			info = AnalysInfoAlloc( url ,cp->req.UserAgent ,&(cp->abort) );
+			if( info ){
+				if( info0 ){
+					infoN->next = info;
+					infoN = info;
+				}
+				else info0 = infoN = info;
+				info->thread = (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)info ,0,NULL );
+				LogA("[%u]URL:%s",Num(cp),url);
+			}
+			url = bp;
+		}
+		else bp++;
+	}
+	// スレッド待機
+	for( info=info0; info; info=info->next ){
+		WaitForSingleObject( info->thread ,INFINITE );
+		CloseHandle( info->thread );
+	}
+	// レスポンス作成
+	BufferSend( &(cp->rsp.body) ,"[" ,1 );
+	for( info=info0; info; info=info->next ){
+		LogA("[%u]URL:%s,%s",Num(cp),info->pageTitle?info->pageTitle:"",info->favicon?info->favicon:"");
+		BufferSendf( &(cp->rsp.body)
+				,"%s{\"title\":\"%s\",\"icon\":\"%s\"}"
+				,(info==info0)? "":","
+				,info->pageTitle? info->pageTitle :""
+				,info->favicon? info->favicon :""
+		);
+		if( info->pageTitle ) free( info->pageTitle );
+		if( info->favicon ) free( info->favicon );
+	}
+	BufferSend( &(cp->rsp.body) ,"]" ,1 );
+	BufferSendf( &(cp->rsp.head)
+			,"HTTP/1.0 200 OK\r\n"
+			"Content-Type: application/json; charset=utf-8\r\n"
+			"Content-Length: %u\r\n"
+			,cp->rsp.body.bytes
+	);
+	// 終了
+	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	_endthreadex(0);
+	return 0;
+}
+
 
 // 指定URL死活確認を行うスレッド関数
 // クライアントからの要求 GET /:poke?URL HTTP/1.x で開始され、
@@ -3553,6 +3784,7 @@ unsigned __stdcall analyze( void* p )
 // リダイレクト手法まとめ
 // http://likealunatic.jp/2007/10/21_redirect.php
 // TODO:HTTP以外のスキーム(ftp:等)
+/*
 unsigned __stdcall poke( void* p )
 {
 	TClient*	cp	= p;
@@ -3573,6 +3805,95 @@ unsigned __stdcall poke( void* p )
 	}
 	if( rp.newurl ) free( rp.newurl );
 	if( rsp ) free( rsp );
+	// 終了
+	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	_endthreadex(0);
+	return 0;
+}
+*/
+typedef struct PokeInfo {
+	struct PokeInfo* next;
+	UCHAR*		url;
+	UCHAR*		userAgent;
+	UCHAR*		pAbort;
+	HANDLE		thread;
+	PokeReport	report;
+} PokeInfo;
+PokeInfo* PokeInfoAlloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
+{
+	PokeInfo* info = malloc( sizeof(PokeInfo) );
+	if( info ){
+		info->next			= NULL;
+		info->url			= url;
+		info->userAgent		= userAgent;
+		info->pAbort		= pAbort;
+		info->thread		= NULL;
+		info->report.ico	= '?';
+		strcpy(info->report.msg ,"不明な処理結果です");
+		info->report.newurl	= NULL;
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(PokeInfo));
+	return info;
+}
+unsigned __stdcall poke( void* tp )
+{
+	PokeInfo* ip = tp;
+	HTTPGet* rsp = httpGETs( ip->url ,ip->userAgent ,ip->pAbort ,&(ip->report) );
+	if( rsp ) free( rsp );
+	_endthreadex(0);
+	return 0;
+}
+unsigned __stdcall poker( void* tp )
+{
+	TClient*	cp		= tp;
+	UCHAR*		url		= cp->req.body;
+	UCHAR*		bp		= url;
+	PokeInfo*	info0	= NULL;
+	PokeInfo*	infoN	= NULL;
+	PokeInfo*	info;
+	// リクエストボディ1行1URL取得スレッド生成
+	while( *bp ){
+		if( isCRLF(*bp) ){
+			*bp++ = '\0'; // req.body破壊
+			while( isCRLF(*bp) ) bp++;
+			info = PokeInfoAlloc( url ,cp->req.UserAgent ,&(cp->abort) );
+			if( info ){
+				if( info0 ){
+					infoN->next = info;
+					infoN = info;
+				}
+				else info0 = infoN = info;
+				info->thread = (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)info ,0,NULL );
+				LogA("[%u]URL:%s",Num(cp),url);
+			}
+			url = bp;
+		}
+		else bp++;
+	}
+	// スレッド待機
+	for( info=info0; info; info=info->next ){
+		WaitForSingleObject( info->thread ,INFINITE );
+		CloseHandle( info->thread );
+	}
+	// レスポンス作成
+	BufferSend( &(cp->rsp.body) ,"[" ,1 );
+	for( info=info0; info; info=info->next ){
+		PokeReport* rp = &(info->report);
+		LogA("[%u]URL:%c,%s,%s",Num(cp),rp->ico,rp->msg,rp->newurl?rp->newurl:"");
+		BufferSendf( &(cp->rsp.body)
+				,"%s{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
+				,(info==info0)? "":","
+				,rp->ico ,rp->msg ,rp->newurl? rp->newurl :""
+		);
+		if( rp->newurl ) free( rp->newurl );
+	}
+	BufferSend( &(cp->rsp.body) ,"]" ,1 );
+	BufferSendf( &(cp->rsp.head)
+			,"HTTP/1.0 200 OK\r\n"
+			"Content-Type: application/json; charset=utf-8\r\n"
+			"Content-Length: %u\r\n"
+			,cp->rsp.body.bytes
+	);
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
 	_endthreadex(0);
@@ -4823,9 +5144,9 @@ Session* ClientSessionAlive( TClient* cp )
 // ブルートフォースアタック対策のため(?)パスワードが違った場合は少し待ってから応答を返す。
 // その少し待ってる間メインスレッドを止めないよう一応スレッドで実行する。
 #define WEBPASSWD_MAX 64
-unsigned __stdcall authenticate( void* p )
+unsigned __stdcall authenticate( void* tp )
 {
-	TClient* cp = p;
+	TClient* cp = tp;
 	// リクエストメッセージ本文に p=パスワード(URLエンコード)
 	if( strnicmp(cp->req.body,"p=",2)==0 && *(cp->req.body+2) ){
 		UCHAR b64[SHA256_DIGEST_LENGTH*2]="";
@@ -5772,14 +6093,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							else if( stricmp(req->method,"POST")==0 ){
 								if( stricmp(file,":login")==0 && req->ContentLength && req->ContentLength <999 ){
 									// ログイン処理
-									UINT bodybytes = req->bytes - (req->body - req->buf);
-									if( bodybytes >= req->ContentLength ){
+									#define BODYBYTES(r) ((r)->bytes - ((r)->body - (r)->buf))
+									if( BODYBYTES(req) >= req->ContentLength ){
 										// 本文受信完了
 										cp->status = CLIENT_THREADING;
 										cp->thread = (HANDLE)_beginthreadex( NULL,0 ,authenticate ,(void*)cp ,0,NULL );
 									}
 									else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
-									break;
 								}
 								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 							}
@@ -5787,19 +6107,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 					}
 					if( stricmp(req->method,"GET")==0 ){
-						if( stricmp(file,":analyze")==0 && cp->req.param ){
-							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
-							cp->status = CLIENT_THREADING;
-							cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)cp ,0,NULL );
-							break; // スレッド終了まで何もしない
-						}
-						else if( stricmp(file,":poke")==0 && cp->req.param ){
-							// URL死活確認
-							cp->status = CLIENT_THREADING;
-							cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)cp ,0,NULL );
-							break; // スレッド終了まで何もしない
-						}
-						else if( stricmp(file,":browser.json")==0 ){
+						if( stricmp(file,":browser.json")==0 ){
 							// index.htmlサイドバーブラウザアイコン不要なものを隠すための情報。
 							//   {"chrome":0,"firefox":0,"ie":0,"opera":0}
 							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
@@ -6222,17 +6530,20 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					else if( stricmp(req->method,"POST")==0 ){
 						if( req->ContentLength ){
 							if( stricmp(file,":analyze")==0 ){
-								UINT bodybytes = req->bytes - (req->body - req->buf);
-								if( bodybytes >= req->ContentLength ){
-									// TODO:本文受信完了(１行１URL)
-									ResponseError(cp,"400 Bad Request"); goto send_ready;
+								if( BODYBYTES(req) >= req->ContentLength ){
+									// 本文受信完了(1行1URL)
+									cp->status = CLIENT_THREADING;
+									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyzer ,(void*)cp ,0,NULL );
 								}
 								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
-								break;
 							}
 							else if( stricmp(file,":poke")==0 ){
-								// TODO:一度に複数URL処理
-								ResponseError(cp,"400 Bad Request"); goto send_ready;
+								if( BODYBYTES(req) >= req->ContentLength ){
+									// 本文受信完了(1行1URL)
+									cp->status = CLIENT_THREADING;
+									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poker ,(void*)cp ,0,NULL );
+								}
+								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
 							}
 							else{
 								// HTMLインポート:リクエスト本文を一時ファイルに書き出す
@@ -6257,7 +6568,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 								if( req->writefh !=INVALID_HANDLE_VALUE ){
 									// Content-Lengthバイトぶんファイル出力
-									DWORD bodybytes = req->bytes - (req->body - req->buf);
+									DWORD bodybytes = BODYBYTES(req);
 									DWORD bWrite=0;
 									if( bodybytes > req->ContentLength - req->wrote )
 										bodybytes = req->ContentLength - req->wrote;
@@ -6324,7 +6635,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							if( req->writefh !=INVALID_HANDLE_VALUE ){
 								// リクエスト本文をContent-Lengthバイトぶんファイル出力
-								DWORD bodybytes = req->bytes - (req->body - req->buf);
+								DWORD bodybytes = BODYBYTES(req);
 								DWORD bWrite=0;
 								if( bodybytes > req->ContentLength - req->wrote )
 									bodybytes = req->ContentLength - req->wrote;
@@ -6377,8 +6688,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				}
 				else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 			}
-			else if( req->bytes >= req->bufsize-1 ){
-				// ヘッダ完了せずバッファいっぱい
+			if( req->bytes >= req->bufsize-1 ){
 				size_t newsize = req->bufsize * 2;
 				UCHAR* newbuf = malloc( newsize );
 				if( newbuf ){
@@ -6577,7 +6887,7 @@ void SocketClose( SOCKET sock )
 			// スレッド終了待たないとアクセス違反で落ちる
 			cp->abort = 1;
 			LogW(L"[%u]スレッド実行中待機...",Num(cp));
-			Sleep(200);
+			Sleep(300);
 			// もう一回おなじメッセージでこの関数を実行
 			PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
 			return;
@@ -6595,7 +6905,7 @@ void SocketClose( SOCKET sock )
 void SocketShutdown( void )
 {
 	BOOL retry;
-	UINT i, count=0;
+	UINT i /*,count=0*/;
 
 	if( ListenSock1 !=INVALID_SOCKET ){
 		LogW(L"[%u]待機終了",ListenSock1);

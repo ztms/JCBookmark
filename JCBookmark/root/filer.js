@@ -278,7 +278,6 @@ var tree = {
 					}
 				})( tree.root.child );
 				// 貼り付け
-				// TODO:先頭挿入(画面で上の方に追加される)のと末尾追加(画面下の方に追加)はどっちがいいか？
 				if( clipboard.length ){
 					//for( var i=0; i<clipboard.length; i++ ) dst.child.push( clipboard[i] ); // 末尾に
 					for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] ); // 先頭に
@@ -721,7 +720,9 @@ var itemList = function(){
 				var $item = $(items[i]);
 				if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
 					var $url = $item.children('.url');
-					if( /^javascript:/i.test($url.text()) ) continue;
+					var url = $url.text().replace(/#.*/,'');
+					if( url.length <=0 ) continue;
+					if( /^javascript:/i.test(url) ) continue;
 					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
 					$url.parent().removeClass('dead');
 					queue.push( $url );
@@ -732,30 +733,42 @@ var itemList = function(){
 			var qix = 0;
 			ajaxer = function( aix ){
 				if( aix===false ){ $imgsrc.remove(); return; }
-				if( qix >= queue.length ) return;
-				var $url = queue[qix++];
-				ajaxs[aix] = $.ajax({
-					url:':poke?'+$url.text()
-					,error:function(xhr){
-						if( !ajaxer ) return;
-						$url.next().text( xhr.status+' '+xhr.statusText )
-						.prepend( $imgsrc.clone().attr('src','delete.png') );
-					}
-					,success:function(data){
-						if( !ajaxer ) return;
-						var ico='question.png' ,cls='';					// 不明
-						switch( data.ico ){
-						case 'O': ico='ok.png'; break;					// 正常
-						case 'E': ico='delete.png'; break;				// エラー
-						case 'D': ico='skull.png'; cls='dead'; break;	// 死亡
-						case '!': ico='warn.png'; break;				// 注意
+				var $urls = [] ,reqBody = '';
+				for( var i=3; i>0 && qix < queue.length; i-- ){
+					var $url = queue[qix++];
+					$urls.push( $url );
+					reqBody += $url.text().replace(/#.*/,'')+'\r\n'; // TODO:encodeURI()が必要な時があるような
+				}
+				if( reqBody ){
+					ajaxs[aix] = $.ajax({
+						type:'post'
+						,url:':poke'
+						,data:reqBody
+						,error:function(xhr){
+							if( !ajaxer ) return;
+							for( var i=0; i<$urls.length; i++ ){
+								$urls[i].next().text( xhr.status+' '+xhr.statusText )
+								.prepend( $imgsrc.clone().attr('src','delete.png') );
+							}
 						}
-						$url.next().text( data.msg +(data.url.length? ', '+data.url :'') )
-						.prepend( $imgsrc.clone().attr('src',ico) );
-						$url.parent().addClass( cls );
-					}
-					,complete:function(){ if( ajaxer ) ajaxer(aix); }
-				});
+						,success:function(data){
+							if( !ajaxer ) return;
+							for( var i=0; i<$urls.length; i++ ){
+								var ico='question.png' ,cls='';					// 不明
+								switch( data[i].ico ){
+								case 'O': ico='ok.png'; break;					// 正常
+								case 'E': ico='delete.png'; break;				// エラー
+								case 'D': ico='skull.png'; cls='dead'; break;	// 死亡
+								case '!': ico='warn.png'; break;				// 注意
+								}
+								$urls[i].next().text( data[i].msg +(data[i].url.length? ', '+data[i].url :'') )
+								.prepend( $imgsrc.clone().attr('src',ico) );
+								$urls[i].parent().addClass( cls );
+							}
+						}
+						,complete:function(){ if( ajaxer ) ajaxer(aix); }
+					});
+				}
 			};
 			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
 			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
@@ -764,7 +777,8 @@ var itemList = function(){
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
-			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？
+			// TODO:実行中と完了の違いが微妙でパッと見終わったかどうか判断しづらい
+			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？不要かな
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
@@ -798,7 +812,9 @@ var itemList = function(){
 				.children('.spacer').html('<img src=wait.gif>');
 			// ノード配列作成
 			var queuer = function( node ){
-				if( /^javascript:/i.test(node.url) ) return;
+				var url = node.url.replace(/#.*/,'');
+				if( url.length <=0 ) return;
+				if( /^javascript:/i.test(url) ) return;
 				queue.push( node );
 			};
 			var childer = function( child ){
@@ -865,29 +881,42 @@ var itemList = function(){
 			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
 			ajaxer = function( aix ){
-				if( aix===false || qix >= queue.length ) return;
-				var node = queue[qix++];
-				ajaxs[aix] = $.ajax({
-					url:':poke?'+node.url
-					,error:function(xhr){
-						if( !ajaxer ) return;
-						count.err++;
-						$itemAppend( node ,'delete.png' ,xhr.status+' '+xhr.statusText );
-					}
-					,success:function(data){
-						if( !ajaxer ) return;
-						var ico='question.png' ,cls='';								// 不明
-						switch( data.ico ){
-						case 'O': count.ok++; return;								// 正常
-						case 'E': count.err++; ico='delete.png'; break;				// エラー
-						case 'D': count.dead++; ico='skull.png'; cls='dead'; break;	// 死亡
-						case '!': count.warn++; ico='warn.png'; break;				// 注意
-						default: count.unknown++;
+				if( aix===false ) return;
+				var nodes = [] ,reqBody = '';
+				for( var i=3; i>0 && qix < queue.length; i-- ){
+					var node = queue[qix++];
+					nodes.push( node );
+					reqBody += node.url.replace(/#.*/,'')+'\r\n'; // TODO:encodeURI()が必要な時があるような
+				}
+				if( reqBody ){
+					ajaxs[aix] = $.ajax({
+						type:'post'
+						,url:':poke'
+						,data:reqBody
+						,error:function(xhr){
+							if( !ajaxer ) return;
+							for( var i=0; i<nodes.length; i++ ){
+								count.err++;
+								$itemAppend( nodes[i] ,'delete.png' ,xhr.status+' '+xhr.statusText );
+							}
 						}
-						$itemAppend( node ,ico ,data.msg +(data.url.length? ', '+data.url :'') ,cls );
-					}
-					,complete:function(){ if( ajaxer ) count.total++ ,ajaxer(aix); }
-				});
+						,success:function(data){
+							if( !ajaxer ) return;
+							for( var i=0; i<nodes.length; i++ ){
+								var ico='question.png' ,cls='';								// 不明
+								switch( data[i].ico ){
+								case 'O': count.ok++; continue;								// 正常
+								case 'E': count.err++; ico='delete.png'; break;				// エラー
+								case 'D': count.dead++; ico='skull.png'; cls='dead'; break;	// 死亡
+								case '!': count.warn++; ico='warn.png'; break;				// 注意
+								default: count.unknown++;
+								}
+								$itemAppend( nodes[i] ,ico ,data[i].msg +(data[i].url.length? ', '+data[i].url :'') ,cls );
+							}
+						}
+						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(aix); }
+					});
+				}
 			};
 			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
 			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
