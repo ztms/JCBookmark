@@ -114,6 +114,7 @@
 #define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
+#define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
 #define		APPNAME				L"JCBookmark v2.0dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -2698,13 +2699,15 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp )
 					if( res==S_OK ){
 						rsp->body[tmpbytes]='\0';
 						rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
+						// TODO:ログに通信を特定できる識別情報いれる
 						LogW(L"文字コード%u->65001変換",CP);
 					}
+					// TODO:ログに通信を特定できる識別情報いれる
 					else LogW(L"ConvertINetString(932->65001)エラー");
 				}
+				// TODO:ログに通信を特定できる識別情報いれる
 				else LogW(L"ConvertINetString(%u->932)エラー",CP);
-
-				free(tmp);
+				free( tmp );
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
 		}
@@ -3378,11 +3381,8 @@ unsigned __stdcall analyze( void* p )
 {
 	TClient*	cp = p;
 	UCHAR*		ua = cp->req.UserAgent;
-	HTTPGet*	rsp;
-	// メインスレッドなにもしない
-	cp->status = CLIENT_THREADING;
 	// URL取得。req.paramは今のところURLのみ。
-	rsp = httpGETs( cp->req.param ,ua ,&(cp->abort) ,0 );
+	HTTPGet*	rsp = httpGETs( cp->req.param ,ua ,&(cp->abort) ,0 );
 	if( rsp ){
 		UCHAR* title=NULL, *icon=NULL;
 		if( cp->abort ) goto fin;
@@ -3537,16 +3537,8 @@ unsigned __stdcall analyze( void* p )
 		free(rsp), rsp=NULL;
 	}
 	else ResponseError(cp,"500 Internal Server Error");
-
-	if( cp->abort ){
-		LogW(L"[%u]中断します...",Num(cp));
-		cp->status = 0;
-	}
-	else{
-		// メインスレッドで処理続行
-		cp->status = CLIENT_SEND_READY;
-		PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
-	}
+	// 終了
+	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
 	_endthreadex(0);
 	return 0;
 }
@@ -3565,17 +3557,9 @@ unsigned __stdcall poke( void* p )
 {
 	TClient*	cp	= p;
 	PokeReport	rp	= { '?',"不明な処理結果です",NULL };
-	HTTPGet*	rsp	= NULL;
-
-	// メインスレッドなにもしない
-	cp->status = CLIENT_THREADING;
 	// URL取得。req.paramは今のところURLのみ。
-	rsp = httpGETs( cp->req.param ,cp->req.UserAgent ,&(cp->abort) ,&rp );
-	if( cp->abort ){
-		LogW(L"[%u]中断します...",Num(cp));
-		cp->status = 0;
-	}
-	else{
+	HTTPGet*	rsp = httpGETs( cp->req.param ,cp->req.UserAgent ,&(cp->abort) ,&rp );
+	if( !cp->abort ){
 		BufferSendf( &(cp->rsp.body)
 				,"{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
 				,rp.ico ,rp.msg ,rp.newurl?rp.newurl:""
@@ -3586,12 +3570,11 @@ unsigned __stdcall poke( void* p )
 				"Content-Length: %u\r\n"
 				,cp->rsp.body.bytes
 		);
-		// メインスレッドで処理続行
-		cp->status = CLIENT_SEND_READY;
-		PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
 	}
 	if( rp.newurl ) free( rp.newurl );
 	if( rsp ) free( rsp );
+	// 終了
+	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
 	_endthreadex(0);
 	return 0;
 }
@@ -4843,8 +4826,6 @@ Session* ClientSessionAlive( TClient* cp )
 unsigned __stdcall authenticate( void* p )
 {
 	TClient* cp = p;
-	// メインスレッドなにもしない
-	cp->status = CLIENT_THREADING;
 	// リクエストメッセージ本文に p=パスワード(URLエンコード)
 	if( strnicmp(cp->req.body,"p=",2)==0 && *(cp->req.body+2) ){
 		UCHAR b64[SHA256_DIGEST_LENGTH*2]="";
@@ -4902,9 +4883,8 @@ unsigned __stdcall authenticate( void* p )
 		else ResponseError(cp,"500 Internal Server Error");
 	}
 	else ResponseError(cp,"400 Bad Request");
-	// メインスレッドで処理続行
-	cp->status = CLIENT_SEND_READY;
-	PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
+	// 終了
+	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
 	_endthreadex(0);
 	return 0;
 }
@@ -5795,15 +5775,11 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									UINT bodybytes = req->bytes - (req->body - req->buf);
 									if( bodybytes >= req->ContentLength ){
 										// 本文受信完了
+										cp->status = CLIENT_THREADING;
 										cp->thread = (HANDLE)_beginthreadex( NULL,0 ,authenticate ,(void*)cp ,0,NULL );
-										Sleep(50);	// なんとなくちょっと待つ
-										break; // スレッド終了まで何もしない
 									}
-									else{
-										// 引き続き本文受信
-										cp->status = CLIENT_RECV_MORE;
-										break;
-									}
+									else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+									break;
 								}
 								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 							}
@@ -5813,14 +5789,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					if( stricmp(req->method,"GET")==0 ){
 						if( stricmp(file,":analyze")==0 && cp->req.param ){
 							// Webページ解析(GET /:analyze?http://xxx/yyy HTTP/1.x)
-							cp->thread = (HANDLE)_beginthreadex( NULL,0, analyze, (void*)cp, 0,NULL );
-							Sleep(10);	// なんとなくちょっと待つ
+							cp->status = CLIENT_THREADING;
+							cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)cp ,0,NULL );
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":poke")==0 && cp->req.param ){
 							// URL死活確認
-							cp->thread = (HANDLE)_beginthreadex( NULL,0, poke, (void*)cp, 0,NULL );
-							Sleep(10);	// なんとなくちょっと待つ
+							cp->status = CLIENT_THREADING;
+							cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)cp ,0,NULL );
 							break; // スレッド終了まで何もしない
 						}
 						else if( stricmp(file,":browser.json")==0 ){
@@ -6213,6 +6189,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							else{
 							_200_ok:
+								// TODO:Content-Encoding:gzip送信するとインターネット経由でレスポンス改善？
 								BufferSendf( bp
 										,"HTTP/1.0 200 OK\r\n"
 										"Content-Length: %u\r\n"
@@ -6243,53 +6220,67 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						goto send_ready;
 					}
 					else if( stricmp(req->method,"POST")==0 ){
-						// HTMLインポート
 						if( req->ContentLength ){
-							ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR));
-							// リクエスト本文を一時ファイルに書き出す
-							// TODO:PUTとおなじ処理になっとる
-							if( req->writefh==INVALID_HANDLE_VALUE ){
-								req->writefh = CreateFileW( tmppath
-													,GENERIC_WRITE, FILE_SHARE_READ, NULL
-													,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
-								);
-								if( req->writefh !=INVALID_HANDLE_VALUE ){
-									// 連続領域確保（断片化抑制）
-									SetFilePointer( req->writefh, req->ContentLength, NULL, FILE_BEGIN );
-									SetEndOfFile( req->writefh );
-									SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
-								}
-								else{
-									LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
-									ResponseError(cp,"500 Internal Server Error");
-									goto send_ready;
-								}
-							}
-							if( req->writefh !=INVALID_HANDLE_VALUE ){
-								// Content-Lengthバイトぶんファイル出力
-								DWORD bodybytes = req->bytes - (req->body - req->buf);
-								DWORD bWrite=0;
-								if( bodybytes > req->ContentLength - req->wrote )
-									bodybytes = req->ContentLength - req->wrote;
-								if( WriteFile( req->writefh, req->body, bodybytes, &bWrite, NULL )==0 )
-									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
-								memmove( req->body, req->body + bWrite, bodybytes - bWrite );
-								req->bytes -= bWrite;
-								req->wrote += bWrite;
-								if( req->wrote >= req->ContentLength ){
-									SetEndOfFile( req->writefh );
-									CloseHandle( req->writefh );
-									req->writefh = INVALID_HANDLE_VALUE;
-									if( req->ContentType ){
-										if( strnicmp(req->ContentType,"multipart/form-data;",20)==0 )
-											MultipartFormdataProc( cp, tmppath );
-										else
-											ResponseError(cp,"501 Not Implemented");
-									}
-									else ResponseError(cp,"501 Not Implemented");
-									goto send_ready;
+							if( stricmp(file,":analyze")==0 ){
+								UINT bodybytes = req->bytes - (req->body - req->buf);
+								if( bodybytes >= req->ContentLength ){
+									// TODO:本文受信完了(１行１URL)
+									ResponseError(cp,"400 Bad Request"); goto send_ready;
 								}
 								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+								break;
+							}
+							else if( stricmp(file,":poke")==0 ){
+								// TODO:一度に複数URL処理
+								ResponseError(cp,"400 Bad Request"); goto send_ready;
+							}
+							else{
+								// HTMLインポート:リクエスト本文を一時ファイルに書き出す
+								// TODO:PUTとおなじ処理になっとる
+								ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR));
+								if( req->writefh==INVALID_HANDLE_VALUE ){
+									req->writefh = CreateFileW( tmppath
+														,GENERIC_WRITE, FILE_SHARE_READ, NULL
+														,CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+									);
+									if( req->writefh !=INVALID_HANDLE_VALUE ){
+										// 連続領域確保（断片化抑制）
+										SetFilePointer( req->writefh, req->ContentLength, NULL, FILE_BEGIN );
+										SetEndOfFile( req->writefh );
+										SetFilePointer( req->writefh, 0, NULL, FILE_BEGIN );
+									}
+									else{
+										LogW(L"[%u]CreateFile(%s)エラー%u",Num(cp),tmppath,GetLastError());
+										ResponseError(cp,"500 Internal Server Error");
+										goto send_ready;
+									}
+								}
+								if( req->writefh !=INVALID_HANDLE_VALUE ){
+									// Content-Lengthバイトぶんファイル出力
+									DWORD bodybytes = req->bytes - (req->body - req->buf);
+									DWORD bWrite=0;
+									if( bodybytes > req->ContentLength - req->wrote )
+										bodybytes = req->ContentLength - req->wrote;
+									if( WriteFile( req->writefh, req->body, bodybytes, &bWrite, NULL )==0 )
+										LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
+									memmove( req->body, req->body + bWrite, bodybytes - bWrite );
+									req->bytes -= bWrite;
+									req->wrote += bWrite;
+									if( req->wrote >= req->ContentLength ){
+										SetEndOfFile( req->writefh );
+										CloseHandle( req->writefh );
+										req->writefh = INVALID_HANDLE_VALUE;
+										if( req->ContentType ){
+											if( strnicmp(req->ContentType,"multipart/form-data;",20)==0 )
+												MultipartFormdataProc( cp, tmppath );
+											else
+												ResponseError(cp,"501 Not Implemented");
+										}
+										else ResponseError(cp,"501 Not Implemented");
+										goto send_ready;
+									}
+									else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+								}
 							}
 						}
 						else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
@@ -6297,11 +6288,11 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					else if( stricmp(req->method,"PUT")==0 ){
 						if( req->ContentLength ){
 							RealPath( file, realpath, sizeof(realpath)/sizeof(WCHAR) );
-							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							// リクエスト本文を一時ファイルに書き出す
 							// TODO:POSTとおなじ処理になっとる
 							// TODO:保存を連打して異常系を試すとかなり稀に落ちる＋tree.json破損する場合がある原因不明
 							// デバッグトレースもVEC_memcpyとかfastcopy_IとかOS側で落ちているのを1度だけ補足できたのみ
+							ClientTempPath( cp, tmppath, sizeof(tmppath)/sizeof(WCHAR) );
 							if( req->writefh==INVALID_HANDLE_VALUE ){
 								UCHAR* ext = strrchr(file,'.');
 								// ドキュメントルート配下のJSONまたはexport.htmlまたはスナップショットメモのみ
@@ -6436,145 +6427,145 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
 }
 
+void ClientWrite( TClient* cp )
+{
+	Response* rsp = &(cp->rsp);
+	switch( cp->status ){
+	case CLIENT_SEND_READY:
+		// 共通レスポンスヘッダ
+		if( cp->session ){
+			BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/;\r\n" ,cp->session->id );
+		}
+		BufferSendf( &(rsp->head)
+				,"Connection: %s\r\n"
+				"\r\n"
+#ifdef HTTP_KEEPALIVE
+				,cp->req.KeepAlive? "keep-alive" :"close"
+#else
+				,"close"
+#endif
+		);
+		// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
+		LogA("[%u]送信:%s",Num(cp),rsp->head.top);
+		rsp->sended = rsp->readed = 0;
+		cp->status = CLIENT_SENDING;
+
+	case CLIENT_SENDING:
+		if( rsp->sended < rsp->head.bytes + rsp->body.bytes ){
+			// まず送信バッファ(ヘッダ＋ボディ)を送る
+			Buffer* bp;
+			UINT sended;
+			int ret;
+			if( rsp->sended < rsp->head.bytes ){
+				bp = &(rsp->head);
+				sended = rsp->sended;
+			}
+			else{
+				bp = &(rsp->body);
+				sended = rsp->sended - rsp->head.bytes;
+			}
+			if( cp->sslp ){
+				ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
+				if( ret<=0 ){
+					int err = SSL_get_error( cp->sslp, ret );
+					switch( err ){
+					case SSL_ERROR_WANT_READ:
+					case SSL_ERROR_WANT_WRITE:
+						// SSL_writeリトライ再度FD_WRITEが来る(？)のを待つ
+						break;
+					default:
+						LogW(L"[%u]SSL_write不明なエラー%d",Num(cp),err);
+						PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_CLOSE );
+					}
+					break;
+				}
+			}
+			else{
+				ret = send( cp->sock, bp->top + sended, bp->bytes - sended, 0 );
+				if( ret==SOCKET_ERROR ){
+					ret = WSAGetLastError();
+					if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
+						LogW(L"[%u]sendエラー%u",Num(cp),ret);
+					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
+					break;
+				}
+			}
+			rsp->sended += ret;
+			// 送信継続
+			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
+		}
+		else if( rsp->readfh != INVALID_HANDLE_VALUE ){
+			// 送信バッファ送ったらファイルを…
+			if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
+				// 送信バッファに読み込んで(上書き)
+				DWORD bRead=0;
+				if( ReadFile( rsp->readfh, rsp->body.top, rsp->body.size, &bRead, NULL )==0 )
+					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+				rsp->readed += bRead;
+				rsp->body.bytes = bRead;
+				rsp->sended = rsp->head.bytes;
+			}
+			else{
+				// ファイルデータ全部送った
+				CloseHandle( rsp->readfh );
+				rsp->readfh = INVALID_HANDLE_VALUE;
+			}
+			// 送信継続
+			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
+		}
+		else{
+			// ぜんぶ送信した
+#ifdef HTTP_KEEPALIVE
+			if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
+				SOCKET	sock		= cp->sock;
+				SSL*	sslp		= cp->sslp;
+				UCHAR	loopback	= cp->loopback;
+				UCHAR*	reqBuf		= cp->req.buf;
+				UCHAR*	rspHead		= cp->rsp.head.top;
+				UCHAR*	rspBody		= cp->rsp.body.top;
+				size_t	reqBufSize	= cp->req.bufsize;
+				size_t	rspHeadSize	= cp->rsp.head.size;
+				size_t	rspBodySize	= cp->rsp.body.size;
+				WCHAR	wpath[MAX_PATH+1]=L"";
+				CloseHandle( cp->thread );
+				CloseHandle( cp->req.writefh );
+				CloseHandle( cp->rsp.readfh );
+				DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
+				memset( cp->req.buf ,0 ,cp->req.bufsize );
+				memset( cp->rsp.head.top ,0 ,cp->rsp.head.size );
+				memset( cp->rsp.body.top ,0 ,cp->rsp.body.size );
+				memset( cp ,0 ,sizeof(TClient) );
+				cp->sock			= sock;
+				cp->sslp			= sslp;
+				cp->loopback		= loopback;
+				cp->req.buf			= reqBuf;
+				cp->req.bufsize		= reqBufSize;
+				cp->rsp.head.top	= rspHead;
+				cp->rsp.body.top	= rspBody;
+				cp->rsp.head.size	= rspHeadSize;
+				cp->rsp.body.size	= rspBodySize;
+				cp->rsp.readfh		= INVALID_HANDLE_VALUE;
+				cp->req.writefh		= INVALID_HANDLE_VALUE;
+				cp->status			= CLIENT_KEEP_ALIVE;
+				//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
+			}
+			else{ // 切断
+#endif
+				cp->status = 0;
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_CLOSE );
+#ifdef HTTP_KEEPALIVE
+			}
+#endif
+		}
+		break;
+	//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
+	}
+	cp->silent = 0;
+}
 void SocketWrite( SOCKET sock )
 {
 	TClient* cp = ClientOfSocket( sock );
-	if( cp ){
-		Response* rsp = &(cp->rsp);
-		switch( cp->status ){
-		case CLIENT_SEND_READY:
-			// スレッドは終了してるはず
-			CloseHandle( cp->thread ), cp->thread=NULL;
-			// 共通レスポンスヘッダ
-			if( cp->session ){
-				BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/;\r\n" ,cp->session->id );
-			}
-			BufferSendf( &(rsp->head)
-					,"Connection: %s\r\n"
-					"\r\n"
-#ifdef HTTP_KEEPALIVE
-					,cp->req.KeepAlive? "keep-alive" :"close"
-#else
-					,"close"
-#endif
-			);
-			// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
-			LogA("[%u]送信:%s",Num(cp),rsp->head.top);
-			rsp->sended = rsp->readed = 0;
-			cp->status = CLIENT_SENDING;
-
-		case CLIENT_SENDING:
-			if( rsp->sended < rsp->head.bytes + rsp->body.bytes ){
-				// まず送信バッファ(ヘッダ＋ボディ)を送る
-				Buffer* bp;
-				UINT sended;
-				int ret;
-				if( rsp->sended < rsp->head.bytes ){
-					bp = &(rsp->head);
-					sended = rsp->sended;
-				}
-				else{
-					bp = &(rsp->body);
-					sended = rsp->sended - rsp->head.bytes;
-				}
-				if( cp->sslp ){
-					ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
-					if( ret<=0 ){
-						int err = SSL_get_error( cp->sslp, ret );
-						switch( err ){
-						case SSL_ERROR_WANT_READ:
-						case SSL_ERROR_WANT_WRITE:
-							// SSL_writeリトライ再度FD_WRITEが来る(？)のを待つ
-							break;
-						default:
-							LogW(L"[%u]SSL_write不明なエラー%d",Num(cp),err);
-							PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-						}
-						break;
-					}
-				}
-				else{
-					ret = send( sock, bp->top + sended, bp->bytes - sended, 0 );
-					if( ret==SOCKET_ERROR ){
-						ret = WSAGetLastError();
-						if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
-							LogW(L"[%u]sendエラー%u",Num(cp),ret);
-						// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
-						break;
-					}
-				}
-				rsp->sended += ret;
-				// 送信継続
-				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
-			}
-			else if( rsp->readfh != INVALID_HANDLE_VALUE ){
-				// 送信バッファ送ったらファイルを…
-				if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
-					// 送信バッファに読み込んで(上書き)
-					DWORD bRead=0;
-					if( ReadFile( rsp->readfh, rsp->body.top, rsp->body.size, &bRead, NULL )==0 )
-						LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-					rsp->readed += bRead;
-					rsp->body.bytes = bRead;
-					rsp->sended = rsp->head.bytes;
-				}
-				else{
-					// ファイルデータ全部送った
-					CloseHandle( rsp->readfh );
-					rsp->readfh = INVALID_HANDLE_VALUE;
-				}
-				// 送信継続
-				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
-			}
-			else{
-				// ぜんぶ送信した
-#ifdef HTTP_KEEPALIVE
-				if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
-					WCHAR	wpath[MAX_PATH+1]=L"";
-					SSL*	sslp		= cp->sslp;
-					UCHAR	loopback	= cp->loopback;
-					UCHAR*	reqBuf		= cp->req.buf;
-					UCHAR*	rspHead		= cp->rsp.head.top;
-					UCHAR*	rspBody		= cp->rsp.body.top;
-					size_t	reqBufSize	= cp->req.bufsize;
-					size_t	rspHeadSize	= cp->rsp.head.size;
-					size_t	rspBodySize	= cp->rsp.body.size;
-					CloseHandle( cp->thread );
-					CloseHandle( cp->req.writefh );
-					CloseHandle( cp->rsp.readfh );
-					DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
-					memset( cp->req.buf ,0 ,cp->req.bufsize );
-					memset( cp->rsp.head.top ,0 ,cp->rsp.head.size );
-					memset( cp->rsp.body.top ,0 ,cp->rsp.body.size );
-					memset( cp ,0 ,sizeof(TClient) );
-					cp->sock			= sock;
-					cp->sslp			= sslp;
-					cp->loopback		= loopback;
-					cp->req.buf			= reqBuf;
-					cp->req.bufsize		= reqBufSize;
-					cp->rsp.head.top	= rspHead;
-					cp->rsp.body.top	= rspBody;
-					cp->rsp.head.size	= rspHeadSize;
-					cp->rsp.body.size	= rspBodySize;
-					cp->rsp.readfh		= INVALID_HANDLE_VALUE;
-					cp->req.writefh		= INVALID_HANDLE_VALUE;
-					cp->status			= CLIENT_KEEP_ALIVE;
-					//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
-				}
-				else{ // 切断
-#endif
-					cp->status = 0;
-					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-#ifdef HTTP_KEEPALIVE
-				}
-#endif
-			}
-			break;
-
-		//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
-		}
-		cp->silent = 0;
-	}
+	if( cp ) ClientWrite( cp );
 	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
 
@@ -6629,8 +6620,8 @@ retry:
 	}
 	if( retry /*&& count++ <10*/ ){
 		// スレッド実行中はこの関数から戻らないすなわちメインフォームは固まる。
-		// 数秒以内にスレッドは終了するはずだが、念のため10秒くらいでおしまい。
-		Sleep(1000);
+		// 数秒以内にスレッドは終了するはずだが・・・
+		Sleep(500);
 		goto retry;
 	}
 }
@@ -8578,6 +8569,24 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case FD_WRITE : SocketWrite( (SOCKET)wp );			break; // sendできる
 		case FD_CLOSE : SocketClose( (SOCKET)wp );			break; // 接続は閉じられた
 		default: LogW(L"[:%u]不明なソケットイベント(%u)",(SOCKET)wp,WSAGETSELECTEVENT(lp));
+		}
+		return 0;
+
+	case WM_THREADFIN: // スレッド終了
+		{
+			TClient* cp = ClientOfSocket( (SOCKET)wp );
+			if( cp ){
+				CloseHandle( cp->thread ), cp->thread=NULL;
+				if( cp->abort ){
+					LogW(L"[%u]中断します...",Num(cp));
+					cp->status = 0;
+				}
+				else{
+					// 応答送信
+					cp->status = CLIENT_SEND_READY;
+					ClientWrite( cp );
+				}
+			}
 		}
 		return 0;
 
