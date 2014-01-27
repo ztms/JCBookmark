@@ -712,6 +712,8 @@ var itemList = function(){
 		}
 		else if( arg0==='poke' ){
 			// アイテム欄の選択ブックマークをリンク切れ調査(フォルダ/javascriptは無視)
+			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
+			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
 			var title = $head3.text();
 			if( !/調査/.test(title) ) $head3.text( title +' / 調査結果' );
 			// ノード配列作成
@@ -720,7 +722,7 @@ var itemList = function(){
 				var $item = $(items[i]);
 				if( $item.hasClass('item') && $item.hasClass('select') && !$item.hasClass('folder') ){
 					var $url = $item.children('.url');
-					var url = $url.text().replace(/#.*/,'');
+					var url = $url.text();
 					if( url.length <=0 ) continue;
 					if( /^javascript:/i.test(url) ) continue;
 					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
@@ -734,10 +736,11 @@ var itemList = function(){
 			ajaxer = function( aix ){
 				if( aix===false ){ $imgsrc.remove(); return; }
 				var $urls = [] ,reqBody = '';
+				// 1ajaxで3URLずつ
 				for( var i=3; i>0 && qix < queue.length; i-- ){
 					var $url = queue[qix++];
 					$urls.push( $url );
-					reqBody += $url.text().replace(/#.*/,'')+'\r\n'; // TODO:encodeURI()が必要な時があるような
+					reqBody += ':'+$url.text()+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
 				}
 				if( reqBody ){
 					ajaxs[aix] = $.ajax({
@@ -753,6 +756,7 @@ var itemList = function(){
 						}
 						,success:function(data){
 							if( !ajaxer ) return;
+							// data.length==$urls.length のはずだが…
 							for( var i=0; i<$urls.length; i++ ){
 								var ico='question.png' ,cls='';					// 不明
 								switch( data[i].ico ){
@@ -761,7 +765,7 @@ var itemList = function(){
 								case 'D': ico='skull.png'; cls='dead'; break;	// 死亡
 								case '!': ico='warn.png'; break;				// 注意
 								}
-								$urls[i].next().text( data[i].msg +(data[i].url.length? ', '+data[i].url :'') )
+								$urls[i].next().text( data[i].msg +(data[i].url.length? ' ≫'+data[i].url :'') )
 								.prepend( $imgsrc.clone().attr('src',ico) );
 								$urls[i].parent().addClass( cls );
 							}
@@ -770,13 +774,13 @@ var itemList = function(){
 					});
 				}
 			};
-			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
-			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
-			// 1URL=1ajaxじゃなくて3URL=1ajaxとかにすると速くなるかな。サーバ側要改修。
+			// ajax4並列
 			for( var i=0; i<4; i++ ) ajaxer(i);
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
+			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
+			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
 			// TODO:実行中と完了の違いが微妙でパッと見終わったかどうか判断しづらい
 			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？不要かな
 			kind = 'deads';
@@ -812,9 +816,8 @@ var itemList = function(){
 				.children('.spacer').html('<img src=wait.gif>');
 			// ノード配列作成
 			var queuer = function( node ){
-				var url = node.url.replace(/#.*/,'');
-				if( url.length <=0 ) return;
-				if( /^javascript:/i.test(url) ) return;
+				if( node.url.length <=0 ) return;
+				if( /^javascript:/i.test(node.url) ) return;
 				queue.push( node );
 			};
 			var childer = function( child ){
@@ -883,10 +886,11 @@ var itemList = function(){
 			ajaxer = function( aix ){
 				if( aix===false ) return;
 				var nodes = [] ,reqBody = '';
+				// 1ajaxで3URLずつ
 				for( var i=3; i>0 && qix < queue.length; i-- ){
 					var node = queue[qix++];
 					nodes.push( node );
-					reqBody += node.url.replace(/#.*/,'')+'\r\n'; // TODO:encodeURI()が必要な時があるような
+					reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
 				}
 				if( reqBody ){
 					ajaxs[aix] = $.ajax({
@@ -902,6 +906,7 @@ var itemList = function(){
 						}
 						,success:function(data){
 							if( !ajaxer ) return;
+							// data.length==nodes.length のはずだが…
 							for( var i=0; i<nodes.length; i++ ){
 								var ico='question.png' ,cls='';								// 不明
 								switch( data[i].ico ){
@@ -911,16 +916,14 @@ var itemList = function(){
 								case '!': count.warn++; ico='warn.png'; break;				// 注意
 								default: count.unknown++;
 								}
-								$itemAppend( nodes[i] ,ico ,data[i].msg +(data[i].url.length? ', '+data[i].url :'') ,cls );
+								$itemAppend( nodes[i] ,ico ,data[i].msg +(data[i].url.length? ' ≫'+data[i].url :'') ,cls );
 							}
 						}
 						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(aix); }
 					});
 				}
 			};
-			// TODO:8並列だと速いが、Firefoxで「0 error」が頻発したり、調査結果アイコンが初表示の時に
-			// 調査中ずっと表示されなかったりという不具合が発生する・・4並列では発生しない？
-			// 1URL=1ajaxじゃなくて3URL=1ajaxとかにすると速くなるかな。サーバ側要改修。
+			// ajax4並列
 			for( var i=0; i<4; i++ ) ajaxer(i);
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
@@ -1148,14 +1151,15 @@ $('#newitem').on({
 		// 選択フォルダID=folderXXならノードID=XX
 		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
 		if( url.length ){
-			$.get(':analyze?'+url,function(data){
+			$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
+				data = data[0];
 				if( data.title.length ){
 					data.title = HTMLdec( data.title );
-					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+					if( tree.nodeAttr( node.id,'title',data.title ) >1 )
 						$('#item'+node.id).find('.title').text( data.title );
 				}
 				if( data.icon.length ){
-					if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+					if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
 						$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
 				}
 			});
@@ -2147,22 +2151,18 @@ function itemContextMenu(ev){
 	var nid = item.id.slice(4);	// ノードID
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
-	var iopen = $(item).find('.icon').attr('src');
+	var iopen = $(item).children('.icon').attr('src');
 	var width = 210;
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
 		$box.append($('<a><img src='+iopen+'>フォルダを開く</a>').click(function(){
 			$menu.hide(); $(item).dblclick();
-		}))
-		.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
-			$menu.hide(); itemList('deads','folder');
-		}))
-		.append('<hr>');
+		}));
 	}
 	else{
 		// ブックマーク
-		var url = $(item).find('.url').text();
+		var url = $(item).children('.url').text();
 		if( url.length ){
 			if( /^javascript:/i.test(url) ){
 				$box.append($('<a><img src='+iopen+'>新しいタブで実行</a>').click(function(){
@@ -2188,8 +2188,8 @@ function itemContextMenu(ev){
 							).append(
 								$('<th></th>').append(
 									$('<a>反映</a>').button().click(function(){
-										if( tree.nodeAttr( nid, 'title', $title.val() ) >1 )
-											$(item).find('.title').text( $title.val() );
+										if( tree.nodeAttr( nid,'title',$title.val() ) >1 )
+											$(item).children('.title').text( $title.val() );
 									})
 								)
 							)
@@ -2199,10 +2199,10 @@ function itemContextMenu(ev){
 							).append(
 								$('<th></th>').append(
 									$('<a>反映</a>').button().click(function(){
-										if( tree.nodeAttr( nid, 'icon', $iconurl.val() ) >1 )
+										if( tree.nodeAttr( nid,'icon',$iconurl.val() ) >1 )
 											$(item)
-											.find('.icon').attr('src',$icon.attr('src')).end()
-											.find('.iconurl').text($iconurl.val());
+											.children('.icon').attr('src',$icon.attr('src')).end()
+											.children('.iconurl').text($iconurl.val());
 									})
 								)
 							)
@@ -2232,18 +2232,21 @@ function itemContextMenu(ev){
 					});
 					analyze();
 					function analyze(){
-						var url = $(item).find('.url').text();
+						var url = $(item).children('.url').text();
 						$.ajax({
-							url:':analyze?'+url
+							type:'post'
+							,url:':analyze'
+							,data:url+'\r\n' // TODO:URLエスケープ(encodeURI使えない)
 							,error:function(){
-								if( url==$(item).find('.url').text() ){
+								if( url==$(item).children('.url').text() ){
 									$title.val('');
 									$icon.attr('src','item.png');
 									$iconurl.val('');
 								}
 							}
 							,success:function(data){
-								if( url==$(item).find('.url').text() ){
+								data = data[0];
+								if( url==$(item).children('.url').text() ){
 									$title.val( HTMLdec( data.title ||'' ) );
 									$icon.attr('src',data.icon ||'item.png');
 									$iconurl.val( data.icon ||'' );
@@ -2262,12 +2265,8 @@ function itemContextMenu(ev){
 							analyze(item);
 						},1);
 					}
-				}))
-				.append($('<a><img src=skull.png>リンク切れ調査</a>').click(function(){
-					$menu.hide(); itemList('poke');
 				}));
 			}
-			$box.append('<hr>');
 		}
 	}
 	if( itemList('?')=='child' && isLocalServer ){
@@ -2281,9 +2280,38 @@ function itemContextMenu(ev){
 				if( pnode.child[index].id==nid ) break;
 			}
 			clipboardTo( pnode, index );
-		}))
-		.append('<hr>');
+		}));
 	}
+	if( $box[0].children.length ) $box.append('<hr>');
+	if( $(item).hasClass('folder') ){
+		$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
+			$menu.hide(); itemList('deads','folder');
+		}));
+	}
+	else{
+		if( url.length ){
+			$box.append($('<a><img src=skull.png>リンク切れ調査</a>').click(function(){
+				$menu.hide(); itemList('poke');
+			}));
+		}
+		if( $(item).children('.status').text().match(/≫.+/) ){
+			$box.append($('<a><img src=warn.png>転送先URLに書き換え</a>').click(function(){
+				$menu.hide();
+				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					var $item = $(items[i]);
+					if( $item.hasClass('select') ){
+						var newurl = $item.children('.status').text().match(/≫.+/);
+						if( newurl ){
+							newurl = newurl[0].replace(/≫/,'');
+							if( tree.nodeAttr( items[i].id.slice(4),'url',newurl ) >1 )
+								$item.children('.url').text( newurl );
+						}
+					}
+				}
+			}));
+		}
+	}
+	if( $box[0].children.length ) $box.append('<hr>');
 	// 削除
 	var idelete = tree.trashHas( nid )? 'delete.png' :'trash.png';
 	$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
@@ -2512,14 +2540,15 @@ function edit( element, opt ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nid );
 									if( node.title=='新規ブックマーク' ){
-										$.get(':analyze?'+value,function(data){
+										$.post(':analyze',value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
+											data = data[0];
 											if( data.title.length && node.title=='新規ブックマーク' ){
 												data.title = HTMLdec( data.title );
-												if( tree.nodeAttr( nid, 'title', data.title ) >1 )
+												if( tree.nodeAttr( nid,'title',data.title ) >1 )
 													$('#item'+nid).find('.title').text( data.title );
 											}
 											if( data.icon.length && (!node.icon|| !node.icon.length) ){
-												if( tree.nodeAttr( nid, 'icon', data.icon ) >1 )
+												if( tree.nodeAttr( nid,'icon',data.icon ) >1 )
 													$('#item'+nid).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
 											}
 										});
@@ -2654,14 +2683,15 @@ function clipboardTo( pnode, index ){
 		var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
 		if( node ){
 			// タイトル/favicon取得
-			$.get(':analyze?'+url,function(data){
+			$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
+				data = data[0];
 				if( !title && data.title.length ){
 					data.title = HTMLdec( data.title );
-					if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+					if( tree.nodeAttr( node.id,'title',data.title ) >1 )
 						$('#item'+node.id).find('.title').text( data.title );
 				}
 				if( data.icon.length ){
-					if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+					if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
 						$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
 				}
 			});
