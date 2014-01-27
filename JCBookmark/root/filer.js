@@ -781,8 +781,8 @@ var itemList = function(){
 			// リンク切れ調査(フォルダ)
 			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
 			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
-			// TODO:実行中と完了の違いが微妙でパッと見終わったかどうか判断しづらい
-			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？不要かな
+			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？
+			// TODO:調査結果アイテムを新しいフォルダに移動できない。フォルダ作ると消えてしまう。
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
@@ -793,7 +793,7 @@ var itemList = function(){
 			var $dead = $('<span class=count>0</span>');
 			var $warn = $('<span class=count>0</span>');
 			var $unknown = $('<span class=count>0</span>');
-			var $totalbox = $('<span><img class=icon src=item.png>総数</span>').append( $total );
+			var $totalbox = $('<span><img class=icon src=wait.gif>総数</span>').append( $total );
 			var $okbox = $('<span><img class=icon src=ok.png>正常</span>').append( $ok );
 			var $errbox = $('<span><img class=icon src=delete.png>エラー</span>').append( $err );
 			var $deadbox = $('<span><img class=icon src=skull.png>リンク切れ</span>').append( $dead );
@@ -803,8 +803,11 @@ var itemList = function(){
 			var $info = $('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
 				.on('dying',function(){ $('#itembox').height( $('#folderbox').height() -$head.outerHeight() ); })
 				.prepend(
-					$('<button><img class=icon src=stop.png>中止</button>')
-					.button().click(function(){ $(this).remove(); finalize(); })
+					$('<button><img class=icon src=stop.png>中止</button>').button().click(function(){
+						$totalbox.find('img').attr('src','item.png');
+						$(this).remove();
+						finalize();
+					})
 				)
 				.append( $folderName )
 				.append('<br>')
@@ -939,6 +942,7 @@ var itemList = function(){
 					return;
 				}
 				// 完了
+				$totalbox.find('img').attr('src','item.png');
 				$total.text( queue.length );
 				if( count.ok==0 ) $okbox.remove();
 				if( count.err==0 ) $errbox.remove();
@@ -2302,6 +2306,8 @@ function itemContextMenu(ev){
 					var $item = $(items[i]);
 					if( $item.children('.status').children('.icon').attr('src')==ico )
 						$item.addClass('select');
+					else
+						$item.removeClass('select');
 				}
 			}));
 		}
