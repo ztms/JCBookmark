@@ -3225,8 +3225,8 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// http://q.hatena.ne.jp/1326164005
 				// TODO:みんくちゃんねるの個別記事URLは記事がなくなってても 200 が返ってくる。判別不能。
 				if( rsp->ContentType==TYPE_HTML ){
-					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送
-					// 時事ドットコムや@ITの記事、他でもしばしば使われている
+					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送。時事ドットコムや@ITの
+					// 記事、他でもしばしば使われている。
 					UCHAR* body ,*meta;
 					HTTPGetHtmlToUTF8( rsp );
 					body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
@@ -3245,8 +3245,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 										if( url ){
 											UCHAR* end ,ch ,*abs;
 											url += 4;
-											end = strchr(url,'"');
-											if( !end ) for( end=url; *end && *end !=' '; end++ );
+											for( end=url; *end; end++ ) if( *end==' ' || *end=='"' || *end=='\'' ) break;
 											ch=*end ,*end='\0'; // rsp->body一時破壊
 											//LogA("refresh URL=%s",url);
 											abs = absoluteURL( url ,newurl? newurl :url0 );
@@ -5794,6 +5793,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					if( req->ContentType ) req->ContentType += distance;
 					if( req->UserAgent ) req->UserAgent += distance;
 					if( req->IfModifiedSince ) req->IfModifiedSince += distance;
+					if( req->Cookie ) req->Cookie += distance;
 					if( req->boundary ) req->boundary += distance;
 					if( req->body ) req->body += distance;
 					free( req->buf );
