@@ -7,6 +7,7 @@ body {
 	position:fixed;
 	left:0; top:0;
 	width:100%;
+	height:21px;
 	color:#c00;
 	font-size:14px;
 	line-height:1.5;
@@ -368,6 +369,7 @@ body {
 .place {
 	height:0;
 	border:2px solid #f88;
+	margin:0;
 }
 #impexp, #snap, #dialog {
 	display:none;
@@ -525,7 +527,7 @@ body {
 	cursor:n-resize;
 }
 #finding:hover {
-	background:#e5e5e5;
+	background:#ddd;
 }
 #finding.drag {
 	background:#fdc;
