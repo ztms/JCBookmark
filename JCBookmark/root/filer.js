@@ -2294,8 +2294,19 @@ function itemContextMenu(ev){
 				$menu.hide(); itemList('poke');
 			}));
 		}
+		if( $('#deadinfo').length ){
+			$box.append($('<a><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
+				$menu.hide();
+				var ico = $(item).children('.status').children('.icon').attr('src');
+				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					var $item = $(items[i]);
+					if( $item.children('.status').children('.icon').attr('src')==ico )
+						$item.addClass('select');
+				}
+			}));
+		}
 		if( $(item).children('.status').text().match(/≫.+/) ){
-			$box.append($('<a><img src=warn.png>転送先URLに書き換え</a>').click(function(){
+			$box.append($('<a><img src=pen.png>転送先URLに書き換え</a>').click(function(){
 				$menu.hide();
 				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
 					var $item = $(items[i]);
@@ -2307,6 +2318,15 @@ function itemContextMenu(ev){
 								$item.children('.url').text( newurl );
 						}
 					}
+				}
+			}));
+		}
+		if( $('#deadinfo').length ){
+			$box.append($('<a><img src=minus.png>一覧から除外</a>').click(function(){
+				$menu.hide();
+				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					var $item = $(items[i]);
+					if( $item.hasClass('select') ) $item.remove();
 				}
 			}));
 		}
