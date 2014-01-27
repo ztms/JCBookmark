@@ -123,51 +123,7 @@ body {
 	background:#eee;
 	border-bottom:1px solid #bbb;
 }
-/* フォルダ・アイテムエントリ */
-.folder, .item {
-	height:20px;
-}
-.folder:hover, .item:hover {
-	background:#ebf9ff;
-}
-.folder:active {
-	background:#dbe9ff;
-}
-.item {
-	padding-left:3px;
-}
-/* アイテム色つき行 */
-.bgcolor {
-	background:#f0f2ff;
-}
-/* リンク切れアイテム */
-.dead {
-	background:#e3e3e3;
-}
-/* 選択行 */
-#folders .select, #folders .select:hover,
-#items .select, #items .select:hover {
-	color:#fff;
-	background:#337;
-	font-weight:bold;
-}
-#items .select .url,
-#items .select .iconurl,
-#items .select .status,
-#items .select .place,
-#items .select .summary,
-#items .select .date {
-	color:#fff;
-	font-weight:normal;
-}
-/* 選択非アクティブ */
-#folders .inactive, #folders .inactive:hover,
-#items .inactive, #items .inactive:hover {
-	color:#000;
-	background:#ccc;
-}
-/* フォルダ名、アイテム名、アイテム項目 */
-#folders span, #itemhead span, #items span {
+#itemhead span, .folder span, .item span {
 	display:inline-block;
 	height:19px;
 	cursor:default;
@@ -199,18 +155,84 @@ body {
 	border-color:#975;
 	background:#fed;
 }
-#items .url,
-#items .iconurl,
-#items .status,
-#items .place,
-#items .summary,
-#items .date {
+/* フォルダ・アイテム */
+.folder, .item {
+	height:20px;
+}
+.item {
+	padding-left:3px;
+}
+.item .url,
+.item .iconurl,
+.item .status,
+.item .place,
+.item .summary,
+.item .date {
 	color:#888;
 	padding-left:5px;
 	border-left:1px solid #ddd;
 }
-#items .status {
+.item .status {
 	color:#444;
+}
+/* フォルダコンテキストメニュー中 */
+.contexted {
+	color:#000;
+	background:#ebf9ff;
+}
+.folder:hover, .item:hover {
+	background:#ebf9ff;
+}
+.folder:active {
+	background:#dbe9ff;
+}
+/* アイテム色つき行 */
+.bgcolor {
+	background:#f0f2ff;
+}
+/* リンク切れアイテム */
+.dead {
+	background:#e3e3e3;
+}
+/* 選択行 */
+.select {
+	color:#fff;
+	background:#337;
+	font-weight:bold;
+}
+.select .url,
+.select .iconurl,
+.select .status,
+.select .place,
+.select .summary,
+.select .date {
+	color:#fff;
+	font-weight:normal;
+}
+.select:hover {
+	background:#448;
+}
+.select:active {
+	background:#559;
+}
+/* 選択非アクティブ */
+.inactive {
+	color:#000;
+	background:#ccc;
+}
+.inactive .url,
+.inactive .iconurl,
+.inactive .status,
+.inactive .place,
+.inactive .summary,
+.inactive .date {
+	color:#000;
+}
+.inactive:hover {
+	background:#ddd;
+}
+.inactive:active {
+	background:#bbb;
 }
 /* アイコン */
 .icon {
@@ -325,10 +347,6 @@ body {
 	border-top:1px solid #999;
 	border-bottom:1px solid #fff;
 	margin:3px 0 3px 0;
-}
-/* コンテキストメニュー中 */
-.contexted {
-	background:#ebf9ff;
 }
 /* ダイアログ */
 #dialog {
