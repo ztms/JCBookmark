@@ -427,9 +427,9 @@ $.css.add = function( rule ,index ){
 };
 // フォルダツリー生成
 // folderTree({
-//   click0		: true/false 最初のフォルダをクリックするかどうか
-//   clickID	: クリックするフォルダノードID文字列
-//   clickAfter	: クリック完了後に実行するfunction
+//   click0	: true/false 最初のフォルダをクリックするかどうか
+//   clickID: クリックするフォルダノードID文字列
+//   done	: ツリー生成後に実行するfunction
 // });
 // TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
 // TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
@@ -491,9 +491,9 @@ var folderTree = function(){
 				.on('mouseleave',itemMouseLeave);
 			// 現在のサブツリー開閉状態を取得
 			var subs = $folders.find('.sub'); //$folders[0].querySelectorAll('.sub');
-			var close = {};
+			var isClose = {};
 			for( var i=subs.length-1; i>=0; i-- ){
-				close[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
+				isClose[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
 			}
 			return function( node ){
 				if( node===false ){ $e.remove(); $sub.remove(); return; }
@@ -502,7 +502,7 @@ var folderTree = function(){
 				var $f = $e.clone(true).attr('id','folder'+node.id);
 				if( node.sub ){
 					var $s = $sub.clone();
-					if( close[node.id] ) $s.attr('src','plus.png');
+					if( isClose[node.id] ) $s.attr('src','plus.png');
 					$f.prepend( $s ).css('padding-left', node.depth *16 );
 				}
 				else $f.css('padding-left', node.depth *16 +15 );	// +15px <img class=sub> の幅
@@ -545,11 +545,19 @@ var folderTree = function(){
 				else if( opt.clickID ){
 					if( node.id==opt.clickID ) $node.click();
 				}
+				else if( opt.selectID ){
+					if( node.id==opt.selectID ){
+						selectFolder = $node[0];
+						$node.addClass('select');
+						if( opt.inactive ) $node.addClass('inactive');
+						else select = selectFolder;
+					}
+				}
 				// 次
 				index++; count--;
 			}
 			if( index < length ) timer = setTimeout(callee,0);
-			else{ $folder(false); if( opt.clickAfter ) opt.clickAfter(); }
+			else{ $folder(false); if( opt.done ) opt.done(); }
 		})();
 	};
 }();
@@ -782,7 +790,6 @@ var itemList = function(){
 			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
 			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
 			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？
-			// TODO:調査結果アイテムを新しいフォルダに移動できない。フォルダ作ると消えてしまう。
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
@@ -1126,7 +1133,7 @@ $('#newfolder').click(function(){
 	// フォルダツリー生成
 	folderTree({
 		clickID:nid
-		,clickAfter:function(){
+		,done:function(){
 			// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
 			var $item = $('#item'+node.id);
 			// $item.mousedown().mouseup();と書きたいところだが、
@@ -2363,8 +2370,7 @@ function folderContextMenu(ev){
 	var nid = folder.id.slice(6); // ノードID
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
-	var width = 100;
-	// クリップボードから登録
+	var width = 210;
 	if( isLocalServer ){
 		if( width<250 ) width=250;
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
@@ -2373,13 +2379,31 @@ function folderContextMenu(ev){
 			clipboardTo( tree.node( nid ),0 );
 		}));
 	}
-	if( width<210 ) width=210;
-	$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
+	$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
+		$menu.hide(); onContextHide();
+		// クリックフォルダ先頭に
+		var node = tree.newFolder( '', nid );
+		// フォルダツリー生成
+		function titleEdit(){ edit( $('#folder'+node.id).find('.title')[0] ,{select:true} ); }
+		switch( itemList('?') ){
+		case 'deads': folderTree({ done:titleEdit }); break;
+		case 'finds': folderTree({ done:titleEdit })/* ,itemList('finds')*/; break;
+		case 'child':
+			if( folder.id==selectFolder.id ) folderTree({ clickID:nid ,done:titleEdit });
+			else folderTree({
+				selectID	:selectFolder.id.slice(6)
+				,inactive	:$(selectFolder).hasClass('inactive')
+				,done		:titleEdit
+			});
+			break;
+		}
+	}))
+	.append('<hr>')
+	.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
 		$menu.hide(); onContextHide();
 		itemList('deads',tree.node( nid ));
 	}));
 	if( nid==tree.trash().id ){
-		if( width<170 ) width=170;
 		$box.append('<hr>');
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide(); onContextHide();
@@ -2555,10 +2579,21 @@ function edit( element, opt ){
 							$e.text( value );
 							switch( attrName ){
 							case 'title':
-								// アイテム欄のフォルダの場合、フォルダツリーも更新
 								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
-								var $parent = $(element.parentNode);
-								if( $parent.hasClass('item') && $parent.hasClass('folder') ) folderTree({});
+								var $item = $(element.parentNode);
+								if( $item.hasClass('folder') ){
+									if( $item.hasClass('item') ){
+										// アイテム欄のフォルダの時フォルダツリーも更新
+										folderTree({});
+									}
+									else{
+										// フォルダツリーでアイテム欄が親フォルダを表示していた場合アイテム欄を更新
+										var pnode = tree.nodeParent(nid);
+										if( itemList('?')=='child' && selectFolder.id.slice(6)==pnode.id ){
+											itemList( pnode );
+										}
+									}
+								}
 								if( itemList('?')=='finds' ) itemList('finds');
 								break;
 							case 'url':
@@ -2650,8 +2685,8 @@ function edit( element, opt ){
 function viewScroll( element ){
 	// スクロール対象ボックス確認
 	var boxid = element.parentNode.id;
-	if( boxid.indexOf('item')==0 ) boxid = 'items';
-	else if( boxid.indexOf('folder')==0 ) boxid = 'folders';
+	if( boxid.indexOf('item')==0 ) boxid = 'itembox';
+	else if( boxid.indexOf('folder')==0 ) boxid = 'folderbox';
 	else return;
 	var box = doc.getElementById( boxid );
 	// 要素の相対座標
