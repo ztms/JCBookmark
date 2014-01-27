@@ -67,14 +67,16 @@ $('button').click(function(){
 			,data:{ p:$('input').val() }
 			,error:function(xhr){
 				switch( xhr.status ){
-				case 401: $('h2').text('エラー:パスワードが違います'); break;
+				case 401:$('h2').text('エラー:パスワードが違います'); break;
 				default:$('h2').text('エラー:'+xhr.status+' '+xhr.statusText);
 				}
 			}
 			,success:function(data){
-				// dataはセッションID
 				$('h2').text('ログインしました...');
-				document.cookie = 'session='+data;
+				// dataはセッションID
+				// TODO:Opera18(XP)でブラウザ閉じてもクッキー削除されない(--incognitoなら問題なし)
+				// http://stackoverflow.com/questions/20010274/opera-does-not-delete-session-cookie-when-browser-close
+				document.cookie = 'session='+data +'; path=/;';
 				if( /\/login.html$/.test(location.href) ) location.href = '/';
 				else location.reload(true);
 			}
