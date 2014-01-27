@@ -5748,37 +5748,68 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 		case CLIENT_ACCEPT_OK:
 			if( cp->sslp ){
 				int r = SSL_accept( cp->sslp );
-				switch( r ){
-				case 1:
+				if( r==1 ){
 					//LogW(L"[%u]SSL_accept成功",Num(cp));
 					cp->status = CLIENT_RECV_MORE;
-					break;
-				case -1:
-					{
-						int err = SSL_get_error( cp->sslp, r );
-						switch( err ){
-						case SSL_ERROR_WANT_READ:
-						case SSL_ERROR_WANT_WRITE:
-							// SSL_acceptリトライ
-							break;
-						default:
-							LogW(L"[%u]SSL_accept不明なエラー%d",Num(cp),err);
-							PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-						}
+					// 受信処理へ
+				}
+				else if( r==-1 ){
+					int err = SSL_get_error( cp->sslp, r );
+					switch( err ){
+					case SSL_ERROR_WANT_READ:
+					case SSL_ERROR_WANT_WRITE:
+						// SSL_acceptリトライ
+						PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
+						break;
+					default:
+						LogW(L"[%u]SSL_accept不明なエラー%d",Num(cp),err);
+						PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
 					}
 					break;
-				case 0:
-				default:
+				}
+				else{
 					LogW(L"[%u]SSL_accept致命的エラー%d",Num(cp),r);
 					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+					break;
 				}
-				break;
 			}
 			else cp->status = CLIENT_RECV_MORE;
+			// 受信処理へ
 
 		case CLIENT_RECV_MORE:
 		case CLIENT_KEEP_ALIVE:
 			// 受信
+			if( req->bytes >= req->bufsize-1 ){
+				size_t newsize = req->bufsize * 2;
+				UCHAR* newbuf = malloc( newsize );
+				if( newbuf ){
+					int distance = newbuf - req->buf;
+					memset( newbuf, 0, newsize );
+					memcpy( newbuf, req->buf, req->bufsize );
+					if( req->method ) req->method += distance;
+					if( req->path ) req->path += distance;
+					if( req->param ) req->param += distance;
+					if( req->ver ) req->ver += distance;
+					if( req->head ) req->head += distance;
+					if( req->ContentType ) req->ContentType += distance;
+					if( req->UserAgent ) req->UserAgent += distance;
+					if( req->IfModifiedSince ) req->IfModifiedSince += distance;
+					if( req->boundary ) req->boundary += distance;
+					if( req->body ) req->body += distance;
+					free( req->buf );
+					req->buf = newbuf;
+					req->bufsize = newsize;
+					LogW(L"[%u]受信バッファ拡大%ubytes",Num(cp),newsize);
+				}
+				else{
+					LogA("[%u]リクエスト大杉:%s",Num(cp),req->buf);
+					ResponseError(cp,"400 Bad Request");
+				send_ready:
+					cp->status = CLIENT_SEND_READY;
+					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
+					break;
+				}
+			}
 			bytes = req->bufsize - req->bytes - 1;
 			if( cp->sslp ){
 				bytes = SSL_read( cp->sslp, req->buf + req->bytes, bytes );
@@ -5939,9 +5970,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										);
 									}
 									else ResponseError(cp,"404 Not Found");
-									goto send_ready;
 								}
-								else{ ResponseError(cp,"403 Forbidden"); goto send_ready; }
+								else ResponseError(cp,"403 Forbidden");
+								goto send_ready;
 							}
 							else if( stricmp(req->method,"POST")==0 ){
 								if( stricmp(file,":login")==0 && req->ContentLength && req->ContentLength <999 ){
@@ -5952,7 +5983,15 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										cp->status = CLIENT_THREADING;
 										cp->thread = (HANDLE)_beginthreadex( NULL,0 ,authenticate ,(void*)cp ,0,NULL );
 									}
-									else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+									else{
+									recv_more: // 引き続き受信
+										cp->status = CLIENT_RECV_MORE;
+										// なぜかSSLでFD_READ来ないので自力発行(特にPUT/POSTで)
+										//if( SSL_pending(cp->sslp) )
+										if( cp->sslp )
+											PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
+									}
+									break;
 								}
 								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 							}
@@ -6388,7 +6427,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyzer ,(void*)cp ,0,NULL );
 								}
-								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+								else goto recv_more;
 							}
 							else if( stricmp(file,":poke")==0 ){
 								if( BODYBYTES(req) >= req->ContentLength ){
@@ -6396,7 +6435,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poker ,(void*)cp ,0,NULL );
 								}
-								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+								else goto recv_more;
 							}
 							else{
 								// HTMLインポート:リクエスト本文を一時ファイルに書き出す
@@ -6443,7 +6482,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										else ResponseError(cp,"501 Not Implemented");
 										goto send_ready;
 									}
-									else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+									else goto recv_more;
 								}
 							}
 						}
@@ -6515,7 +6554,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else ResponseError(cp,"500 Internal Server Error");
 									goto send_ready;
 								}
-								else cp->status = CLIENT_RECV_MORE; // 引き続き本文受信
+								else goto recv_more;
 							}
 						}
 						else{
@@ -6541,49 +6580,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				}
 				else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 			}
-			if( req->bytes >= req->bufsize-1 ){
-				size_t newsize = req->bufsize * 2;
-				UCHAR* newbuf = malloc( newsize );
-				if( newbuf ){
-					int distance = newbuf - req->buf;
-					memset( newbuf, 0, newsize );
-					memcpy( newbuf, req->buf, req->bufsize );
-					if( req->method ) req->method += distance;
-					if( req->path ) req->path += distance;
-					if( req->param ) req->param += distance;
-					if( req->ver ) req->ver += distance;
-					if( req->head ) req->head += distance;
-					if( req->ContentType ) req->ContentType += distance;
-					if( req->UserAgent ) req->UserAgent += distance;
-					if( req->IfModifiedSince ) req->IfModifiedSince += distance;
-					if( req->boundary ) req->boundary += distance;
-					if( req->body ) req->body += distance;
-					free( req->buf );
-					req->buf = newbuf;
-					req->bufsize = newsize;
-					LogW(L"[%u]受信バッファ拡大%ubytes",Num(cp),newsize);
-				}
-				else{
-					LogA("[%u]リクエスト大杉:%s",Num(cp),req->buf);
-					ResponseError(cp,"400 Bad Request");
-				send_ready:
-					cp->status = CLIENT_SEND_READY;
-					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
-				}
-			}
 			break;
 
 		//default: if( !cp->sslp ) LogW(L"[%u](FD_READ)",Num(cp));
-		}
-		// なぜかSSLでFD_READ来ないので自力発行(特にPUT/POSTで)
-		// http://d.hatena.ne.jp/tt_clown/20081108/p1
-		if( cp->sslp ){
-			switch( cp->status ){
-			case CLIENT_ACCEPT_OK:
-			case CLIENT_RECV_MORE:
-			case CLIENT_KEEP_ALIVE:
-				if( SSL_pending(cp->sslp) ) PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_READ );
-			}
 		}
 		cp->silent = 0;
 	}
