@@ -774,9 +774,8 @@ var paneler = function(){
 						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// URLタイトル/favicon取得
-							// TODO:encodeURI()が必要な時があるような
-							$.post(':analyze',this.value+'\r\n',function(data){
-								var data = data[0];
+							$.post(':analyze',this.value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
+								data = data[0];
 								if( data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1199,9 +1198,8 @@ function setEvents(){
 						var node = tree.newURL( pnode, url, title || url.noProto() );
 						if( node ){
 							// タイトル/favicon取得
-							// TODO:encodeURI()が必要な時があるような
-							$.post(':analyze',url+'\r\n',function(data){
-								var data = data[0];
+							$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
+								data = data[0];
 								if( !title && data.title.length ){
 									data.title = HTMLdec( data.title );
 									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
@@ -1653,8 +1651,8 @@ function setEvents(){
 					// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
 					// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
 					// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
-					var href = ' HREF="' +encodeURI(node.url||'') +'"';
-					var icon_uri = ' ICON_URI="' +encodeURI(node.icon||'') +'"';
+					var href = ' HREF="' +(node.url||'') +'"';			// TODO:URLエスケープ(encodeURI使えん)
+					var icon_uri = ' ICON_URI="' +(node.icon||'') +'"';	// TODO:URLエスケープ(encodeURI使えん)
 					html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
 				}
 			}
@@ -2309,9 +2307,8 @@ function panelEdit( pid ){
 						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
-						// TODO:encodeURI()が必要な時があるような
-						$.post(':analyze',this.value+'\r\n',function(data){
-							var data = data[0];
+						$.post(':analyze',this.value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
+							data = data[0];
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
 						});
@@ -2565,10 +2562,11 @@ function analyzer( nodeTop ){
 	var timer = null;		// タイマーID
 	var ajaxer = function( aix ){
 		var nodes = [] ,reqBody = '';
-		for( var i=3; i>0 && qix < queue.length; i-- ){
+		// 1ajaxで4URLずつ
+		for( var i=4; i>0 && qix < queue.length; i-- ){
 			var node = queue[qix++];
 			nodes.push( node );
-			reqBody += node.url.replace(/#.*/,'') +'\r\n'; // TODO:encodeURI()が必要な時があるような
+			reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えん)
 		}
 		if( reqBody ){
 			ajaxs[aix] = $.ajax({
@@ -2576,7 +2574,8 @@ function analyzer( nodeTop ){
 				,url:':analyze'
 				,data:reqBody
 				,success:function(data){
-					for( var i=0; i<data.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
+					// data.length==nodes.length のはずだが…
+					for( var i=0; i<nodes.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
 				}
 				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(aix); }
 			});
@@ -2609,13 +2608,12 @@ function analyzer( nodeTop ){
 		}
 		else{
 			total++;
-			var url = node.url.replace(/#.*/,'');
-			if( url.length && !/^javascript:/i.test(url) && !node.icon.length )
+			if( node.url.length && !/^javascript:/i.test(node.url) && !node.icon.length )
 				queue.push( node );
 		}
 	}( nodeTop ));
-	// ajax発行
-	for( var i=0; i<8; i++ ) ajaxer(i);
+	// ajax6並列
+	for( var i=0; i<6; i++ ) ajaxer(i);
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+queue.length+')');
@@ -2657,10 +2655,9 @@ function importer( nodeTop ){
 	});
 }
 // ドラッグ中スクロール制御
-// TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
 var dragScroll = function(){
 	var timer = null;
-	return function( ev ){
+	return function( ev, event ){
 		clearTimeout( timer );
 		if( ev ){
 			var dx=0, dy=0;
@@ -2676,16 +2673,18 @@ var dragScroll = function(){
 			else if( ev.clientY >=$win.height() -40 ){
 				dy = 40 -($win.height() -ev.clientY);
 			}
-			if( dx!=0 || dy!=0 ){
+			if( dx || dy ){
 				(function callee(){
 					var oldLeft = $win.scrollLeft();
 					var oldTop = $win.scrollTop();
 					scrollTo( oldLeft + dx, oldTop + dy );
-					if( $win.scrollLeft()!=oldLeft || $win.scrollTop()!=oldTop ){
-						timer = setTimeout(callee,100);
-					}
+					dx = $win.scrollLeft() - oldLeft;
+					dy = $win.scrollTop() - oldTop;
+					if( dx || dy ) timer = setTimeout(callee,100);
+					event( dx ,dy );
 				})();
 			}
+			else event(0,0);
 		}
 	};
 }();
@@ -2716,20 +2715,22 @@ function columnSortable(){
 		$doc.on('mousemove.dragdrop','.column, .columndrop',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
-				// ドラッグ物
-				$dragi.css({ left:origin.left +ev.pageX -downX });
-				// ドロップ場所
-				$wall.children('.column').each(function(){
-					if( this==element ) return;
-					var $this = $(this);
-					if( $this.offset().left <= ev.pageX && ev.pageX <= $this.offset().left + this.offsetWidth ){
-						if( $this.prev().hasClass('columndrop') ) $this.after( $place );
-						else $this.before( $place );
-						return false;
-					}
-				});
 				// スクロール制御
-				dragScroll(ev);
+				dragScroll(ev,function( dx ,dy ){
+					ev.pageX += dx;
+					// ドラッグ物
+					$dragi.css({ left:origin.left +ev.pageX -downX });
+					// ドロップ場所
+					$wall.children('.column').each(function(){
+						if( this==element ) return;
+						var $this = $(this);
+						if( $this.offset().left <= ev.pageX && ev.pageX <= $this.offset().left + this.offsetWidth ){
+							if( $this.prev().hasClass('columndrop') ) $this.after( $place );
+							else $this.before( $place );
+							return false;
+						}
+					});
+				});
 			}
 		})
 		.one('mouseup',function(ev){
@@ -2792,18 +2793,21 @@ function panelSortable(){
 		$doc.on('mousemove.dragdrop',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
-				// ドラッグ物
-				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
 				// スクロール制御
-				dragScroll(ev);
+				// TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
+				dragScroll(ev,function( dx ,dy ){
+					ev.pageX += dx;
+					ev.pageY += dy;
+					// ドラッグ物
+					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
+				});
 			}
 		})
 		.on('mousemove.dragdrop','.panel',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
 				// ドロップ場所
-				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
-				if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
+				if( this.id==element.id ) return;
 				var $this = $(this);
 				// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
 				if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
@@ -2929,18 +2933,23 @@ function itemSortable(){
 		$doc.on('mousemove.dragdrop',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
-				// ドラッグ物
-				$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
 				// スクロール制御
-				dragScroll(ev);
+				// TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
+				dragScroll(ev,function( dx ,dy ){
+					ev.pageX += dx;
+					ev.pageY += dy;
+					// ドラッグ物
+					$dragi.css({ left:ev.pageX+5, top:ev.pageY+5 });
+				});
 			}
 		})
 		.on('mousemove.dragdrop','.item',function(ev){
 			if( !$dragi ) dragStarter(ev);
 			if( $dragi ){
 				// ドロップ場所
-				if( elementHasXY( $dragi[0], ev.pageX, ev.pageY ) ) return;
-				if( elementHasXY( $place[0], ev.pageX, ev.pageY ) ) return;
+				if( this.id==element.id ) return;
+				if( this.id==$dragi[0].id ) return;
+				if( /^fd/.test(this.id) ) return; // 検索結果ドロップ無効
 				var $this = $(this);
 				if( $this.hasClass('item') ){
 					// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
