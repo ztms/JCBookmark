@@ -2562,8 +2562,8 @@ function analyzer( nodeTop ){
 	var timer = null;		// タイマーID
 	var ajaxer = function( aix ){
 		var nodes = [] ,reqBody = '';
-		// 1ajaxで4URLずつ
-		for( var i=4; i>0 && qix < queue.length; i-- ){
+		// 負荷制御:サーバ側3並列
+		for( var i=3; i>0 && qix < queue.length; i-- ){
 			var node = queue[qix++];
 			nodes.push( node );
 			reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えん)
@@ -2612,8 +2612,8 @@ function analyzer( nodeTop ){
 				queue.push( node );
 		}
 	}( nodeTop ));
-	// ajax6並列
-	for( var i=0; i<6; i++ ) ajaxer(i);
+	// 負荷制御:クライアント側4並列
+	for( var i=0; i<4; i++ ) ajaxer(i);
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+queue.length+')');
