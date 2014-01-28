@@ -744,7 +744,7 @@ var itemList = function(){
 			ajaxer = function( aix ){
 				if( aix===false ){ $imgsrc.remove(); return; }
 				var $urls = [] ,reqBody = '';
-				// 1ajaxで3URLずつ
+				// 負荷制御:サーバ側3並列
 				for( var i=3; i>0 && qix < queue.length; i-- ){
 					var $url = queue[qix++];
 					$urls.push( $url );
@@ -782,24 +782,24 @@ var itemList = function(){
 					});
 				}
 			};
-			// ajax4並列
-			for( var i=0; i<4; i++ ) ajaxer(i);
+			// 負荷制御:クライアント側3並列
+			for( var i=0; i<3; i++ ) ajaxer(i);
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
 			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
 			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
-			// TODO:調査中にフォルダ表示や検索で中断される前に確認ダイアログ？
+			// TODO:調査結果を保持して他の操作ができるようにするのがベスト。できなければせめて
+			// 調査中にフォルダ表示や検索で中断される前に確認ダイアログを出すべき。
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
-			var items = doc.getElementById('items');
-			var $total = $('<span class=count>0</span>');
 			var $ok = $('<span class=count>0</span>');
-			var $err = $('<span class=count>0</span>');
-			var $dead = $('<span class=count>0</span>');
-			var $warn = $('<span class=count>0</span>');
-			var $unknown = $('<span class=count>0</span>');
+			var $err = $ok.clone();
+			var $dead = $ok.clone();
+			var $warn = $ok.clone();
+			var $total = $ok.clone();
+			var $unknown = $ok.clone();
 			var $totalbox = $('<span><img class=icon src=wait.gif>総数</span>').append( $total );
 			var $okbox = $('<span><img class=icon src=ok.png>正常</span>').append( $ok );
 			var $errbox = $('<span><img class=icon src=delete.png>エラー</span>').append( $err );
@@ -808,7 +808,9 @@ var itemList = function(){
 			var $unknownbox = $('<span><img class=icon src=question.png>不明</span>').append( $unknown );
 			var $folderName = $('<span></span>');
 			var $info = $('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
-				.on('dying',function(){ $('#itembox').height( $('#folderbox').height() -$head.outerHeight() ); })
+				.on('dying',function(){
+					$('#itembox').height( $('#folderbox').height() -$head.outerHeight() );
+				})
 				.prepend(
 					$('<button><img class=icon src=stop.png>中止</button>').button().click(function(){
 						$totalbox.find('img').attr('src','item.png');
@@ -816,8 +818,7 @@ var itemList = function(){
 						finalize();
 					})
 				)
-				.append( $folderName )
-				.append('<br>')
+				.append( $folderName ).append('<br>')
 				.append( $totalbox ).append( $okbox ).append( $errbox )
 				.append( $deadbox ).append( $warnbox ).append( $unknownbox )
 				.width( $head.width() )
@@ -836,6 +837,7 @@ var itemList = function(){
 					else queuer( child[i] );
 				}
 			};
+			var items = doc.getElementById('items');
 			if( arg1==='folder' ){
 				// アイテム欄の選択ブックマークとフォルダ内を調査
 				$folderName.text('(選択フォルダ)');
@@ -896,7 +898,7 @@ var itemList = function(){
 			ajaxer = function( aix ){
 				if( aix===false ) return;
 				var nodes = [] ,reqBody = '';
-				// 1ajaxで3URLずつ
+				// 負荷制御:サーバ側3並列
 				for( var i=3; i>0 && qix < queue.length; i-- ){
 					var node = queue[qix++];
 					nodes.push( node );
@@ -933,8 +935,8 @@ var itemList = function(){
 					});
 				}
 			};
-			// ajax4並列
-			for( var i=0; i<4; i++ ) ajaxer(i);
+			// 負荷制御:クライアント側3並列
+			for( var i=0; i<3; i++ ) ajaxer(i);
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
 			(function waiter(){
@@ -2305,7 +2307,7 @@ function itemContextMenu(ev){
 				$menu.hide(); itemList('poke');
 			}));
 		}
-		if( $('#deadinfo').length ){
+		if( itemList('?')=='deads' ){
 			$box.append($('<a><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
 				$menu.hide();
 				var ico = $(item).children('.status').children('.icon').attr('src');
@@ -2334,7 +2336,7 @@ function itemContextMenu(ev){
 				}
 			}));
 		}
-		if( $('#deadinfo').length ){
+		if( itemList('?')=='deads' ){
 			$box.append($('<a><img src=minus.png>一覧から除外</a>').click(function(){
 				$menu.hide();
 				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
