@@ -175,8 +175,7 @@ body {
 .item .status {
 	color:#444;
 }
-/* フォルダコンテキストメニュー中 */
-.contexted {
+.contexted { /* フォルダコンテキストメニュー中 */
 	color:#000;
 	background:#ebf9ff;
 }
@@ -423,14 +422,14 @@ body {
 	margin:1px 4px 0 0;
 	padding:0;
 }
-#deadinfo .ui-button-text {
-	padding:0 8px 0 8px;
-}
 #deadinfo button .icon {
 	margin:0 2px 0 0;
 }
 #deadinfo button span {
 	font-size:13px;
+}
+#deadinfo .ui-button-text {
+	padding:0 8px 0 8px;
 }
 /* jQuery UI Dialog */
 .ui-dialog {
