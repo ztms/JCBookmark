@@ -1086,7 +1086,7 @@ function setEvents(){
 				// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
 				InputDialog({
 					title:'新規パネル作成'
-					,text:'パネル名'
+					,text:'パネル名',val:'新規パネル'
 					,ok:function( name ){
 						var node = tree.newFolder( name ||'新規パネル' );
 						var $p = $newPanel( node );
@@ -1155,7 +1155,7 @@ function setEvents(){
 			// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
 			InputDialog({
 				title:'新規パネル作成'
-				,text:'パネル名'
+				,text:'パネル名',val:'新規パネル'
 				,ok:function( name ){
 					var node = tree.newFolder( name ||'新規パネル' );
 					var $p = $newPanel( node );
@@ -1972,113 +1972,110 @@ function setEvents(){
 		$wall.children('.column').each(function(){
 			this.style.paddingBottom = parseInt(this.style.paddingBottom) +$box.height() +$tab.height() +'px';
 		});
-		setTimeout(function(){
-			// パネル(フォルダ)配列生成・URL総数カウント
-			// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
-			// 基本画面ではノード完全削除はできないので、検索実行毎にフォルダ配列を作らなくてもよいが、
-			// 検索ボックスを表示したままノードをごみ箱に移動するとノードツリーが変わるため、検索結果の
-			// 順序に影響する、つまり一度検索ボックスを閉じて再表示すると検索結果の順序が変わってくる。
-			var panels = [];	// パネルノード配列
-			var nodeTotal = 0;	// URL＋パネル数
+		// パネル(フォルダ)配列生成・URL総数カウント
+		// パネル1,334+URL13,803でIE8でも15ms程度で完了するけっこう速い
+		function findTarget(){
+			var panels = [];	// パネル(フォルダ)ノード配列
+			var total = 0;		// ノード(URL＋パネル)数
 			function panelist( node ){
 				panels.push( node );
-				nodeTotal += node.child.length;
+				total += node.child.length;
 				for( var i=0, n=node.child.length; i<n; i++ ){
-					if( node.child[i].child ){
-						panelist( node.child[i] );
-						nodeTotal--;
-					}
+					if( node.child[i].child ) panelist( node.child[i] );
 				}
 			}
-			panelist( tree.top() );
-			panelist( tree.trash() );
-			nodeTotal += panels.length;
-			// キーワード検索
-			var timer = null;
-			$('#findstart').off('click').click(function(){
+			panelist( tree.top() ); total++;
+			panelist( tree.trash() ); total++;
+			return { panels:panels ,total:total };
+		}
+		// キーワード検索
+		var timer = null;
+		$('#findstart').off('click').click(function(){
+			clearTimeout( timer );
+			// 検索ワード
+			var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
+			for( var i=words.length-1; i>=0; i-- ){
+				if( words[i].length<=0 ) words.splice(i,1);
+				else words[i] = words[i].myNormal();
+			}
+			if( words.length<=0 ) return;
+			// 検索中表示・準備
+			// wait.gifは黒背景で見た目が汚いので使えない…
+			var $pgbar = $('#finding').progressbar('value',0);
+			foundBoxInit();
+			$(this).hide();
+			$('#findstop').off('click').click(function(){
 				clearTimeout( timer );
-				// 検索ワード
-				var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
-				for( var i=words.length-1; i>=0; i-- ){
-					if( words[i].length<=0 ) words.splice(i,1);
-					else words[i] = words[i].myNormal();
-				}
-				if( words.length<=0 ) return;
-				// 検索中表示・準備
-				// wait.gifは黒背景で見た目が汚いので使えない…
-				var $pgbar = $('#finding').progressbar('value',0);
-				foundBoxInit();
 				$(this).hide();
-				$('#findstop').off('click').click(function(){
-					clearTimeout( timer );
-					$(this).hide();
-					$('#findstart').show();
-					$pgbar.progressbar('value',0);
-				}).show();
-				// 検索実行
-				String.prototype.myFound = function(){
-					// AND検索(TODO:OR検索・大小文字区別対応する？)
-					for( var i=words.length-1; i>=0; i-- ){
-						if( this.indexOf(words[i])<0 ) return false;
-					}
-					return true;
-				};
-				var index = 0;
-				var total = 0;
-				(function callee(){
-					var limit = total +21; // 20ノード以上ずつ
-					while( index < panels.length && total<limit ){
-						// パネル名
-						if( panels[index].title.myNormal().myFound() ) foundPanel( panels[index] );
+				$('#findstart').show();
+				$pgbar.progressbar('value',0);
+			}).show();
+			// 検索実行
+			var target = findTarget();
+			String.prototype.myFound = function(){
+				// AND検索(TODO:OR検索・大小文字区別対応する？)
+				for( var i=words.length-1; i>=0; i-- ){
+					if( this.indexOf(words[i])<0 ) return false;
+				}
+				return true;
+			};
+			var index = 0;
+			var total = 0;
+			(function callee(){
+				var limit = total +21; // 20ノード以上ずつ
+				while( index < target.panels.length && total<limit ){
+					var panel = target.panels[index];
+					// パネル名
+					if( panel.title.myNormal().myFound() ) foundPanel( panel );
+					total++;
+					// ブックマークタイトルとURL
+					var child = panel.child;
+					for( var i=0, n=child.length; i<n; i++ ){
+						if( child[i].child ) continue;
+						if( (child[i].title +child[i].url).myNormal().myFound() ) foundUrl( child[i] );
 						total++;
-						// ブックマークタイトルとURL
-						var child = panels[index].child;
-						for( var i=0, n=child.length; i<n; i++ ){
-							if( child[i].child ) continue;
-							if( (child[i].title +child[i].url).myNormal().myFound() ) foundUrl( child[i] );
-							total++;
-						}
-						index++;
 					}
-					// 進捗バー
-					$pgbar.progressbar('value',total*100/nodeTotal);
-					// 次
-					if( index < panels.length ) timer = setTimeout(callee,0);
-					else{
-						$('#findstop').click();
-						if( $found[0].children.length<=0 ) $found.text('見つかりません');
+					index++;
+				}
+				// 進捗バー
+				$pgbar.progressbar('value',total*100/target.total);
+				// 次
+				if( index < target.panels.length ) timer = setTimeout(callee,0);
+				else{
+					$('#findstop').click();
+					if( $found[0].children.length<=0 ) $found.text('見つかりません');
+				}
+			})();
+		});
+		// 新旧100
+		function sortUrlTop( max ,fromRecent ){
+			var target = findTarget();
+			var urls = [];
+			for( var i=target.panels.length-1; i>=0; i-- ){
+				var child = target.panels[i].child;
+				for( var j=child.length-1; j>=0; j-- ){
+					var node = child[j];
+					if( node.child ) continue;
+					var date = node.dateAdded ||0;
+					for( var k=urls.length-1; k>=0; k-- ){
+						if( fromRecent ){
+							if( (urls[k].dateAdded||0) >=date ) break;
+						}
+						else{
+							if( (urls[k].dateAdded||0) <=date ) break;
+						}
 					}
-				})();
-			});
-			// 新旧100
-			function sortUrlTop( max ,fromRecent ){
-				var urls = [];
-				for( var i=panels.length-1; i>=0; i-- ){
-					var child = panels[i].child;
-					for( var j=child.length-1; j>=0; j-- ){
-						var node = child[j];
-						if( node.child ) continue;
-						var date = node.dateAdded ||0;
-						for( var k=urls.length-1; k>=0; k-- ){
-							if( fromRecent ){
-								if( (urls[k].dateAdded||0) >=date ) break;
-							}
-							else{
-								if( (urls[k].dateAdded||0) <=date ) break;
-							}
-						}
-						if( ++k < max ){
-							urls.splice( k ,0 ,node );
-							if( urls.length >= max ) urls.length = max;
-						}
+					if( ++k < max ){
+						urls.splice( k ,0 ,node );
+						if( urls.length >= max ) urls.length = max;
 					}
 				}
-				foundBoxInit();
-				for( var i=0 ,n=urls.length; i<n; i++ ) foundUrl( urls[i] );
 			}
-			$('#new100').off('click').click(function(){ sortUrlTop( 100 ,true ); });
-			$('#old100').off('click').click(function(){ sortUrlTop( 100 ); });
-		},0);
+			foundBoxInit();
+			for( var i=0 ,n=urls.length; i<n; i++ ) foundUrl( urls[i] );
+		}
+		$('#new100').off('click').click(function(){ sortUrlTop( 100 ,true ); });
+		$('#old100').off('click').click(function(){ sortUrlTop( 100 ); });
 	});
 	// ドラッグドロップ並べ替えイベント
 	columnSortable()
@@ -2742,7 +2739,7 @@ function columnSortable(){
 			if( $place ){
 				if( $place.parent().attr('id')=='wall' ) $place.after( $dragi );
 				$place.remove(); $place=null;
-				$dragi.css({ position:'' }); $dragi=null;
+				$dragi.css('position',''); $dragi=null;
 				// 要素ID付け直し
 				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
 				option.panel.layouted();
@@ -3136,8 +3133,9 @@ function InputDialog( arg ){
 		,width	:365
 		,height	:170
 		,close	:close
-		,buttons:{ ' O K ':ok, 'キャンセル':close }
+		,buttons:{ ' O K ':ok ,'キャンセル':close }
 	});
+	if( arg.val ) $input.val( arg.val ).select();
 	function ok(){ arg.ok( $input.val() ); close(); }
 	function close(){ $input.remove(); $('#dialog').dialog('destroy'); }
 }
