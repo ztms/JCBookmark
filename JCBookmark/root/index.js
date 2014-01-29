@@ -1080,7 +1080,7 @@ function setEvents(){
 		if( column || above || below ){
 			var $menu = $('#contextmenu');
 			var $box = $menu.children('div').empty();
-			$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
+			$box.append($('<a><img src=newfolder.png>新規パネル作成</a>').click(function(){
 				$menu.hide();
 				// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
 				// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
@@ -1149,23 +1149,6 @@ function setEvents(){
 		}
 		var $menu = $('#contextmenu');
 		var $box = $menu.children('div').empty();
-		$box.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
-			$menu.hide();
-			// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
-			// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
-			InputDialog({
-				title:'新規パネル作成'
-				,text:'パネル名',val:'新規パネル'
-				,ok:function( name ){
-					var node = tree.newFolder( name ||'新規パネル' );
-					var $p = $newPanel( node );
-					$(panel).before( $p );
-					option.panel.layouted();
-					columnHeightAdjust();
-				}
-			});
-		}))
-		.append('<hr>');
 		if( isLocalServer ){
 			$box.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
 				// TODO:ajaxが終わるまでは変更保存リンクをクリックしないでほしいが、実装を知らないユーザ
@@ -1254,6 +1237,23 @@ function setEvents(){
 				},20);
 			}
 			resize();
+		}))
+		.append('<hr>')
+		.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
+			$menu.hide();
+			// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
+			// パネルの場所をそのままで編集できるUIが必要かな・・それはなかなか難しい。
+			InputDialog({
+				title:'新規パネル作成'
+				,text:'パネル名',val:'新規パネル'
+				,ok:function( name ){
+					var node = tree.newFolder( name ||'新規パネル' );
+					var $p = $newPanel( node );
+					$(panel).before( $p );
+					option.panel.layouted();
+					columnHeightAdjust();
+				}
+			});
 		}));
 		// TODO:全パネルを閉じる、全パネルを開く
 		if( tree.movable( panel.id ) ){
