@@ -32,7 +32,14 @@ var tree = {
 	,modified:function( on ){
 		if( arguments.length ){
 			if( on && !tree._modified ){
-				$('#modified').show();
+				if( tree.modifing() ){
+					$('#modified').hide();
+					$('#progress').show();
+				}
+				else{
+					$('#progress').hide();
+					$('#modified').show();
+				}
 				$(doc.body).css('padding-top',22);
 				resizeV(22);
 			}
@@ -40,6 +47,26 @@ var tree = {
 			return tree;
 		}
 		return tree._modified;
+	}
+	// 変更中(完了待ち)かどうか(カウンタ方式)
+	,_modifing:0
+	,modifing:function( on ){
+		if( arguments.length ){
+			if( on ) tree._modifing++;
+			else if( tree._modifing >0 ) tree._modifing--;
+			if( tree.modified() ){
+				if( tree._modifing ){
+					$('#modified').hide();
+					$('#progress').show();
+				}
+				else{
+					$('#progress').hide();
+					$('#modified').show();
+				}
+			}
+			return tree;
+		}
+		return ( tree._modifing >0 );
 	}
 	// ルートノード差し替え
 	,replace:function( data ){
@@ -786,8 +813,12 @@ var itemList = function(){
 			// リンク切れ調査(フォルダ)
 			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
 			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
-			// TODO:調査結果を保持して他の操作ができるようにするのがベスト。できなければせめて
-			// 調査中にフォルダ表示や検索で中断される前に確認ダイアログを出すべき。
+			// TODO:フォルダ表示や検索で調査が中断される時は確認ダイアログ？
+			// TODO:調査結果を保持して他の操作ができるようにする。#deadinfoを１行程度に最小化して
+			// 他の操作ができるようにしてみたが、どうも見た目がイマイチわかりにくい。「フォルダ」
+			// 「検索結果」「リンク切れ調査」の３種類のタブがあればわかりやすそう。しかしアイテム
+			// 欄をタブで３つ同時に切り替えできるようにする改造はなかなかたいへん・・。Chromeぽい
+			// タブがいいけど斜め線が引けないし…
 			kind = 'deads';
 			$('#deadinfo').remove();
 			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
@@ -1160,17 +1191,24 @@ $('#newitem').on({
 		// 選択フォルダID=folderXXならノードID=XX
 		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
 		if( url.length ){
-			$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
-				data = data[0];
-				if( data.title.length ){
-					data.title = HTMLdec( data.title );
-					if( tree.nodeAttr( node.id,'title',data.title ) >1 )
-						$('#item'+node.id).find('.title').text( data.title );
+			tree.modifing(true);
+			$.ajax({
+				type:'post'
+				,url:':analyze'
+				,data:url+'\r\n'
+				,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+					data = data[0];
+					if( data.title.length ){
+						data.title = HTMLdec( data.title );
+						if( tree.nodeAttr( node.id,'title',data.title ) >1 )
+							$('#item'+node.id).find('.title').text( data.title );
+					}
+					if( data.icon.length ){
+						if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
+							$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
+					}
 				}
-				if( data.icon.length ){
-					if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
-						$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
-				}
+				,complete:function(){ tree.modifing(false); }
 			});
 		}
 		// DOM再構築
@@ -1387,7 +1425,7 @@ $('#border').mousedown(function(ev){
 	});
 });
 // アイテム欄項目ヘッダのボーダー
-// TODO:タイトル欄を右に広げたら行き止まりなのを改善したい
+// TODO:タイトル欄を右に広げたら行き止まり、左に広げても幅が変わらないのを改善したい…
 $('.itemborder').mousedown(function(ev){
 	$('#editbox').blur();
 	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.iconurl/.place/.status)
@@ -2596,17 +2634,24 @@ function edit( element, opt ){
 									// 新品アイテムはURL取得解析する
 									var node = tree.node( nid );
 									if( node.title=='新規ブックマーク' ){
-										$.post(':analyze',value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
-											data = data[0];
-											if( data.title.length && node.title=='新規ブックマーク' ){
-												data.title = HTMLdec( data.title );
-												if( tree.nodeAttr( nid,'title',data.title ) >1 )
-													$('#item'+nid).find('.title').text( data.title );
+										tree.modifing(true);
+										$.ajax({
+											type:'post'
+											,url:':analyze'
+											,data:value+'\r\n'
+											,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+												data = data[0];
+												if( data.title.length && node.title=='新規ブックマーク' ){
+													data.title = HTMLdec( data.title );
+													if( tree.nodeAttr( nid,'title',data.title ) >1 )
+														$('#item'+nid).find('.title').text( data.title );
+												}
+												if( data.icon.length && (!node.icon|| !node.icon.length) ){
+													if( tree.nodeAttr( nid,'icon',data.icon ) >1 )
+														$('#item'+nid).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
+												}
 											}
-											if( data.icon.length && (!node.icon|| !node.icon.length) ){
-												if( tree.nodeAttr( nid,'icon',data.icon ) >1 )
-													$('#item'+nid).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
-											}
+											,complete:function(){ tree.modifing(false); }
 										});
 									}
 								}
@@ -2704,9 +2749,6 @@ function viewScroll( element ){
 // クリップボードのURLを新規登録
 // pnode :登録先フォルダノード
 // index :登録位置インデックス
-// TODO:ajaxが終わるまでは変更保存リンクをクリックしないでほしいが、実装を知らないユーザ
-// にはわからない。ajax終わるまでモーダルダイアログのプログレスバー出した方がよいか？
-// 変更保存リンクをプログレス状態で表示しておくのがいいかな？
 function clipboardTo( pnode, index ){
 	$('#dialog').empty().text('処理中です...').dialog({
 		title	:'情報'
@@ -2721,6 +2763,9 @@ function clipboardTo( pnode, index ){
 			var regTrim = /^\s+|\s+$/g;
 			var regUrl = /^[A-Za-z]+:.+/;
 			var url = '';
+			var ajaxs = [];									// ajax配列
+			var complete = 0;								// 完了数カウント
+			tree.modifing(true);							// 編集中表示
 			for( var i=lines.length-1; i>=0; i-- ){			// 最後の行から
 				var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
 				if( regUrl.test(str) ){						// URL発見
@@ -2732,27 +2777,39 @@ function clipboardTo( pnode, index ){
 			if( url ) itemAdd( url );
 			// 表示更新
 			$('#folder'+pnode.id).removeClass('select').click();
+			// ajax完了待ち
+			(function completed(){
+				if( complete < ajaxs.length ) setTimeout(completed,250);
+				else tree.modifing(false);					// 編集完了
+			})();
+			function itemAdd( url ,title ){
+				// ノード作成
+				var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
+				if( node ){
+					// タイトル/favicon取得
+					ajaxs.push($.ajax({
+						type:'post'
+						,url:':analyze'
+						,data:url+'\r\n'
+						,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+							data = data[0];
+							if( !title && data.title.length ){
+								data.title = HTMLdec( data.title );
+								if( tree.nodeAttr( node.id,'title',data.title ) >1 )
+									$('#item'+node.id).find('.title').text( data.title );
+							}
+							if( data.icon.length ){
+								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
+									$('#item'+node.id).find('.icon').attr('src',data.icon).end()
+									.find('.iconurl').text(data.icon);
+							}
+						}
+						,complete:function(){ complete++; }
+					}));
+				}
+			}
 		}
 	});
-	function itemAdd( url ,title ){
-		// ノード作成
-		var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
-		if( node ){
-			// タイトル/favicon取得
-			$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えない)
-				data = data[0];
-				if( !title && data.title.length ){
-					data.title = HTMLdec( data.title );
-					if( tree.nodeAttr( node.id,'title',data.title ) >1 )
-						$('#item'+node.id).find('.title').text( data.title );
-				}
-				if( data.icon.length ){
-					if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
-						$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
-				}
-			});
-		}
-	}
 }
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という
