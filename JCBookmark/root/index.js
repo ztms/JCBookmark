@@ -1,6 +1,5 @@
 // vim:set ts=4:vim modeline
 // TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了する事しばしば
-// TODO:インターネット経由だと待たされるのを改善するためツリーをsessionStorageに保存して整理画面と共有？
 // TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:一括でパネル開閉
 // TODO:パネルの中にパネル。フォルダ構造をそのままで。
@@ -36,13 +35,34 @@ var tree = {
 		if( arguments.length ){
 			tree._modified = on;
 			if( on ){
-				$('#modified').show();
+				if( tree.modifing() ){
+					$('#modified').hide();
+					$('#progress').show();
+				}
+				else{
+					$('#progress').hide();
+					$('#modified').show();
+				}
 				$wall.css('padding-top',22);
 				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
 			}
 			return tree;
 		}
 		return tree._modified;
+	}
+	// 変更中(完了待ち)かどうか(カウンタ方式)
+	,_modifing:0
+	,modifing:function( on ){
+		if( arguments.length ){
+			if( on ) tree._modifing++;
+			else if( tree._modifing >0 ) tree._modifing--;
+			if( !tree._modifing && tree.modified() ){
+				$('#progress').hide();
+				$('#modified').show();
+			}
+			return tree;
+		}
+		return ( tree._modifing >0 );
 	}
 	// ルートノード差し替え
 	,replace:function( data ){
@@ -772,26 +792,33 @@ var paneler = function(){
 				.on({
 					// 新規登録
 					commit:function(){
-						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
+						var node = tree.modifing(true).newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// URLタイトル/favicon取得
-							$.post(':analyze',this.value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
-								data = data[0];
-								if( data.title.length ){
-									data.title = HTMLdec( data.title );
-									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+							$.ajax({
+								type:'post'
+								,url:':analyze'
+								,data:this.value+'\r\n' // TODO:URLエスケープ(encodeURI使えん)
+								,success:function(data){
+									data = data[0];
+									if( data.title.length ){
+										data.title = HTMLdec( data.title );
+										if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+											$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+									}
+									if( data.icon.length ){
+										if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+											$('#'+node.id).find('img').attr('src',data.icon);
+									}
 								}
-								if( data.icon.length ){
-									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-										$('#'+node.id).find('img').attr('src',data.icon);
-								}
+								,complete:function(){ tree.modifing(false); } // 編集完了
 							});
 							// DOM
 							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
 							$('#commit').remove();
 							this.value = '';
 						}
+						else tree.modifing(false);
 					}
 					// Enterで反映
 					,keypress:function(ev){
@@ -848,8 +875,8 @@ function setEvents(){
 	(function(){
 		var browser = { ie:1, chrome:1, firefox:1 };
 		$.ajax({
-			url		 :':browser.json'
-			,success :function(data){ browser = data; }
+			url:':browser.json'
+			,success:function(data){ browser = data; }
 			,complete:function(){
 				if( 'chrome' in browser ){
 					// Chromeブックマークインポート
@@ -897,16 +924,16 @@ function setEvents(){
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
-									url		:':chrome.json'
-									,error	:function(xhr){
+									url:':chrome.json'
+									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
 									}
 									,success:function( data ){
 										bookmarks = data;
 										$.ajax({
-											url		 :':chrome.icon.json'
-											,success :function(data){ favicons = data; }
+											url:':chrome.icon.json'
+											,success:function(data){ favicons = data; }
 											,complete:doImport
 										});
 									}
@@ -996,9 +1023,9 @@ function setEvents(){
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
-									url		:':favorites.json'
-									//url		:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr){
+									url:':favorites.json'
+									//url:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
+									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
 									}
@@ -1020,9 +1047,9 @@ function setEvents(){
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
-									url		:':firefox.json'
-									//url		:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
-									,error	:function(xhr){
+									url:':firefox.json'
+									//url:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
+									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
 									}
@@ -1152,9 +1179,6 @@ function setEvents(){
 		var $box = $menu.children('div').empty();
 		if( isLocalServer ){
 			$box.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
-				// TODO:ajaxが終わるまでは変更保存リンクをクリックしないでほしいが、実装を知らないユーザ
-				// にはわからない。ajax終わるまでモーダルダイアログのプログレスバー出した方がいい？
-				// 変更保存リンクをプログレス状態で表示しておくのがいいかな？
 				$menu.hide();
 				$.get(':clipboard.txt',function(data){
 					var pnode = tree.node( panel.id );
@@ -1162,6 +1186,9 @@ function setEvents(){
 					var lines = data.split(/[\r\n]+/);							// 行分割
 					var index = lines.length -1;								// 最後の行からはじめ
 					var url = '';
+					var ajaxs = [];												// ajax配列
+					var complete = 0;											// 完了数カウント
+					tree.modifing(true);										// 編集中表示
 					(function callee(){
 						var count = 10;											// 10行ずつ
 						while( index >=0 && count>0 ){
@@ -1175,25 +1202,37 @@ function setEvents(){
 						}
 						// 次
 						if( index >=0 ) setTimeout(callee,0);
-						else if( url ) itemAdd( url );
+						else{
+							if( url ) itemAdd( url );
+							(function completed(){
+								if( complete < ajaxs.length ) setTimeout(completed,200);
+								else tree.modifing(false);						// 編集完了
+							})();
+						}
 					})();
 					function itemAdd( url ,title ){
 						// ノード作成
 						var node = tree.newURL( pnode, url, title || url.noProto() );
 						if( node ){
 							// タイトル/favicon取得
-							$.post(':analyze',url+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
-								data = data[0];
-								if( !title && data.title.length ){
-									data.title = HTMLdec( data.title );
-									if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
-										$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+							ajaxs.push($.ajax({
+								type:'post'
+								,url:':analyze'
+								,data:url+'\r\n' // TODO:URLエスケープ(encodeURI使えん)
+								,success:function(data){
+									data = data[0];
+									if( !title && data.title.length ){
+										data.title = HTMLdec( data.title );
+										if( tree.nodeAttr( node.id, 'title', data.title ) >1 )
+											$('#'+node.id).attr('title',data.title).find('span').text(data.title);
+									}
+									if( data.icon.length ){
+										if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
+											$('#'+node.id).find('img').attr('src',data.icon);
+									}
 								}
-								if( data.icon.length ){
-									if( tree.nodeAttr( node.id, 'icon', data.icon ) >1 )
-										$('#'+node.id).find('img').attr('src',data.icon);
-								}
-							});
+								,complete:function(){ complete++; }
+							}));
 							// DOM増加
 							$newItem(node).prependTo( $itembox );
 						}
@@ -1537,8 +1576,8 @@ function setEvents(){
 			else logout();
 			function logout(){
 				$.ajax({
-					url		:':logout'
-					,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
+					url:':logout'
+					,error:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
 					,success:function(data){
 						// dataはセッションID:過去日付でクッキー削除
 						document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
@@ -1661,10 +1700,10 @@ function setEvents(){
 		html += '</DL><p>\n';
 		// アップロード＆ダウンロード
 		$.ajax({
-			type	:'put'
-			,url	:'export.html'
-			,data	:html
-			,error	:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
+			type:'put'
+			,url:'export.html'
+			,data:html
+			,error:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(){ location.href = 'export.html'; }
 		});
 	});
@@ -1673,8 +1712,8 @@ function setEvents(){
 		// 一覧取得表示
 		var $shots = $('#shots').text('...取得中...');
 		$.ajax({
-			url		:':shotlist'
-			,error	:function(xhr){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText); }
+			url:':shotlist'
+			,error:function(xhr){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText); }
 			,success:function(data){ shotlist( data ); }
 		});
 		// ダイアログ表示
@@ -1704,8 +1743,8 @@ function setEvents(){
 		// を保証できるわけではないが、とりあえず…。
 		setTimeout(function(){
 			$.ajax({
-				url		:':snapshot'
-				,error	:function(xhr){
+				url:':snapshot'
+				,error:function(xhr){
 					Alert('作成できません:'+xhr.status+' '+xhr.statusText);
 					$btn.next().hide();
 					$btn.show();
@@ -1739,8 +1778,8 @@ function setEvents(){
 		function shotView(){
 			$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
 			$.ajax({
-				url		:':shotget?'+item.id
-				,error	:function(xhr){
+				url:':shotget?'+item.id
+				,error:function(xhr){
 					Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
 					$btn.next().hide();
 					$btn.show();
@@ -1769,8 +1808,8 @@ function setEvents(){
 				,ok:function(){
 					$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
 					$.ajax({
-						url		:':shotdel?'+item.id
-						,error	:function(xhr){
+						url:':shotdel?'+item.id
+						,error:function(xhr){
 							Alert('消去できません:'+xhr.status+' '+xhr.statusText);
 							$btn.next().hide();
 							$btn.show();
@@ -1822,9 +1861,9 @@ function setEvents(){
 					}
 					if( item ){
 						var opt = {
-							type	:text.length? 'put' : 'del'
-							,url	:'snap/'+id.replace(/cab$/,'txt')
-							,error	:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
+							type:text.length? 'put' : 'del'
+							,url:'snap/'+id.replace(/cab$/,'txt')
+							,error:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
 							,success:function(){ item.memo=text; widthAdjust(); }
 						};
 						if( text.length ) opt.data = text;
@@ -2207,7 +2246,7 @@ var panelPopper = function(){
 			var bottomLine = $win.scrollTop() + $win.height();
 			var boxTopLimit = $win.scrollTop();
 			var boxTop = $box.offset().top;
-			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').height();
+			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').outerHeight();
 			if( boxTopLimit > boxTop ) boxTopLimit = boxTop;
 			// 検索ボックスに被らないように上に
 			if( $('#findbox').css('display')=='block' ){
@@ -2318,6 +2357,7 @@ function panelEdit( pid ){
 						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
+						// TODO:ajax完了したかどうか不明(通知がない)
 						$.post(':analyze',this.value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
 							data = data[0];
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
@@ -2551,8 +2591,8 @@ function modifySave( arg ){
 		$wall.css('padding-top',0);
 		if( option.autoshot() ){
 			$.ajax({
-				url		 :':snapshot'
-				,error	 :function(xhr){ Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText); }
+				url:':snapshot'
+				,error:function(xhr){ Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText); }
 				,complete:function(){ if( arg && arg.success ) arg.success(); }
 			});
 		}
