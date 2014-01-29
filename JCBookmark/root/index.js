@@ -33,8 +33,7 @@ var tree = {
 	,_modified:false
 	,modified:function( on ){
 		if( arguments.length ){
-			tree._modified = on;
-			if( on ){
+			if( on && !tree._modified ){
 				if( tree.modifing() ){
 					$('#modified').hide();
 					$('#progress').show();
@@ -46,6 +45,7 @@ var tree = {
 				$wall.css('padding-top',22);
 				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
 			}
+			tree._modified = on;
 			return tree;
 		}
 		return tree._modified;
@@ -56,9 +56,15 @@ var tree = {
 		if( arguments.length ){
 			if( on ) tree._modifing++;
 			else if( tree._modifing >0 ) tree._modifing--;
-			if( !tree._modifing && tree.modified() ){
-				$('#progress').hide();
-				$('#modified').show();
+			if( tree.modified() ){
+				if( tree._modifing ){
+					$('#modified').hide();
+					$('#progress').show();
+				}
+				else{
+					$('#progress').hide();
+					$('#modified').show();
+				}
 			}
 			return tree;
 		}
@@ -792,9 +798,10 @@ var paneler = function(){
 				.on({
 					// 新規登録
 					commit:function(){
-						var node = tree.modifing(true).newURL( tree.top(), this.value, this.value.noProto() );
+						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
 						if( node ){
 							// URLタイトル/favicon取得
+							tree.modifing(true);
 							$.ajax({
 								type:'post'
 								,url:':analyze'
@@ -818,7 +825,6 @@ var paneler = function(){
 							$('#commit').remove();
 							this.value = '';
 						}
-						else tree.modifing(false);
 					}
 					// Enterで反映
 					,keypress:function(ev){
@@ -1204,8 +1210,9 @@ function setEvents(){
 						if( index >=0 ) setTimeout(callee,0);
 						else{
 							if( url ) itemAdd( url );
+							// ajax完了待ち
 							(function completed(){
-								if( complete < ajaxs.length ) setTimeout(completed,200);
+								if( complete < ajaxs.length ) setTimeout(completed,250);
 								else tree.modifing(false);						// 編集完了
 							})();
 						}
