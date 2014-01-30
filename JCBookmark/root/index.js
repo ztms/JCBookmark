@@ -709,6 +709,20 @@ var paneler = function(){
 		}
 		// float解除
 		$wall.append('<br class=clear>');
+		// キーがノードID、値がパネル(フォルダ)ノードの連想配列
+		// tree.node()を使うよりわずかに速くなるが体感は大差ない
+		// やはりDOM追加描画にかかる時間が大きいようだ
+		// IE8で245s→206s Firefoxで86s→81s Chromium31で39s→44s
+		var panelNode = {};
+		panelNode[ nodeTop.id ] = nodeTop;
+		(function panelNoder( child ){
+			for( var i=child.length-1; i>=0; i-- ){
+				if( child[i].child ){
+					panelNode[ child[i].id ] = child[i];
+					panelNoder( child[i].child );
+				}
+			}
+		})( nodeTop.child );
 		// レイアウト保存データのパネル配置
 		// キーがカラム(段)ID、値がパネルIDの配列(上から順)の連想配列
 		// 例) { co0:[1,22,120,45], co1:[3,5,89], ... }
@@ -723,7 +737,7 @@ var paneler = function(){
 				for( var coID in panelLayout ){
 					var coN = panelLayout[coID];
 					if( index < coN.length ){
-						var node = tree.node( coN[index] );
+						var node = panelNode[ coN[index] ]; // tree.node( coN[index] );
 						if( node ) panelCreate( node, columns[coID] );
 						layoutSeek = true;
 					}
