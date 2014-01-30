@@ -35,7 +35,7 @@
 //	http://www.hde.co.jp/press/column/detail.php?n=201010290
 //	http://dev.ariel-networks.com/wp/archives/258
 //	http://d.hatena.ne.jp/tk_4dd/20120128
-//	TODO:WebパスワードにWindowsログインユーザのパスワードを使えるか？
+//	TODO:パスワードにWindowsログインユーザのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
 //	TODO:アプリ実行時のWindowsの警告を解除する手順（ブロックを解除する）をWebのFAQにでも載せる。
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
@@ -1280,7 +1280,7 @@ void ClientShutdown( TClient* cp )
 }
 BOOL BufferSize( Buffer* bp, size_t bytes )
 {
-	if( bp->top && bp->size >0 ){ // 高負荷時bp->sizeが0で無限ループした事があり事前チェック TODO:この後一度アクセス違反で落ちたことがあったが再現せず原因不明…スレッド関連だろうか…
+	if( bp->top && bp->size >0 ){ // 高負荷時bp->sizeが0で無限ループした事があり事前チェック
 		size_t need = bp->bytes + bytes;
 		if( need > bp->size ){
 			// バッファ拡大
@@ -3329,9 +3329,6 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				if( rp ) rp->ico='!';
 				break;
 			case '4': // クライアントエラー
-				// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
-				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
-				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコンの方がいいか。
 				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
 				// HTMLが返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になる
 				// だけで、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わら
@@ -3343,6 +3340,9 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
 				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
 				// トップとおなじHTMLが返ってくるパターンもあるという問題。
+				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
+				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
+				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコン。
 				switch( code[1] ){
 				case '0':
 					switch( code[2]) {
@@ -3779,7 +3779,6 @@ unsigned __stdcall analyzer( void* tp )
 // http://firefox.geckodev.org/index.php?%E3%83%97%E3%83%AD%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB
 // TODO:Firefox起動引数で別のプロファイルフォルダを使うこともできるらしく、
 // そっちの places.sqlite を参照したい場合はフォルダをユーザ指定する機能をつけないと…
-//
 WCHAR* FirefoxPlacesPathAlloc( void )
 {
 	#define PROFILES_INI L"%APPDATA%\\Mozilla\\Firefox\\profiles.ini"
@@ -4084,7 +4083,6 @@ sqlite3_step:
 // %APPDATA%は？ググっても見つからない。一般的な環境変数ではないのか？Firefoxでは使ってるが…。
 // TODO:chrome.exe 起動オプション --user-data-dir で User Dataフォルダを指定できるらしい(?)
 // その場合そっちの Bookmarks ファイルを見に行くには…ユーザ入力の設定項目を作るしかないか…。
-//
 WCHAR* ChromeBookmarksPathAlloc( void )
 {
 	OSVERSIONINFOA os;
@@ -4716,8 +4714,8 @@ SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
 SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
 WCHAR	ListenPort[8]	= L"10080";			// Listenポート
 BOOL	BindLocal		= FALSE;			// bindアドレスをlocalhostに
-BOOL	WebPasswdRemote	= FALSE;			// localhost以外パスワード必要
-BOOL	WebPasswdLocal	= FALSE;			// localhostもパスワード必要
+BOOL	LoginRemote		= FALSE;			// localhost以外パスワード必要
+BOOL	LoginLocal		= FALSE;			// localhostもパスワード必要
 BOOL	HttpsRemote		= FALSE;			// localhost以外https
 BOOL	HttpsLocal		= FALSE;			// localhostもhttps
 BOOL	BootMinimal		= FALSE;			// 起動時から最小化
@@ -4727,7 +4725,7 @@ void ServerParamGet( void )
 	WCHAR* ini = AppFilePath(L"my.ini");
 	// 初期値
 	wcscpy( ListenPort ,L"10080" );
-	BindLocal = WebPasswdRemote = WebPasswdLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
+	BindLocal = LoginRemote = LoginLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
@@ -4743,11 +4741,11 @@ void ServerParamGet( void )
 				else if( strnicmp(buf,"BindLocal=",10)==0 && *(buf+10) ){
 					BindLocal = TRUE;
 				}
-				else if( strnicmp(buf,"WebPasswdRemote=",16)==0 && *(buf+16) ){
-					WebPasswdRemote = TRUE;
+				else if( strnicmp(buf,"LoginRemote=",12)==0 && *(buf+12) ){
+					LoginRemote = TRUE;
 				}
-				else if( strnicmp(buf,"WebPasswdLocal=",15)==0 && *(buf+15) ){
-					WebPasswdLocal = TRUE;
+				else if( strnicmp(buf,"LoginLocal=",11)==0 && *(buf+11) ){
+					LoginLocal = TRUE;
 				}
 				else if( strnicmp(buf,"HttpsRemote=",12)==0 && *(buf+12) ){
 					HttpsRemote = TRUE;
@@ -4818,9 +4816,9 @@ BOOL base64decode( UCHAR* b64txt ,size_t len ,UCHAR* data )
 	return success;
 }
 // 以下のため変な引数と戻り値になっている
-// ・戻り値のTRUE/FALSE ＝ 設定値があるかどうか(WebPasswd=ならFALSE)
+// ・戻り値のTRUE/FALSE ＝ 設定値があるかどうか(LoginPass=ならFALSE)
 // ・引数は有効なら設定値(base64エンコード文字列)が入る(ただしバッファ不足の時は空にして返却)
-BOOL WebPasswd( UCHAR* digest ,size_t bytes )
+BOOL LoginPass( UCHAR* digest ,size_t bytes )
 {
 	BOOL found = FALSE;
 	WCHAR* ini = AppFilePath(L"my.ini");
@@ -4832,13 +4830,13 @@ BOOL WebPasswd( UCHAR* digest ,size_t bytes )
 			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
-				if( strnicmp(buf,"WebPasswd=",10)==0 && *(buf+10) ){
+				if( strnicmp(buf,"LoginPass=",10)==0 && *(buf+10) ){
 					if( digest ){
 						if( strlen(buf+10) <bytes ){
 							strncpy( digest ,buf+10 ,bytes );
 						}
 						else{
-							LogW(L"WebPasswd=文字列が長すぎます");
+							LogW(L"LoginPass=文字列が長すぎます");
 							*digest = '\0';
 						}
 					}
@@ -4990,12 +4988,12 @@ Session* ClientSessionAlive( TClient* cp )
 	}
 	return cp->session;
 }
-// Webパスワード認証
+// パスワード認証
 // GET /:login HTTP/1.x
 // この関数から戻った後は送信処理に行くので送信準備を必ず行って終了する。
 // ブルートフォースアタック対策のため(?)パスワードが違った場合は少し待ってから応答を返す。
 // その少し待ってる間メインスレッドを止めないよう一応スレッドで実行する。
-#define WEBPASSWD_MAX 64
+#define LOGINPASS_MAX 64
 unsigned __stdcall authenticate( void* tp )
 {
 	TClient* cp = tp;
@@ -5004,20 +5002,20 @@ unsigned __stdcall authenticate( void* tp )
 		UCHAR b64[SHA256_DIGEST_LENGTH*2]="";
 		if( !cp->sslp ) LogW(L"[%u]注意:暗号化されていない平文パスワードを受信しました",Num(cp));
 		// 設定ファイルパスワードハッシュ取得
-		if( WebPasswd( b64 ,sizeof(b64) ) && *b64 ){
+		if( LoginPass( b64 ,sizeof(b64) ) && *b64 ){
 			size_t b64len = strlen(b64);
 			if( SHA256_DIGEST_LENGTH <= b64len ){
-				UCHAR* webpass = malloc( b64len );
-				if( webpass ){
-					if( base64decode( b64 ,b64len ,webpass ) ){
+				UCHAR* pass = malloc( b64len );
+				if( pass ){
+					if( base64decode( b64 ,b64len ,pass ) ){
 						// 受信パスワードハッシュ変換
 						UCHAR* encpass = cp->req.body +2;
-						UCHAR plain[WEBPASSWD_MAX*2]=""; // 不正に長いパスワード用に*2
+						UCHAR plain[LOGINPASS_MAX*2]=""; // 不正に長いパスワード用に*2
 						if( URLdecode( encpass ,strlen(encpass) ,plain ,sizeof(plain) ) ){
 							UCHAR digest[SHA256_DIGEST_LENGTH]="";
 							SHA256( plain ,strlen(plain) ,digest );
 							// ハッシュ値比較
-							if( memcmp( webpass ,digest ,SHA256_DIGEST_LENGTH )==0 ){
+							if( memcmp( pass ,digest ,SHA256_DIGEST_LENGTH )==0 ){
 								// 認証成功:セッション生成
 								Session* sep = SessionCreate();
 								if( sep ){
@@ -5041,7 +5039,7 @@ unsigned __stdcall authenticate( void* tp )
 						else ResponseError(cp,"400 Bad Request");
 					}
 					else ResponseError(cp,"500 Internal Server Error");
-					free( webpass );
+					free( pass );
 				}
 				else{
 					LogW(L"L%u:malloc(%u)エラー",__LINE__,b64len);
@@ -5892,8 +5890,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 				if( req->method && req->path && req->ver ){
 					UCHAR* file = req->path;
 					while( *file=='/' ) file++;
-					if( (WebPasswdRemote && !cp->loopback) || (WebPasswdLocal && cp->loopback) ){
-						// Webパスワード有効
+					if( (LoginRemote && !cp->loopback) || (LoginLocal && cp->loopback) ){
+						// ログインパスワード有効
 						if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
 							// 通常処理へ
 							// faviconとjquery.jsはlogin.htmlで使うためセッションなくても返却する。
@@ -5916,7 +5914,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
 								// index.htmlを返す
 								// TODO:セッション有効なのにログイン要求のパスワードが間違っている時は？
-								// セッション有効だから無視してもいい？認証処理すべき？
+								// セッション有効だから無視してもいい？認証処理すべき？Gmail利用中に他の
+								// ブラウザでパスワード変更してもセッション維持されたままだったので、その
+								// パターンとおなじかな。パスワード変更しても既に有効済みセッションは維持
+								// される。
 								cp->rsp.readfh = CreateFileW(
 										RealPath("index.html",realpath,sizeof(realpath)/sizeof(WCHAR))
 										,GENERIC_READ ,FILE_SHARE_READ ,NULL
@@ -7041,12 +7042,12 @@ void SSL_CertLoad( void )
 typedef struct {
 	WCHAR	wListenPort[8];
 	BOOL	bindLocal;
-	BOOL	webPasswdRemote;
-	BOOL	webPasswdLocal;
+	BOOL	loginRemote;
+	BOOL	loginLocal;
 	BOOL	httpsRemote;
 	BOOL	httpsLocal;
 	BOOL	bootMinimal;
-	UCHAR*	webPasswd;
+	UCHAR*	loginPass;
 	WCHAR*	wExe[BI_COUNT];
 	WCHAR*	wArg[BI_COUNT];
 	BOOL	hide[BI_COUNT];
@@ -7074,33 +7075,36 @@ void ConfigSave( const ConfigData* dp )
 				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
 				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
 			}
-			if( dp->webPasswd ){
+			if( dp->loginPass ){
 				// 新パスワード:SHA256ハッシュ
 				// http://www.askyb.com/cpp/openssl-sha256-hashing-example-in-cpp/
+				// TODO:パスワード変更したらセッション(クッキー)削除すべき？でもGmailで
+				// 利用中に別ブラウザでパスワード変更してもセッションは有効だった。ので
+				// 問題ないかな。
 				UCHAR digest[SHA256_DIGEST_LENGTH]="";
-				SHA256( dp->webPasswd ,strlen(dp->webPasswd) ,digest );
+				SHA256( dp->loginPass ,strlen(dp->loginPass) ,digest );
 				if( base64encode( digest ,sizeof(digest) ,b64txt ,sizeof(b64txt) ) ){
 					// BASE64検査
 					UCHAR test[SHA256_DIGEST_LENGTH*2]="";
 					if( base64decode( b64txt ,strlen(b64txt) ,test ) ){
 						if( memcmp( test ,digest ,SHA256_DIGEST_LENGTH ) )
-							LogW(L"Webパスワード内部エラー(BASE64デコード検査エラー)");
+							LogW(L"ログインパスワード内部エラー(BASE64デコード検査エラー)");
 					}
 				}
 			}
 			else{
 				// 登録済みパスワード
-				if( WebPasswd( b64txt ,sizeof(b64txt) ) && !*b64txt )
-					LogW(L"設定ファイルのパスワード情報が不正です(破棄されます)");
+				if( LoginPass( b64txt ,sizeof(b64txt) ) && !*b64txt )
+					LogW(L"設定ファイルのログインパスワード情報が不正です(破棄されます)");
 			}
-			fprintf(fp,"ListenPort=%s\r\n"		,listenPort			? listenPort:"");
-			fprintf(fp,"BindLocal=%s\r\n"		,dp->bindLocal		? "1":"");
-			fprintf(fp,"WebPasswd=%s\r\n"		,b64txt);
-			fprintf(fp,"WebPasswdRemote=%s\r\n"	,dp->webPasswdRemote? "1":"");
-			fprintf(fp,"WebPasswdLocal=%s\r\n"	,dp->webPasswdLocal	? "1":"");
-			fprintf(fp,"HttpsRemote=%s\r\n"		,dp->httpsRemote	? "1":"");
-			fprintf(fp,"HttpsLocal=%s\r\n"		,dp->httpsLocal		? "1":"");
-			fprintf(fp,"BootMinimal=%s\r\n"		,dp->bootMinimal	? "1":"");
+			fprintf(fp,"ListenPort=%s\r\n"	,listenPort			? listenPort:"");
+			fprintf(fp,"BindLocal=%s\r\n"	,dp->bindLocal		? "1":"");
+			fprintf(fp,"LoginPass=%s\r\n"	,b64txt);
+			fprintf(fp,"LoginRemote=%s\r\n"	,dp->loginRemote	? "1":"");
+			fprintf(fp,"LoginLocal=%s\r\n"	,dp->loginLocal		? "1":"");
+			fprintf(fp,"HttpsRemote=%s\r\n"	,dp->httpsRemote	? "1":"");
+			fprintf(fp,"HttpsLocal=%s\r\n"	,dp->httpsLocal		? "1":"");
+			fprintf(fp,"BootMinimal=%s\r\n"	,dp->bootMinimal	? "1":"");
 			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]				? arg[BI_IE]:"");
 			fprintf(fp,"IEHide=%s\r\n"		,dp->hide[BI_IE]		? "1":"");
 			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]			? arg[BI_CHROME]:"");
@@ -7141,8 +7145,8 @@ void ConfigSave( const ConfigData* dp )
 #define ID_DLG_HTTPS_LOCAL		6
 #define ID_DLG_SSL_VIEWCRT		7
 #define ID_DLG_SSL_MAKECRT		8
-#define ID_DLG_WEBPASSWD_REMOTE	9
-#define ID_DLG_WEBPASSWD_LOCAL	10
+#define ID_DLG_LOGIN_REMOTE		9
+#define ID_DLG_LOGIN_LOCAL		10
 #define ID_DLG_DESTROY			99
 typedef struct {
 	HWND		hTabc;
@@ -7153,11 +7157,11 @@ typedef struct {
 	HWND		hBindAddrTxt;
 	HWND		hBindAny;
 	HWND		hBindLocal;
-	HWND		hWebPasswdTxt;
-	HWND		hWebPasswd;
-	HWND		hWebPasswdState;
-	HWND		hWebPasswdRemote;
-	HWND		hWebPasswdLocal;
+	HWND		hLoginPassTxt;
+	HWND		hLoginPass;
+	HWND		hLoginPassState;
+	HWND		hLoginRemote;
+	HWND		hLoginLocal;
 	HWND		hLinkRemote;
 	HWND		hLinkLocal;
 	HWND		hHttpsTxt;
@@ -7184,10 +7188,9 @@ typedef struct {
 
 BOOL isChecked( HWND hwnd ){ return (SendMessage(hwnd,BM_GETCHECK,0,0)==BST_CHECKED)? TRUE:FALSE; }
 
-// WebパスワードとHTTPS(SSL)のチェックボックスで、クリックしたところと違うところに勝手にチェックが
-// 付く連結チェックになることを示す線を表示するためのウィンドウプロシージャ。マウスが乗ったら連結線
-// ウィンドウを表示する。チェックの付け外し処理は親ウィンドウで、ここでは連結線ウィンドウの表示制御
-// のみ。
+// ログインパスワードとHTTPS(SSL)のチェックボックスで、クリックしたところと違うところに勝手にチェック
+// が付く連動チェックになることを示す線を表示するためのウィンドウプロシージャ。マウスが乗ったら連結線
+// ウィンドウを表示する。チェックの付け外し処理は親ウィンドウで、ここでは連結線ウィンドウ表示制御のみ。
 WNDPROC DefButtonProc = NULL; // 既定ボタンコントロールウィンドウプロシージャ
 LRESULT CALLBACK LinkCheckboxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -7203,19 +7206,19 @@ LRESULT CALLBACK LinkCheckboxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( my ){
 				tme.cbSize = sizeof(tme);
 				tme.dwFlags = TME_LEAVE;
-				if( hwnd==my->hWebPasswdRemote ){
-					if( !isChecked(my->hWebPasswdRemote) && !isChecked(my->hHttpsRemote) ){
-						// Webパスワード有効時はHTTP(SSL)必要
+				if( hwnd==my->hLoginRemote ){
+					if( !isChecked(my->hLoginRemote) && !isChecked(my->hHttpsRemote) ){
+						// パスワード有効時はHTTP(SSL)必要
 						if( !IsWindowVisible( my->hLinkRemote ) ){
 							ShowWindow( my->hLinkRemote ,SW_SHOW );
-							tme.hwndTrack = my->hWebPasswdRemote;
+							tme.hwndTrack = my->hLoginRemote;
 							TrackMouseEvent( &tme );
 						}
 					}
 				}
 				else if( hwnd==my->hHttpsRemote ){
-					if( isChecked(my->hWebPasswdRemote) && isChecked(my->hHttpsRemote) ){
-						// HTTP(SSL)無効時はWebパスワードも無効
+					if( isChecked(my->hLoginRemote) && isChecked(my->hHttpsRemote) ){
+						// HTTP(SSL)無効時はパスワードも無効
 						if( !IsWindowVisible( my->hLinkRemote ) ){
 							ShowWindow( my->hLinkRemote ,SW_SHOW );
 							tme.hwndTrack = my->hHttpsRemote;
@@ -7223,19 +7226,19 @@ LRESULT CALLBACK LinkCheckboxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						}
 					}
 				}
-				if( hwnd==my->hWebPasswdLocal ){
-					if( !isChecked(my->hWebPasswdLocal) && !isChecked(my->hHttpsLocal) ){
-						// Webパスワード有効時はHTTP(SSL)必要
+				if( hwnd==my->hLoginLocal ){
+					if( !isChecked(my->hLoginLocal) && !isChecked(my->hHttpsLocal) ){
+						// パスワード有効時はHTTP(SSL)必要
 						if( !IsWindowVisible( my->hLinkLocal ) ){
 							ShowWindow( my->hLinkLocal ,SW_SHOW );
-							tme.hwndTrack = my->hWebPasswdLocal;
+							tme.hwndTrack = my->hLoginLocal;
 							TrackMouseEvent( &tme );
 						}
 					}
 				}
 				else if( hwnd==my->hHttpsLocal ){
-					if( isChecked(my->hWebPasswdLocal) && isChecked(my->hHttpsLocal) ){
-						// HTTP(SSL)無効時はWebパスワードも無効
+					if( isChecked(my->hLoginLocal) && isChecked(my->hHttpsLocal) ){
+						// HTTP(SSL)無効時はパスワードも無効
 						if( !IsWindowVisible( my->hLinkLocal ) ){
 							ShowWindow( my->hLinkLocal ,SW_SHOW );
 							tme.hwndTrack = my->hHttpsLocal;
@@ -7319,17 +7322,17 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							L"button",L"localhostのみ" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				my->hWebPasswdTxt = CreateWindowW(
-							L"static",L"Webパスワード" ,WS_CHILD |SS_SIMPLE
+				my->hLoginPassTxt = CreateWindowW(
+							L"static",L"ログインパスワード" ,WS_CHILD |SS_SIMPLE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				my->hWebPasswd = CreateWindowExW(
+				my->hLoginPass = CreateWindowExW(
 							WS_EX_CLIENTEDGE ,L"edit",L""
 							,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_PASSWORD |ES_AUTOHSCROLL
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				my->hWebPasswdState = CreateWindowW(
-							L"static",WebPasswd(NULL,0)? L"(登録済み・変更する時は入力)" :L"(未登録)"
+				my->hLoginPassState = CreateWindowW(
+							L"static",LoginPass(NULL,0)? L"(登録済み・変更する時は入力)" :L"(未登録)"
 							,WS_CHILD |SS_SIMPLE ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				my->hLinkRemote = CreateWindowW(
@@ -7338,13 +7341,13 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				my->hLinkLocal = CreateWindowW(
 							L"static",L"" ,WS_CHILD |WS_BORDER ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				my->hWebPasswdRemote = CreateWindowW(
+				my->hLoginRemote = CreateWindowW(
 							L"button",L"localhost以外" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_WEBPASSWD_REMOTE ,hinst,NULL
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_LOGIN_REMOTE ,hinst,NULL
 				);
-				my->hWebPasswdLocal = CreateWindowW(
+				my->hLoginLocal = CreateWindowW(
 							L"button",L"localhost" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
-							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_WEBPASSWD_LOCAL ,hinst,NULL
+							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_LOGIN_LOCAL ,hinst,NULL
 				);
 				my->hHttpsTxt = CreateWindowW(
 							L"static",L"HTTPS(SSL)" ,WS_CHILD |SS_SIMPLE
@@ -7389,18 +7392,18 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX ,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
 				DefButtonProc = (WNDPROC)GetWindowLong( my->hHttpsLocal ,GWLP_WNDPROC );
-				SetWindowLong( my->hWebPasswdRemote ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
-				SetWindowLong( my->hWebPasswdLocal ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
+				SetWindowLong( my->hLoginRemote ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
+				SetWindowLong( my->hLoginLocal ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
 				SetWindowLong( my->hHttpsRemote ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
 				SetWindowLong( my->hHttpsLocal ,GWLP_WNDPROC ,(LONG)LinkCheckboxProc );
 				SendMessage( BindLocal? my->hBindLocal :my->hBindAny ,BM_SETCHECK ,BST_CHECKED ,0 );
-				SendMessage( my->hWebPasswd ,EM_SETLIMITTEXT ,(WPARAM)WEBPASSWD_MAX+1 ,0 ); // エラー通知用＋1文字
-				if( WebPasswdRemote ) SendMessage( my->hWebPasswdRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
-				if( WebPasswdLocal ) SendMessage( my->hWebPasswdLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
+				SendMessage( my->hLoginPass ,EM_SETLIMITTEXT ,(WPARAM)LOGINPASS_MAX+1 ,0 ); // エラー通知用＋1文字
+				if( LoginRemote ) SendMessage( my->hLoginRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
+				if( LoginLocal ) SendMessage( my->hLoginLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( HttpsRemote ) SendMessage( my->hHttpsRemote ,BM_SETCHECK ,BST_CHECKED ,0 );
 				if( HttpsLocal ) SendMessage( my->hHttpsLocal ,BM_SETCHECK ,BST_CHECKED ,0 );
-				if( !WebPasswdRemote && !WebPasswdLocal ){
-					EnableWindow( my->hWebPasswd ,FALSE );
+				if( !LoginRemote && !LoginLocal ){
+					EnableWindow( my->hLoginPass ,FALSE );
 				}
 				if( !HttpsRemote && !HttpsLocal ){
 					EnableWindow( my->hSSLViewCrt ,FALSE );
@@ -7412,11 +7415,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				SendMessage( my->hBindAddrTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				SendMessage( my->hBindAny			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				SendMessage( my->hBindLocal			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hWebPasswdTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hWebPasswd			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hWebPasswdState	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hWebPasswdLocal	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hWebPasswdRemote	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hLoginPassTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hLoginPass			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hLoginPassState	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hLoginLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hLoginRemote		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				SendMessage( my->hHttpsTxt			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				SendMessage( my->hHttpsLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
 				SendMessage( my->hHttpsRemote		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
@@ -7512,26 +7515,26 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				// タブを除いた表示領域を取得(rc.topがタブの高さになる)
 				TabCtrl_AdjustRect( my->hTabc, FALSE, &rc );
 				// パーツ移動
-				MoveWindow( my->hListenPortTxt	,30  ,rc.top+20+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hListenPortTxt	,35  ,rc.top+20+2  ,110 ,22 ,TRUE );
 				MoveWindow( my->hListenPort		,135 ,rc.top+20    ,80  ,22 ,TRUE );
-				MoveWindow( my->hBindAddrTxt	,45  ,rc.top+55+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hBindAddrTxt	,50  ,rc.top+55+2  ,110 ,22 ,TRUE );
 				MoveWindow( my->hBindAny		,135 ,rc.top+55    ,90  ,22 ,TRUE );
 				MoveWindow( my->hBindLocal		,235 ,rc.top+55    ,110 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdTxt	,31  ,rc.top+90+2  ,110 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswd		,135 ,rc.top+90    ,180 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdState	,320 ,rc.top+90+2  ,180 ,22 ,TRUE );
-				MoveWindow( my->hWebPasswdRemote,135 ,rc.top+115   ,110 ,21 ,TRUE );
+				MoveWindow( my->hLoginPassTxt	,25  ,rc.top+90+2  ,110 ,22 ,TRUE );
+				MoveWindow( my->hLoginPass		,135 ,rc.top+90    ,180 ,22 ,TRUE );
+				MoveWindow( my->hLoginPassState	,320 ,rc.top+90+2  ,180 ,22 ,TRUE );
+				MoveWindow( my->hLoginRemote	,135 ,rc.top+115   ,110 ,21 ,TRUE );
 				MoveWindow( my->hLinkRemote		,138 ,rc.top+115   ,6   ,50 ,TRUE );
-				MoveWindow( my->hWebPasswdLocal	,255 ,rc.top+115   ,85  ,21 ,TRUE );
+				MoveWindow( my->hLoginLocal		,255 ,rc.top+115   ,85  ,21 ,TRUE );
 				MoveWindow( my->hLinkLocal		,258 ,rc.top+115   ,6   ,50 ,TRUE );
-				MoveWindow( my->hHttpsTxt		,31  ,rc.top+150+2 ,110 ,22 ,TRUE );
+				MoveWindow( my->hHttpsTxt		,36  ,rc.top+150+2 ,110 ,22 ,TRUE );
 				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,21 ,TRUE );
 				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,21 ,TRUE );
 				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
 				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+200   ,220 ,26 ,TRUE );
-				MoveWindow( my->hBootMinimal	,30  ,rc.top+245   ,240 ,22 ,TRUE );
+				MoveWindow( my->hBootMinimal	,35  ,rc.top+245   ,240 ,22 ,TRUE );
 				MoveWindow( my->hBtnWoTxt		,40  ,rc.top+26    ,70  ,22 ,TRUE );
 				MoveWindow( my->hExeTxt			,20  ,rc.top+60+2  ,90  ,22 ,TRUE );
 				MoveWindow( my->hArgTxt			,50  ,rc.top+100+2 ,60  ,22 ,TRUE );
@@ -7552,8 +7555,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			return 0;
 
 		case WM_CTLCOLORSTATIC: // スタティックコントール描画色
-			if( (HWND)lp==my->hWebPasswdState ){
-				if( !isChecked(my->hWebPasswdRemote) && !isChecked(my->hWebPasswdLocal) ){
+			if( (HWND)lp==my->hLoginPassState ){
+				if( !isChecked(my->hLoginRemote) && !isChecked(my->hLoginLocal) ){
 					// パスワード無効の時、状態テキスト色薄く
 					LRESULT r = DefDlgProc( hwnd, msg, wp, lp );
 					SetTextColor( (HDC)wp ,RGB(160,160,160) );
@@ -7594,11 +7597,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( my->hBindAddrTxt	,SW_HIDE );
 				ShowWindow( my->hBindAny		,SW_HIDE );
 				ShowWindow( my->hBindLocal		,SW_HIDE );
-				ShowWindow( my->hWebPasswdTxt	,SW_HIDE );
-				ShowWindow( my->hWebPasswd		,SW_HIDE );
-				ShowWindow( my->hWebPasswdState	,SW_HIDE );
-				ShowWindow( my->hWebPasswdLocal	,SW_HIDE );
-				ShowWindow( my->hWebPasswdRemote,SW_HIDE );
+				ShowWindow( my->hLoginPassTxt	,SW_HIDE );
+				ShowWindow( my->hLoginPass		,SW_HIDE );
+				ShowWindow( my->hLoginPassState	,SW_HIDE );
+				ShowWindow( my->hLoginLocal		,SW_HIDE );
+				ShowWindow( my->hLoginRemote	,SW_HIDE );
 				ShowWindow( my->hLinkRemote		,SW_HIDE );
 				ShowWindow( my->hLinkLocal		,SW_HIDE );
 				ShowWindow( my->hHttpsTxt		,SW_HIDE );
@@ -7626,11 +7629,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hBindAddrTxt	,SW_SHOW );
 					ShowWindow( my->hBindAny		,SW_SHOW );
 					ShowWindow( my->hBindLocal		,SW_SHOW );
-					ShowWindow( my->hWebPasswdTxt	,SW_SHOW );
-					ShowWindow( my->hWebPasswd		,SW_SHOW );
-					ShowWindow( my->hWebPasswdState	,SW_SHOW );
-					ShowWindow( my->hWebPasswdLocal	,SW_SHOW );
-					ShowWindow( my->hWebPasswdRemote,SW_SHOW );
+					ShowWindow( my->hLoginPassTxt	,SW_SHOW );
+					ShowWindow( my->hLoginPass		,SW_SHOW );
+					ShowWindow( my->hLoginPassState	,SW_SHOW );
+					ShowWindow( my->hLoginLocal		,SW_SHOW );
+					ShowWindow( my->hLoginRemote	,SW_SHOW );
 					ShowWindow( my->hHttpsTxt		,SW_SHOW );
 					ShowWindow( my->hHttpsLocal		,SW_SHOW );
 					ShowWindow( my->hHttpsRemote	,SW_SHOW );
@@ -7662,7 +7665,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			case ID_DLG_OK: // 設定ファイル保存
 				{
 					ConfigData	data;
-					WCHAR		wPwd[WEBPASSWD_MAX+2]=L""; // エラー通知用＋1文字＋NULL文字
+					WCHAR		wPass[LOGINPASS_MAX+2]=L""; // エラー通知用＋1文字＋NULL文字
 					int			iPort;
 					UINT		i;
 
@@ -7674,32 +7677,32 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						return 0;
 					}
 					data.bindLocal		= isChecked( my->hBindLocal );
-					data.webPasswdLocal	= isChecked( my->hWebPasswdLocal );
-					data.webPasswdRemote= isChecked( my->hWebPasswdRemote );
+					data.loginLocal		= isChecked( my->hLoginLocal );
+					data.loginRemote	= isChecked( my->hLoginRemote );
 					data.httpsLocal		= isChecked( my->hHttpsLocal );
 					data.httpsRemote	= isChecked( my->hHttpsRemote );
 					data.bootMinimal	= isChecked( my->hBootMinimal );
-					GetWindowTextW( my->hWebPasswd ,wPwd ,sizeof(wPwd)/sizeof(WCHAR) );
-					if( *wPwd ){
-						UCHAR* pwd = WideCharToUTF8alloc( wPwd );
-						if( pwd ){
-							if( strlen(pwd) >WEBPASSWD_MAX ){
-								ErrorBoxW(L"パスワードは最大%uバイトです。",WEBPASSWD_MAX);
-								SetFocus( my->hWebPasswd );
-								free( pwd );
+					GetWindowTextW( my->hLoginPass ,wPass ,sizeof(wPass)/sizeof(WCHAR) );
+					if( *wPass ){
+						UCHAR* pass = WideCharToUTF8alloc( wPass );
+						if( pass ){
+							if( strlen(pass) >LOGINPASS_MAX ){
+								ErrorBoxW(L"パスワードは最大%uバイトです。",LOGINPASS_MAX);
+								SetFocus( my->hLoginPass );
+								free( pass );
 								return 0;
 							}
-							data.webPasswd = pwd;
+							data.loginPass = pass;
 						}
-						else ErrorBoxW(L"致命的エラー：パスワードを登録できません");
+						else ErrorBoxW(L"致命的エラー：ログインパスワードを登録できません");
 					}
-					else if( data.webPasswdLocal || data.webPasswdRemote ){
-						if( !WebPasswd(NULL,0) && IDYES !=MessageBoxW( hwnd
-								,L"Webパスワードが登録されていません。"
+					else if( data.loginLocal || data.loginRemote ){
+						if( !LoginPass(NULL,0) && IDYES !=MessageBoxW( hwnd
+								,L"ログインパスワードが登録されていません。"
 								L"空のパスワードではログインできません。このままでよろしいですか？"
 								,L"確認" ,MB_YESNO |MB_ICONQUESTION
 							)
-						){ SetFocus( my->hWebPasswd ); return 0; }
+						){ SetFocus( my->hLoginPass ); return 0; }
 					}
 					for( i=0; i<BI_COUNT; i++ ){
 						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
@@ -7707,7 +7710,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						data.hide[i] = isChecked( my->hHide[i] );
 					}
 					ConfigSave( &data );
-					if( data.webPasswd ) free( data.webPasswd );
+					if( data.loginPass ) free( data.loginPass );
 					for( i=0; i<BI_COUNT; i++ ){
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
@@ -7767,38 +7770,38 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				}
 				break;
 
-			case ID_DLG_WEBPASSWD_REMOTE: // パスワードチェックボックス変化
-				if( isChecked( my->hWebPasswdRemote ) ){
+			case ID_DLG_LOGIN_REMOTE: // パスワードチェックボックス変化
+				if( isChecked( my->hLoginRemote ) ){
 					// パス入力有効
-					EnableWindow( my->hWebPasswd ,TRUE );
+					EnableWindow( my->hLoginPass ,TRUE );
 					// SSLも有効
 					SendMessage(my->hHttpsRemote,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_REMOTE,0);
 					ShowWindow( my->hLinkRemote ,SW_HIDE );
 				}
-				else if( !isChecked( my->hWebPasswdLocal ) ){
+				else if( !isChecked( my->hLoginLocal ) ){
 					// パス入力無効
-					EnableWindow( my->hWebPasswd ,FALSE );
+					EnableWindow( my->hLoginPass ,FALSE );
 				}
 				// パスワード状態テキスト色
-				InvalidateRect( my->hWebPasswdState ,NULL ,FALSE );
+				InvalidateRect( my->hLoginPassState ,NULL ,FALSE );
 				break;
 
-			case ID_DLG_WEBPASSWD_LOCAL:
-				if( isChecked( my->hWebPasswdLocal ) ){
+			case ID_DLG_LOGIN_LOCAL:
+				if( isChecked( my->hLoginLocal ) ){
 					// パス入力有効
-					EnableWindow( my->hWebPasswd ,TRUE );
+					EnableWindow( my->hLoginPass ,TRUE );
 					// SSLも有効
 					SendMessage(my->hHttpsLocal,BM_SETCHECK,BST_CHECKED,0 );
 					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_HTTPS_LOCAL,0);
 					ShowWindow( my->hLinkLocal ,SW_HIDE );
 				}
-				else if( !isChecked( my->hWebPasswdRemote ) ){
+				else if( !isChecked( my->hLoginRemote ) ){
 					// パス入力無効
-					EnableWindow( my->hWebPasswd ,FALSE );
+					EnableWindow( my->hLoginPass ,FALSE );
 				}
 				// パスワード状態テキスト色
-				InvalidateRect( my->hWebPasswdState ,NULL ,FALSE );
+				InvalidateRect( my->hLoginPassState ,NULL ,FALSE );
 				break;
 
 			case ID_DLG_HTTPS_REMOTE: // HTTPSチェックボックス変化
@@ -7811,9 +7814,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLViewCrt ,FALSE );
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
-					// Webパスワード無効
-					SendMessage(my->hWebPasswdRemote,BM_SETCHECK,BST_UNCHECKED,0 );
-					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_REMOTE,0);
+					// パスワード無効
+					SendMessage(my->hLoginRemote,BM_SETCHECK,BST_UNCHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_LOGIN_REMOTE,0);
 					ShowWindow( my->hLinkRemote ,SW_HIDE );
 				}
 				// 証明書・秘密鍵テキスト色
@@ -7831,9 +7834,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						EnableWindow( my->hSSLViewCrt ,FALSE );
 						EnableWindow( my->hSSLMakeCrt ,FALSE );
 					}
-					// Webパスワード無効
-					SendMessage(my->hWebPasswdLocal,BM_SETCHECK,BST_UNCHECKED,0 );
-					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_WEBPASSWD_LOCAL,0);
+					// パスワード無効
+					SendMessage(my->hLoginLocal,BM_SETCHECK,BST_UNCHECKED,0 );
+					SendMessage(hwnd,WM_COMMAND,(WPARAM)ID_DLG_LOGIN_LOCAL,0);
 					ShowWindow( my->hLinkLocal ,SW_HIDE );
 				}
 				// 証明書・秘密鍵テキスト色
