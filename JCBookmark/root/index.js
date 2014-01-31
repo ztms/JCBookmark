@@ -884,8 +884,8 @@ function columnHeightAdjust(){
 	for( var i=columns.length-1; i>=0; i-- ){
 		if( height < $(columns[i]).height() ) height = $(columns[i]).height();
 	}
-	if( $('#findtab').css('display')=='block' ) padding += $('#findtab').height();
-	if( $('#findbox').css('display')=='block' ) padding += $('#findbox').height();
+	if( $('#findtab').css('display')!='none' ) padding += $('#findtab').outerHeight();
+	if( $('#findbox').css('display')!='none' ) padding += $('#findbox').outerHeight();
 	for( var i=columns.length-1; i>=0; i-- ){
 		columns[i].style.paddingBottom = height - $(columns[i]).height() + padding +'px';
 	}
@@ -2005,7 +2005,7 @@ function setEvents(){
 		return function(){
 			var $box = $('#findbox');
 			var $tab = $('#findtab');
-			if( $tab.css('display')=='block' ){ $tab.find('input').focus(); return; }
+			if( $tab.css('display')!='none' ){ $tab.find('input').focus(); return; }
 			var $found = $('#foundbox');
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
@@ -2270,7 +2270,7 @@ var panelPopper = function(){
 			if( tree.modified() || option.modified() ) boxTopLimit += $('#modified').outerHeight();
 			if( boxTopLimit > boxTop ) boxTopLimit = boxTop;
 			// 検索ボックスに被らないように上に
-			if( $('#findbox').css('display')=='block' ){
+			if( $('#findbox').css('display')!='none' ){
 				bottomLine -= $('#findbox').outerHeight();
 				if( $box[0].offsetLeft -$win.scrollLeft() < $('#findtab').outerWidth() )
 					bottomLine -= $('#findtab').outerHeight();
@@ -2635,6 +2635,11 @@ function analyzer( nodeTop ){
 	var ajaxer = function( aix ){
 		var nodes = [] ,reqBody = '';
 		// 負荷制御:サーバ側3並列
+		// TODO:どのくらいまで並列数増やして問題ないか(受信タイムアウトなど発生しないか)は
+		// PC性能・回線太さ・他アプリ通信状況などに依存するので、理想的には並列数を動的に
+		// 変えて最適な値で動作できるとよいが、その最適値をどうやって決めるのか難しい。
+		// TODO:負荷が高くて受信タイムアウトになった場合はリトライしたいところだが、それも
+		// 判定が難しい…。
 		for( var i=3; i>0 && qix < queue.length; i-- ){
 			var node = queue[qix++];
 			nodes.push( node );
