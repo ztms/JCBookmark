@@ -541,6 +541,9 @@ var folderTree = function(){
 		var maxWidth = 0;
 		var hide = false;	// サブツリー非表示フラグ
 		var hideDepth = 0;	// サブツリー非表示階層
+		var box = doc.getElementById('folderbox');
+		var scrollLeft = box.scrollLeft;
+		var scrollTop = box.scrollTop;
 		$folders.empty();
 		(function callee(){
 			var count=10;
@@ -584,7 +587,12 @@ var folderTree = function(){
 				index++; count--;
 			}
 			if( index < length ) timer = setTimeout(callee,0);
-			else{ $folder(false); if( opt.done ) opt.done(); }
+			else{
+				$folder(false);
+				box.scrollLeft = scrollLeft;
+				box.scrollTop = scrollTop;
+				if( opt.done ) opt.done();
+			}
 		})();
 	};
 }();
@@ -1120,10 +1128,10 @@ $('#modified').click(function(){ $('#editbox').blur(); treeSave(); });
 $('#home').click(function(){
 	itemList(false);
 	if( tree.modified() ) Confirm({
-		msg	:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
-		,width:380
+		width:380
+		,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 		,yes:function(){ treeSave({ success:home }); }
-		,no :home
+		,no:home
 	});
 	else home();
 	function home(){ location.href = '/'; }
@@ -1133,10 +1141,10 @@ if( /session=.+/.test(document.cookie) ){
 	$('#logout').click(function(){
 		itemList(false);
 		if( tree.modified() ) Confirm({
-			msg	:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
-			,width:380
+			width:380
+			,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
 			,yes:function(){ treeSave({ success:logout }); }
-			,no :logout
+			,no:logout
 		});
 		else logout();
 		function logout(){
@@ -1315,26 +1323,28 @@ $('#delete').click(function(){
 			trashTitles += '</ul>';
 			var redraw = function(){
 				tree.moveChild( otherIDs.concat(), tree.trash() );
-				if( hasFolder ) folderTree({});
-				switch( itemList('?') ){
-				case 'finds':
-				case 'deads':
-					// 調査中にごみ箱を空にした場合など既にノードが存在しない場合がある。
-					// 存在しないノードは「移動しました」メッセージは出さずに消えるのみ。
-					for( var i=otherIDs.length-1; i>=0; i-- ) if( !tree.node(otherIDs[i]) ) otherIDs.splice(i,1);
-					if( otherIDs.length ) Notify(otherIDs.length+'個のアイテムをごみ箱に移動しました。');
-					// ゴミ箱から消去したアイテム一覧から除外
-					for( var i=trashIDs.length-1; i>=0; i-- ) $('#item'+trashIDs[i]).remove();
-					break;
+				if( hasFolder ){
+					// おなじフォルダを選択状態に
+					var nid = selectFolder.id.slice(6);
+					// フォルダが消えた場合トップフォルダを選択状態に
+					if( !tree.node(nid) ) nid = tree.top().id;
+					folderTree({ selectID:nid ,inactive:true });
+				}
+				// 調査中にごみ箱を空にした場合など既にノードが存在しない場合がある。
+				// 存在しないノードは「移動しました」メッセージは出さずに消えるのみ。
+				for( var i=otherIDs.length-1; i>=0; i-- ) if( !tree.node(otherIDs[i]) ) otherIDs.splice(i,1);
+				if( otherIDs.length ) Notify(otherIDs.length+'個のアイテムをごみ箱に移動しました。');
+				// アイテム欄で既に存在しないものを消去
+				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 				}
 			};
 			if( trashIDs.length>0 ){
 				Confirm({
-					msg:trashIDs.length+'個のごみ箱アイテムを完全に消去します。'
-					,$e:$(trashTitles)
-					,width:400
-					,height:210 + trashIDs.length *19
+					width:400 ,height:210 + trashIDs.length *19
 					,resize:true
+					,msg:trashIDs.length+'個のごみ箱アイテムを完全に消去します。'
+					,$e:$(trashTitles)
 					,ok:function(){ tree.eraseNodes( trashIDs.concat() ); redraw(); }
 				});
 			}
@@ -1349,17 +1359,18 @@ $('#delete').click(function(){
 				Confirm({
 					msg:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
 					,ok:function(){
+						var pid = tree.nodeParent(nid).id; // 親フォルダを選択
 						tree.eraseNode( nid );
 						switch( itemList('?') ){
 						case 'finds':
 						case 'deads':
-							folderTree({});
+							folderTree({ selectID:pid });
 							// アイテム欄で既に存在しないものを消去
 							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
 								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 							}
 							break;
-						case 'child': folderTree({ click0:true }); break;
+						case 'child': folderTree({ clickID:pid }); break;
 						}
 					}
 				});
@@ -1368,7 +1379,7 @@ $('#delete').click(function(){
 				tree.moveChild( [nid], tree.trash() );
 				switch( itemList('?') ){
 				case 'finds':
-				case 'deads': folderTree({}); break;
+				case 'deads': folderTree({ selectID:nid }); break;
 				case 'child': folderTree({ clickID:nid }); break;
 				}
 			}
@@ -2097,7 +2108,7 @@ function itemDragStart( element, downX, downY ){
 			switch( itemList('?') ){
 			case 'finds':
 			case 'deads':
-				if( dragItem.folderCount >0 ) folderTree({});
+				if( dragItem.folderCount >0 ) folderTree({ selectID:selectFolder.id.slice(6) });
 				Notify(dragItem.ids.length+'個のアイテムを移動しました。');
 				break;
 			case 'child':
@@ -2394,6 +2405,7 @@ function itemContextMenu(ev){
 // 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
 var onContextHide = null; // #contextmenu.hide()時に実行する関数
 function folderContextMenu(ev){
+	$('#editbox').blur();
 	var folder = ev.target;
 	while( !$(folder).hasClass('folder') ){
 		if( !folder.parentNode ) return;
@@ -2417,17 +2429,15 @@ function folderContextMenu(ev){
 		var node = tree.newFolder( '', nid );
 		// フォルダツリー生成
 		function titleEdit(){ edit( $('#folder'+node.id).find('.title')[0] ,{select:true} ); }
-		switch( itemList('?') ){
-		case 'deads':
-		case 'finds': folderTree({ done:titleEdit }); break;
-		case 'child':
-			if( folder.id==selectFolder.id ) folderTree({ clickID:nid ,done:titleEdit });
-			else folderTree({
-				selectID	:selectFolder.id.slice(6)
-				,inactive	:$(selectFolder).hasClass('inactive')
-				,done		:titleEdit
+		if( itemList('?')=='child' && folder===selectFolder ){
+			folderTree({ clickID:nid ,done:titleEdit });
+		}
+		else{
+			folderTree({
+				selectID:selectFolder.id.slice(6)
+				,inactive:$(selectFolder).hasClass('inactive')
+				,done:titleEdit
 			});
-			break;
 		}
 	}))
 	.append('<hr>')
@@ -2440,16 +2450,19 @@ function folderContextMenu(ev){
 		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide(); onContextHide();
 			Confirm({
-				msg		:'ごみ箱の全アイテム・フォルダを完全に消去します。'
-				,width	:400
-				,height	:180
-				,ok		:function(){
-					var selectTrash = tree.trashHas( selectFolder.id.slice(6) );
+				width:400 ,height:180
+				,msg:'ごみ箱の全アイテム・フォルダを完全に消去します。'
+				,ok:function(){
+					var sid = selectFolder.id.slice(6);
+					var selectTrash = tree.trashHas( sid );
 					tree.trashEmpty();
 					switch( itemList('?') ){
 					case 'finds':
 					case 'deads':
-						folderTree({});
+						folderTree({
+							selectID:selectTrash? tree.top().id :sid
+							,inactive:$(selectFolder).hasClass('inactive')
+						});
 						// アイテム欄で既に存在しないものを消去
 						for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
 							if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
@@ -2457,7 +2470,7 @@ function folderContextMenu(ev){
 						break;
 					case 'child':
 						if( selectTrash ) folderTree({ click0:true });
-						else folderTree({ clickID:selectFolder.id.slice(6) });
+						else folderTree({ selectID:sid ,inactive:$(selectFolder).hasClass('inactive') });
 						break;
 					}
 				}
@@ -2470,23 +2483,26 @@ function folderContextMenu(ev){
 			$box.append($('<a><img src=delete.png>削除</a>').click(function(){
 				$menu.hide(); onContextHide();
 				Confirm({
-					msg		:'フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
-					,width	:400
-					,height	:200
-					,ok		:function(){
+					width:400 ,height:200
+					,msg:'フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
+					,ok:function(){
+						var sid = selectFolder.id.slice(6);
+						var pid = tree.nodeParent( nid ).id;
 						tree.eraseNode( nid );
 						switch( itemList('?') ){
 						case 'finds':
 						case 'deads':
-							folderTree({});
+							folderTree({
+								selectID:tree.node(sid)? sid :tree.top().id
+								,inactive:$(selectFolder).hasClass('inactive')
+							});
 							// アイテム欄で既に存在しないものを消去
 							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
 								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 							}
 							break;
 						case 'child':
-							if( folder===selectFolder ) folderTree({ click0:true });
-							else folderTree({ clickID:selectFolder.id.slice(6) });
+							folderTree({ clickID:tree.node(sid)? sid :pid });
 							break;
 						}
 					}
@@ -2496,11 +2512,23 @@ function folderContextMenu(ev){
 		else{
 			$box.append($('<a><img src=trash.png>削除</a>').click(function(){
 				$menu.hide(); onContextHide();
-				tree.moveChild( [nid], tree.trash() );
+				var sid = selectFolder.id.slice(6);
 				switch( itemList('?') ){
 				case 'finds':
-				case 'deads': folderTree({}); break;
-				case 'child': folderTree({ clickID:selectFolder.id.slice(6) }); break;
+				case 'deads':
+					tree.moveChild( [nid], tree.trash() );
+					folderTree({ selectID:sid ,inactive:$(selectFolder).hasClass('inactive') });
+					break;
+				case 'child':
+					var isChild = false; // 選択フォルダの子フォルダを削除
+					var child = tree.node(sid).child;
+					for( var i=child.length-1; i>=0; i-- ){
+						if( child[i].id==nid ){ isChild = true; break; }
+					}
+					tree.moveChild( [nid], tree.trash() );
+					if( isChild ) folderTree({ clickID:sid });
+					else folderTree({ selectID:sid ,inactive:$(selectFolder).hasClass('inactive') });
+					break;
 				}
 			}));
 		}
@@ -2618,7 +2646,7 @@ function edit( element, opt ){
 								if( $item.hasClass('folder') ){
 									if( $item.hasClass('item') ){
 										// アイテム欄のフォルダの時フォルダツリーも更新
-										folderTree({});
+										folderTree({ selectID:selectFolder.id.slice(6) ,inactive:true });
 									}
 									else{
 										// フォルダツリーでアイテム欄が親フォルダを表示していた場合アイテム欄を更新
@@ -2757,8 +2785,9 @@ function clipboardTo( pnode, index ){
 	});
 	$.ajax({
 		url:':clipboard.txt'
-		,complete:function(){ $('#dialog').dialog('destroy'); }
+		,error:function(){ $('#dialog').dialog('destroy'); }
 		,success:function(data){
+			$('#dialog').dialog('destroy');
 			var lines = data.split(/[\r\n]+/);				// 行分割
 			var regTrim = /^\s+|\s+$/g;
 			var regUrl = /^[A-Za-z]+:.+/;
@@ -2775,8 +2804,14 @@ function clipboardTo( pnode, index ){
 				else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
 			}
 			if( url ) itemAdd( url );
-			// 表示更新
-			$('#folder'+pnode.id).removeClass('select').click();
+			// アイテム欄更新
+			if( itemList('?')=='deads' ){
+				Confirm({
+					msg:'このフォルダを表示しますか？#BR#(リンク切れ調査結果は破棄されます)'
+					,yes:function(){ $('#folder'+pnode.id).removeClass('select').click(); }
+				});
+			}
+			else $('#folder'+pnode.id).removeClass('select').click();
 			// ajax完了待ち
 			(function completed(){
 				if( complete < ajaxs.length ) setTimeout(completed,250);
