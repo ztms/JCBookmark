@@ -974,7 +974,7 @@ var itemList = function(){
 				$unknown.text( count.unknown );
 				if( count.total < queue.length ){
 					$total.text( count.total +' / '+ queue.length );
-					timer = setTimeout(waiter,250);
+					timer = setTimeout(waiter,500);
 					return;
 				}
 				// 完了
