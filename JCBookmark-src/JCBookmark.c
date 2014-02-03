@@ -607,12 +607,8 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 UCHAR* stristr( const UCHAR* buf, const UCHAR* word )
 {
 	if( buf && word ){
-		UCHAR* p = strstr( buf ,word );
-		if( p ) return p;
-		{
-			size_t len = strlen( word );
-			for( ; *buf; buf++ ) if( strnicmp( buf, word, len )==0 ) return buf;
-		}
+		size_t len = strlen( word );
+		for( ; *buf; buf++ ) if( strnicmp( buf, word, len )==0 ) return buf;
 	}
 	return NULL;
 }
@@ -2734,8 +2730,7 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp )
 // HTMLコメント<!-- -->や<script>～</script>、<style>～</style>も誤検出の元なので塗りつぶす。
 UCHAR* htmlBotherErase( UCHAR* top )
 {
-	UCHAR* p = top;
-	UCHAR* end;
+	UCHAR *p ,*end;
 	// 1.<script>～</script>をスペースで塗りつぶし
 	for( p=top; *p; ){
 		UCHAR* script = stristr(p,"<script");
@@ -3220,7 +3215,11 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 	if( rsp ){
 	retry:
 		if( *abort ) goto fin;
-		if( hop++ >9 ){ LogW(L"転送回数が多すぎます"); goto fin; }
+		if( hop++ >9 ){
+			LogW(L"転送回数が多すぎます");
+			if( rp ) rp->ico='?', strcpy(rp->msg,"転送が多すぎます");
+			goto fin;
+		}
 		rsp = HTTPGetContentDecode( rsp );
 		// HTTP/1.x 200 OK
 		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
