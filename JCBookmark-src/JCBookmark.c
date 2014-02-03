@@ -35,7 +35,7 @@
 //	http://www.hde.co.jp/press/column/detail.php?n=201010290
 //	http://dev.ariel-networks.com/wp/archives/258
 //	http://d.hatena.ne.jp/tk_4dd/20120128
-//	TODO:パスワードにWindowsログインユーザのパスワードを使えるか？
+//	TODO:ログインパスワードにWindowsログインユーザのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
 //	TODO:アプリ実行時のWindowsの警告を解除する手順（ブロックを解除する）をWebのFAQにでも載せる。
 //	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
@@ -2286,17 +2286,28 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 					if( isSSL ){
 						sslp = SSL_new( ssl_ctx );
 						if( sslp ){
+							int ret ,retry=0;
 							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
 							RAND_poll();
 							while( RAND_status()==0 ){		// PRNG初期化
 								unsigned short rand_ret = rand() % 65536;
 								RAND_seed(&rand_ret, sizeof(rand_ret));
 							}
-							if( SSL_connect( sslp )==1 ){	// SSLハンドシェイク
-								LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
-							}
+						retry:
+							ret = SSL_connect( sslp );		// SSLハンドシェイク
+							if( ret==1 ) LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
 							else{
-								LogA("[%u]SSL_connect(%s:%s)エラー",sock,host,port);
+								int err = SSL_get_error( sslp, ret );
+								if( ret==-1 && err==SSL_ERROR_SYSCALL ){
+									// 同時通信負荷が高いとこのエラーになる時がある。
+									// amazonとの通信が他に複数ある中でSSLサイトに接続しようとした時に発生。
+									// 自宅では70弱の同時接続数で発生。細い回線だとamazonが3本でエラー発生。
+									// ネット検索してみたがよい回避策が見つからない。SSL_connectリトライして
+									// みたら負荷が下がった段階で成功した。とりあえず少しSleepして10回リトライ。
+									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
+									if( ++retry <10 ){ Sleep(500); goto retry; }
+								}
+								else LogA("[%u]SSL_connect(%s:%s)=%d,エラー%d",sock,host,port,ret,err);
 								if( rp ) rp->ico='?', strcpy(rp->msg,"SSL接続できません");
 								ssl_ok = FALSE;
 							}
@@ -3329,6 +3340,9 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				if( rp ) rp->ico='!';
 				break;
 			case '4': // クライアントエラー
+				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
+				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
+				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコン。
 				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
 				// HTMLが返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になる
 				// だけで、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わら
@@ -3340,9 +3354,6 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
 				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
 				// トップとおなじHTMLが返ってくるパターンもあるという問題。
-				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
-				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
-				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコン。
 				switch( code[1] ){
 				case '0':
 					switch( code[2]) {
@@ -5916,8 +5927,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								// TODO:セッション有効なのにログイン要求のパスワードが間違っている時は？
 								// セッション有効だから無視してもいい？認証処理すべき？Gmail利用中に他の
 								// ブラウザでパスワード変更してもセッション維持されたままだったので、その
-								// パターンとおなじかな。パスワード変更しても既に有効済みセッションは維持
-								// される。
+								// パターンと同じかな。パスワード変更しても有効済みセッションは維持される。
 								cp->rsp.readfh = CreateFileW(
 										RealPath("index.html",realpath,sizeof(realpath)/sizeof(WCHAR))
 										,GENERIC_READ ,FILE_SHARE_READ ,NULL
@@ -7078,9 +7088,8 @@ void ConfigSave( const ConfigData* dp )
 			if( dp->loginPass ){
 				// 新パスワード:SHA256ハッシュ
 				// http://www.askyb.com/cpp/openssl-sha256-hashing-example-in-cpp/
-				// TODO:パスワード変更したらセッション(クッキー)削除すべき？でもGmailで
-				// 利用中に別ブラウザでパスワード変更してもセッションは有効だった。ので
-				// 問題ないかな。
+				// TODO:パスワード変更したらセッション(クッキー)削除すべき？でもGmail利用中に
+				// 別ブラウザでパスワード変更してもセッションは有効だった。ので問題ないかな。
 				UCHAR digest[SHA256_DIGEST_LENGTH]="";
 				SHA256( dp->loginPass ,strlen(dp->loginPass) ,digest );
 				if( base64encode( digest ,sizeof(digest) ,b64txt ,sizeof(b64txt) ) ){
