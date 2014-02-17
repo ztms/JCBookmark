@@ -2447,7 +2447,7 @@ function panelEdit( pid ){
 			var scrollBottom = scrollTop + $itembox.height() -60;
 			var speed = 0;
 			var $item = $(item).addClass('drag');	// ドラッグ中スタイル
-			function dragStarter(ev){
+			function dragStart(ev){
 				// ある程度カーソル移動したらドラッグ開始
 				if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 					$dragi = $('<div class=edragi></div>').css({
@@ -2463,7 +2463,7 @@ function panelEdit( pid ){
 				}
 			}
 			$doc.on('mousemove.paneledit',function(ev){
-				if( !$dragi ) dragStarter(ev);
+				if( !$dragi ) dragStart(ev);
 				if( $dragi ){
 					// ドラッグ物移動
 					$dragi.css({ left:ev.pageX +5, top:ev.pageY +5 });
@@ -2490,7 +2490,7 @@ function panelEdit( pid ){
 				}
 			})
 			.on('mousemove.paneledit','#editbox div .edit',function(ev){
-				if( !$dragi ) dragStarter(ev);
+				if( !$dragi ) dragStart(ev);
 				if( $dragi ){
 					// ドロップ場所移動
 					var $this = $(this);
@@ -2775,7 +2775,7 @@ function columnSortable(){
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
 		var origin = {left:0,top:0};	// 元々の座標
-		function dragStarter(ev){
+		function dragStart(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				// カーソルと共に移動する要素
@@ -2790,7 +2790,7 @@ function columnSortable(){
 			}
 		}
 		$doc.on('mousemove.dragdrop','.column, .columndrop',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// スクロール制御
 				dragScroll(ev,function( dx ,dy ){
@@ -2852,7 +2852,7 @@ function panelSortable(){
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
 		$(element).addClass('active');	// スタイル(FirefoxでなぜかCSSの:activeが効かないので)
-		function dragStarter(ev){
+		function dragStart(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				// カーソルと共に移動する要素
@@ -2868,7 +2868,7 @@ function panelSortable(){
 			}
 		}
 		$doc.on('mousemove.dragdrop',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// スクロール制御
 				// TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
@@ -2881,7 +2881,7 @@ function panelSortable(){
 			}
 		})
 		.on('mousemove.dragdrop','.panel',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// ドロップ場所
 				if( this.id==element.id ) return;
@@ -2896,7 +2896,7 @@ function panelSortable(){
 			}
 		})
 		.on('mousemove.dragdrop','.column',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// ドロップ場所
 				var $col = $(ev.target);
@@ -2980,7 +2980,7 @@ function itemSortable(){
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
 		$(element).addClass('active');	// スタイル(FirefoxでなぜかCSSの:activeが効かないので)
-		function dragStarter(ev){
+		function dragStart(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
 				// 要素は閉パネルポップアップで削除される事があるので元ノード情報を保持
@@ -3008,7 +3008,7 @@ function itemSortable(){
 			}
 		}
 		$doc.on('mousemove.dragdrop',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// スクロール制御
 				// TODO:スクロール後にマウス動かさないとドロップ場所がついてこない。
@@ -3021,22 +3021,28 @@ function itemSortable(){
 			}
 		})
 		.on('mousemove.dragdrop','.item',function(ev){
-			if( !$dragi ) dragStarter(ev);
+			if( !$dragi ) dragStart(ev);
 			if( $dragi ){
 				// ドロップ場所
 				if( this.id==element.id ) return;
 				if( this.id==$dragi[0].id ) return;
 				if( /^fd/.test(this.id) ) return; // 検索結果ドロップ無効
-				var $this = $(this);
-				if( $this.hasClass('item') ){
-					// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
-					if( ev.pageY <= $this.offset().top + this.offsetHeight/2 ){
-						if( $this.prev() != $place ) $this.before( $place );
-					}
-					else{
-						if( $this.next() != $place ) $this.after( $place );
-					}
+				var $item = $(this);
+				// offsetTopは親要素(.itembox)からの相対値になってしまうのでoffset().top利用
+				if( ev.pageY <= $item.offset().top + this.offsetHeight/2 ){
+					if( $item.prev() != $place ) $item.before( $place );
 				}
+				else{
+					if( $item.next() != $place ) $item.after( $place );
+				}
+			}
+		})
+		.on('mousemove.dragdrop','.panel',function(ev){
+			if( !$dragi ) dragStart(ev);
+			if( $dragi ){
+				// 空パネル
+				var $box = $(this).children('.itembox');
+				if( $box[0].children.length==0 ) $box.append( $place );
 			}
 		})
 		.one('mouseup',function(ev){
