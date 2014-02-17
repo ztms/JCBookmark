@@ -104,7 +104,7 @@ body {
 	border-left:1px solid #777;
 	border-right:1px solid #777;
 	background:#eee;
-	cursor:col-resize;
+	cursor:e-resize;
 }
 #border:hover {
 	border-color:#555;
@@ -149,7 +149,7 @@ body {
 	border-left:1px solid #ccc;
 	border-right:1px solid #ccc;
 	background:#eee;
-	cursor:col-resize;
+	cursor:e-resize;
 }
 #itemhead .itemborder:hover {
 	border-color:#975;
