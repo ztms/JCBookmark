@@ -2336,7 +2336,7 @@ function itemContextMenu(ev){
 			clipboardTo( pnode, index );
 		}));
 	}
-	if( $box[0].children.length ) $box.append('<hr>');
+	if( !$box.children().last().is('hr') ) $box.append('<hr>');
 	if( $(item).hasClass('folder') ){
 		$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
 			$menu.hide(); itemList('deads','folder');
@@ -2387,7 +2387,7 @@ function itemContextMenu(ev){
 			}));
 		}
 	}
-	if( $box[0].children.length ) $box.append('<hr>');
+	if( !$box.children().last().is('hr') ) $box.append('<hr>');
 	// 削除
 	var idelete = tree.trashHas( nid )? 'delete.png' :'trash.png';
 	$box.append($('<a><img src='+idelete+'>削除</a>').click(function(){
@@ -2440,14 +2440,12 @@ function folderContextMenu(ev){
 			});
 		}
 	}))
-	.append('<hr>')
-	.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
+	.append('<hr>').append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
 		$menu.hide(); onContextHide();
 		itemList('deads',tree.node( nid ));
 	}));
 	if( nid==tree.trash().id ){
-		$box.append('<hr>');
-		$box.append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
+		$box.append('<hr>').append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide(); onContextHide();
 			Confirm({
 				width:400 ,height:180
