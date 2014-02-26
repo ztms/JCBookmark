@@ -5,6 +5,7 @@
 // TODO:パネルの中にパネル。フォルダ構造をそのままで。
 // TODO:Firefoxのタグ機能。整理画面はFirefox相当でいいけどパネル画面はタグ機能をどう使うか・・タグパネル？無視？
 // TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。
+// TODO:InstantClickというJSがあってマウスオーバーでリンク先を裏で勝手に先読みしてクリック後の表示を高速化するらしい。速いのはいいけどリンクが大量にあるとマウスオーバーが発生しまくるので重くなりそうで。。
 (function( $, $win, $doc, oStr, IE, $wall, $sidebar ){
 'use strict';
 /*
@@ -2775,6 +2776,7 @@ function columnSortable(){
 		var $dragi = null;				// ドラッグ物
 		var $place = null;				// ドロップ場所
 		var origin = {left:0,top:0};	// 元々の座標
+		$(element).addClass('active');	// スタイル
 		function dragStart(ev){
 			// ある程度カーソル移動したらドラッグ開始
 			if( (Math.abs(ev.pageX-downX) +Math.abs(ev.pageY-downY)) >20 ){
@@ -2824,6 +2826,7 @@ function columnSortable(){
 				$wall.children('.column').removeAttr('id').each(function(i){ $(this).attr('id','co'+i); });
 				option.panel.layouted();
 			}
+			$(element).removeClass('active');	// スタイル解除
 		})
 		// 右クリックメニューが消えなくなったのでここで実行
 		.trigger('mousedown');

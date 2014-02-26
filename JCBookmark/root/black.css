@@ -6,7 +6,7 @@ body {
 .column:hover {
 	background:#1c1b13;
 }
-.column:active {
+.column.active {
 	background:#262520;
 }
 .panel {
