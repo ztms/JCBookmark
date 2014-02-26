@@ -2027,7 +2027,8 @@ UCHAR* FileContentTypeA( const UCHAR* file )
 			if( stricmp(ext,"jpeg")==0 ) return "image/jpeg";
 			if( stricmp(ext,"png")==0 )  return "image/png";
 			if( stricmp(ext,"gif")==0 )  return "image/gif";
-			if( stricmp(ext,"ico")==0 )  return "image/vnd.microsoft.icon";
+			//if( stricmp(ext,"ico")==0 )  return "image/vnd.microsoft.icon"; // IE8で表示されないためx-iconに変更
+			if( stricmp(ext,"ico")==0 )  return "image/x-icon";
 			if( stricmp(ext,"zip")==0 )  return "application/zip";
 			if( stricmp(ext,"pdf")==0 )  return "application/pdf";
 			if( stricmp(ext,"exe")==0 )  return "application/x-msdownload";
@@ -2055,7 +2056,8 @@ UCHAR* FileContentTypeW( const WCHAR* file )
 			if( wcsicmp(ext,L"jpeg")==0 ) return "image/jpeg";
 			if( wcsicmp(ext,L"png")==0 )  return "image/png";
 			if( wcsicmp(ext,L"gif")==0 )  return "image/gif";
-			if( wcsicmp(ext,L"ico")==0 )  return "image/vnd.microsoft.icon";
+			//if( wcsicmp(ext,L"ico")==0 )  return "image/vnd.microsoft.icon"; // IE8で表示されないためx-iconに変更
+			if( wcsicmp(ext,L"ico")==0 )  return "image/x-icon";
 			if( wcsicmp(ext,L"zip")==0 )  return "application/zip";
 			if( wcsicmp(ext,L"pdf")==0 )  return "application/pdf";
 			if( wcsicmp(ext,L"exe")==0 )  return "application/x-msdownload";
@@ -2215,7 +2217,9 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			path = "";
 		}
 		if( host ){
-			// 名前解決(タイムアウト処理は難しいもよう・・)
+			// 名前解決
+			// TODO:WSAAsyncGetHostByNameが非同期名前解決だがメッセージ受信型？
+			// http://keicode.com/windows/async-gethostbyname.php
 			ADDRINFOA*	addr = NULL;
 			ADDRINFOA	hint;
 			UCHAR*		port = strrchr(host,':');
@@ -3308,6 +3312,9 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// TODO:Coccoc は Location: http://localhost/ を返してくるけど、ポート番号なくてもいいの？
 				// http://localhost:4474/ じゃないの？でもブラウザはちゃんとポート4474にアクセスしている謎…。
 				// localhost通信だからキャプチャできないし…
+				// TODO:307,308が新設？
+				// 新たなHTTPステータスコード「308」とは？
+				// http://gigazine.net/news/20140220-http-308/
 				{
 					UCHAR* url = strHeaderValue(rsp->head,"Location");
 					if( url ){
@@ -3356,23 +3363,23 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				switch( code[1] ){
 				case '0':
 					switch( code[2]) {
-					case '4':if( rp ) rp->ico='D'; break;	// 404 Not Found 死亡
-					default: if( rp ) rp->ico='E';			// 40x エラー
+					case '4':if( rp ) rp->ico='D'; break;	// 404 Not Found =死亡
+					default: if( rp ) rp->ico='E';			// 40x =エラー
 					}
 					break;
 				case '1':
 					switch( code[2]) {
-					case '0':if( rp ) rp->ico='D'; break;	// 410 Gone 死亡
-					default: if( rp ) rp->ico='E';			// 41x エラー
+					case '0':if( rp ) rp->ico='D'; break;	// 410 Gone =死亡
+					default: if( rp ) rp->ico='E';			// 41x =エラー
 					}
 					break;
-				default: if( rp ) rp->ico='E';				// 4xx エラー
+				default: if( rp ) rp->ico='E';				// 4xx =エラー
 				}
 				break;
 			case '5': // サーバーエラー
 				if( rp ) rp->ico='E'; // Error
 				break;
-			case '1': // 情報(HTTP/1.1以降)
+			//case '1': // 情報(HTTP/1.1以降)
 			default:
 				if( rp ) rp->ico='!';
 			}
@@ -3398,35 +3405,81 @@ fin:
 // - 転送されたら転送先を確認
 //   リダイレクト手法まとめ
 //   http://likealunatic.jp/2007/10/21_redirect.php
-// TODO:JavaScriptを使った転送の解析は自力では難しいが対応する手立てはあるのか…
 // TODO:HTTP以外のスキーム(ftp:等)
+// TODO:JavaScriptを使った転送の解析は自力では難しいが対応する手立てはあるのか…
+// PhantomJSという6MB程度のJavaScript+WebKitアプリがあってCUIでURLをレンダリングして
+// タイトル取得できてHTTPSも対応している。これを組み込めればいけるがライセンス要調査。
 typedef struct PokeCTX {
 	struct PokeCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
 	UCHAR*		userAgent;	// in リクエストUserAgent
 	UCHAR*		pAbort;		// in 中断フラグ
 	HANDLE		thread;		// in スレッドハンドル
-	PokeReport	report;		// out 死活結果
+	//UCHAR*		upper;		// out URLが死んでいた時の上位パスURL
+	PokeReport	repo;		// out 死活結果
 } PokeCTX;
 unsigned __stdcall poke( void* tp )
 {
 	PokeCTX* ctx = tp;
 	UCHAR* hash = strchr(ctx->url,'#');
 	HTTPGet* rsp;
+	// URLの#以降を除去
 	if( hash ) *hash = '\0';
-	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,&(ctx->report) );
+	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,&(ctx->repo) );
+	if( rsp ) free( rsp );
+	/*
+	// 死亡(404等)で転送URLもなかったら上位パスを確認
+	if( ctx->repo.ico=='D' && !ctx->repo.newurl ){
+		UCHAR* upper = strdup( ctx->url );
+		if( upper ){
+			UCHAR* path = strstr(upper,"://");
+			if( path ) path = strchr(path+3,'/');
+			while( path ){
+				UCHAR* sl = strrchr(path,'/');
+				if( sl ){
+					if( sl[1] ) sl[1]='\0';
+					else{
+						if( sl==path ) break;
+						*sl ='\0';
+						sl = strrchr(path,'/');
+						if( sl ) sl[1]='\0';
+					}
+					if( strcmp( ctx->url ,upper ) ){
+						PokeReport repo = {'?',"不明な処理結果です",NULL};
+						HTTPGet* rsp = httpGETs( upper ,ctx->userAgent ,ctx->pAbort ,&repo );
+						if( rsp ){
+							free( rsp );
+							if( repo.ico=='O' || repo.ico=='!' ){
+								if( repo.newurl ){
+									ctx->upper = strdup( repo.newurl );
+									free( repo.newurl );
+								}
+								else ctx->upper = strdup( upper );
+								break;
+							}
+							else if( repo.newurl ) free( repo.newurl );
+						}
+					}
+					else break;
+				}
+				else break;
+			}
+			free( upper );
+		}
+	}
+	*/
+	// #復活
 	if( hash ){
 		*hash = '#';
-		if( ctx->report.newurl ){
-			// 新URLに旧URLの#(ハッシュ)以降を付加
-			UCHAR* newurl = strjoin( ctx->report.newurl ,hash ,0,0,0 );
+		// 新URLに旧URLの#以降を付加
+		if( ctx->repo.newurl ){
+			UCHAR* newurl = strjoin( ctx->repo.newurl ,hash ,0,0,0 );
 			if( newurl ){
-				free( ctx->report.newurl );
-				ctx->report.newurl = newurl;
+				free( ctx->repo.newurl );
+				ctx->repo.newurl = newurl;
 			}
 		}
 	}
-	if( rsp ) free( rsp );
 	_endthreadex(0);
 	return 0;
 }
@@ -3438,9 +3491,10 @@ PokeCTX* PokeStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		ctx->url			= url;
 		ctx->userAgent		= userAgent;
 		ctx->pAbort			= pAbort;
-		ctx->report.ico		= '?';
-		strcpy(ctx->report.msg,"不明な処理結果です");
-		ctx->report.newurl	= NULL;
+		//ctx->upper			= NULL;
+		ctx->repo.ico		= '?';
+		strcpy(ctx->repo.msg,"不明な処理結果です");
+		ctx->repo.newurl	= NULL;
 		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)ctx ,0,NULL );
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(PokeCTX));
@@ -3484,12 +3538,13 @@ unsigned __stdcall poker( void* tp )
 	if( !cp->abort ){
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
 		for( ctx=ctx0 ,count=0; ctx; ctx=ctx->next ,count++ ){
-			PokeReport* rp = &(ctx->report);
+			PokeReport* rp = &(ctx->repo);
 			LogA("[%u]URL%u:%c,%s,%s",Num(cp),count,rp->ico,rp->msg,rp->newurl?rp->newurl:"");
 			BufferSendf( &(cp->rsp.body)
+					//,"%s{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"upper\":\"%s\"}"
 					,"%s{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
 					,(ctx==ctx0)? "":","
-					,rp->ico ,rp->msg ,rp->newurl? rp->newurl :""
+					,rp->ico ,rp->msg ,rp->newurl? rp->newurl :"" //,ctx->upper? ctx->upper :""
 			);
 		}
 		BufferSend( &(cp->rsp.body) ,"]" ,1 );
@@ -3502,7 +3557,7 @@ unsigned __stdcall poker( void* tp )
 	}
 	// 解放
 	for( ctx=ctx0; ctx; ctxN=ctx->next ,free(ctx) ,ctx=ctxN ){
-		if( ctx->report.newurl ) free( ctx->report.newurl );
+		if( ctx->repo.newurl ) free( ctx->repo.newurl );
 	}
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
