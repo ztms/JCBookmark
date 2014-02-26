@@ -2331,9 +2331,11 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								"GET /%s HTTP/1.0\r\n"
 								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
 								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+								"%s"									// Cookie:ヘッダ
 								"Accept-Encoding: identity\r\n"			// 無圧縮
 								//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
-								"%s"									// Cookie:ヘッダ
+								"Accept-Language: ja,en\r\n"			// nginxの204対策
+								"Accept: */*\r\n"						// nginxの204対策
 								"Connection: close\r\n"
 								"\r\n"
 								,path ,host
@@ -6661,7 +6663,7 @@ void ClientWrite( TClient* cp )
 	case CLIENT_SEND_READY:
 		// 共通レスポンスヘッダ
 		if( cp->session ){
-			BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/;\r\n" ,cp->session->id );
+			BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/\r\n" ,cp->session->id );
 		}
 		BufferSendf( &(rsp->head)
 				,"Connection: %s\r\n"
@@ -6822,7 +6824,7 @@ void SocketClose( SOCKET sock )
 void SocketShutdown( void )
 {
 	BOOL retry;
-	UINT i /*,count=0*/;
+	UINT i; //,count=0;
 
 	if( ListenSock1 !=INVALID_SOCKET ){
 		LogW(L"[%u]待機終了",ListenSock1);
