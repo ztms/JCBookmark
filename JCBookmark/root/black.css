@@ -22,7 +22,7 @@ body {
 }
 .panel:hover .title {
 	color:#fff;
-	background:#4e4e3d;
+	background:#4f4f3e;
 }
 .panel.active {
 	border-color:#997;
