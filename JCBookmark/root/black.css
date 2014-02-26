@@ -15,23 +15,20 @@ body {
 }
 .title {
 	color:#fff;
-	background:#332;
-	background:linear-gradient(#414130,#393928);
+	background:#3c3c2b;
 }
 .panel:hover {
 	border-color:#775;
 }
 .panel:hover .title {
 	color:#fff;
-	background:#443;
-	background:linear-gradient(#5f5f4f,#2e2e17);
+	background:#4e4e3d;
 }
 .panel.active {
 	border-color:#997;
 }
 .panel.active .title {
-	background:#554;
-	background:linear-gradient(#6f6f5f,#3e3e27);
+	background:#5b5b4a;
 }
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
@@ -67,7 +64,6 @@ body {
 }
 .itembox {
 	background:#111;
-	background:linear-gradient(#1c1c1c,#111111);
 }
 .itempop {
 	border:1px solid #776;
@@ -79,14 +75,12 @@ body {
 .item:hover {
 	color:#afd;
 	border-color:#366;
-	background:#051e09;
-	background:linear-gradient(#17271f,#011a05);
+	background:#0a230e;
 }
 .item.active {
 	color:#9fd;
 	border-color:#477;
-	background:#112a15;
-	background:linear-gradient(#27372f,#112a15);
+	background:#1b341f;
 }
 .paneldrop {
 	border:1px dashed #f88;
@@ -101,7 +95,6 @@ body {
 #foundbox {
 	color:#eee;
 	background:#111;
-	background:linear-gradient(#1c1c1c,#111111);
 }
 #foundbox div {
 	color:#eee;

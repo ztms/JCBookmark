@@ -15,23 +15,20 @@ body {
 }
 .title {
 	color:#335;
-	background:#dfdfef;
-	background:linear-gradient(#e7e7f7,#dddde7);
+	background:#dddde7;
 }
 .panel:hover {
 	border-color:#99b;
 }
 .panel:hover .title {
 	color:#335;
-	background:#e5e9f5;
-	background:linear-gradient(#f5f5ff,#c5c5cd);
+	background:#e9e9f3;
 }
 .panel.active {
 	border-color:#dd9;
 }
 .panel.active .title {
 	background:#f0f0f0;
-	background:linear-gradient(#ffffff,#e3e3e3);
 }
 .pen:hover, .plusminus:hover {
 	border-color:#bbb;
@@ -67,7 +64,6 @@ body {
 }
 .itembox {
 	background:#fafafc;
-	background:linear-gradient(#fcfcfe,#f5f5f7);
 }
 .itempop {
 	border:1px solid #aac;
@@ -78,15 +74,13 @@ body {
 }
 .item:hover {
 	color:#600020;
-	background:#f9f0f5;
 	border-color:#dcb9b9;
-	background:linear-gradient(#fffafc,#f3e5ec);
+	background:#f9f0f5;
 }
 .item.active {
 	color:#a00020;
 	border-color:#eca9a9;
 	background:#f9ecf2;
-	background:linear-gradient(#fff8fa,#f3e0e7);
 }
 .paneldrop {
 	border:1px dashed #d55;
@@ -101,7 +95,6 @@ body {
 #foundbox {
 	color:#707070;
 	background:#fafafc;
-	background:linear-gradient(#fcfcfe,#f5f5f7);
 }
 #foundbox div {
 	color:#707070;
