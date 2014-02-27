@@ -611,7 +611,7 @@ var itemList = function(){
 	function finalize( arg0 ){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
-		// ajax中止
+		// ajax中止:アイテムリンク切れ調査は止めず・フォルダリンク切れ調査は止める
 		if( kind==='deads' || arg0==='deads' ){
 			if( ajaxer ) ajaxer(false), ajaxer=null;
 			for( var i=ajaxs.length-1; i>=0; i-- ) if( ajaxs[i] ) ajaxs[i].abort();
@@ -658,10 +658,10 @@ var itemList = function(){
 			$itemAppend = function(){
 				var $item = $('<div class=item tabindex=0></div>')
 					.append('<img class=icon>')
-					.append($('<span class=title></span>').width( $head.find('.title').width() -18 ))
-					.append($('<span class=url></span>').width( $head.find('.url').width() +4 ))
+					.append($('<span class=title></span>').width( $head.children('.title').width() -18 ))
+					.append($('<span class=url></span>').width( $head.children('.url').width() +4 ))
 					.append($('<span class=place></span>').width( $head3.width() +4 ))
-					.append($('<span class=date></span>').width( $head.find('.date').width() +2 ))
+					.append($('<span class=date></span>').width( $head.children('.date').width() +2 ))
 					.append('<br class=clear>')
 					.on('mouseleave',itemMouseLeave);
 				var $stico = $('<img class=icon style="margin-left:0">');
@@ -774,8 +774,10 @@ var itemList = function(){
 		}
 		else if( arg0==='poke' ){
 			// アイテム欄の選択ブックマークをリンク切れ調査(フォルダ/javascriptは無視)
-			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
-			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
+			// ★アイテムリンク切れ調査は、別フォルダを表示したり調査中に次のアイテム調査を実行しても
+			// キューに入ったものは(画面上はわからないが)調査が継続する。(フォルダ調査との違いに注意)
+			// ただしフォルダリンク切れ調査が開始された場合、アイテム調査は中断(キューに残った未調査
+			// ぶんは破棄)される。
 			// ノード配列作成
 			var items = doc.getElementById('items').children;
 			for( var i=0, n=items.length; i<n; i++ ){
@@ -798,6 +800,7 @@ var itemList = function(){
 					if( ajaxs[aix] ) return;
 					var nodes = [] ,reqBody = '';
 					// 負荷制御:サーバ側3並列
+					// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
 					for( var i=3; i>0 && queue.length; i-- ){
 						var node = tree.node( queue.shift() );
 						if( node ){
@@ -843,18 +846,15 @@ var itemList = function(){
 				};
 			}
 			// 負荷制御:クライアント側3並列
+			// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
 			for( var i=0; i<3; i++ ) ajaxer(i);
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
-			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
-			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
+			// ★フォルダリンク切れ調査は、前回実行中のリンク切れ調査(アイテム/フォルダ)を中断し、
+			// 新規に調査を実行する。実行中に別フォルダ表示などでアイテム欄を変更した場合、調査は
+			// 中断される。(アイテム調査との違いに注意)
 			// TODO:フォルダ表示や検索で調査が中断される時は確認ダイアログ？
-			// TODO:調査結果を保持して他の操作ができるようにする。#deadinfoを１行程度に最小化して
-			// 他の操作ができるようにしてみたが、どうも見た目がイマイチわかりにくい。「フォルダ」
-			// 「検索結果」「リンク切れ調査」の３種類のタブがあればわかりやすそう。しかしアイテム
-			// 欄をタブで３つ同時に切り替えできるようにする改造はなかなかたいへん・・。Chromeぽい
-			// タブがいいけど斜め線が引けないし…
 			kind = 'deads';
 			$('#deadinfo').trigger('dying').remove();
 			$head3.text('調査結果');
@@ -936,9 +936,9 @@ var itemList = function(){
 				var $img = $('<img class=icon style="margin-left:0">');
 				var $date = $('<span class=date></span>');
 				var $br = $('<br class=clear>');
-				var $hTitle = $head.find('.title');
-				var $hUrl = $head.find('.url');
-				var $hDate = $head.find('.date');
+				var $hTitle = $head.children('.title');
+				var $hUrl = $head.children('.url');
+				var $hDate = $head.children('.date');
 				var date = new Date();
 				var now = (new Date()).getTime();
 				var index = 0;
@@ -962,6 +962,7 @@ var itemList = function(){
 				if( aix===false ) return;
 				var nodes = [] ,reqBody = '';
 				// 負荷制御:サーバ側3並列
+				// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
 				for( var i=3; i>0 && qix < queue.length; i-- ){
 					var node = queue[qix++];
 					nodes.push( node );
@@ -1002,6 +1003,7 @@ var itemList = function(){
 				}
 			};
 			// 負荷制御:クライアント側3並列
+			// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
 			for( var i=0; i<3; i++ ) ajaxer(i);
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
@@ -1035,13 +1037,13 @@ var itemList = function(){
 			$head3.text('アイコン / 調査結果');
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
-				var urlWidth = $head.find('.url').width() +4;
+				var urlWidth = $head.children('.url').width() +4;
 				var iurlWidth = $head3.width() +4;
 				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
 				var $icon = $('<img class=icon>');
-				var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
+				var $title = $('<span class=title></span>').width( $head.children('.title').width() -18 );
 				var $url = $('<span class=url></span>').width( urlWidth );
-				var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
+				var $date = $('<span class=date></span>').width( $head.children('.date').width() +2 );
 				var $br = $('<br class=clear>');
 				var $folder = $item.clone(true)
 					.addClass('folder')
@@ -1620,10 +1622,10 @@ function resize(){
 			folderboxHeight
 			- $('#itemhead') // アイテムヘッダのボーダーと合うよう適当に増減して設定
 				.width( itemboxWidth )
-				.find('.title').width( titleWidth ).end()
-				.find('.url').width( urlWidth ).end()
-				.find('.misc').width( iconWidth ).end()
-				.find('.date').width( dateWidth -38 ).end()			// -38px適当float対策
+				.children('.title').width( titleWidth ).end()
+				.children('.url').width( urlWidth ).end()
+				.children('.misc').width( iconWidth ).end()
+				.children('.date').width( dateWidth -38 ).end()			// -38px適当float対策
 				.outerHeight()
 			- $('#deadinfo')
 				.width( itemboxWidth )
