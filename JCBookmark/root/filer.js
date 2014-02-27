@@ -599,21 +599,24 @@ var folderTree = function(){
 // アイテム欄作成
 var itemList = function(){
 	var $head = $('#itemhead');
-	var $head3 = $head.find('.url').next().next();	// 可変項目ヘッダ(アイコン/場所/調査結果)
-	var $itemAppend = null;							// アイテム１つ生成関数
-	var kind = 'child';								// アイテム欄の種類
-	var timer = null;								// setTimeoutID
-	var ajaxer = null;								// ajax発行関数
-	var ajaxs = [];									// ajax配列
-	var queue = [];									// ajax用ノード配列キュー
+	var $head3 = $head.children('.misc');	// 可変項目ヘッダ(アイコン/場所/調査結果)
+	var $itemAppend = null;					// アイテム１つ生成関数
+	var kind = 'child';						// アイテム欄の種類
+	var timer = null;						// setTimeoutID
+	var ajaxer = null;						// ajax発行関数
+	var ajaxs = [];							// ajax配列
+	var queue = [];							// ajax用ノード配列キュー
+	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
 	$('#finding').offset($('#keyword').offset()).progressbar();
-	function finalize(){
+	function finalize( arg0 ){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
 		// ajax中止
-		if( ajaxer ) ajaxer(false), ajaxer=null;
-		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].abort();
-		ajaxs.length = queue.length = 0;
+		if( kind==='deads' || arg0==='deads' ){
+			if( ajaxer ) ajaxer(false), ajaxer=null;
+			for( var i=ajaxs.length-1; i>=0; i-- ) if( ajaxs[i] ) ajaxs[i].abort();
+			ajaxs.length = queue.length = 0;
+		}
 		// 検索終了
 		$('#itembox').children('.spacer').empty();
 		$('#finding').progressbar('value',0);
@@ -622,9 +625,20 @@ var itemList = function(){
 		// 解放
 		if( $itemAppend ) $itemAppend(false) ,$itemAppend=null;
 	}
+	// リンク切れ調査結果アイコン画像
+	function stIcoSrc( st ){
+		switch( st.ico ){
+		case 'O': return 'ok.png';		// 正常
+		case 'E': return 'delete.png';	// エラー
+		case 'D': return 'skull.png';	// 死亡
+		case '!': return 'warn.png';	// 注意
+		}
+		return 'question.png';			// 不明
+	}
 	return function( arg0 ,arg1 ){
 		if( arg0==='?' ) return kind;
-		finalize();
+		if( arg0==='?timer' ) return timer;
+		finalize( arg0 );
 		if( arg0===false ) return;
 		if( arg0==='finds' ){
 			// 検索
@@ -636,41 +650,49 @@ var itemList = function(){
 			if( keywords.length<=0 ) return;
 			kind = 'finds';
 			$('#deadinfo').trigger('dying').remove();
-			$head3.removeClass('iconurl').removeClass('status').addClass('place').text('場所');
+			$head3.text('場所 / 調査結果');
 			$('#itembox').children('.spacer').html('<img src=wait.gif>');
 			$('#find').hide();
 			$('#findstop').off().click(function(){ finalize(); }).show();
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
-				var $icon = $('<img class=icon>');
-				var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
-				var $url = $('<span class=url></span>').width( $head.find('.url').width() +4 );
-				var $place = $('<span class=place></span>').width( $head3.width() +4 );
-				var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
 				var $item = $('<div class=item tabindex=0></div>')
-					.append($icon).append($title).append($url).append($place).append($date)
+					.append('<img class=icon>')
+					.append($('<span class=title></span>').width( $head.find('.title').width() -18 ))
+					.append($('<span class=url></span>').width( $head.find('.url').width() +4 ))
+					.append($('<span class=place></span>').width( $head3.width() +4 ))
+					.append($('<span class=date></span>').width( $head.find('.date').width() +2 ))
 					.append('<br class=clear>')
 					.on('mouseleave',itemMouseLeave);
+				var $stico = $('<img class=icon style="margin-left:0">');
 				var date = new Date();
 				var index = 0;
 				return function( node, now, place ){
-					if( node===false ){ $item.remove(); return; }
-					date.setTime( node.dateAdded ||0 );
-					$title.text( node.title ).attr('title', node.title);
-					$date.text( myFmt(date,now) );
-					$place.text( place );
+					if( node===false ){ $item.remove(); $stico.remove(); return; }
 					if( node.child ){
-						$icon.attr('src','folder.png');
-						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
-						$url.text( smry );
 						var $e = $item.clone(true).addClass('folder').attr('id','item'+node.id);
+						$e.children('.icon').attr('src','folder.png');
+						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
+						$e.children('.url').text( smry );
+						$e.children('.place').text( place );
 					}
 					else{
-						$icon.attr('src', node.icon ||'item.png');
-						$url.text( node.url );
 						var $e = $item.clone(true).attr('id','item'+node.id);
+						$e.children('.icon').attr('src', node.icon ||'item.png');
+						$e.children('.url').text( node.url );
+						var st = results[node.url];
+						if( st ){
+							$e.children('.place').removeClass('place').addClass('status')
+							.text( st.msg +(st.url.length? ' ≫'+st.url :'') )
+							.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
+						}
+						else $e.children('.place').text( place );
 					}
+					date.setTime( node.dateAdded ||0 );
+					$e.children('.date').text( myFmt(date,now) );
+					$e.children('.title').text( node.title ).attr('title', node.title);
 					if( index++ %2 ) $e.addClass('bgcolor');
+					if( st && st.ico==='D' ) $e.addClass('dead');
 					items.appendChild( $e[0] );
 				};
 			}();
@@ -754,8 +776,6 @@ var itemList = function(){
 			// アイテム欄の選択ブックマークをリンク切れ調査(フォルダ/javascriptは無視)
 			// TODO:YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなる。
 			// しばらくすると復活するが、リンク切れ調査はぜんぶエラーになってしまう・・・。
-			var title = $head3.text();
-			if( !/調査/.test(title) ) $head3.text( title +' / 調査結果' );
 			// ノード配列作成
 			var items = doc.getElementById('items').children;
 			for( var i=0, n=items.length; i<n; i++ ){
@@ -767,53 +787,61 @@ var itemList = function(){
 					if( /^javascript:/i.test(url) ) continue;
 					$url.next().removeClass('iconurl').removeClass('place').addClass('status').text('調査中...');
 					$url.parent().removeClass('dead');
-					queue.push( $url );
+					queue.push( items[i].id.slice(4) );
 				}
 			}
 			// ajax発行
-			var $imgsrc = $('<img class=icon style="margin-left:0">');
-			var qix = 0;
-			ajaxer = function( aix ){
-				if( aix===false ){ $imgsrc.remove(); return; }
-				var $urls = [] ,reqBody = '';
-				// 負荷制御:サーバ側3並列
-				for( var i=3; i>0 && qix < queue.length; i-- ){
-					var $url = queue[qix++];
-					$urls.push( $url );
-					reqBody += ':'+$url.text()+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
-				}
-				if( reqBody ){
-					ajaxs[aix] = $.ajax({
-						type:'post'
-						,url:':poke'
-						,data:reqBody
-						,error:function(xhr){
-							if( !ajaxer ) return;
-							for( var i=0; i<$urls.length; i++ ){
-								$urls[i].next().text( xhr.status+' '+xhr.statusText )
-								.prepend( $imgsrc.clone().attr('src','delete.png') );
-							}
+			if( !ajaxer ){
+				var $stico = $('<img class=icon style="margin-left:0">');
+				ajaxer = function( aix ){
+					if( aix===false ){ $stico.remove(); return; }
+					if( ajaxs[aix] ) return;
+					var nodes = [] ,reqBody = '';
+					// 負荷制御:サーバ側3並列
+					for( var i=3; i>0 && queue.length; i-- ){
+						var node = tree.node( queue.shift() );
+						if( node ){
+							nodes.push( node );
+							reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
 						}
-						,success:function(data){
-							if( !ajaxer ) return;
-							// data.length==$urls.length のはずだが…
-							for( var i=0; i<$urls.length; i++ ){
-								var ico='question.png' ,cls='';					// 不明
-								switch( data[i].ico ){
-								case 'O': ico='ok.png'; break;					// 正常
-								case 'E': ico='delete.png'; break;				// エラー
-								case 'D': ico='skull.png'; cls='dead'; break;	// 死亡
-								case '!': ico='warn.png'; break;				// 注意
+					}
+					if( reqBody ){
+						ajaxs[aix] = $.ajax({
+							type:'post'
+							,url:':poke'
+							,data:reqBody
+							,error:function(xhr){
+								if( !ajaxer ) return;
+								for( var i=0; i<nodes.length; i++ ){
+									var $st = $('#item'+nodes[i].id).children('.url').next();
+									if( !$st.hasClass('status') ){
+										$st.removeClass('iconurl').removeClass('place').addClass('status');
+									}
+									$st.text( xhr.status+' '+xhr.statusText )
+									.prepend( $stico.clone().attr('src','delete.png') );
 								}
-								$urls[i].next().text( data[i].msg +(data[i].url.length? ' ≫'+data[i].url :'') )
-								.prepend( $imgsrc.clone().attr('src',ico) );
-								$urls[i].parent().addClass( cls );
 							}
-						}
-						,complete:function(){ if( ajaxer ) ajaxer(aix); }
-					});
-				}
-			};
+							,success:function(data){
+								if( !ajaxer ) return;
+								// data.length==nodes.length のはずだが…
+								for( var i=0; i<nodes.length; i++ ){
+									var node = nodes[i];
+									var st = data[i];
+									var $st = $('#item'+node.id).children('.url').next();
+									if( node.url ) results[node.url] = st;
+									if( !$st.hasClass('status') ){
+										$st.removeClass('iconurl').removeClass('place').addClass('status');
+									}
+									$st.text( st.msg +(st.url.length? ' ≫'+st.url :'') )
+									.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
+									if( st.ico==='D' ) $st.parent().addClass('dead');
+								}
+							}
+							,complete:function(){ ajaxs[aix]=null; if( ajaxer ) ajaxer(aix); }
+						});
+					}
+				};
+			}
 			// 負荷制御:クライアント側3並列
 			for( var i=0; i<3; i++ ) ajaxer(i);
 		}
@@ -828,8 +856,8 @@ var itemList = function(){
 			// 欄をタブで３つ同時に切り替えできるようにする改造はなかなかたいへん・・。Chromeぽい
 			// タブがいいけど斜め線が引けないし…
 			kind = 'deads';
-			$('#deadinfo').remove();
-			$head3.removeClass('iconurl').removeClass('place').addClass('status').text('調査結果');
+			$('#deadinfo').trigger('dying').remove();
+			$head3.text('調査結果');
 			var $ok = $('<span class=count>0</span>');
 			var $err = $ok.clone();
 			var $dead = $ok.clone();
@@ -916,7 +944,7 @@ var itemList = function(){
 				var index = 0;
 				$item.append($icon).append($title).append($url).append($stat).append($date).append($br);
 				return function( node ,ico ,txt ,cls ){
-					if( node===false ){ $item.remove(); return; }
+					if( node===false ){ $img.remove(); $item.remove(); return; }
 					date.setTime( node.dateAdded ||0 );
 					$icon.attr('src', node.icon ||'item.png');
 					$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
@@ -955,15 +983,18 @@ var itemList = function(){
 							if( !ajaxer ) return;
 							// data.length==nodes.length のはずだが…
 							for( var i=0; i<nodes.length; i++ ){
-								var ico='question.png' ,cls='';								// 不明
-								switch( data[i].ico ){
-								case 'O': count.ok++; continue;								// 正常
-								case 'E': count.err++; ico='delete.png'; break;				// エラー
-								case 'D': count.dead++; ico='skull.png'; cls='dead'; break;	// 死亡
-								case '!': count.warn++; ico='warn.png'; break;				// 注意
-								default: count.unknown++;
+								var node = nodes[i];
+								var st = data[i];
+								if( node.url ) results[node.url] = st;
+								var cls = '';
+								switch( st.ico ){
+								case 'O': count.ok++; continue;				// 正常
+								case 'E': count.err++; break;				// エラー
+								case 'D': count.dead++; cls='dead'; break;	// 死亡
+								case '!': count.warn++; break;				// 注意
+								default: count.unknown++;					// 不明
 								}
-								$itemAppend( nodes[i] ,ico ,data[i].msg +(data[i].url.length? ' ≫'+data[i].url :'') ,cls );
+								$itemAppend( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
 							}
 						}
 						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(aix); }
@@ -1001,7 +1032,7 @@ var itemList = function(){
 			// フォルダ表示
 			kind = 'child';
 			$('#deadinfo').trigger('dying').remove();
-			$head3.removeClass('place').removeClass('status').addClass('iconurl').text('アイコン');
+			$head3.text('アイコン / 調査結果');
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
 				var urlWidth = $head.find('.url').width() +4;
@@ -1010,41 +1041,48 @@ var itemList = function(){
 				var $icon = $('<img class=icon>');
 				var $title = $('<span class=title></span>').width( $head.find('.title').width() -18 );
 				var $url = $('<span class=url></span>').width( urlWidth );
-				var $iurl = $('<span class=iconurl></span>').width( iurlWidth );
-				var $smry = $('<span class=summary></span>').width( urlWidth +iurlWidth +6 );
 				var $date = $('<span class=date></span>').width( $head.find('.date').width() +2 );
 				var $br = $('<br class=clear>');
-				var $folTitle = $title.clone();
-				var $folDate = $date.clone();
 				var $folder = $item.clone(true)
 					.addClass('folder')
 					.append( $icon.clone().attr('src','folder.png') )
-					.append( $folTitle )
-					.append( $smry )
-					.append( $folDate )
+					.append( $title.clone() )
+					.append( $('<span class=summary></span>').width( urlWidth +iurlWidth +6 ) )
+					.append( $date.clone() )
 					.append( $br.clone() );
-				$item.append($icon).append($title).append($url).append($iurl).append($date).append($br);
+				$item.append( $icon )
+					.append( $title )
+					.append( $url )
+					.append( $('<span class=iconurl></span>').width( iurlWidth ) )
+					.append( $date )
+					.append( $br );
+				var $stico = $('<img class=icon style="margin-left:0">');
 				var date = new Date();
 				var index = 0;
 				return function( node, now ){
-					if( node===false ){ $folder.remove(); $item.remove(); return; }
-					date.setTime( node.dateAdded ||0 );
+					if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
 					if( node.child ){
-						$folTitle.text( node.title ).attr('title', node.title);
-						$folDate.text( myFmt(date,now) );
-						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
-						$smry.text( smry );
 						var $e = $folder.clone(true).attr('id','item'+node.id);
+						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
+						$e.children('.summary').text( smry );
 					}
 					else{
-						$icon.attr('src', node.icon ||'item.png');
-						$title.text( node.title ).attr('title', node.title);
-						$url.text( node.url );
-						$iurl.text( node.icon );
-						$date.text( myFmt(date,now) );
 						var $e = $item.clone(true).attr('id','item'+node.id);
+						$e.children('.icon').attr('src', node.icon ||'item.png');
+						$e.children('.url').text( node.url );
+						var st = results[node.url];
+						if( st ){
+							$e.children('.iconurl').removeClass('iconurl').addClass('status')
+							.text( st.msg +(st.url.length? ' ≫'+st.url :'') )
+							.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
+						}
+						else $e.children('.iconurl').text( node.icon );
 					}
+					date.setTime( node.dateAdded ||0 );
+					$e.children('.date').text( myFmt(date,now) );
+					$e.children('.title').text( node.title ).attr('title',node.title);
 					if( index++ %2 ) $e.addClass('bgcolor');
+					if( st && st.ico==='D' ) $e.addClass('dead');
 					items.appendChild( $e[0] );
 				};
 			}();
@@ -1212,8 +1250,11 @@ $('#newitem').on({
 							$('#item'+node.id).find('.title').text( data.title );
 					}
 					if( data.icon.length ){
-						if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
-							$('#item'+node.id).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
+						if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
+							$('#item'+node.id)
+							.find('.icon').attr('src',data.icon).end()
+							.find('.iconurl').text( data.icon );
+						}
 					}
 				}
 				,complete:function(){ tree.modifing(false); }
@@ -1439,20 +1480,19 @@ $('#border').mousedown(function(ev){
 // TODO:タイトル欄を右に広げたら行き止まり、左に広げても幅が変わらないのを改善したい…
 $('.itemborder').mousedown(function(ev){
 	$('#editbox').blur();
-	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.iconurl/.place/.status)
+	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.misc)
 	var $lasthead = $('#itemhead span').last();	// 右端の項目ヘッダ(.date)
 	var $attr='', $smry='';
 	if( $attrhead.hasClass('title') ){
-		$attr = $('#itembox').find('.title');
+		$attr = $('#items').find('.title');
 	}else{
 		var selector = '.'+$attrhead.attr('class');
-		// .iconurlと.placeの時は.statusが混ざってる場合がある
-		if( selector=='.iconurl' || selector=='.place' ) selector += ', .status';
-		$attr = $('#itembox').find( selector );
-		$smry = $('#itembox').find('.summary');
+		if( selector=='.misc' ) selector = '.iconurl, .place, .status';
+		$attr = $('#items').find( selector );
+		$smry = $('#items').find('.summary');
 	}
 	$attrhead.addClass('drag');
-	var $last = $('#itembox').find('.'+$lasthead.attr('class'));
+	var $last = $('#items').find('.'+$lasthead.attr('class'));
 	var attrheadWidth = $attrhead.width();
 	var lastheadWidth = $lasthead.width();
 	var attrWidth = $attr.length? $attr.width() : 0;
@@ -1582,7 +1622,7 @@ function resize(){
 				.width( itemboxWidth )
 				.find('.title').width( titleWidth ).end()
 				.find('.url').width( urlWidth ).end()
-				.find('.iconurl, .place, .status').width( iconWidth ).end()
+				.find('.misc').width( iconWidth ).end()
 				.find('.date').width( dateWidth -38 ).end()			// -38px適当float対策
 				.outerHeight()
 			- $('#deadinfo')
@@ -2256,7 +2296,7 @@ function itemContextMenu(ev){
 										if( tree.nodeAttr( nid,'icon',$iconurl.val() ) >1 )
 											$(item)
 											.children('.icon').attr('src',$icon.attr('src')).end()
-											.children('.iconurl').text($iconurl.val());
+											.children('.iconurl').text( $iconurl.val() );
 									})
 								)
 							)
@@ -2343,12 +2383,13 @@ function itemContextMenu(ev){
 		}));
 	}
 	else{
-		if( url.length ){
+		if( url.length && !(itemList('?')==='deads' && itemList('?timer')) ){
 			$box.append($('<a><img src=skull.png>リンク切れ調査</a>').click(function(){
 				$menu.hide(); itemList('poke');
 			}));
 		}
-		if( itemList('?')=='deads' ){
+		var $status = $(item).children('.status');
+		if( $status.length ){
 			$box.append($('<a><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
 				$menu.hide();
 				var ico = $(item).children('.status').children('.icon').attr('src');
@@ -2360,22 +2401,22 @@ function itemContextMenu(ev){
 						$item.removeClass('select');
 				}
 			}));
-		}
-		if( $(item).children('.status').text().match(/≫.+/) ){
-			$box.append($('<a><img src=pen.png>転送先URLに書き換え</a>').click(function(){
-				$menu.hide();
-				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
-					var $item = $(items[i]);
-					if( $item.hasClass('select') ){
-						var newurl = $item.children('.status').text().match(/≫.+/);
-						if( newurl ){
-							newurl = newurl[0].replace(/≫/,'');
-							if( tree.nodeAttr( items[i].id.slice(4),'url',newurl ) >1 )
-								$item.children('.url').text( newurl );
+			if( $status.text().match(/≫.+/) ){
+				$box.append($('<a><img src=pen.png>転送先URLに書き換え</a>').click(function(){
+					$menu.hide();
+					for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+						var $item = $(items[i]);
+						if( $item.hasClass('select') ){
+							var newurl = $item.children('.status').text().match(/≫.+/);
+							if( newurl ){
+								newurl = newurl[0].replace(/≫/,'');
+								if( tree.nodeAttr( items[i].id.slice(4),'url',newurl ) >1 )
+									$item.children('.url').text( newurl );
+							}
 						}
 					}
-				}
-			}));
+				}));
+			}
 		}
 		if( itemList('?')=='deads' ){
 			$box.append($('<a><img src=minus.png>一覧から除外</a>').click(function(){
@@ -2673,8 +2714,11 @@ function edit( element, opt ){
 														$('#item'+nid).find('.title').text( data.title );
 												}
 												if( data.icon.length && (!node.icon|| !node.icon.length) ){
-													if( tree.nodeAttr( nid,'icon',data.icon ) >1 )
-														$('#item'+nid).find('.icon').attr('src',data.icon).end().find('.iconurl').text(data.icon);
+													if( tree.nodeAttr( nid,'icon',data.icon ) >1 ){
+														$('#item'+nid)
+														.find('.icon').attr('src',data.icon).end()
+														.find('.iconurl').text( data.icon );
+													}
 												}
 											}
 											,complete:function(){ tree.modifing(false); }
@@ -2832,9 +2876,11 @@ function clipboardTo( pnode, index ){
 									$('#item'+node.id).find('.title').text( data.title );
 							}
 							if( data.icon.length ){
-								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 )
-									$('#item'+node.id).find('.icon').attr('src',data.icon).end()
-									.find('.iconurl').text(data.icon);
+								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
+									$('#item'+node.id)
+									.find('.icon').attr('src',data.icon).end()
+									.find('.iconurl').text( data.icon );
+								}
 							}
 						}
 						,complete:function(){ complete++; }

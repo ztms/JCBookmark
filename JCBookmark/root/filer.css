@@ -134,9 +134,7 @@ body {
 	color:#888;
 }
 #itemhead .url,
-#itemhead .iconurl,
-#itemhead .status,
-#itemhead .place,
+#itemhead .misc,
 #itemhead .date {
 	color:#888;
 	padding-left:5px;
