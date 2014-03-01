@@ -604,18 +604,19 @@ var itemList = function(){
 	var kind = 'child';						// アイテム欄の種類
 	var timer = null;						// setTimeoutID
 	var ajaxer = null;						// ajax発行関数
-	var ajaxs = [];							// ajax配列
-	var queue = [];							// ajax用ノード配列キュー
+	var $ajax = null;						// ajaxオブジェクト
+	var queue = [];							// ajax待ちノード配列キュー
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
 	$('#finding').offset($('#keyword').offset()).progressbar();
+	// 中断終了処理
 	function finalize( arg0 ){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
 		// ajax中止:アイテムリンク切れ調査は止めず・フォルダリンク切れ調査は止める
 		if( kind==='deads' || arg0==='deads' ){
-			if( ajaxer ) ajaxer(false), ajaxer=null;
-			for( var i=ajaxs.length-1; i>=0; i-- ) if( ajaxs[i] ) ajaxs[i].abort();
-			ajaxs.length = queue.length = 0;
+			if( ajaxer ) ajaxer(false) ,ajaxer=null;
+			if( $ajax ) $ajax.abort() ,$ajax=null;
+			queue.length = 0;
 		}
 		// 検索終了
 		$('#itembox').children('.spacer').empty();
@@ -624,6 +625,60 @@ var itemList = function(){
 		$('#find').show();
 		// 解放
 		if( $itemAppend ) $itemAppend(false) ,$itemAppend=null;
+	}
+	// リンク切れ調査URL並列数の調節(ネット回線が速いほど並列数を多く)
+	// ・並列数は少なめから開始
+	// ・すべて正常/注意/死亡だった(＝通信が行われた)時のかかった時間を記録する
+	// ・かかった時間の平均値が、2秒以内になるよう並列数を増減させる
+	// ・2秒という値はサーバ側の内部タイムアウト値4秒(固定)からなんとなく
+	// ・ただし受信タイムアウトが発生した場合はすぐさま並列数を半減させる
+	// ・NEGiESで帯域制限かけて並列数が増減することを確認する
+	// TODO:この方式だと並列数が多くてぜんぶ正常/注意/死亡でない結果が増えてくると時間記録が
+	// スルーされて調節がぜんぜんされないことになってしまう。サーバ側でURL毎に時間を計測して
+	// 結果を返してもいいけど、それを考慮して並列数に反映する方式？アルゴリズム？が難しい。。
+	var parallel = 5;	// リンク切れ調査URL並列数
+	var timelog = [];	// 時間記録(並列数の調節用)
+	function adjust( st ,time ){
+		var recvTimeout = false;
+		for( var i=st.length-1; i>=0; i-- ){
+			switch( st[i].ico ){
+			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
+			case '?':
+				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多)
+					recvTimeout = true;
+					break;
+				}
+			default: return;
+			}
+		}
+		if( st.length==parallel ){
+			// 時間記録
+			timelog.push( time );
+			// 直近10回以上50回までの
+			if( timelog.length >9 ){
+				while( timelog.length >50 ) timelog.shift();
+				// 平均時間
+				var ave=0.0;
+				for( var i=timelog.length-1; i>=0; i-- ) ave += timelog[i];
+				ave /= timelog.length;
+				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
+				// 新しい並列数
+				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
+				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
+				if( para != parallel ){
+					// 変更
+					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
+					parallel = para;
+					timelog = [];
+				}
+			}
+			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
+				var para = Math.floor( parallel /2 );	// 並列数を半減
+				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
+				parallel = para;
+				timelog = [];
+			}
+		}
 	}
 	// リンク切れ調査結果アイコン画像
 	function stIcoSrc( st ){
@@ -795,13 +850,11 @@ var itemList = function(){
 			// ajax発行
 			if( !ajaxer ){
 				var $stico = $('<img class=icon style="margin-left:0">');
-				ajaxer = function( aix ){
-					if( aix===false ){ $stico.remove(); return; }
-					if( ajaxs[aix] ) return;
+				ajaxer = function( Q ){
+					if( Q===false ){ $stico.remove(); return; }
+					if( $ajax ) return;
 					var nodes = [] ,reqBody = '';
-					// 負荷制御:サーバ側3並列
-					// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
-					for( var i=3; i>0 && queue.length; i-- ){
+					for( var i=parallel; i>0 && queue.length; i-- ){
 						var node = tree.node( queue.shift() );
 						if( node ){
 							nodes.push( node );
@@ -809,7 +862,8 @@ var itemList = function(){
 						}
 					}
 					if( reqBody ){
-						ajaxs[aix] = $.ajax({
+						var start = new Date(); // 測定
+						$ajax = $.ajax({
 							type:'post'
 							,url:':poke'
 							,data:reqBody
@@ -839,15 +893,14 @@ var itemList = function(){
 									.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
 									if( st.ico==='D' ) $st.parent().addClass('dead');
 								}
+								adjust( data ,(new Date()).getTime() - start.getTime() );
 							}
-							,complete:function(){ ajaxs[aix]=null; if( ajaxer ) ajaxer(aix); }
+							,complete:function(){ $ajax=null; if( ajaxer ) ajaxer(true); }
 						});
 					}
 				};
 			}
-			// 負荷制御:クライアント側3並列
-			// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
-			for( var i=0; i<3; i++ ) ajaxer(i);
+			ajaxer(true);
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
@@ -958,18 +1011,17 @@ var itemList = function(){
 			}();
 			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
-			ajaxer = function( aix ){
-				if( aix===false ) return;
+			ajaxer = function( Q ){
+				if( Q===false ) return;
 				var nodes = [] ,reqBody = '';
-				// 負荷制御:サーバ側3並列
-				// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
-				for( var i=3; i>0 && qix < queue.length; i-- ){
+				for( var i=parallel; i>0 && qix < queue.length; i-- ){
 					var node = queue[qix++];
 					nodes.push( node );
 					reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
 				}
 				if( reqBody ){
-					ajaxs[aix] = $.ajax({
+					var start = new Date(); // 測定
+					$ajax = $.ajax({
 						type:'post'
 						,url:':poke'
 						,data:reqBody
@@ -997,14 +1049,13 @@ var itemList = function(){
 								}
 								$itemAppend( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
 							}
+							adjust( data ,(new Date()).getTime() - start.getTime() );
 						}
-						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(aix); }
+						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(true); }
 					});
 				}
 			};
-			// 負荷制御:クライアント側3並列
-			// TODO:1Mbpsだとしばしばタイムアウト発生してしまう
-			for( var i=0; i<3; i++ ) ajaxer(i);
+			ajaxer(true);
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
 			(function waiter(){
