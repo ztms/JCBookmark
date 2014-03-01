@@ -638,13 +638,13 @@ var itemList = function(){
 	// 結果を返してもいいけど、それを考慮して並列数に反映する方式？アルゴリズム？が難しい。。
 	var parallel = 5;	// リンク切れ調査URL並列数
 	var timelog = [];	// 時間記録(並列数の調節用)
-	function adjust( st ,time ){
+	function paraAdjust( st ,time ){
 		var recvTimeout = false;
 		for( var i=st.length-1; i>=0; i-- ){
-			switch( st[i].ico ){
+			switch( st[i].grp ){
 			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
 			case '?':
-				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多)
+				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多かも)
 					recvTimeout = true;
 					break;
 				}
@@ -654,9 +654,9 @@ var itemList = function(){
 		if( st.length==parallel ){
 			// 時間記録
 			timelog.push( time );
-			// 直近10回以上50回までの
-			if( timelog.length >9 ){
-				while( timelog.length >50 ) timelog.shift();
+			// 直近5回以上20回までの
+			if( timelog.length >4 ){
+				while( timelog.length >20 ) timelog.shift();
 				// 平均時間
 				var ave=0.0;
 				for( var i=timelog.length-1; i>=0; i-- ) ave += timelog[i];
@@ -682,7 +682,7 @@ var itemList = function(){
 	}
 	// リンク切れ調査結果アイコン画像
 	function stIcoSrc( st ){
-		switch( st.ico ){
+		switch( st.grp ){
 		case 'O': return 'ok.png';		// 正常
 		case 'E': return 'delete.png';	// エラー
 		case 'D': return 'skull.png';	// 死亡
@@ -747,7 +747,7 @@ var itemList = function(){
 					$e.children('.date').text( myFmt(date,now) );
 					$e.children('.title').text( node.title ).attr('title', node.title);
 					if( index++ %2 ) $e.addClass('bgcolor');
-					if( st && st.ico==='D' ) $e.addClass('dead');
+					if( st && st.grp==='D' ) $e.addClass('dead');
 					items.appendChild( $e[0] );
 				};
 			}();
@@ -891,9 +891,9 @@ var itemList = function(){
 									}
 									$st.text( st.msg +(st.url.length? ' ≫'+st.url :'') )
 									.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
-									if( st.ico==='D' ) $st.parent().addClass('dead');
+									if( st.grp==='D' ) $st.parent().addClass('dead');
 								}
-								adjust( data ,(new Date()).getTime() - start.getTime() );
+								paraAdjust( data ,(new Date()).getTime() - start.getTime() );
 							}
 							,complete:function(){ $ajax=null; if( ajaxer ) ajaxer(true); }
 						});
@@ -1040,7 +1040,7 @@ var itemList = function(){
 								var st = data[i];
 								if( node.url ) results[node.url] = st;
 								var cls = '';
-								switch( st.ico ){
+								switch( st.grp ){
 								case 'O': count.ok++; continue;				// 正常
 								case 'E': count.err++; break;				// エラー
 								case 'D': count.dead++; cls='dead'; break;	// 死亡
@@ -1049,7 +1049,7 @@ var itemList = function(){
 								}
 								$itemAppend( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
 							}
-							adjust( data ,(new Date()).getTime() - start.getTime() );
+							paraAdjust( data ,(new Date()).getTime() - start.getTime() );
 						}
 						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(true); }
 					});
@@ -1135,7 +1135,7 @@ var itemList = function(){
 					$e.children('.date').text( myFmt(date,now) );
 					$e.children('.title').text( node.title ).attr('title',node.title);
 					if( index++ %2 ) $e.addClass('bgcolor');
-					if( st && st.ico==='D' ) $e.addClass('dead');
+					if( st && st.grp==='D' ) $e.addClass('dead');
 					items.appendChild( $e[0] );
 				};
 			}();

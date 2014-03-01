@@ -16,6 +16,14 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
+// TODO:しばしばソケットエラー10053(WSAECONNABORTED)が発生するが、ソケット切断が早すぎた感じで特に動作上は
+// 問題ない場合も多い。が、Win7+IE11環境でものすごく不安定でブラウザ側にデータ届かない症状が深刻化する事が
+// ある。その場合も10053が多発はしている。どうもリクエスト受信せずに切断になってしまうコネクションがあるよ
+// うだ。なぜかSSLなら発生せず非SSLで頻発する。自分PCのVirtualBoxのWin7+IE11なら特に問題ない。ウイルス対策
+// ソフトの影響、無線LANの影響、ネット回線の影響とか・・？
+// TODO:Win7+IE11でfiler.htmlのF5アタックでサーバ落ちる。Chromeでも落ちた。自分PCのVirtualBoxでも一度だけ
+// 発生して、ダンプファイルを見てみたら、ClientShutdown()->free()の先でエラーになって落ちているような？
+// しかしWinDbgで変数の中身を見たりするやり方がわからない・・
 //	TODO:Operaブックマーク読み込みはBookSyncのソースが参考にならないかな・・？
 //	TODO:Webサイトの「Facebookアカウントでログイン」「Twitterアカウントでログイン」を実装できる？
 //	OAuth認証という技術？仕組み？らしい。
@@ -2152,9 +2160,9 @@ typedef struct {
 
 // 死活確認結果報告用
 typedef struct {
-	UCHAR	ico;		// アイコン用識別子
+	UCHAR	grp;		// グループ識別文字
 	UCHAR	msg[256];	// メッセージ
-	UCHAR*	newurl;		// 転送結果URL
+	UCHAR*	newurl;		// 転送先(変更)URL
 } PokeReport;
 
 // 外部クッキー
@@ -2181,7 +2189,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 	// プロトコル
 	if( !url || !*url ){
 		LogW(L"URLが空です");
-		if( rp ) rp->ico='E', strcpy(rp->msg,"URLが空です");
+		if( rp ) rp->grp='E' ,strcpy(rp->msg,"URLが空です");
 		goto fin;
 	}
 	if( strnicmp(url,"http://",7)==0 ){
@@ -2195,13 +2203,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 		if( ssl_ctx ) isSSL = TRUE;
 		else{
 			LogW(L"SSL利用できません");
-			if( rp ) rp->ico='?', strcpy(rp->msg,"SSL利用できません");
+			if( rp ) rp->grp='?' ,strcpy(rp->msg,"SSL利用できません");
 			goto fin;
 		}
 	}
 	else{
 		LogA("不明なプロトコル:%s",url);
-		if( rp ) rp->ico='E', strcpy(rp->msg,"不明なプロトコル");
+		if( rp ) rp->grp='E' ,strcpy(rp->msg,"不明なプロトコル");
 		goto fin;
 	}
 	// ホスト名
@@ -2248,22 +2256,22 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// TODO:Connection Refused もここを通るようだが、WSAGetLastError()が
 									// WSAECONNREFUSED ではなく WSAEWOULDBLOCK になるのはなぜ・・・
 									LogA("[%u]connect失敗%u(%s:%s)",sock,WSAGetLastError(),host,port);
-									if( rp ) rp->ico='E', strcpy(rp->msg,"接続できません");
+									if( rp ) rp->grp='E' ,strcpy(rp->msg,"接続できません");
 								}
 							}
 							else{
 								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
-								if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+								if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 							}
 							break;
 						case WSA_WAIT_TIMEOUT:
 							LogA("[%u]connectタイムアウト(%s:%s)",sock,host,port);
-							if( rp ) rp->ico='?', strcpy(rp->msg,"接続タイムアウト");
+							if( rp ) rp->grp='?' ,strcpy(rp->msg,"接続タイムアウト");
 							break;
 						case WSA_WAIT_FAILED:
 						default:
 							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
-							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 						}
 					}
 					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
@@ -2271,7 +2279,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 				}
 				else{
 					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
-					if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+					if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 				}
 				WSACloseEvent( ev );
 				// 送受信
@@ -2308,13 +2316,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
 								else LogA("[%u]SSL_connect(%s:%s)=%d,エラー%d",sock,host,port,ret,err);
-								if( rp ) rp->ico='?', strcpy(rp->msg,"SSL接続できません");
+								if( rp ) rp->grp='?' ,strcpy(rp->msg,"SSL接続できません");
 								ssl_ok = FALSE;
 							}
 						}
 						else{
 							LogW(L"[%u]SSL_newエラー",sock);
-							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 							ssl_ok = FALSE;
 						}
 					}
@@ -2486,11 +2494,11 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								}
 							}
 							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
-							if( !*rsp->buf && rp ) rp->ico='?', strcpy(rp->msg,"受信タイムアウト");
+							if( !*rsp->buf && rp ) rp->grp='?' ,strcpy(rp->msg,"受信タイムアウト");
 						}
 						else{
 							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
-							if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 						}
 					}
 					if( sslp ){
@@ -2503,19 +2511,19 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			}
 			else{
 				LogA("ホスト%sが見つかりません",host);
-				if( rp ) rp->ico='?', strcpy(rp->msg,"ホストが見つかりません");
+				if( rp ) rp->grp='?' ,strcpy(rp->msg,"ホストが見つかりません");
 			}
 			if( addr ) FreeAddrInfoA( addr );
 			free( host );
 		}
 		else{
 			LogW(L"L%u:strdupエラー",__LINE__);
-			if( rp ) rp->ico='?', strcpy(rp->msg,"サーバー内部エラー");
+			if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
 		}
 	}
 	else{
 		LogA("不正なURL:%s",url);
-		if( rp ) rp->ico='E', strcpy(rp->msg,"不正なURL");
+		if( rp ) rp->grp='E' ,strcpy(rp->msg,"不正なURL");
 	}
 fin:
 	if( rsp ){
@@ -3223,7 +3231,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 		if( *abort ) goto fin;
 		if( hop++ >9 ){
 			LogW(L"転送回数が多すぎます");
-			if( rp ) rp->ico='?', strcpy(rp->msg,"転送が多すぎます");
+			if( rp ) rp->grp='?' ,strcpy(rp->msg,"転送が多すぎます");
 			goto fin;
 		}
 		rsp = HTTPGetContentDecode( rsp );
@@ -3280,7 +3288,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 													goto retry;
 												}
 											}
-											else{ if( rp ) rp->ico='E', strcpy(rp->msg,"サーバー内部エラー"); }
+											else{ if( rp ) rp->grp='E' ,strcpy(rp->msg,"サーバー内部エラー"); }
 											*endtag='>'; // 元に戻す
 											goto fin;
 										}
@@ -3298,9 +3306,9 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// それを転送とみなさないため。
 				if( rp ){
 					if( newurl && urlcmp(newurl,url0) )
-						rp->ico='!';
+						rp->grp='!';
 					else
-						rp->ico='O', free(newurl), newurl=NULL;
+						rp->grp='O' ,free(newurl) ,newurl=NULL;
 				}
 				break;
 			case '3': // 転送
@@ -3340,12 +3348,12 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 								goto retry;
 							}
 						}
-						else{ if( rp ) rp->ico='E', strcpy(rp->msg,"サーバー内部エラー"); }
+						else{ if( rp ) rp->grp='E' ,strcpy(rp->msg,"サーバー内部エラー"); }
 						goto fin;
 					}
 					else LogW(L"3xxリダイレクト応答でLocationヘッダがありません");
 				}
-				if( rp ) rp->ico='!';
+				if( rp ) rp->grp='!';
 				break;
 			case '4': // クライアントエラー
 				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
@@ -3365,32 +3373,32 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				switch( code[1] ){
 				case '0':
 					switch( code[2]) {
-					case '4':if( rp ) rp->ico='D'; break;	// 404 Not Found =死亡
-					default: if( rp ) rp->ico='E';			// 40x =エラー
+					case '4':if( rp ) rp->grp='D'; break;	// 404 Not Found =死亡
+					default: if( rp ) rp->grp='E';			// 40x =エラー
 					}
 					break;
 				case '1':
 					switch( code[2]) {
-					case '0':if( rp ) rp->ico='D'; break;	// 410 Gone =死亡
-					default: if( rp ) rp->ico='E';			// 41x =エラー
+					case '0':if( rp ) rp->grp='D'; break;	// 410 Gone =死亡
+					default: if( rp ) rp->grp='E';			// 41x =エラー
 					}
 					break;
-				default: if( rp ) rp->ico='E';				// 4xx =エラー
+				default: if( rp ) rp->grp='E';				// 4xx =エラー
 				}
 				break;
 			case '5': // サーバーエラー
-				if( rp ) rp->ico='E'; // Error
+				if( rp ) rp->grp='E'; // Error
 				break;
 			//case '1': // 情報(HTTP/1.1以降)
 			default:
-				if( rp ) rp->ico='!';
+				if( rp ) rp->grp='!';
 			}
 			if( rp ){
 				strncpy( rp->msg ,code ,sizeof(rp->msg) );
 				rp->msg[sizeof(rp->msg)-1]='\0';
 			}
 		}
-		else{ if( rp ) rp->ico='!', strcpy(rp->msg,"不正なHTTP応答"); }
+		else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"不明なHTTP応答"); }
 	}
 fin:
 	CookieDestroy( cookie );
@@ -3428,10 +3436,22 @@ unsigned __stdcall poke( void* tp )
 	// URLの#以降を除去
 	if( hash ) *hash = '\0';
 	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,&(ctx->repo) );
+	// #復活
+	if( hash ){
+		*hash = '#';
+		// 新URLに旧URLの#以降を付加
+		if( ctx->repo.newurl ){
+			UCHAR* newurl = strjoin( ctx->repo.newurl ,hash ,0,0,0 );
+			if( newurl ){
+				free( ctx->repo.newurl );
+				ctx->repo.newurl = newurl;
+			}
+		}
+	}
 	if( rsp ) free( rsp );
 	/*
 	// 死亡(404等)で転送URLもなかったら上位パスを確認
-	if( ctx->repo.ico=='D' && !ctx->repo.newurl ){
+	if( ctx->repo.grp=='D' && !ctx->repo.newurl ){
 		UCHAR* upper = strdup( ctx->url );
 		if( upper ){
 			UCHAR* path = strstr(upper,"://");
@@ -3451,7 +3471,7 @@ unsigned __stdcall poke( void* tp )
 						HTTPGet* rsp = httpGETs( upper ,ctx->userAgent ,ctx->pAbort ,&repo );
 						if( rsp ){
 							free( rsp );
-							if( repo.ico=='O' || repo.ico=='!' ){
+							if( repo.grp=='O' || repo.grp=='!' ){
 								if( repo.newurl ){
 									ctx->upper = strdup( repo.newurl );
 									free( repo.newurl );
@@ -3470,18 +3490,6 @@ unsigned __stdcall poke( void* tp )
 		}
 	}
 	*/
-	// #復活
-	if( hash ){
-		*hash = '#';
-		// 新URLに旧URLの#以降を付加
-		if( ctx->repo.newurl ){
-			UCHAR* newurl = strjoin( ctx->repo.newurl ,hash ,0,0,0 );
-			if( newurl ){
-				free( ctx->repo.newurl );
-				ctx->repo.newurl = newurl;
-			}
-		}
-	}
 	_endthreadex(0);
 	return 0;
 }
@@ -3494,7 +3502,7 @@ PokeCTX* PokeStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		ctx->userAgent		= userAgent;
 		ctx->pAbort			= pAbort;
 		//ctx->upper			= NULL;
-		ctx->repo.ico		= '?';
+		ctx->repo.grp		= '?';
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
 		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)ctx ,0,NULL );
@@ -3541,12 +3549,12 @@ unsigned __stdcall poker( void* tp )
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
 		for( ctx=ctx0 ,count=0; ctx; ctx=ctx->next ,count++ ){
 			PokeReport* rp = &(ctx->repo);
-			LogA("[%u]URL%u:%c,%s,%s",Num(cp),count,rp->ico,rp->msg,rp->newurl?rp->newurl:"");
+			LogA("[%u]URL%u:%c,%s,%s",Num(cp),count,rp->grp,rp->msg,rp->newurl?rp->newurl:"");
 			BufferSendf( &(cp->rsp.body)
-					//,"%s{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"upper\":\"%s\"}"
-					,"%s{\"ico\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
+					//,"%s{\"grp\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"upper\":\"%s\"}"
+					,"%s{\"grp\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
 					,(ctx==ctx0)? "":","
-					,rp->ico ,rp->msg ,rp->newurl? rp->newurl :"" //,ctx->upper? ctx->upper :""
+					,rp->grp ,rp->msg ,rp->newurl? rp->newurl :"" //,ctx->upper? ctx->upper :""
 			);
 		}
 		BufferSend( &(cp->rsp.body) ,"]" ,1 );
@@ -3587,15 +3595,29 @@ typedef struct AnalyCTX {
 	HANDLE		thread;		// in スレッドハンドル
 	UCHAR*		pageTitle;	// out ページタイトル
 	UCHAR*		favicon;	// out ページファビコン
+	PokeReport	repo;		// out 死活結果
 } AnalyCTX;
 unsigned __stdcall analyze( void* tp )
 {
 	AnalyCTX* ctx = tp;
 	UCHAR* hash = strchr(ctx->url,'#');
 	HTTPGet* rsp;
+	// URLの#以降を除去
 	if( hash ) *hash = '\0';
-	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,0 );
-	if( hash ) *hash = '#';
+	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,&(ctx->repo) );
+	// #復活
+	if( hash ){
+		*hash = '#';
+		// 新URLに旧URLの#以降を付加
+		if( ctx->repo.newurl ){
+			UCHAR* newurl = strjoin( ctx->repo.newurl ,hash ,0,0,0 );
+			if( newurl ){
+				free( ctx->repo.newurl );
+				ctx->repo.newurl = newurl;
+			}
+		}
+	}
+	// タイトル,favicon取得
 	if( rsp ){
 		UCHAR* title=NULL, *icon=NULL;
 		if( *ctx->pAbort ) goto fin;
@@ -3743,13 +3765,16 @@ AnalyCTX* AnalyStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 {
 	AnalyCTX* ctx = malloc( sizeof(AnalyCTX) );
 	if( ctx ){
-		ctx->next		= NULL;
-		ctx->url		= url;
-		ctx->userAgent	= userAgent;
-		ctx->pAbort		= pAbort;
-		ctx->pageTitle	= NULL;
-		ctx->favicon	= NULL;
-		ctx->thread		= (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)ctx ,0,NULL );
+		ctx->next			= NULL;
+		ctx->url			= url;
+		ctx->userAgent		= userAgent;
+		ctx->pAbort			= pAbort;
+		ctx->pageTitle		= NULL;
+		ctx->favicon		= NULL;
+		ctx->repo.grp		= '?';
+		strcpy(ctx->repo.msg,"不明な処理結果です");
+		ctx->repo.newurl	= NULL;
+		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)ctx ,0,NULL );
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(AnalyCTX));
 	return ctx;
@@ -3792,12 +3817,14 @@ unsigned __stdcall analyzer( void* tp )
 	if( !cp->abort ){
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
 		for( ctx=ctx0 ,count=0; ctx; ctx=ctx->next ,count++ ){
+			PokeReport* rp = &(ctx->repo);
 			LogA("[%u]URL%u:%s,%s",Num(cp),count,ctx->pageTitle?ctx->pageTitle:"",ctx->favicon?ctx->favicon:"");
 			BufferSendf( &(cp->rsp.body)
-					,"%s{\"title\":\"%s\",\"icon\":\"%s\"}"
+					,"%s{\"title\":\"%s\",\"icon\":\"%s\",\"grp\":\"%c\",\"msg\":\"%s\"}"
 					,(ctx==ctx0)? "":","
 					,ctx->pageTitle? ctx->pageTitle :""
 					,ctx->favicon? ctx->favicon :""
+					,rp->grp ,rp->msg
 			);
 		}
 		BufferSend( &(cp->rsp.body) ,"]" ,1 );
@@ -3812,6 +3839,7 @@ unsigned __stdcall analyzer( void* tp )
 	for( ctx=ctx0; ctx; ctxN=ctx->next ,free(ctx) ,ctx=ctxN ){
 		if( ctx->pageTitle ) free( ctx->pageTitle );
 		if( ctx->favicon ) free( ctx->favicon );
+		if( ctx->repo.newurl ) free( ctx->repo.newurl );
 	}
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
@@ -8788,8 +8816,6 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		// wp = イベントが発生したソケット(SOCKET)
 		// WSAGETSELECTEVENT(lp) = ソケットイベント番号(WORD)
 		// WSAGETSELECTERROR(lp) = エラー番号(WORD)
-		// TODO:しばしばAccept後のソケットでエラー10053(WSAECONNABORTED)が発生してFD_CLOSEも来て切断され、
-		// おそらくそのせいでブラウザ側でエラーになってしまう。回避策はあるのか？
 		if( WSAGETSELECTERROR(lp) ) LogW(L"[:%u]ソケットイベントエラー%u",(SOCKET)wp,WSAGETSELECTERROR(lp));
 		switch( WSAGETSELECTEVENT(lp) ){
 		//	http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html

@@ -17,7 +17,6 @@ var $debug = $('<div></div>').css({
 		,background:'#fff'
 		,border:'1px solid #000'
 		,padding:2
-		,'font-size':12
 }).appendTo(document.body);
 var start = new Date(); // 測定
 */
@@ -2627,42 +2626,82 @@ function modifySave( arg ){
 }
 // favicon解析してから移行データ取り込み
 function analyzer( nodeTop ){
+	var timer = null;		// タイマーID
 	var total = 0;			// URL総数
-	var ajaxs = [];			// ajax配列
-	var queue = [];			// ノード配列
+	var $ajax = null;		// ajaxオブジェクト
+	var queue = [];			// ajax待ちノード配列
 	var qix = 0;			// ノード配列インデックス
 	var complete = 0;		// 解析完了数
-	var timer = null;		// タイマーID
-	var ajaxer = function( aix ){
+	var parallel = 5;		// リンク切れ調査URL並列数(filer.jsとおなじ)
+	var timelog = [];		// 時間記録(並列数の調節用)(filer.jsとおなじ)
+	function paraAdjust( st ,time ){
+		var recvTimeout = false;
+		for( var i=st.length-1; i>=0; i-- ){
+			switch( st[i].grp ){
+			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
+			case '?':
+				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多かも)
+					recvTimeout = true;
+					break;
+				}
+			default: return;
+			}
+		}
+		if( st.length==parallel ){
+			// 時間記録
+			timelog.push( time );
+			// 直近5回以上20回までの
+			if( timelog.length >4 ){
+				while( timelog.length >20 ) timelog.shift();
+				// 平均時間
+				var ave=0.0;
+				for( var i=timelog.length-1; i>=0; i-- ) ave += timelog[i];
+				ave /= timelog.length;
+				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
+				// 新しい並列数
+				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
+				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
+				if( para != parallel ){
+					// 変更
+					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
+					parallel = para;
+					timelog = [];
+				}
+			}
+			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
+				var para = Math.floor( parallel /2 );	// 並列数を半減
+				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
+				parallel = para;
+				timelog = [];
+			}
+		}
+	}
+	var ajaxer = function(){
 		var nodes = [] ,reqBody = '';
-		// 負荷制御:サーバ側3並列
-		// TODO:どのくらいまで並列数増やして問題ないか(受信タイムアウトなど発生しないか)は
-		// PC性能・回線太さ・他アプリ通信状況などに依存するので、理想的には並列数を動的に
-		// 変えて最適な値で動作できるとよいが、その最適値をどうやって決めるのか難しい。
-		// TODO:負荷が高くて受信タイムアウトになった場合はリトライしたいところだが、それも
-		// 判定が難しい…。
-		for( var i=3; i>0 && qix < queue.length; i-- ){
+		for( var i=parallel; i>0 && qix < queue.length; i-- ){
 			var node = queue[qix++];
 			nodes.push( node );
 			reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えん)
 		}
 		if( reqBody ){
-			ajaxs[aix] = $.ajax({
+			var start = new Date(); // 測定
+			$ajax = $.ajax({
 				type:'post'
 				,url:':analyze'
 				,data:reqBody
 				,success:function(data){
 					// data.length==nodes.length のはずだが…
 					for( var i=0; i<nodes.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
+					paraAdjust( data ,(new Date()).getTime() - start.getTime() );
 				}
-				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(aix); }
+				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(); }
 			});
 		}
 	};
 	function skip(){
 		clearTimeout(timer) ,timer=null, ajaxer=null;
-		for( var i=ajaxs.length-1; i>=0; i-- ) ajaxs[i].abort();
-		ajaxs.length = queue.length = 0;
+		if( $ajax ) $ajax.abort() ,$ajax=null;
+		queue.length = 0;
 		$('#dialog').dialog('destroy');
 		importer( nodeTop );
 	}
@@ -2690,8 +2729,8 @@ function analyzer( nodeTop ){
 				queue.push( node );
 		}
 	}( nodeTop ));
-	// 負荷制御:クライアント側4並列
-	for( var i=0; i<4; i++ ) ajaxer(i);
+	// ajax開始
+	ajaxer();
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+queue.length+')');
@@ -2699,7 +2738,7 @@ function analyzer( nodeTop ){
 	// 完了待ちループ
 	(function waiter(){
 		if( complete < queue.length ){
-			$count.text('('+complete+'/'+queue.length+')');
+			$count.text('['+ complete +'/'+ queue.length +']');
 			$pgbar.progressbar('value',complete*100/queue.length);
 			timer = setTimeout(waiter,500);
 			return;
