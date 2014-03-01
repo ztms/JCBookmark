@@ -21,9 +21,6 @@
 // ある。その場合も10053が多発はしている。どうもリクエスト受信せずに切断になってしまうコネクションがあるよ
 // うだ。なぜかSSLなら発生せず非SSLで頻発する。自分PCのVirtualBoxのWin7+IE11なら特に問題ない。ウイルス対策
 // ソフトの影響、無線LANの影響、ネット回線の影響とか・・？
-// TODO:Win7+IE11でfiler.htmlのF5アタックでサーバ落ちる。Chromeでも落ちた。自分PCのVirtualBoxでも一度だけ
-// 発生して、ダンプファイルを見てみたら、ClientShutdown()->free()の先でエラーになって落ちているような？
-// しかしWinDbgで変数の中身を見たりするやり方がわからない・・
 //	TODO:Operaブックマーク読み込みはBookSyncのソースが参考にならないかな・・？
 //	TODO:Webサイトの「Facebookアカウントでログイン」「Twitterアカウントでログイン」を実装できる？
 //	OAuth認証という技術？仕組み？らしい。
@@ -1243,7 +1240,6 @@ TClient* ClientOfSocket( SOCKET sock )
 	}
 	return NULL;
 }
-// TClientポインタ１つ初期化
 void ClientInit( TClient* cp )
 {
 	if( cp ){
@@ -1253,11 +1249,19 @@ void ClientInit( TClient* cp )
 		cp->rsp.readfh = INVALID_HANDLE_VALUE;
 	}
 }
+// クライアント接続毎一時ファイル
 WCHAR* ClientTempPath( TClient* cp, WCHAR* path, size_t size )
 {
 	_snwprintf(path,size,L"%s\\$%u",DocumentRoot,Num(cp));
 	path[size-1]=L'\0';
 	return path;
+}
+// ソケットを(WSAAsyncSelect非同期から)同期(ブロッキング)モードに
+void SocketBlocking( SOCKET sock )
+{
+	u_long off = 0;
+	WSAAsyncSelect( sock ,MainForm ,0,0 );
+	ioctlsocket( sock, FIONBIO, &off );
 }
 void ClientShutdown( TClient* cp )
 {
@@ -1268,14 +1272,24 @@ void ClientShutdown( TClient* cp )
 		CloseHandle( cp->rsp.readfh );
 		DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
 		if( cp->sslp ){
-			// 非ブロックソケットSSL_shutdownリトライ考慮してない…
+			SocketBlocking( cp->sock );
 			SSL_shutdown( cp->sslp );
 			SSL_free( cp->sslp );
 		}
 		if( cp->sock !=INVALID_SOCKET ){
+			if( !cp->sslp ) SocketBlocking( cp->sock );
 			shutdown( cp->sock, SD_BOTH );
 			closesocket( cp->sock );
 		}
+		// TODO:別アプリでCPU負荷を上げた状態で、ブラウザでfiler.htmlのリロード/中止を
+		// 繰り返すとここで落ちることがある。「Runtime Error」とかいうダイアログが出る。
+		// SocketClose()->ClientShutdown()->free( cp->req.buf )
+		// free() から先でエラーになっているようだが、しかしポインタ値はNULLではなく、
+		// なぜ落ちるのか変数値からは不明。二重free()しているのか？？
+		// 発生頻度はかなり稀。いまのところIE8で発生したのみ。Win7+IE11(VirtualBox含む)
+		// だと高負荷でなくても発生するようだが、VC9のIDEから実行できないのでダンプ採取
+		// してWinDbgで見ることになり面倒。一度採取できたダンプは同じ箇所で落ちていた。
+		// 頻度の稀さからアプリ側ではなくOS側と思いたいが…。
 		if( cp->req.buf ) free( cp->req.buf );
 		if( cp->rsp.head.top ) free( cp->rsp.head.top );
 		if( cp->rsp.body.top ) free( cp->rsp.body.top );
@@ -3359,17 +3373,6 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
 				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
 				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコン。
-				// TODO:http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しい
-				// HTMLが返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になる
-				// だけで、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わら
-				// ないのでブラウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスは
-				// なんでも xxx.jpg でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。
-				// 正しいURLは 200 が返ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクト
-				// せずこういう応答するサーバーもあるのか。しかし判定処理どうしよう・・トップページを取得
-				// して比較するとかしないと判定できない？もしトップページと同じだったら 200 OK に変更して
-				// 返却する？でもそれもよろしくないような・・うーむ。ちなみに 404 の時のHTMLはいろいろ工夫
-				// されているようだ(http://tuitui.jp/2011/10/404page.html)ていうか 404 専用ページじゃなくて
-				// トップとおなじHTMLが返ってくるパターンもあるという問題。
 				switch( code[1] ){
 				case '0':
 					switch( code[2]) {
@@ -3450,17 +3453,30 @@ unsigned __stdcall poke( void* tp )
 	}
 	if( rsp ) free( rsp );
 	/*
-	// 死亡(404等)で転送URLもなかったら上位パスを確認
+	// TODO:死亡(404等)で転送URLもなかった場合の上位パス確認
+	// http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しいHTML
+	// が返ってくる。応答1行目が、index.html なしなら 200、index.html つけると 404 になるだけ
+	// で、コンテンツは同じトップページのHTMLが返ってくる。リダイレクトじゃなくURLが変わらない
+	// のでブラウザ上はそのURLで正しく表示されているように見えてしまう。というか不正パスはなん
+	// でも xxx.jpg でも1行目は 404 で以降はトップコンテンツHTMLが返ってくる挙動のようだ。
+	// 正しいURLは 200 が返ってくるからわかるし、ブラウザ上は問題ないし、なるほどリダイレクト
+	// せずこういう応答するサーバーもあるのか。しかし判定処理どうしよう・・トップページを取得
+	// して比較するとかしないと判定できない？もしトップページと同じだったら 200 OK に変更して
+	// 返却する？でもそれもよろしくないような・・うーむ。
+	// 他にも、以下URLは404だが、パッと見は正常ぽいコンテンツが返ってくる。
+	// http://www.buseireann.ie/site/home/
+	// http://www.ns.nl/en/home
+	// http://www.flatfoot56.com/main.html →上位にアクセスすると転送される
 	if( ctx->repo.grp=='D' && !ctx->repo.newurl ){
 		UCHAR* upper = strdup( ctx->url );
 		if( upper ){
-			UCHAR* path = strstr(upper,"://");
+			UCHAR* path = strstr(upper,"://");		// URLのパス開始点
 			if( path ) path = strchr(path+3,'/');
-			while( path ){
+			while( path ){							// 上位パスがあるだけループ
 				UCHAR* sl = strrchr(path,'/');
 				if( sl ){
-					if( sl[1] ) sl[1]='\0';
-					else{
+					if( sl[1] ) sl[1]='\0';			// パスがファイル名
+					else{							// パスがディレクトリ
 						if( sl==path ) break;
 						*sl ='\0';
 						sl = strrchr(path,'/');
@@ -6741,7 +6757,7 @@ void ClientWrite( TClient* cp )
 				ret = send( cp->sock, bp->top + sended, bp->bytes - sended, 0 );
 				if( ret==SOCKET_ERROR ){
 					ret = WSAGetLastError();
-					if( ret!=WSAEWOULDBLOCK	)	// 頻発するので記録しない
+					if( ret !=WSAEWOULDBLOCK ) // 頻発するので記録しない
 						LogW(L"[%u]sendエラー%u",Num(cp),ret);
 					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
 					break;
@@ -6844,6 +6860,7 @@ void SocketClose( SOCKET sock )
 	}
 	else{
 		LogW(L"[:%u]切断(FD_CLOSE)",sock);
+		SocketBlocking( sock );
 		shutdown( sock, SD_BOTH );
 		closesocket( sock );
 	}
