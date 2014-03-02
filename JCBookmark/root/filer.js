@@ -668,15 +668,13 @@ var itemList = function(){
 				if( para != parallel ){
 					// 変更
 					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
-					parallel = para;
-					timelog = [];
+					parallel=para ,timelog.length=0;
 				}
 			}
 			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
 				var para = Math.floor( parallel /2 );	// 並列数を半減
 				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
-				parallel = para;
-				timelog = [];
+				parallel=para ,timelog.length=0;
 			}
 		}
 	}
@@ -2902,7 +2900,7 @@ function clipboardTo( pnode, index ){
 			// アイテム欄更新
 			if( itemList('?')=='deads' ){
 				Confirm({
-					msg:'このフォルダを表示しますか？#BR#(リンク切れ調査結果は破棄されます)'
+					msg:'このフォルダを表示しますか？#BR#(リンク切れ調査欄は消えます)'
 					,yes:function(){ $('#folder'+pnode.id).removeClass('select').click(); }
 				});
 			}
