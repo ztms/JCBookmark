@@ -1,11 +1,10 @@
 // vim:set ts=4:vim modeline
-// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了する事しばしば
+// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了する事しばしば。謎。
 // TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:一括でパネル開閉
 // TODO:パネルの中にパネル。フォルダ構造をそのままで。
 // TODO:Firefoxのタグ機能。整理画面はFirefox相当でいいけどパネル画面はタグ機能をどう使うか・・タグパネル？無視？
-// TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。
-// TODO:InstantClickというJSがあってマウスオーバーでリンク先を裏で勝手に先読みしてクリック後の表示を高速化するらしい。速いのはいいけどリンクが大量にあるとマウスオーバーが発生しまくるので重くなりそうで。。
+// TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。または、データは１つのまま表示上#wallを複数にしてタブ切り替えという方式でもいいかな。どちらがよいか・・。タブ切り替え型ならパネル持ち運びができるのが利点か。データ切り替え型は・・大量データの場合に負荷が低いかな。
 (function( $, $win, $doc, oStr, IE, $wall, $sidebar ){
 'use strict';
 /*
@@ -2664,15 +2663,13 @@ function analyzer( nodeTop ){
 				if( para != parallel ){
 					// 変更
 					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
-					parallel = para;
-					timelog = [];
+					parallel=para ,timelog.length=0;
 				}
 			}
 			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
 				var para = Math.floor( parallel /2 );	// 並列数を半減
 				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
-				parallel = para;
-				timelog = [];
+				parallel=para ,timelog.length=0;
 			}
 		}
 	}
