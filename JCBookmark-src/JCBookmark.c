@@ -16,11 +16,12 @@
 //	>vcbuild JCBookmark.vcproj Release	(Releaseのみ)
 //	>vcbuild JCBookmark.vcproj Debug	(Debugのみ)
 //
-// TODO:しばしばソケットエラー10053(WSAECONNABORTED)が発生するが、ソケット切断が早すぎた感じで特に動作上は
-// 問題ない場合も多い。が、Win7+IE11環境でものすごく不安定でブラウザ側にデータ届かない症状が深刻化する事が
-// ある。その場合も10053が多発はしている。どうもリクエスト受信せずに切断になってしまうコネクションがあるよ
-// うだ。なぜかSSLなら発生せず非SSLで頻発する。自分PCのVirtualBoxのWin7+IE11なら特に問題ない。ウイルス対策
-// ソフトの影響、無線LANの影響、ネット回線の影響とか・・？
+//	TODO:UPnPポート開放
+//	TODO:しばしばソケットエラー10053(WSAECONNABORTED)が発生するが、ソケット切断が早すぎた感じで特に動作上は
+//	問題ない場合も多い。が、Win7+IE11環境でものすごく不安定でブラウザ側にデータ届かない症状が深刻化する事が
+//	ある。その場合も10053が多発はしている。どうもリクエスト受信せずに切断になってしまうコネクションがあるよ
+//	うだ。なぜかSSLなら発生せず非SSLで頻発する。自分PCのVirtualBoxのWin7+IE11なら特に問題ない。ウイルス対策
+//	ソフトの影響、無線LANの影響、ネット回線の影響とか・・？
 //	TODO:Operaブックマーク読み込みはBookSyncのソースが参考にならないかな・・？
 //	TODO:Webサイトの「Facebookアカウントでログイン」「Twitterアカウントでログイン」を実装できる？
 //	OAuth認証という技術？仕組み？らしい。
@@ -120,7 +121,7 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
-#define		APPNAME				L"JCBookmark v2.0dev"
+#define		APPNAME				L"JCBookmark v2.0"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -168,7 +169,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -3302,7 +3303,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 													goto retry;
 												}
 											}
-											else{ if( rp ) rp->grp='E' ,strcpy(rp->msg,"サーバー内部エラー"); }
+											else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
 											*endtag='>'; // 元に戻す
 											goto fin;
 										}
@@ -3362,7 +3363,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 								goto retry;
 							}
 						}
-						else{ if( rp ) rp->grp='E' ,strcpy(rp->msg,"サーバー内部エラー"); }
+						else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
 						goto fin;
 					}
 					else LogW(L"3xxリダイレクト応答でLocationヘッダがありません");
@@ -3394,7 +3395,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				break;
 			//case '1': // 情報(HTTP/1.1以降)
 			default:
-				if( rp ) rp->grp='!';
+				if( rp ) rp->grp='?';
 			}
 			if( rp ){
 				strncpy( rp->msg ,code ,sizeof(rp->msg) );
