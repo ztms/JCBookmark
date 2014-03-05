@@ -934,8 +934,8 @@ var itemList = function(){
 					})
 				)
 				.append( $folderName ).append('<br>')
-				.append( $totalbox ).append( $okbox ).append( $errbox )
-				.append( $deadbox ).append( $warnbox ).append( $unknownbox )
+				.append( $totalbox ).append( $okbox ).append( $warnbox )
+				.append( $deadbox ).append( $errbox ).append( $unknownbox )
 				.width( $head.width() )
 				.insertBefore( $head );
 			$('#itembox').height( $('#folderbox').height() -$head.outerHeight() -$info.outerHeight() )
