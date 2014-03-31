@@ -121,7 +121,7 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
-#define		APPNAME				L"JCBookmark v2.0"
+#define		APPNAME				L"JCBookmark v2.1dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -807,6 +807,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
 		);
 		br[BI_CHROME].exe = RegAppPathAlloc(
+			// TODO:Win7でChromeインストールされてるのに検出できない環境があった。詳細不明。
 			// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
 			// Chromeを何回か再インストールしてたら1.が使えなくなったので5.に変更。
 			// 1.HKEY_CLASSES_ROOT\ChromeHTML\DefaultIcon
@@ -1072,7 +1073,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 			}
 			else{
 				// 絶対パス
-				if( PathFileExists( path2 ) ){
+				if( PathFileExistsW( path2 ) ){
 					realpath = wcsdup( path2 );
 					if( !realpath ) LogW(L"L%u:wcsdupエラー",__LINE__);
 				}
@@ -2327,6 +2328,9 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// 自宅では70弱の同時接続数で発生。細い回線だとamazonが3本でエラー発生。
 									// ネット検索してみたがよい回避策が見つからない。SSL_connectリトライして
 									// みたら負荷が下がった段階で成功した。とりあえず少しSleepして10回リトライ。
+									// TODO:細い回線でhttps://myspace.com/がこのエラーになり、リトライで成功
+									// したが、その後SSL_read()が-1を返して受信できずエラーになった模様。OS
+									// はWin8.1実機だった。うーむ他のhttpsサイトは問題なかったのだがなぜ…？
 									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
@@ -2650,6 +2654,7 @@ HTTPGet* HTTPGetContentDecode( HTTPGet* rsp )
 				else
 					LogW(L"圧縮コンテンツ伸長エラー%u",rsp->ContentEncoding);
 				newrsp->bytes = headbytes + bytes;
+				newrsp->ContentEncoding = 0;
 				free(rsp), rsp=newrsp;
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
@@ -2727,6 +2732,8 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp )
 				HRESULT res;
 				memset( tmp, 0, tmpbytes );
 				// まずSJIS(932)に変換
+				// TODO:ロシア語？がエラーになる
+				// http://byaki.net/kartinki/53498-sozdatel-nevedomyh-cifrovyh-mirov-sarel-teron.html
 				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
 				if( res==S_OK ){
 					tmp[tmpbytes]='\0';
@@ -3255,10 +3262,12 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 			UCHAR* code = rsp->buf +9;	// 応答コードテキスト("200 OK"など)
 			switch( code[0] ){
 			case '2': // 成功
-				// TODO:gihyo.jpの記事で<title>が取得できない問題が発生した時、ここでrsp->bodyを破壊してる
-				// 事が原因だった。<meta>より後に<title>があり、<meta>解析でrsp->bodyを破壊したため<title>
-				// がなくなってしまった。とりあえず<meta>の処理でrsp->body破壊をピンポイントで元に戻すよう
-				// にしたら大丈夫になったけど、本当は最初から破壊しないようにしないと怖い…。
+				// TODO:YouTubeの動画URLは動画が消されてても200 OKになってしまう。本文を解析しないと不明。
+				// 実装したとしてもYouTubeの仕様変更に振り回されるだろう・・。
+				// TODO:gihyo.jpの記事で<title>が取得できない問題が発生した時、ここでrsp->bodyを裁断してる
+				// 事が原因だった。<meta>より後に<title>があり、<meta>解析でrsp->bodyを裁断したため<title>
+				// がなくなってしまった。とりあえず<meta>の処理でrsp->body裁断をピンポイントで元に戻すよう
+				// にしたら大丈夫になったけど、本当は最初から改変しないような処理にしないと怖い…。
 				// TODO:Set-Cookieはヘッダだけじゃなくて<meta http-equiv="set-cookie" content="...">も？
 				// http://www.tohoho-web.com/wwwcook.htm
 				// http://q.hatena.ne.jp/1326164005
@@ -3638,7 +3647,6 @@ unsigned __stdcall analyze( void* tp )
 	if( rsp ){
 		UCHAR* title=NULL, *icon=NULL;
 		if( *ctx->pAbort ) goto fin;
-		rsp = HTTPGetContentDecode( rsp );
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
 			HTTPGetHtmlToUTF8( rsp );
@@ -5298,7 +5306,7 @@ UCHAR* file2memory( const WCHAR* path, BOOL fOpenErrLog )
 	UCHAR* memory = NULL;
 	if( path && *path ){
 		HANDLE hFile = CreateFileW( path
-							,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+							,GENERIC_READ ,FILE_SHARE_READ
 							,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 		);
 		if( hFile != INVALID_HANDLE_VALUE ){
@@ -5541,8 +5549,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 				fclose( fp );
 				// GETとおなじ処理になっとる…
 				cp->rsp.readfh = CreateFileW( tmppath
-						,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
-						,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+						,GENERIC_READ ,FILE_SHARE_READ ,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 				);
 				if( cp->rsp.readfh ){
 					SYSTEMTIME st;
@@ -6211,7 +6218,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								WCHAR* wcab;
 								SYSTEMTIME st;
 								// index.jsonは存在しない場合
-								if( !PathFileExists( path[1] ) ){
+								if( !PathFileExistsW( path[1] ) ){
 									free(path[1]), path[1]=NULL;
 									count = 1;
 								}
@@ -6223,7 +6230,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								);
 								wcab = wcsjoin( DocumentRoot, L"\\snap\\shot", stamp, L".cab", 0 );
 								if( wcab ){
-									if( PathFileExists(wcab) ){
+									if( PathFileExistsW(wcab) ){
 										LogW(L"[%u]ファイル重複: %s",Num(cp),wcab);
 									}
 									else if( cabCompress( wcab, count, path, NULL ) ){
@@ -6269,7 +6276,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 													,u8name
 													,FileTimeToJSTime( &wfd.ftLastWriteTime )
 											);
-											if( PathFileExists(wtxt) ) BufferSendFile( bp ,wtxt );
+											if( PathFileExistsW(wtxt) ) BufferSendFile( bp ,wtxt );
 											BufferSend( bp ,"\"}" ,2 );
 										}
 										else err = TRUE;
@@ -6340,7 +6347,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											Buffer* bp = &(cp->rsp.body);
 											BufferSends( bp ,"{\"tree.json\":" );
 											BufferSendFile( bp ,tree );
-											if( PathFileExists(index) ){
+											if( PathFileExistsW(index) ){
 												BufferSends( bp ,",\"index.json\":" );
 												BufferSendFile( bp ,index );
 											}
@@ -6381,7 +6388,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									fclose( fp );
 									if( nextid >1 ){
 										cp->rsp.readfh = CreateFileW( tmppath
-												,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+												,GENERIC_READ ,FILE_SHARE_READ
 												,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 										);
 									}
@@ -6406,7 +6413,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										fclose( fp );
 										if( nextid >1 ){
 											cp->rsp.readfh = CreateFileW( tmppath
-													,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+													,GENERIC_READ ,FILE_SHARE_READ
 													,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 											);
 										}
@@ -6446,7 +6453,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										fclose( fp );
 										if( count ){
 											cp->rsp.readfh = CreateFileW( tmppath
-													,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+													,GENERIC_READ ,FILE_SHARE_READ
 													,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 											);
 										}
@@ -6468,9 +6475,20 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// ドキュメントルート配下のみ
 							if( UnderDocumentRoot(realpath) ){
 								cp->rsp.readfh = CreateFileW( realpath
-										,GENERIC_READ ,FILE_SHARE_READ /*|FILE_SHARE_WRITE |FILE_SHARE_DELETE*/
+										,GENERIC_READ ,FILE_SHARE_READ
 										,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 								);
+								if( cp->rsp.readfh==INVALID_HANDLE_VALUE && PathIsDirectoryW(realpath) ){
+									// フォルダだった場合 index.html 補完
+									// TODO:MAX_PATH(260)を超えるにはGetFileAttributesで接頭詞"\\?\"
+									LogW(L"CreateFile %u",GetLastError());
+									_snwprintf(realpath+len,sizeof(realpath)/sizeof(WCHAR)-len,L"\\%s",L"index.html");
+									realpath[sizeof(realpath)/sizeof(WCHAR)-1]=L'\0';
+									cp->rsp.readfh = CreateFileW( realpath
+											,GENERIC_READ ,FILE_SHARE_READ
+											,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+									);
+								}
 							}
 						}
 						if( cp->rsp.readfh !=INVALID_HANDLE_VALUE ){
@@ -7475,7 +7493,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				if( sslcrt ){
 					my->hSSLCrt = CreateWindowW(
 								L"static"
-								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
 								,WS_CHILD |SS_SIMPLE
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
@@ -7484,7 +7502,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				if( sslkey ){
 					my->hSSLKey = CreateWindowW(
 								L"static"
-								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
+								,PathFileExistsW(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
 								,WS_CHILD |SS_SIMPLE
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
@@ -7829,7 +7847,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					if( data.httpsLocal || data.httpsRemote ){
 						WCHAR* sslcrt = AppFilePath( SSL_CRT );
 						WCHAR* sslkey = AppFilePath( SSL_KEY );
-						if( sslcrt && sslkey && !PathFileExists(sslcrt) && !PathFileExists(sslkey) &&
+						if( sslcrt && sslkey && !PathFileExistsW(sslcrt) && !PathFileExistsW(sslkey) &&
 							IDYES==MessageBoxW( hwnd
 									,L"HTTP(SSL)が有効ですがサーバ証明書がありません。"
 									L"証明書（自己署名）をいま作成しますか？"
@@ -7840,10 +7858,10 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							BOOL success = SSL_SelfCertCreate( sslcrt ,sslkey );
 							SetCursor( cursor );
 							SetWindowTextW( my->hSSLCrt
-								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
-								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
+								,PathFileExistsW(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
 							);
 							if( success ) MessageBoxW( hwnd ,L"作成しました" ,L"情報" ,MB_ICONINFORMATION );
 							else MessageBoxW( hwnd ,L"エラーが発生しました" ,L"エラー" ,MB_ICONERROR );
@@ -7959,7 +7977,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				{
 					WCHAR* sslcrt = AppFilePath( SSL_CRT );
 					if( sslcrt ){
-						if( PathFileExists(sslcrt) )
+						if( PathFileExistsW(sslcrt) )
 							ShellExecuteW( NULL,NULL ,sslcrt ,NULL,NULL ,SW_SHOWNORMAL );
 						free( sslcrt );
 					}
@@ -7972,7 +7990,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					WCHAR* sslkey = AppFilePath( SSL_KEY );
 					if( sslcrt && sslkey ){
 						int r = IDYES;
-						if( PathFileExists(sslcrt) || PathFileExists(sslkey) ){
+						if( PathFileExistsW(sslcrt) || PathFileExistsW(sslkey) ){
 							r = MessageBoxW( hwnd
 								,L"現在の証明書（" SSL_CRT L"）と秘密鍵（" SSL_KEY L"）を消去・上書きします。実行しますか？"
 								,L"確認" ,MB_YESNO |MB_ICONQUESTION
@@ -7988,10 +8006,10 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							success = SSL_SelfCertCreate( sslcrt ,sslkey );
 							SetCursor( cursor );
 							SetWindowTextW( my->hSSLCrt
-								,PathFileExists(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
-								,PathFileExists(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
+								,PathFileExistsW(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
 							);
 							if( success ) MessageBoxW( hwnd ,L"作成しました" ,L"情報" ,MB_ICONINFORMATION );
 							else MessageBoxW( hwnd ,L"エラーが発生しました" ,L"エラー" ,MB_ICONERROR );
@@ -8466,7 +8484,21 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// OpenSSL
 	SSL_library_init();
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	if( ssl_ctx ) SSL_CertLoad(); else LogW(L"SSL_CTX_newエラー");
+	if( ssl_ctx ){
+		// PFS(Perfect Forword Security)
+		// 鍵交換にECDHE(Elliptic Curve Diffie-Hellman Ephemeral/Exchange)を使う。
+		// http://blog.livedoor.jp/k_urushima/archives/1728348.html
+		// openssl-1.0.0j/apps/s_server.c のECDH関連コードを参考に。
+		// Chromeで確認すると鍵交換が「RSA」から「ECDHE-RSA」に変わった。これでいいのか？
+		EC_KEY* ecdh = EC_KEY_new_by_curve_name( NID_X9_62_prime256v1 );
+		if( ecdh ){
+			SSL_CTX_set_tmp_ecdh( ssl_ctx ,ecdh );
+			EC_KEY_free( ecdh );
+		}
+		else LogW(L"EC_KEY_new_by_curve_name() failed");
+		SSL_CertLoad();
+	}
+	else LogW(L"SSL_CTX_newエラー");
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
