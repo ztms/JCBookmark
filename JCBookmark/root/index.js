@@ -2639,7 +2639,7 @@ function analyzer( nodeTop ){
 			switch( st[i].grp ){
 			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
 			case '?':
-				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多かも)
+				if( st[i].msg.indexOf('受信タイムアウト')>=0 ){	// 受信タイムアウト(並列過多かも)
 					recvTimeout = true;
 					break;
 				}

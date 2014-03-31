@@ -644,7 +644,7 @@ var itemList = function(){
 			switch( st[i].grp ){
 			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
 			case '?':
-				if( /受信タイムアウト/.test(st[i].msg) ){	// 受信タイムアウト(並列過多かも)
+				if( st[i].msg.indexOf('受信タイムアウト')>=0 ){	// 受信タイムアウト(並列過多かも)
 					recvTimeout = true;
 					break;
 				}
@@ -1571,8 +1571,8 @@ $('.itemborder').mousedown(function(ev){
 		// TODO:位置保存する…？
 	});
 });
-// アイテム欄下余白から矩形選択
 $('#itembox').on({
+	// アイテム欄下余白から矩形選択
 	mousedown:function(ev){
 		var downX = ev.pageX;
 		var downY = ev.pageY;
@@ -1597,6 +1597,8 @@ $('#itembox').on({
 			itemSelectStart( null, downX, downY );
 		}
 	}
+	// アイテム欄下余白コンテキストメニュー
+	// TODO:新規フォルダ作成
 	,contextmenu:function(ev){
 		if( itemList('?')=='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
 			var $menu = $('#contextmenu').width(250);
@@ -2281,6 +2283,7 @@ function itemDblClick(){
 	}
 	return false;
 }
+// TODO:新規フォルダ作成
 // TODO:Opera12で未選択アイテムのコンテキストメニューが出ない。選択アイテムは出る。
 // itemMouseDown()のitemSelectStart()をやめたら出た。Opera以外は問題ない。うーむ
 // ブラウザ判定はIEしかしてないし、右クリック判定もしてないし、あとまわし…。
