@@ -2794,7 +2794,7 @@ function edit( element, opt ){
 							}
 						}
 						// 終了隠す
-						$(this).off().hide();
+						$(this).off().hide(); $e.trigger('selfclick');
 					}
 					// TAB,Enterで反映
 					,keydown:function(ev){
@@ -2827,7 +2827,10 @@ function edit( element, opt ){
 				})
 				.val( $e.text() )
 				.on({
-					blur:function(){ $(this).off().hide(); } // なにもしない消えるだけ
+					blur:function(){
+						// なにもしない消えるだけ
+						$(this).off().hide(); $e.trigger('selfclick');
+					}
 					,keydown:function(ev){
 						switch( ev.which || ev.keyCode || ev.charCode ){
 						case 9: $(this).blur(); return false; // TAB
