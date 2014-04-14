@@ -169,7 +169,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -599,6 +599,13 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 			UCHAR* dst = dup;
 			int i;
 			for( i=n; i>0; i-- ){
+				if( *src=='\t' ){
+					// http://cakephp.org/の<title>にTAB文字(0x09)が含まれており、Chrome/Firefoxで
+					// なぜかJSONパースできず$.ajax()がエラーになるようで、仕方なく \t に変換する。
+					// IE8は動いてくれるのだが。JSONって値にTAB文字ダメな仕様なの？
+					*src++ ,*dst++ ='\\' ,*dst++ ='t';
+					continue;
+				}
 				if( *src=='"' || *src=='\\' ) *dst++ = '\\';
 				*dst++ = *src++;
 			}
@@ -2035,7 +2042,7 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, const UCH
 //---------------------------------------------------------------------------------------------------------------
 // 外部接続・HTTPクライアント関連
 //
-// ANSIとUnicodeとどううまく共通化すれば…
+// ANSIとUnicodeと共通化できない…
 UCHAR* FileContentTypeA( const UCHAR* file )
 {
 	if( file ){
@@ -2053,6 +2060,8 @@ UCHAR* FileContentTypeA( const UCHAR* file )
 			if( stricmp(ext,"gif")==0 )  return "image/gif";
 			//if( stricmp(ext,"ico")==0 )  return "image/vnd.microsoft.icon"; // IE8で表示されないためx-iconに変更
 			if( stricmp(ext,"ico")==0 )  return "image/x-icon";
+			if( stricmp(ext,"svg")==0 )  return "image/svg+xml";
+			if( stricmp(ext,"svgz")==0 ) return "image/svg+xml";
 			if( stricmp(ext,"zip")==0 )  return "application/zip";
 			if( stricmp(ext,"pdf")==0 )  return "application/pdf";
 			if( stricmp(ext,"exe")==0 )  return "application/x-msdownload";
@@ -2082,6 +2091,8 @@ UCHAR* FileContentTypeW( const WCHAR* file )
 			if( wcsicmp(ext,L"gif")==0 )  return "image/gif";
 			//if( wcsicmp(ext,L"ico")==0 )  return "image/vnd.microsoft.icon"; // IE8で表示されないためx-iconに変更
 			if( wcsicmp(ext,L"ico")==0 )  return "image/x-icon";
+			if( wcsicmp(ext,L"svg")==0 )  return "image/svg+xml";
+			if( wcsicmp(ext,L"svgz")==0 ) return "image/svg+xml";
 			if( wcsicmp(ext,L"zip")==0 )  return "application/zip";
 			if( wcsicmp(ext,L"pdf")==0 )  return "application/pdf";
 			if( wcsicmp(ext,L"exe")==0 )  return "application/x-msdownload";
@@ -2330,7 +2341,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// みたら負荷が下がった段階で成功した。とりあえず少しSleepして10回リトライ。
 									// TODO:細い回線でhttps://myspace.com/がこのエラーになり、リトライで成功
 									// したが、その後SSL_read()が-1を返して受信できずエラーになった模様。OS
-									// はWin8.1実機だった。うーむ他のhttpsサイトは問題なかったのだがなぜ…？
+									// はWin8.1実機だった。VirtualBoxのWin8.1+IE11でも発生した。
 									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
@@ -2359,8 +2370,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
 								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
 								"%s"									// Cookie:ヘッダ
-								"Accept-Encoding: identity\r\n"			// 無圧縮
-								//"Accept-Encoding: gzip,deflate\r\n"	// コンテンツ圧縮
+								//"Accept-Encoding: identity\r\n"			// 無圧縮
+								"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮
 								"Accept-Language: ja,en\r\n"			// nginxの204対策
 								"Accept: */*\r\n"						// nginxの204対策
 								"Connection: close\r\n"
