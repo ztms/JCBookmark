@@ -43,10 +43,6 @@
 //	http://d.hatena.ne.jp/tk_4dd/20120128
 //	TODO:ログインパスワードにWindowsログインユーザのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
-//	TODO:アプリ実行時のWindowsの警告を解除する手順（ブロックを解除する）をWebのFAQにでも載せる。
-//	http://itpro.nikkeibp.co.jp/article/Windows/20051215/226271/
-//	http://pc.nikkeibp.co.jp/article/knowhow/20080820/1007172/?f=pcmac&rt=nocnt
-//	http://attosoft.info/blog/item-nozoneinfo/
 //	TODO:Windows2000対応
 //	GetNameInfoW が XP (SP2?) 以降のAPIらしいが、Win2000でもANSI版のgetnameinfoなら使えるらしい。
 //	http://msdn.microsoft.com/en-us/library/windows/desktop/ms738532(v=vs.85).aspx
@@ -2573,10 +2569,6 @@ fin:
 // もおなじでないとおかしいが・・やはりgzip対応くらいはすべきか。
 // Chrome27は Accept-Encoding: gzip,deflate,sdch
 // Fierfox21とIE8は Accept-Encoding: gzip, deflate
-// いちおうgzip対応はしておいて、やっぱりAccept-Encodingは空にしておこうかな。
-// 空じゃなくてidentityという値が無圧縮という意味らしいのでidentityにしてみよう。
-// TODO:コンテンツ圧縮を積極的に使うべきかどうなのか？無圧縮なら</head>まで受信して
-// 次に進めるからちょっと速いかも？いやgzip伸長の負荷によるから一概には言えないか…
 // [参考サイト]
 // サイトの最適化方法 ～ Vary: Accept-Encoding ヘッダーを設定する
 // http://kaigai-hosting.com/opt_site-specify-vary-header.php
@@ -2638,12 +2630,10 @@ size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes
 }
 
 // HTTP圧縮コンテンツ伸長
-HTTPGet* HTTPGetContentDecode( HTTPGet* rsp )
+HTTPGet* HTTPGetContentDecode( HTTPGet* rsp ,const UCHAR* url )
 {
 	if( rsp ){
 		// gzip,deflate伸長
-		// TODO:301 Moved Permanentlyや302 Foundが(なぜか)伸長エラーになってしまうもよう
-		// Accept-Encoding:identityではなかなか圧縮されないので、発生させるにはgzip,deflateに変更する
 		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
 			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
 			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文(圧縮データ)バイト数
@@ -2663,7 +2653,7 @@ HTTPGet* HTTPGetContentDecode( HTTPGet* rsp )
 					LogW(L"伸長[%u]%u->%ubyte(%.1f倍)"
 							,rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
 				else
-					LogW(L"圧縮コンテンツ伸長エラー%u",rsp->ContentEncoding);
+					LogA("圧縮コンテンツ伸長エラー%u(%s)",rsp->ContentEncoding,url);
 				newrsp->bytes = headbytes + bytes;
 				newrsp->ContentEncoding = 0;
 				free(rsp), rsp=newrsp;
@@ -2682,7 +2672,7 @@ struct {
 	CONVERTINETSTRING	Convert;
 } mlang = { NULL, NULL };
 
-void HTTPGetHtmlToUTF8( HTTPGet* rsp )
+void HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 {
 	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
@@ -2742,27 +2732,31 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp )
 				DWORD mode=0;
 				HRESULT res;
 				memset( tmp, 0, tmpbytes );
-				// まずSJIS(932)に変換
-				// TODO:ロシア語？がエラーになる
-				// http://byaki.net/kartinki/53498-sozdatel-nevedomyh-cifrovyh-mirov-sarel-teron.html
+				// まずSJIS(932)に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
 				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
 				if( res==S_OK ){
 					tmp[tmpbytes]='\0';
 					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
 					mode=0;
-					// 次にSJISからUTF8(65001)に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
+					// 次にSJISからUTF8(65001)に変換
 					res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
+					if( res==S_OK ) goto ok;
+					else LogA("ConvertINetString(932->65001)エラー(%s)",url);
+				}
+				else{
+					// SJIS変換エラーは直接UTF-8変換
+					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
+					mode=0;
+					res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
 					if( res==S_OK ){
+						memcpy( rsp->body ,tmp ,tmpbytes );
+					ok:
 						rsp->body[tmpbytes]='\0';
 						rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
-						// TODO:ログに通信を特定できる識別情報いれる
 						LogW(L"文字コード%u->65001変換",CP);
 					}
-					// TODO:ログに通信を特定できる識別情報いれる
-					else LogW(L"ConvertINetString(932->65001)エラー");
+					else LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
 				}
-				// TODO:ログに通信を特定できる識別情報いれる
-				else LogW(L"ConvertINetString(%u->932)エラー",CP);
 				free( tmp );
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
@@ -3267,7 +3261,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 			if( rp ) rp->grp='?' ,strcpy(rp->msg,"転送が多すぎます");
 			goto fin;
 		}
-		rsp = HTTPGetContentDecode( rsp );
+		rsp = HTTPGetContentDecode( rsp ,newurl? newurl :url0 );
 		// HTTP/1.x 200 OK
 		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
 			UCHAR* code = rsp->buf +9;	// 応答コードテキスト("200 OK"など)
@@ -3287,7 +3281,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送。時事ドットコムや@ITの
 					// 記事、他でもしばしば使われている。
 					UCHAR* body ,*meta;
-					HTTPGetHtmlToUTF8( rsp );
+					HTTPGetHtmlToUTF8( rsp ,newurl? newurl :url0 );
 					body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
 					while( meta = stristr(body,"<meta ") ){
 						UCHAR* endtag = strchr(meta,'>');
@@ -3660,7 +3654,7 @@ unsigned __stdcall analyze( void* tp )
 		if( *ctx->pAbort ) goto fin;
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
-			HTTPGetHtmlToUTF8( rsp );
+			HTTPGetHtmlToUTF8( rsp ,ctx->url );
 			// タイトル取得
 			begin = stristr(rsp->body,"<title");
 			if( begin ){
