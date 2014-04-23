@@ -2337,7 +2337,23 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// みたら負荷が下がった段階で成功した。とりあえず少しSleepして10回リトライ。
 									// TODO:細い回線でhttps://myspace.com/がこのエラーになり、リトライで成功
 									// したが、その後SSL_read()が-1を返して受信できずエラーになった模様。OS
-									// はWin8.1実機だった。VirtualBoxのWin8.1+IE11でも発生した。
+									// はWin8.1実機だった。VirtualBoxのWin8.1+IE11でも発生した。NEGiESで10KB/s
+									// くらいに帯域制限すると似たようなエラーはXP実機でも発生した。VCのIDEから
+									// デバッグ実行でOpenSSLソースまで追いかけられるけど、エラーが発生したり
+									// しなかったりでムズイ…。
+									// openssl-1.0.0.j/ssl/ssl_lib.c:int SSL_connect(SSL *s)
+									// {
+									//   if (s->handshake_func == 0) SSL_set_connect_state(s);
+									//   return(s->method->ssl_connect(s));
+									// }
+									// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
+									// {
+									// }
+									// しかしここでエラーにならなくても、帯域がとても狭いと後のSSL_read()が-1
+									// によくなる。SSLハンドシェイクでも送受信してるはずで、おなじだとすると、
+									// 「帯域が狭いとSSL送受信でなぜかエラー」という問題なのかもしれない。
+									// mixiでもtwitterでも似たようなエラーは発生した。クライアント側の問題か
+									// サーバ側から切られているのか…？
 									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
@@ -5130,17 +5146,20 @@ unsigned __stdcall authenticate( void* tp )
 		if( LoginPass( b64 ,sizeof(b64) ) && *b64 ){
 			size_t b64len = strlen(b64);
 			if( SHA256_DIGEST_LENGTH <= b64len ){
-				UCHAR* pass = malloc( b64len );
-				if( pass ){
-					if( base64decode( b64 ,b64len ,pass ) ){
+				UCHAR* trust_digest = malloc( b64len );
+				if( trust_digest ){
+					if( base64decode( b64 ,b64len ,trust_digest ) ){
 						// 受信パスワードハッシュ変換
 						UCHAR* encpass = cp->req.body +2;
+						size_t enclen = strlen(encpass);
 						UCHAR plain[LOGINPASS_MAX*2]=""; // 不正に長いパスワード用に*2
-						if( URLdecode( encpass ,strlen(encpass) ,plain ,sizeof(plain) ) ){
-							UCHAR digest[SHA256_DIGEST_LENGTH]="";
-							SHA256( plain ,strlen(plain) ,digest );
+						if( URLdecode( encpass ,enclen ,plain ,sizeof(plain) ) ){
+							UCHAR input_digest[SHA256_DIGEST_LENGTH]="";
+							SHA256( plain ,strlen(plain) ,input_digest );
+							SecureZeroMemory( encpass ,enclen );
+							SecureZeroMemory( plain ,sizeof(plain) );
 							// ハッシュ値比較
-							if( memcmp( pass ,digest ,SHA256_DIGEST_LENGTH )==0 ){
+							if( memcmp( trust_digest ,input_digest ,SHA256_DIGEST_LENGTH )==0 ){
 								// 認証成功:セッション生成
 								Session* sep = SessionCreate();
 								if( sep ){
@@ -5164,7 +5183,7 @@ unsigned __stdcall authenticate( void* tp )
 						else ResponseError(cp,"400 Bad Request");
 					}
 					else ResponseError(cp,"500 Internal Server Error");
-					free( pass );
+					free( trust_digest );
 				}
 				else{
 					LogW(L"L%u:malloc(%u)エラー",__LINE__,b64len);
@@ -7216,7 +7235,9 @@ void ConfigSave( const ConfigData* dp )
 				// TODO:パスワード変更したらセッション(クッキー)削除すべき？でもGmail利用中に
 				// 別ブラウザでパスワード変更してもセッションは有効だった。ので問題ないかな。
 				UCHAR digest[SHA256_DIGEST_LENGTH]="";
-				SHA256( dp->loginPass ,strlen(dp->loginPass) ,digest );
+				size_t passlen = strlen(dp->loginPass);
+				SHA256( dp->loginPass ,passlen ,digest );
+				SecureZeroMemory( dp->loginPass ,passlen );
 				if( base64encode( digest ,sizeof(digest) ,b64txt ,sizeof(b64txt) ) ){
 					// BASE64検査
 					UCHAR test[SHA256_DIGEST_LENGTH*2]="";
