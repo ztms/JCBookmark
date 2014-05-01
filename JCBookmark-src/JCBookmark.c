@@ -2330,17 +2330,16 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							else{
 								int err = SSL_get_error( sslp, ret );
 								if( ret==-1 && err==SSL_ERROR_SYSCALL ){
-									// 同時通信負荷が高いとこのエラーになる時がある。
-									// amazonとの通信が他に複数ある中でSSLサイトに接続しようとした時に発生。
-									// 自宅では70弱の同時接続数で発生。細い回線だとamazonが3本でエラー発生。
-									// ネット検索してみたがよい回避策が見つからない。SSL_connectリトライして
-									// みたら負荷が下がった段階で成功した。とりあえず少しSleepして10回リトライ。
-									// TODO:細い回線でhttps://myspace.com/がこのエラーになり、リトライで成功
-									// したが、その後SSL_read()が-1を返して受信できずエラーになった模様。OS
-									// はWin8.1実機だった。VirtualBoxのWin8.1+IE11でも発生した。NEGiESで10KB/s
-									// くらいに帯域制限すると似たようなエラーはXP実機でも発生した。VCのIDEから
-									// デバッグ実行でOpenSSLソースまで追いかけられるけど、エラーが発生したり
-									// しなかったりでムズイ…。
+									// 帯域が狭かったり同時通信負荷が高いと、amazon/myspaceなどのSSLサイトで
+									// SSL_ERROR_SYSCASLLになる事がありリトライで回避。その他エラー確認サイト。
+									// https://www.elan-jp.com/haken/index.htm
+									// https://haken.ca-ss.jp:100/
+									// JCOM1Mbps回線ではMySpace１サイトのみでも発生、JCOM12Mbpsだと70弱の同時
+									// 接続数で発生。NEGiESで10KB/sくらいに帯域制限しても発生。他によい回避策
+									// も見つからないため、とりあえず少しSleepして10回リトライ。SSL_connectに
+									// 成功してもSSL_readで同様のエラーになり、それもリトライで回避。
+									// VCのIDEからデバッグ実行でOpenSSLソースまで追いかけられるが、関数ポインタ
+									// から先の追跡が面倒くさい・・。
 									// openssl-1.0.0.j/ssl/ssl_lib.c:int SSL_connect(SSL *s)
 									// {
 									//   if (s->handshake_func == 0) SSL_set_connect_state(s);
@@ -2349,11 +2348,6 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
 									// {
 									// }
-									// しかしここでエラーにならなくても、帯域がとても狭いと後のSSL_read()が-1
-									// によくなる。SSLハンドシェイクでも送受信してるはずで、おなじだとすると、
-									// 「帯域が狭いとSSL送受信でなぜかエラー」という問題なのかもしれない。
-									// mixiでもtwitterでも似たようなエラーは発生した。クライアント側の問題か
-									// サーバ側から切られているのか…？
 									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
@@ -2392,7 +2386,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								,(ua && *ua)? ua :"Mozilla/4.0"
 								,cookie? cookie :""
 							);
-							if( len<0 ){
+							if( len <0 ){
 								LogW(L"[%u]送信バッファ不足",sock);
 								len = rsp->bufsize;
 							}
@@ -2411,128 +2405,147 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							timelimit = timeGetTime() +4000;
 							while( !*abort && readable(sock, timelimit - timeGetTime()) ){
 								if( *abort ) break;
-								if( sslp )
+								if( sslp ){
 									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
-								else
-									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-								if( len >0 ){
-									if( *abort ) break;
-									rsp->bytes += len;
-									rsp->buf[rsp->bytes] = '\0';
-									if( !rsp->body ){
-										// ヘッダと本文の区切り空行をさがす
-										rsp->body = strstr(rsp->buf,"\r\n\r\n");
-										if( rsp->body ){
-											*rsp->body = '\0';
-											rsp->body += 4;
-										}else{
-											rsp->body = strstr(rsp->buf,"\n\n");
-											if( rsp->body ){
-												*rsp->body = '\0';
-												rsp->body += 2;
-											}
-										}
-										// 空行みつかったらヘッダ解析
-										if( rsp->body ){
-											rsp->head = rsp->buf;
-											while( *rsp->head && !isCRLF(*rsp->head) ) rsp->head++;
-											while( isCRLF(*rsp->head) ) *rsp->head++ ='\0';
-											if( !rsp->ContentLength ){
-												UCHAR* p = strHeaderValue(rsp->head,"Content-Length");
-												if( p ){
-													UINT n = 0;
-													for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
-													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
-												}
-												//else LogW(L"Content-Lengthなし");
-											}
-											if( !rsp->ContentEncoding ){
-												UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
-												if( p ){
-													if( strnicmp(p,"deflate",7)==0 ){
-														rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
-													}
-													else if( strnicmp(p,"gzip",4)==0 ){
-														rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
-													}
-													else{
-														rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
-													}
-												}
-												//else LogW(L"Content-Encodingなし");
-											}
-											if( !rsp->ContentType ){
-												UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
-												if( p ){
-													if( strnicmp(p,"text/html",9)==0 ){
-														rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
-													}
-													else{
-														rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
-													}
-													p = stristr(p,"charset=");
-													if( p ){
-														p += 8;
-														if( *p=='"') p++;
-														if( strnicmp(p,"utf-8",5)==0 ){
-															rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
-														}
-														else if( strnicmp(p,"shift_jis",9)==0 ){
-															rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
-														}
-														else if( strnicmp(p,"euc-jp",6)==0 ){
-															rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
-														}
-														else if( strnicmp(p,"iso-2022-jp",11)==0 ){
-															rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
-														}
-														else{
-															rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
-														}
-													}
-												}
-												//else LogW(L"Content-Typeなし");
-											}
-										}
-									}
-									// 受信終了チェック
-									if( rsp->ContentLength ){
-										// Content-Lengthぶん受信したらおわり
-										if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
-									}
-									if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
-										// 非圧縮HTMLなら</head>まであればおわり
-										if( stristr(rsp->body,"</head>") ) break;
-									}
-									if( rsp->bytes >1024*1024*10 ){
-										LogW(L"10MBを超える受信データ破棄します");
+									if( len==0 ){
+										// コネクション切断
 										break;
 									}
-									if( rsp->bytes >= rsp->bufsize ){
-										// バッファ拡大して受信継続
-										size_t newsize = rsp->bufsize * 2;
-										HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
-										if( newrsp ){
-											int distance = (BYTE*)newrsp - (BYTE*)rsp;
-											memset( newrsp, 0, sizeof(HTTPGet) + newsize );
-											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-											if( rsp->body ){
-												newrsp->head += distance;
-												newrsp->body += distance;
-											}
-											newrsp->bufsize = newsize;
-											free(rsp), rsp=newrsp;
-											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+									else if( len <0 ){
+										int err = SSL_get_error( sslp, len );
+										if( err==SSL_ERROR_WANT_READ ||
+											err==SSL_ERROR_WANT_WRITE ||
+											err==SSL_ERROR_SYSCALL
+										){
+											// 帯域が狭いとSSL_ERROR_SYSCASLLになる事がありリトライで成功する。
+											LogW(L"[%u]SSL_read()エラーリトライ..",sock);
+											continue;
 										}
 										else{
-											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+											LogW(L"[%u]SSL_read()=%d,不明なエラー%d",sock,len,err);
 											break;
 										}
 									}
 								}
 								else{
-									LogW(L"[%u]%s()=%d",sock,sslp?L"SSL_read":L"recv",len);
+									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+									if( len <=0 ){
+										LogW(L"[%u]recv()=%d",sock,len);
+										break;
+									}
+								}
+								if( *abort ) break;
+								rsp->bytes += len;
+								rsp->buf[rsp->bytes] = '\0';
+								if( !rsp->body ){
+									// ヘッダと本文の区切り空行をさがす
+									rsp->body = strstr(rsp->buf,"\r\n\r\n");
+									if( rsp->body ){
+										*rsp->body = '\0';
+										rsp->body += 4;
+									}else{
+										rsp->body = strstr(rsp->buf,"\n\n");
+										if( rsp->body ){
+											*rsp->body = '\0';
+											rsp->body += 2;
+										}
+									}
+									// 空行みつかったらヘッダ解析
+									if( rsp->body ){
+										rsp->head = rsp->buf;
+										while( *rsp->head && !isCRLF(*rsp->head) ) rsp->head++;
+										while( isCRLF(*rsp->head) ) *rsp->head++ ='\0';
+										if( !rsp->ContentLength ){
+											UCHAR* p = strHeaderValue(rsp->head,"Content-Length");
+											if( p ){
+												UINT n = 0;
+												for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
+												rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+											}
+											//else LogW(L"Content-Lengthなし");
+										}
+										if( !rsp->ContentEncoding ){
+											UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
+											if( p ){
+												if( strnicmp(p,"deflate",7)==0 ){
+													rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+												}
+												else if( strnicmp(p,"gzip",4)==0 ){
+													rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+												}
+												else{
+													rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+												}
+											}
+											//else LogW(L"Content-Encodingなし");
+										}
+										if( !rsp->ContentType ){
+											UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
+											if( p ){
+												if( strnicmp(p,"text/html",9)==0 ){
+													rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+												}
+												else{
+													rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+												}
+												p = stristr(p,"charset=");
+												if( p ){
+													p += 8;
+													if( *p=='"') p++;
+													if( strnicmp(p,"utf-8",5)==0 ){
+														rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+													}
+													else if( strnicmp(p,"shift_jis",9)==0 ){
+														rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+													}
+													else if( strnicmp(p,"euc-jp",6)==0 ){
+														rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+													}
+													else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+														rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+													}
+													else{
+														rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+													}
+												}
+											}
+											//else LogW(L"Content-Typeなし");
+										}
+									}
+								}
+								// 受信終了チェック
+								if( rsp->ContentLength ){
+									// Content-Lengthぶん受信したらおわり
+									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
+								}
+								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+									// 非圧縮HTMLなら</head>まであればおわり
+									if( stristr(rsp->body,"</head>") ) break;
+								}
+								if( rsp->bytes >1024*1024*10 ){
+									LogW(L"10MBを超える受信データ破棄します");
 									break;
+								}
+								if( rsp->bytes >= rsp->bufsize ){
+									// バッファ拡大して受信継続
+									size_t newsize = rsp->bufsize * 2;
+									HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+									if( newrsp ){
+										int distance = (BYTE*)newrsp - (BYTE*)rsp;
+										memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+										memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+										if( rsp->body ){
+											newrsp->head += distance;
+											newrsp->body += distance;
+										}
+										newrsp->bufsize = newsize;
+										free(rsp), rsp=newrsp;
+										LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
+									}
+									else{
+										LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+										break;
+									}
 								}
 							}
 							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
@@ -3766,6 +3779,7 @@ unsigned __stdcall analyze( void* tp )
 			}
 			// URL取得確認
 			if( icon ){
+				/*
 				BOOL success = FALSE;
 				HTTPGet* tmp = httpGET( icon ,ctx->userAgent ,ctx->pAbort ,0,0 );
 				if( tmp ){
@@ -3775,6 +3789,17 @@ unsigned __stdcall analyze( void* tp )
 					free( tmp );
 				}
 				if( !success ) free(icon), icon=NULL;
+				*/
+				PokeReport repo = {'?',"",NULL};
+				HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
+				if( tmp ) free( tmp );
+				if( repo.grp=='O' || repo.grp=='!' ){
+					if( repo.newurl ) free( icon ) ,icon = repo.newurl;
+				}
+				else{
+					free( icon ) ,icon=NULL;
+					if( repo.newurl ) free( repo.newurl );
+				}
 			}
 			// <link>がなかったらhttp(s)://host/favicon.icoがあるか確認
 			if( !icon ){
@@ -3786,6 +3811,7 @@ unsigned __stdcall analyze( void* tp )
 					if( slash ) *slash = '\0';
 					icon = strjoin( ctx->url ,"/favicon.ico" ,0,0,0 );
 					if( icon ){
+						/*
 						BOOL success = FALSE;
 						HTTPGet* tmp = httpGET( icon ,ctx->userAgent ,ctx->pAbort ,0,0 );
 						if( tmp ){
@@ -3795,6 +3821,17 @@ unsigned __stdcall analyze( void* tp )
 							free( tmp );
 						}
 						if( !success ) free(icon), icon=NULL;
+						*/
+						PokeReport repo = {'?',"",NULL};
+						HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
+						if( tmp ) free( tmp );
+						if( repo.grp=='O' || repo.grp=='!' ){
+							if( repo.newurl ) free( icon ) ,icon = repo.newurl;
+						}
+						else{
+							free( icon ) ,icon=NULL;
+							if( repo.newurl ) free( repo.newurl );
+						}
 					}
 					if( slash ) *slash = '/';
 				}
@@ -5476,7 +5513,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 						}
 						if( strnicmp(p,"</DL><p>",8)==0 ){
 							depth--;
-							if( depth<=0 ){
+							if( depth <=0 ){
 								// 最後の閉じタグ。ごみ箱エントリ出力して終了。
 								fprintf(fp,
 										"]},{\"id\":%u,\"title\":\"ごみ箱\",\"child\":[]}],\"nextid\":%u}"
@@ -5958,7 +5995,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					// コネクション切断
 					break;
 				}
-				else if( bytes<0 ){
+				else if( bytes <0 ){
 					int err = SSL_get_error( cp->sslp, bytes );
 					switch( err ){
 					case SSL_ERROR_WANT_READ:
@@ -6782,7 +6819,7 @@ void ClientWrite( TClient* cp )
 			}
 			if( cp->sslp ){
 				ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
-				if( ret<=0 ){
+				if( ret <=0 ){
 					int err = SSL_get_error( cp->sslp, ret );
 					switch( err ){
 					case SSL_ERROR_WANT_READ:
@@ -7827,7 +7864,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					memset( &data ,0 ,sizeof(data) );
 					GetWindowTextW( my->hListenPort ,data.wListenPort ,sizeof(data.wListenPort)/sizeof(WCHAR) );
 					iPort = _wtoi(data.wListenPort);
-					if( iPort<=0 || iPort >65535 ){
+					if( iPort <=0 || iPort >65535 ){
 						ErrorBoxW(L"ポート番号が不正です。");
 						return 0;
 					}
@@ -8275,7 +8312,7 @@ void BrowserIconClick( UINT ix )
 								,ListenPort
 						);
 						err = (DWORD)ShellExecuteW( NULL,NULL, exe, cmd, dir, SW_SHOWNORMAL );
-						if( err<=32 ){
+						if( err <=32 ){
 							LogW(L"ShellExecute(%s)エラー%u",exe,err);
 							ErrorBoxW(L"%s\r\nを実行できません",exe);
 							invalid = TRUE;
