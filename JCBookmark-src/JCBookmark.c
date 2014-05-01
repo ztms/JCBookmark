@@ -2331,9 +2331,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								int err = SSL_get_error( sslp, ret );
 								if( ret==-1 && err==SSL_ERROR_SYSCALL ){
 									// 帯域が狭かったり同時通信負荷が高いと、amazon/myspaceなどのSSLサイトで
-									// SSL_ERROR_SYSCASLLになる事がありリトライで回避。その他エラー確認サイト。
-									// https://www.elan-jp.com/haken/index.htm
-									// https://haken.ca-ss.jp:100/
+									// SSL_ERROR_SYSCASLLになる事がありリトライで回避。
 									// JCOM1Mbps回線ではMySpace１サイトのみでも発生、JCOM12Mbpsだと70弱の同時
 									// 接続数で発生。NEGiESで10KB/sくらいに帯域制限しても発生。他によい回避策
 									// も見つからないため、とりあえず少しSleepして10回リトライ。SSL_connectに
@@ -2403,12 +2401,24 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							// レスポンス受信4秒待つ
 							*rsp->buf = '\0';
 							timelimit = timeGetTime() +4000;
-							while( !*abort && readable(sock, timelimit - timeGetTime()) ){
+							for( ;; ){
+								int nfds = readable( sock, timelimit - timeGetTime() );
 								if( *abort ) break;
+								if( nfds==0 ){
+									if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信タイムアウト");
+									break;
+								}
+								else if( nfds==SOCKET_ERROR ){
+									LogW(L"[%u]selectエラー%u",sock,WSAGetLastError());
+									if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+									break;
+								}
 								if( sslp ){
 									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+									if( *abort ) break;
 									if( len==0 ){
 										// コネクション切断
+										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信データなし");
 										break;
 									}
 									else if( len <0 ){
@@ -2423,18 +2433,25 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 										}
 										else{
 											LogW(L"[%u]SSL_read()=%d,不明なエラー%d",sock,len,err);
+											if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信エラー(SSL)");
 											break;
 										}
 									}
 								}
 								else{
 									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-									if( len <=0 ){
-										LogW(L"[%u]recv()=%d",sock,len);
+									if( *abort ) break;
+									if( len==0 ){
+										// コネクション切断
+										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信データなし");
+										break;
+									}
+									else if( len <0 ){
+										LogW(L"[%u]recv()=%d,エラー%u",sock,len,WSAGetLastError());
+										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信エラー");
 										break;
 									}
 								}
-								if( *abort ) break;
 								rsp->bytes += len;
 								rsp->buf[rsp->bytes] = '\0';
 								if( !rsp->body ){
@@ -2549,7 +2566,6 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								}
 							}
 							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
-							if( !*rsp->buf && rp ) rp->grp='?' ,strcpy(rp->msg,"受信タイムアウト");
 						}
 						else{
 							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
