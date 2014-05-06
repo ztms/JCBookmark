@@ -2414,6 +2414,9 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									break;
 								}
 								if( sslp ){
+									// TODO:selectで受信データがあるのとSSL的に受信データがあるのは意味が異なる
+									// ように思うが特に何もせずrecv()の代わりにSSL_read()使ってるけど大丈夫か？
+									// SSL_pending()を使うべきなのか？でも使わなくても動いてるしいいのかな…
 									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
 									if( *abort ) break;
 									if( len==0 ){
@@ -2651,23 +2654,20 @@ size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes
 	z.avail_in = inbytes;			// 入力データサイズ
 	z.next_out  = outdata;			// 出力バッファ
 	z.avail_out = outbytes;			// 出力バッファ残量
-	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK )
-	{
+	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK ){
 		LogA("inflateInit2エラー(%s)",z.msg?z.msg:"???");
 		return 0;
 	}
 	// 展開
 	status = inflate( &z, Z_NO_FLUSH );
-	if( status !=Z_OK && status !=Z_STREAM_END )
-	{
+	if( status !=Z_OK && status !=Z_STREAM_END ){
 		LogA("inflateエラー(%s)",z.msg?z.msg:"???");
 		inflateEnd(&z);
 		return 0;
 	}
 	outbytes -= z.avail_out;
 	// 後始末
-	if( inflateEnd(&z) !=Z_OK )
-	{
+	if( inflateEnd(&z) !=Z_OK ){
 		LogA("inflateEndエラー(%s)",z.msg?z.msg:"???");
 		return 0;
 	}
@@ -2687,21 +2687,23 @@ HTTPGet* HTTPGetContentDecode( HTTPGet* rsp ,const UCHAR* url )
 			if( newrsp ){
 				int distance = (BYTE*)newrsp - (BYTE*)rsp;
 				int bytes;
+				LogW(L"伸長バッファ確保%ubytes",newsize);
 				memset( newrsp, 0, sizeof(HTTPGet) + newsize );
 				memcpy( newrsp, rsp, sizeof(HTTPGet) + headbytes );
+				newrsp->bufsize = newsize;
 				newrsp->head += distance;
 				newrsp->body += distance;
-				newrsp->bufsize = newsize;
-				LogW(L"伸長バッファ確保%ubytes",newsize);
 				bytes = zlibInflate( rsp->body, bodybytes, newrsp->body, newsize - headbytes );
-				if( bytes )
-					LogW(L"伸長[%u]%u->%ubyte(%.1f倍)"
-							,rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
-				else
+				if( bytes ){
+					LogW(L"伸長[%u]%u->%ubyte(%.1f倍)",rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+					newrsp->bytes = headbytes + bytes;
+					newrsp->ContentEncoding = 0; // 無圧縮になった(注:受信HTTPヘッダ文字列は書き換えない)
+					free( rsp ) ,rsp = newrsp;
+				}
+				else{
 					LogA("圧縮コンテンツ伸長エラー%u(%s)",rsp->ContentEncoding,url);
-				newrsp->bytes = headbytes + bytes;
-				newrsp->ContentEncoding = 0;
-				free(rsp), rsp=newrsp;
+					free( newrsp );
+				}
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
 		}
