@@ -1212,7 +1212,6 @@ typedef struct TClient {
 	#define		CLIENT_KEEP_ALIVE	6	// KeepAlive待機中
 	Request		req;
 	Response	rsp;
-	Session*	session;			// 有効セッション
 	HANDLE		thread;
 	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
@@ -5153,36 +5152,32 @@ void SessionRemove( Session* target )
 		}
 	}
 }
-// CookieヘッダのセッションIDが有効かどうか
-// なぜか/jquery/のファイルに対するリクエストに2つsession=が存在する。
-//   Cookie: session=XXXXX; session=XXXXXX ←おなじセッションIDの場合
-//   Cookie: session=XXXXX; session=YYYYYY ←ちがうセッションIDの場合
-// login.html用にjquery.jsに穴を開けているがそのせい？どちらかが有効ならよしとする…。
-Session* ClientSessionAlive( TClient* cp )
+// HTTP Cookieヘッダ文字列に有効セッションIDがあるかどうか
+Session* SessionFind( UCHAR* cookie )
 {
-	UCHAR* top = cp->req.Cookie;
+	Session* found =NULL;
 	UCHAR* sid;
-	while( sid = stristr(top,"session=") ){
+	while( sid = stristr(cookie,"session=") ){
 		sid += 8;
 		if( *sid ){
-			Session* sep = Session0;
+			Session* sp;
 			UCHAR ch;
 			UCHAR* end = strchr(sid,' ');
 			if( !end ) end = strchr(sid,';');
 			if( end ) ch=*end, *end='\0'; // 一時破壊
-			for( sep=Session0; sep; sep=sep->next ){
-				if( strcmp( sid ,sep->id )==0 ){
-					cp->session = sep;
+			for( sp=Session0; sp; sp=sp->next ){
+				if( strcmp( sid ,sp->id )==0 ){
+					found = sp;
 					break;
 				}
 			}
 			if( end ) *end=ch; // 破壊を戻す
-			if( cp->session ) break; // セッション１つ見つかればOK
-			top = sid; // 次
+			if( found ) break; // セッション１つ見つかればOK
+			cookie = sid; // 次
 		}
 		else break;
 	}
-	return cp->session;
+	return found;
 }
 // パスワード認証
 // GET /:login HTTP/1.x
@@ -6089,6 +6084,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					UCHAR* file = req->path;
 					while( *file=='/' ) file++;
 					if( (LoginRemote && !cp->loopback) || (LoginLocal && cp->loopback) ){
+						Session* ses =NULL;
 						// ログインパスワード有効
 						if( stricmp(file,"favicon.ico")==0 || stricmp(file,"jquery/jquery.js")==0 ){
 							// 通常処理へ
@@ -6107,7 +6103,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// なくて実装しなければならぬ・・うーむ。jQueryローカル化をやめてぜんぶ
 							// 外部jQuery参照にしても解決するかな？せっかくjQueryローカルにしたが・・。
 						}
-						else if( ClientSessionAlive(cp) ){
+						else if( (ses = SessionFind(cp->req.Cookie)) ){
 							// セッション有効ログイン済み
 							if( stricmp(file,"login.html")==0 || stricmp(file,":login")==0 ){
 								// index.htmlを返す
@@ -6132,17 +6128,16 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								goto send_ready;
 							}
 							else if( stricmp(file,":logout")==0 ){
-								if( cp->session ){
-									BufferSends( &(cp->rsp.body) ,cp->session->id );
+								if( ses ){
+									BufferSends( &(cp->rsp.body) ,ses->id );
 									BufferSendf( &(cp->rsp.head)
 										,"HTTP/1.0 200 OK\r\n"
 										"Content-Type: text/plain\r\n"
 										"Content-Length: %u\r\n"
 										,cp->rsp.body.bytes
 									);
-									LogA("[%u]ログアウト(%s)",Num(cp),cp->session->id);
-									SessionRemove( cp->session );
-									cp->session = NULL;
+									LogA("[%u]ログアウト(%s)",Num(cp),ses->id);
+									SessionRemove( ses );
 								}
 								else ResponseError(cp,"500 Internal Server Error");
 								goto send_ready;
@@ -6710,7 +6705,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								// ドキュメントルート配下のJSONまたはexport.htmlまたはスナップショットメモのみ
 								if( (ext && stricmp(ext,".json")==0 && UnderDocumentRoot(realpath))
 									|| stricmp(file,"export.html")==0
-									|| (strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0 )
+									|| (strnicmp(file,"snap/shot",4)==0 && stricmp(file+strlen(file)-4,".txt")==0)
 								){
 									req->writefh = CreateFileW( tmppath
 														,GENERIC_WRITE, FILE_SHARE_READ, NULL
@@ -6804,9 +6799,6 @@ void ClientWrite( TClient* cp )
 	switch( cp->status ){
 	case CLIENT_SEND_READY:
 		// 共通レスポンスヘッダ
-		if( cp->session ){
-			BufferSendf( &(rsp->head) ,"Set-Cookie: session=%s; path=/\r\n" ,cp->session->id );
-		}
 		BufferSendf( &(rsp->head)
 				,"Connection: %s\r\n"
 				"\r\n"
