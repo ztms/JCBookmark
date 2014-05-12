@@ -2537,10 +2537,17 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// Content-Lengthぶん受信したらおわり
 									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
 								}
+								/*
+								// http://oxfam.jp/が本来はEUC-JPなのにSJIS(932)と判定されてしまい、
+								// DetectInputCodePageの引数でMLDETECTCP_8BITやMLDETECCP_MBCS指定しても
+								// 効果なく、自力EUC-JP判定してもSJISかEUC-JPか判断できず、なぜかと思ったら
+								// </head>までしか受信しないことによる日本語文字数の少なさが影響していた。
+								// ぜんぶ受信したら改善したので、</head>までしか受信しないのはやめる。
 								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
 									// 非圧縮HTMLなら</head>まであればおわり
 									if( stristr(rsp->body,"</head>") ) break;
 								}
+								*/
 								if( rsp->bytes >1024*1024*10 ){
 									LogW(L"10MBを超える受信データ破棄します");
 									break;
@@ -2763,9 +2770,7 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 								,&info
 								,&count
 					);
-					if( SUCCEEDED(res) ){
-						CP = info.nCodePage;
-					}
+					if( SUCCEEDED(res) ) CP = info.nCodePage;
 					mlang2->lpVtbl->Release( mlang2 );
 				}
 				CoUninitialize();
@@ -3716,7 +3721,7 @@ unsigned __stdcall analyze( void* tp )
 						CRLFtoSPACE( title );
 					}
 				}
-				else LogA("</title>が見つかりません(%s)",ctx->url);
+				else LogA("</title>が見つかりません(%s:%s)",ctx->url,begin);
 			}
 			else LogA("<title>が見つかりません(%s)",ctx->url);
 			// favicon取得まず<link rel=icon href="xxx">をさがす
