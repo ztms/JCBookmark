@@ -1,8 +1,8 @@
 // vim:set ts=4:vim modeline
-// TODO:Chromeでツイッターのリンクを開いて表示完了前あたりに閉じるとJCBookmark表示タブが強制終了する事しばしば。謎。
-// TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
+// TODO:Chromeのブックマークバーみたいな固定バーが欲しい。パネルの右クリックメニュー「このタブを固定」でスタイル変更。新規ブックマーク登録ボックスも一緒に入るのはいいが新規登録ボタン(文字が入ってる時だけ表示)をどうするか。あと１行で収まらない時は２行でいいかな？
 // TODO:一括でパネル開閉
-// TODO:パネルの中にパネル。フォルダ構造をそのままで。
+// TODO:パネルの中にパネル
+// TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:Firefoxのタグ機能。整理画面はFirefox相当でいいけどパネル画面はタグ機能をどう使うか・・タグパネル？無視？
 // TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。または、データは１つのまま表示上#wallを複数にしてタブ切り替えという方式でもいいかな。どちらがよいか・・。タブ切り替え型ならパネル持ち運びができるのが利点か。データ切り替え型は・・大量データの場合に負荷が低いかな。
 (function( $, $win, $doc, oStr, IE, $wall, $sidebar ){
@@ -21,9 +21,7 @@ var start = new Date(); // 測定
 */
 $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-	beforeSend:function(xhr){
-		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
-	}
+	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
 });
 var tree = {
 	// ルートノード
@@ -1881,7 +1879,7 @@ function setEvents(){
 					}
 					if( item ){
 						var opt = {
-							type:text.length? 'put' : 'del'
+							type:text.length? 'put':'del'
 							,url:'snap/'+id.replace(/cab$/,'txt')
 							,error:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
 							,success:function(){ item.memo=text; widthAdjust(); }

@@ -14,9 +14,7 @@ var $debug = $('<div></div>').css({
 */
 $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
-	beforeSend:function(xhr){
-		xhr.setRequestHeader('If-Modified-Since','Thu, 01 Jun 1970 00:00:00 GMT');
-	}
+	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
 });
 var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
