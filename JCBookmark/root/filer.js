@@ -1185,6 +1185,8 @@ $(doc).on({
 		if( onContextHide ) onContextHide();
 		// inputタグはフォーカスするためtrue返す
 		if( ev.target.tagName=='INPUT' ) return true;
+		// 編集ボックス確定
+		$('#editbox').blur();
 		if( $(ev.target).hasClass('barbtn') ) return true;
 		// (WK,GK)既定アクション停止
 		return false;
@@ -1210,7 +1212,7 @@ $(doc).on({
 // ウィンドウ外に出たらドラッグやめたことにする。
 if( IE && IE<9 ) $(doc).mouseleave(function(){ $(this).mouseup(); } );
 // 変更保存リンク
-$('#modified').click(function(){ $('#editbox').blur(); treeSave(); });
+$('#modified').click(function(){ treeSave(); });
 // パネル画面に戻る
 $('#home').click(function(){
 	itemList(false);
@@ -1572,6 +1574,7 @@ $('.itemborder').mousedown(function(ev){
 $('#itembox').on({
 	// アイテム欄下余白から矩形選択
 	mousedown:function(ev){
+		$('#editbox').blur();
 		var downX = ev.pageX;
 		var downY = ev.pageY;
 		var offset = $(this).offset();
@@ -1698,8 +1701,6 @@ function resizeV( padding ){
 // 矩形選択
 // TODO:アイテム欄の上下自動スクロール
 function itemSelectStart( element, downX, downY ){
-	// 変更を反映
-	$('#editbox').blur();
 	// 矩形表示
 	$('#selectbox').css({ left:downX, top:downY, width:1, height:1 }).show();
 	// アイテム状態保持
@@ -1823,6 +1824,7 @@ function itemSelfClick( ev, shiftKey ){
 	}
 }
 function itemMouseDown( ev, shiftKey ){
+	$('#editbox').blur();
 	// イベント間通知
 	ev.data.itemID = this.id;
 	ev.data.itemNotify = '';
@@ -1908,6 +1910,7 @@ function itemMouseDown( ev, shiftKey ){
 	if( IE && IE<9 )xxxxx;
 }
 function folderMouseDown(ev){
+	$('#editbox').blur();
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
 	// ドラッグ開始
@@ -2498,7 +2501,6 @@ function itemContextMenu(ev){
 // 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
 var onContextHide = null; // #contextmenu.hide()時に実行する関数
 function folderContextMenu(ev){
-	$('#editbox').blur();
 	var folder = ev.target;
 	while( !$(folder).hasClass('folder') ){
 		if( !folder.parentNode ) return;
