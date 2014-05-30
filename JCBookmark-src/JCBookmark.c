@@ -2649,8 +2649,12 @@ fin:
 #include "zlib.h"
 size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
 {
+	#define WBITS_AUTO (32+MAX_WBITS)	// 47 zlib|gzip自動ヘッダ判定
+	#define WBITS_RAW  -MAX_WBITS		// -15 ヘッダ無し圧縮データ用
 	z_stream z;
-	int status;
+	int status ,wbits = WBITS_AUTO;
+
+retry_raw:
 	// メモリ管理をライブラリに任せる
 	z.zalloc = Z_NULL;
 	z.zfree  = Z_NULL;
@@ -2660,15 +2664,22 @@ size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes
 	z.avail_in = inbytes;			// 入力データサイズ
 	z.next_out  = outdata;			// 出力バッファ
 	z.avail_out = outbytes;			// 出力バッファ残量
-	if( inflateInit2(&z, 32+MAX_WBITS) !=Z_OK ){
+	if( inflateInit2(&z, wbits) !=Z_OK ){
 		LogA("inflateInit2エラー(%s)",z.msg?z.msg:"???");
 		return 0;
 	}
 	// 展開
 	status = inflate( &z, Z_NO_FLUSH );
 	if( status !=Z_OK && status !=Z_STREAM_END ){
-		LogA("inflateエラー(%s)",z.msg?z.msg:"???");
+		LogA("inflateエラー(%s), wbits=%d",z.msg?z.msg:"???",wbits);
 		inflateEnd(&z);
+		// サーバによりContent-Encoding:deflateの圧縮データにヘッダ情報が無くinflateエラー
+		// (incorrect header check)になる事があるもよう(例http://www.rareirishstuff.com/)。
+		// その場合はinflateInit2のwindowBitsを-15にして実行すると成功する事があるらしい。
+		if( status==Z_DATA_ERROR && wbits==WBITS_AUTO ){
+			wbits = WBITS_RAW;
+			goto retry_raw;
+		}
 		return 0;
 	}
 	outbytes -= z.avail_out;
@@ -2770,7 +2781,14 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 								,&info
 								,&count
 					);
-					if( SUCCEEDED(res) ) CP = info.nCodePage;
+					if( SUCCEEDED(res) ){
+						// oxfam.jpがタイトル取得できない問題でわかったが、日本語文字数が少なくて
+						// SJISかEUC-JPか判定できない場合、metaタグでcharset=euc-jpとなっていても
+						// 932が返ってくる。metaタグは見てくれないもよう。自力で「日本語文字数が
+						// 少なくてSJISかEUC-JPか判別不能」なことを確認して、charset=euc-jpの
+						// 場合は932→euc-jp(51932)に変更すると良い？そこまでしなくていいか…
+						CP = info.nCodePage;
+					}
 					mlang2->lpVtbl->Release( mlang2 );
 				}
 				CoUninitialize();
@@ -3669,6 +3687,11 @@ unsigned __stdcall poker( void* tp )
 // しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
 // イマイチなのも確か…。なにかいい手はないものか…。
 // ブラウザのアドオンを使う手もあるか？
+// TODO:URLがPDFファイルや画像ファイルだった場合に、アイコン無しではなく
+// Content-Typeに応じたイメージアイコンだとちょっとだけ気の利いた感じになる？
+// でも既定のitem.pngを決めてるのはJS側なので、サーバからはContentTypeを返却して、
+// 画像ファイル種別に対応づけるのはJS側でいいかな。どちらにせよ今ContentTypeは
+// text/htmlだけ識別してあとは気にしてないので、そこを改造しなければならぬ・・
 typedef struct AnalyCTX {
 	struct AnalyCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
@@ -3801,17 +3824,6 @@ unsigned __stdcall analyze( void* tp )
 			}
 			// URL取得確認
 			if( icon ){
-				/*
-				BOOL success = FALSE;
-				HTTPGet* tmp = httpGET( icon ,ctx->userAgent ,ctx->pAbort ,0,0 );
-				if( tmp ){
-					// HTTP/1.x 200 OK
-					// あまり厳密チェックせず2xxか3xxならオッケーとする
-					if( tmp->bytes >12 &&( tmp->buf[9]=='2' || tmp->buf[9]=='3') ) success=TRUE;
-					free( tmp );
-				}
-				if( !success ) free(icon), icon=NULL;
-				*/
 				PokeReport repo = {'?',"",NULL};
 				HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
 				if( tmp ) free( tmp );
@@ -3833,17 +3845,6 @@ unsigned __stdcall analyze( void* tp )
 					if( slash ) *slash = '\0';
 					icon = strjoin( ctx->url ,"/favicon.ico" ,0,0,0 );
 					if( icon ){
-						/*
-						BOOL success = FALSE;
-						HTTPGet* tmp = httpGET( icon ,ctx->userAgent ,ctx->pAbort ,0,0 );
-						if( tmp ){
-							if( tmp->bytes >12 && strnicmp(tmp->buf+8," 200",4)==0 ) // HTTP/1.x 200 OK
-								if( tmp->ContentType !=TYPE_HTML ) // text/html 除外
-									success = TRUE;
-							free( tmp );
-						}
-						if( !success ) free(icon), icon=NULL;
-						*/
 						PokeReport repo = {'?',"",NULL};
 						HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
 						if( tmp ) free( tmp );
@@ -5780,9 +5781,9 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 		if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
 			#define BACKLOG 128
 			if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
-				// 待ち受け開始したので、次
-				// ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
+				// 待ち受け開始後、ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
 				// その時 lParam に FD_ACCEPT が格納されている。
+				// TODO:CreateIoCompletionPortの方が高負荷耐性なようだが使い方が難しそう…
 				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
 					WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
 					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen ,ip ,sizeof(ip)/sizeof(WCHAR) ,NULL,0,NI_NUMERICHOST );
