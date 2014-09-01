@@ -2830,7 +2830,7 @@ HTTPGet* HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 					goto ok;
 				}
 				// 直接変換エラー時(なぜかEUCとか直接変換エラー)、まずSJIS(932)に変換
-				LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+				//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
 				tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
 				mode=0;
 				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
@@ -6584,7 +6584,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								if( cp->rsp.readfh==INVALID_HANDLE_VALUE && PathIsDirectoryW(realpath) ){
 									// フォルダだった場合 index.html 補完
 									// TODO:MAX_PATH(260)を超えるにはGetFileAttributesで接頭詞"\\?\"
-									LogW(L"CreateFile %u",GetLastError());
 									_snwprintf(realpath+len,sizeof(realpath)/sizeof(WCHAR)-len,L"\\%s",L"index.html");
 									realpath[sizeof(realpath)/sizeof(WCHAR)-1]=L'\0';
 									cp->rsp.readfh = CreateFileW( realpath
