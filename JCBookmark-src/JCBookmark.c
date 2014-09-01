@@ -2651,8 +2651,8 @@ size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes
 {
 	#define WBITS_AUTO (32+MAX_WBITS)	// 47 zlib|gzip自動ヘッダ判定
 	#define WBITS_RAW  -MAX_WBITS		// -15 ヘッダ無し圧縮データ用
-	z_stream z;
 	int status ,wbits = WBITS_AUTO;
+	z_stream z;
 
 retry_raw:
 	// メモリ管理をライブラリに任せる
@@ -2736,7 +2736,7 @@ struct {
 	CONVERTINETSTRING	Convert;
 } mlang = { NULL, NULL };
 
-void HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
+HTTPGet* HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 {
 	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
@@ -2795,42 +2795,66 @@ void HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 			}
 		}
 		if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
-			int tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
-			BYTE* tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
+			BYTE* tmp;
+			int tmpbytes;
+			if( rsp->bufsize < rsp->bytes *2 ){
+				// UTF-8変換してバイト数が増える場合、変換後のUTF-8を格納できるだけの
+				// バッファを確保していないとConvertINetString()がエラーになるもよう。
+				// とりあえず受信データの2倍以上バッファを確保しておく。
+				size_t newsize = rsp->bufsize * 2;
+				HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+				if( newrsp ){
+					int distance = (BYTE*)newrsp - (BYTE*)rsp;
+					memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+					memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+					if( rsp->body ){
+						newrsp->head += distance;
+						newrsp->body += distance;
+					}
+					newrsp->bufsize = newsize;
+					free(rsp), rsp=newrsp;
+					LogW(L"バッファ拡大(文字コード変換)%ubytes",newsize);
+				}
+				else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+			}
+			tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
+			tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
 			if( tmp ){
 				DWORD mode=0;
 				HRESULT res;
 				memset( tmp, 0, tmpbytes );
-				// まずSJIS(932)に変換(なぜかEUC→UTF8直変換がエラーになってしまうので)
+				// 直接UTF-8変換してみる
+				res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
+				if( res==S_OK ){
+					memcpy( rsp->body ,tmp ,tmpbytes );
+					goto ok;
+				}
+				// 直接変換エラー時(なぜかEUCとか直接変換エラー)、まずSJIS(932)に変換
+				LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+				tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
+				mode=0;
 				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
 				if( res==S_OK ){
+					// 次にSJISからUTF8(65001)に変換
 					tmp[tmpbytes]='\0';
 					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
 					mode=0;
-					// 次にSJISからUTF8(65001)に変換
 					res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
-					if( res==S_OK ) goto ok;
-					else LogA("ConvertINetString(932->65001)エラー(%s)",url);
-				}
-				else{
-					// SJIS変換エラーは直接UTF-8変換
-					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
-					mode=0;
-					res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
 					if( res==S_OK ){
-						memcpy( rsp->body ,tmp ,tmpbytes );
 					ok:
 						rsp->body[tmpbytes]='\0';
 						rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
 						LogW(L"文字コード%u->65001変換",CP);
 					}
-					else LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+					else LogA("ConvertINetString(932->65001)エラー(%s)",url);
 				}
+				else LogA("ConvertINetString(%u->932)エラー(%s)",CP,url);
 				free( tmp );
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
 		}
 	}
+	return rsp;
 }
 
 // <meta http-equiv=refresh ..>転送の誤検出を防ぐためHTMLを書き換える。
@@ -3333,9 +3357,8 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 		rsp = HTTPGetContentDecode( rsp ,newurl? newurl :url0 );
 		// HTTP/1.x 200 OK
 		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
-			UCHAR* code = rsp->buf +9;	// 応答コードテキスト("200 OK"など)
-			switch( code[0] ){
-			case '2': // 成功
+			switch( rsp->buf[9] ){	// 応答コードテキスト("200 OK"など)
+			case '2': // 2xx 成功
 				// TODO:YouTubeの動画URLは動画が消されてても200 OKになってしまう。本文を解析しないと不明。
 				// 実装したとしてもYouTubeの仕様変更に振り回されるだろう・・。
 				// TODO:gihyo.jpの記事で<title>が取得できない問題が発生した時、ここでrsp->bodyを裁断してる
@@ -3350,7 +3373,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送。時事ドットコムや@ITの
 					// 記事、他でもしばしば使われている。
 					UCHAR* body ,*meta;
-					HTTPGetHtmlToUTF8( rsp ,newurl? newurl :url0 );
+					rsp = HTTPGetHtmlToUTF8( rsp ,newurl? newurl :url0 );
 					body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
 					while( meta = stristr(body,"<meta ") ){
 						UCHAR* endtag = strchr(meta,'>');
@@ -3409,7 +3432,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 						rp->grp='O' ,free(newurl) ,newurl=NULL;
 				}
 				break;
-			case '3': // 転送
+			case '3': // 3xx 転送
 				// http://www.ec-current.com/ は匿名閲覧でもクッキーを使っているようで、Cookie: なしで
 				// アクセスすると302で飛ばされ、クッキー発行してまた302で元のURLに戻すという仕様のもよう。
 				// クッキー有効クライアントは戻ってきた時のURLは最初とおなじだが、クッキー無効クライアントは
@@ -3453,19 +3476,19 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				}
 				if( rp ) rp->grp='!';
 				break;
-			case '4': // クライアントエラー
+			case '4': // 4xx クライアントエラー
 				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
 				// らくすると復活する。のでリンク切れではない。4xx系でリンク切れ死亡と断定してよいコードは、
 				// 404,410くらいか？他のは(死亡アイコンでなく)エラーアイコン。
-				switch( code[1] ){
+				switch( rsp->buf[10] ){
 				case '0':
-					switch( code[2]) {
+					switch( rsp->buf[11] ){
 					case '4':if( rp ) rp->grp='D'; break;	// 404 Not Found =死亡
 					default: if( rp ) rp->grp='E';			// 40x =エラー
 					}
 					break;
 				case '1':
-					switch( code[2]) {
+					switch( rsp->buf[11] ){
 					case '0':if( rp ) rp->grp='D'; break;	// 410 Gone =死亡
 					default: if( rp ) rp->grp='E';			// 41x =エラー
 					}
@@ -3473,7 +3496,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				default: if( rp ) rp->grp='E';				// 4xx =エラー
 				}
 				break;
-			case '5': // サーバーエラー
+			case '5': // 5xx サーバーエラー
 				if( rp ) rp->grp='E'; // Error
 				break;
 			//case '1': // 情報(HTTP/1.1以降)
@@ -3481,7 +3504,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				if( rp ) rp->grp='?';
 			}
 			if( rp ){
-				strncpy( rp->msg ,code ,sizeof(rp->msg) );
+				strncpy( rp->msg ,rsp->buf + 9 ,sizeof(rp->msg) );	// 応答コードテキスト("200 OK"など)
 				rp->msg[sizeof(rp->msg)-1]='\0';
 			}
 		}
@@ -3728,7 +3751,7 @@ unsigned __stdcall analyze( void* tp )
 		if( *ctx->pAbort ) goto fin;
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
-			HTTPGetHtmlToUTF8( rsp ,ctx->url );
+			rsp = HTTPGetHtmlToUTF8( rsp ,ctx->url );
 			// タイトル取得
 			begin = stristr(rsp->body,"<title");
 			if( begin ){
