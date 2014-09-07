@@ -5818,11 +5818,11 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 					);
 					success = TRUE;
 				}
-				else LogW(L"WSAAsyncSelectエラー%u",WSAGetLastError());
+				else LogW(L"WSAAsyncSelectエラー(%u)",WSAGetLastError());
 			}
-			else LogW(L"listenエラー%u",WSAGetLastError());
+			else LogW(L"listenエラー(%u)",WSAGetLastError());
 		}
-		else LogW(L"bindエラー%u",WSAGetLastError());
+		else LogW(L"bindエラー(%u) ポート%sで待受できません",WSAGetLastError(),ListenPort);
 	}
 	if( !success && sock !=INVALID_SOCKET ){
 		shutdown( sock, SD_BOTH );
@@ -8603,13 +8603,9 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
-	for( ;; ){
-		// listen成功でループ抜け
-		if( ListenStart() ) break;
+	if( !ListenStart() ){
 		ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
-		// listenエラー設定ダイアログ出す
-		if( ConfigDialog(0)==ID_DLG_CANCEL ) break;
-		// ダイアログOK、listenリトライ
+		PostMessage( MainForm ,WM_COMMAND ,MAKEWPARAM(CMD_SETTING,0) ,0 );
 	}
 	// タイマー処理
 	MainFormTimer1000();
@@ -8952,7 +8948,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					success = ListenStart();			// 待ち受け開始
 					MainFormTimer1000();				// タイトルバー
 					// Listen失敗時は再び設定ダイアログ
-					if( !success ) PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
+					if( !success ){
+						ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
+						PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
+					}
 				}
 				DestroyWindow( hToolTip );
 				BrowserIconDestroy( browser );
