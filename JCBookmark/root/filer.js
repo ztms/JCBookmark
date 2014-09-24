@@ -407,7 +407,7 @@ var option = {
 	option.load(function(){
 		// 準備
 		var fontSize = (option.font.css()==='gothic.css')? 13 : 12;
-		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox{font-size:'+fontSize+'px;}');
+		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt{font-size:'+fontSize+'px;}');
 		$('#fontcss').attr('href',option.font.css());
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
@@ -693,12 +693,40 @@ var itemList = function(){
 		if( arg0===false ) return;
 		if( arg0==='finds' ){
 			// 検索
-			var keywords = $('#keyword').val().split(/[ 　]+/);
-			for( var i=keywords.length-1; i>=0; i-- ){
-				if( keywords[i].length<=0 ) keywords.splice(i,1);
-				else keywords[i] = keywords[i].myNormal();
+			if( findopt.regex() ){
+				// 正規表現
+				var pattern = $('#keyword').val();
+				if( pattern.length<=0 ) return;
+				var flag = undefined;
+				if( pattern[0]=='/' ){
+					var last = pattern.lastIndexOf('/');
+					if( last>0 ){
+						flag = pattern.slice( last +1 );
+						if( flag.length ) pattern = pattern.slice( 1 ,last );
+						else flag = undefined;
+					}
+				}
+				try{ var regex = new RegExp( pattern ,flag ); }
+				catch(e){ Notify('不正な正規表現です'); return; }
+				String.prototype.myFound = function(){ return regex.test(this)? true:false; };
 			}
-			if( keywords.length<=0 ) return;
+			else{
+				// 通常
+				var words = $('#keyword').val().split(/[ 　]+/);
+				for( var i=words.length-1; i>=0; i-- ){
+					if( words[i].length<=0 ) words.splice(i,1);
+					else words[i] = words[i].myNormal();
+				}
+				if( words.length<=0 ) return;
+				String.prototype.myFound = function(){
+					// AND検索(TODO:OR検索・大小文字区別対応する？)
+					var str = this.myNormal();
+					for( var i=words.length-1; i>=0; i-- ){
+						if( str.indexOf(words[i])<0 ) return false;
+					}
+					return true;
+				};
+			}
 			kind = 'finds';
 			$('#deadinfo').trigger('dying').remove();
 			$head3.text('場所 / 調査結果');
@@ -779,13 +807,6 @@ var itemList = function(){
 			},0);
 			var findexe = function(){
 				// 検索実行
-				String.prototype.myFound = function(){
-					// AND検索(TODO:OR検索・大小文字区別対応する？)
-					for( var i=keywords.length-1; i>=0; i-- ){
-						if( this.indexOf(keywords[i])<0 ) return false;
-					}
-					return true;
-				};
 				items.innerHTML = '';
 				var $finding = $('#finding');
 				var now = (new Date()).getTime();
@@ -796,7 +817,7 @@ var itemList = function(){
 					while( index < folders.length && total<limit ){
 						var folder = folders[index];
 						// フォルダ名
-						if( folder.node.title.myNormal().myFound() ){
+						if( folder.node.title.myFound() ){
 							$itemAppend( folder.node, now, folder.place );
 						}
 						total++;
@@ -805,7 +826,7 @@ var itemList = function(){
 						var place = (folder.place.length? folder.place +' > ' :'') +folder.node.title;
 						for( var i=0, n=child.length; i<n; i++ ){
 							if( child[i].child ) continue;
-							if( (child[i].title +child[i].url).myNormal().myFound() ){
+							if( (child[i].title +child[i].url).myFound() ){
 								$itemAppend( child[i], now, place );
 							}
 							total++;
@@ -829,6 +850,8 @@ var itemList = function(){
 			// キューに入ったものは(画面上はわからないが)調査が継続する。(フォルダ調査との違いに注意)
 			// ただしフォルダリンク切れ調査が開始された場合、アイテム調査は中断(キューに残った未調査
 			// ぶんは破棄)される。
+			// TODO:フォルダリンク切れ調査の結果アイテム欄で、アイテム右クリックのリンク切れ調査を連続
+			// 実行すると、前回実行して「調査中...」のものが中断されて調査中のままになってしまう。
 			// ノード配列作成
 			var items = doc.getElementById('items').children;
 			for( var i=0, n=items.length; i<n; i++ ){
@@ -1351,12 +1374,42 @@ $('#newurl').keypress(function(ev){
 	}
 });
 // 検索
-$('#find').click(function(){ itemList('finds'); });
+// TODO:タイトルかURLか選択、大小文字区別などオプション追加？
+var findopt = function(){
+	var isRegex = false;
+	// IE8やFirefoxはリロードしてもチェック状態が維持されるので、それを取得保持しようとしたが、IE8は
+	// ここで$.prop('checked')しても(チェックされているにもかかわらず)falseになってしまうもよう。
+	// setTimeoutで後まわし実行したら正しく取得できた。
+	setTimeout(function(){
+		isRegex = $('#fregex').change(function(){ isRegex = $(this).prop('checked'); }).prop('checked');
+	},0);
+	var $box = $('#findopt');
+	return {
+		 regex:function(){ return isRegex; }
+		,show:function(){
+			if( $box.css('display')=='none' ){
+				var offset = $('#keyword').offset();
+				$box.css({ left:offset.left ,top:offset.top +20 }).show();
+				var area = $('#find').offset();
+				area.right = offset.left + $box.outerWidth();
+				area.bottom = offset.top + $box.outerHeight() +20;
+				$(doc).on('mousemove.findopt',function(ev){
+					if( ev.pageX < area.left || area.right < ev.pageX ||
+						ev.pageY < area.top || area.bottom < ev.pageY ){
+						$box.hide();
+						$(doc).off('mousemove.findopt');
+					}
+				});
+			}
+		}
+	};
+}();
+$('#find').click(function(){ itemList('finds'); }).mouseenter( findopt.show );
 $('#keyword').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 13: $('#find').click(); return false;
 	}
-});
+}).mouseenter( findopt.show );
 // すべて選択
 // TODO:アイテム欄が表示中だとぜんぶ選択されない
 $('#selectall').click(function(){

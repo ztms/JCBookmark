@@ -35,7 +35,7 @@ body {
 	float:right;
 	margin-right:17px;
 }
-#toolbar input {
+#newname, #newurl, #keyword {
 	position:relative;
 	float:left;
 	width:144px;
@@ -56,6 +56,28 @@ body {
 }
 #keyword {
 	background:transparent;
+}
+#findopt {
+	display:none;
+	position:absolute;
+	background:#eee;
+	border-left:1px solid #aaa;
+	border-right:1px solid #aaa;
+	border-bottom:1px solid #aaa;
+	border-radius:0 0 3px 3px;
+	box-shadow:0 3px 4px #555;
+	padding:5px;
+	min-width:137px;
+	color:#333;
+}
+#findopt label {
+	letter-spacing:1px;
+	padding:5px;
+}
+#fregex {
+	vertical-align:middle;
+	width:15px;height:15px;
+	margin:0;
 }
 /* 変更保存リンクバー */
 #progress, #modified {
