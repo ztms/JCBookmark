@@ -1,7 +1,7 @@
 // vim:set ts=4:vim modeline
 // TODO:Chromeのブックマークバーみたいな固定バーが欲しい。パネルの右クリックメニュー「このタブを固定」でスタイル変更。新規ブックマーク登録ボックスも一緒に入るのはいいが新規登録ボタン(文字が入ってる時だけ表示)をどうするか。あと１行で収まらない時は２行でいいかな？
 // TODO:一括でパネル開閉
-// TODO:パネルの中にパネル
+// TODO:パネルの中にパネル、ポップアップは１列だけでなくドラッグで横に引き伸ばして複数列にできる、ポップアップ内でもパネル開閉ができる、ようするにポップアップはwallが出たり消えたりする感じ。配置を設定に持つのが大変そうだが・・
 // TODO:パネル色分け。背景が黒か白かは固定で、色相だけ選べる感じかな？HSVのSVは固定で。
 // TODO:Firefoxのタグ機能。整理画面はFirefox相当でいいけどパネル画面はタグ機能をどう使うか・・タグパネル？無視？
 // TODO:ブックマークデータの複数切り替え。tree.jsonとindex.jsonのセットを複数持てばいいのだが、スナップショットとの整合もある。または、データは１つのまま表示上#wallを複数にしてタブ切り替えという方式でもいいかな。どちらがよいか・・。タブ切り替え型ならパネル持ち運びができるのが利点か。データ切り替え型は・・大量データの場合に負荷が低いかな。
@@ -1640,7 +1640,7 @@ function setEvents(){
 					if( jsonText.length ){
 						$('#dialog').dialog('destroy');
 						try{ analyzer( $.parseJSON(jsonText) ); }
-						catch( e ){ Alert(e); }
+						catch(e){ Alert(e); }
 					}
 					$(this).empty();
 					$impexp.dialog('destroy');
@@ -2069,6 +2069,13 @@ function setEvents(){
 					else words[i] = words[i].myNormal();
 				}
 				if( words.length<=0 ) return;
+				String.prototype.myFound = function(){
+					// AND検索(TODO:OR検索・大小文字区別対応する？)
+					for( var i=words.length-1; i>=0; i-- ){
+						if( this.indexOf(words[i])<0 ) return false;
+					}
+					return true;
+				};
 				// 検索中表示・準備
 				// wait.gifは黒背景で見た目が汚いので使えない…
 				var $pgbar = $('#finding').progressbar('value',0);
@@ -2082,13 +2089,6 @@ function setEvents(){
 				}).show();
 				// 検索実行
 				var target = findTarget();
-				String.prototype.myFound = function(){
-					// AND検索(TODO:OR検索・大小文字区別対応する？)
-					for( var i=words.length-1; i>=0; i-- ){
-						if( this.indexOf(words[i])<0 ) return false;
-					}
-					return true;
-				};
 				var index = 0;
 				var total = 0;
 				(function callee(){

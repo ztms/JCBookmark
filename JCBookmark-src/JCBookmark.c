@@ -3701,6 +3701,9 @@ unsigned __stdcall poker( void* tp )
 // クライアントからの要求 POST /:analyze HTTP/1.x で開始され、
 // 本文の1行1URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
 //		[{"title":"タイトル","icon":"URL"},{...}]
+// TODO:.xmlページのタイトルが取得できない。
+// view-source:http://www.usamimi.info/~hellfather/game/hash.xml
+// <desc title="文字列からハッシュを生成">
 // TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
 // 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
 // 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
