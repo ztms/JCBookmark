@@ -68,6 +68,7 @@ body {
 	box-shadow:0 3px 4px #555;
 	padding:5px;
 	min-width:137px;
+	line-height:15px;
 	color:#333;
 }
 #findopt label {
@@ -75,7 +76,7 @@ body {
 	padding:5px;
 }
 #fregex {
-	vertical-align:middle;
+	vertical-align:-3px;
 	width:15px;height:15px;
 	margin:0;
 }
