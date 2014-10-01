@@ -2789,17 +2789,19 @@ function edit( element, opt ){
 							case 'title':
 								// TODO:スクロールが初期化されてしまうフォルダツリー欄の表示状態維持すべき
 								var $item = $(element.parentNode);
-								if( $item.hasClass('folder') ){
-									if( $item.hasClass('item') ){
+								if( $item.hasClass('item') ){
+									$e.attr('title', value );
+									if( $item.hasClass('folder') ){
 										// アイテム欄のフォルダの時フォルダツリーも更新
 										folderTree({ selectID:selectFolder.id.slice(6) ,inactive:true });
 									}
-									else{
-										// フォルダツリーでアイテム欄が親フォルダを表示していた場合アイテム欄を更新
-										var pnode = tree.nodeParent(nid);
-										if( itemList('?')=='child' && selectFolder.id.slice(6)==pnode.id ){
-											itemList( pnode );
-										}
+								}
+								else if( $item.hasClass('folder') ){
+									// フォルダツリーでアイテム欄が親フォルダを表示していた場合アイテム欄を更新
+									// TODO:これはどんな操作で発生するんだったか…？実は不要…？
+									var pnode = tree.nodeParent(nid);
+									if( itemList('?')=='child' && selectFolder.id.slice(6)==pnode.id ){
+										itemList( pnode );
 									}
 								}
 								break;
