@@ -2002,7 +2002,8 @@ function setEvents(){
 		return function(){
 			var $box = $('#findbox');
 			var $tab = $('#findtab');
-			if( $tab.css('display')!='none' ){ $tab.find('input').focus(); return; }
+			//if( $tab.css('display')!='none' ){ $tab.find('input').focus(); return; } // 既に表示→フォーカス
+			if( $tab.css('display')!='none' ){ $('#findhide').click(); return; } // 既に表示→隠す
 			var $found = $('#foundbox');
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
