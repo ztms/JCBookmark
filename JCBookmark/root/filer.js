@@ -1547,22 +1547,12 @@ $('#deadlink').click(function(){
 		,ok:function(){ itemList('deads',tree.root); }
 	});
 });
-// ツールバーボタンキー入力
-$('.barbtn')
-	// Enterでクリック
-	.keypress(function(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 13: $(this).click(); return false;
-		}
-	});
-/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
-	// 右端ボタンTAB押しでフォルダツリーにフォーカス
-	.last().keydown(function(ev){
-		switch( ev.which || ev.keyCode || ev.charCode ){
-		case 9: if( !ev.shiftKey ){ $(selectFolder).trigger('selfclick'); return false; }
-		}
-	});
-*/
+// ツールバーボタンEnterでクリック
+$('.barbtn').keypress(function(ev){
+	switch( ev.which || ev.keyCode || ev.charCode ){
+	case 13: $(this).click(); return false;
+	}
+});
 // スクロールで編集ボックス確定(blurが発生しないので強制発行)
 $('#folderbox,#itembox').on('scroll',function(){ $('#editbox').blur(); });
 // ボーダードラッグ
@@ -2705,14 +2695,6 @@ function folderContextMenu(ev){
 }
 function folderKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
-/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
-	case 9: // TAB
-		// アイテム欄にフォーカス、Shift押してたらツールバー右端ボタンにフォーカス
-		if( ev.shiftKey ) $('.barbtn:visible').last().focus();
-		else if( selectItemLast ) $(selectItemLast).trigger('selfclick');
-		else $(doc.getElementById('items').children[0]).trigger('selfclick');
-		return false;
-*/
 	case 38: // ↑
 		$(this).prev().trigger('selfclick');
 		return false;
@@ -2729,12 +2711,6 @@ function folderKeyDown(ev){
 }
 function itemKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
-/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
-	case 9: // TAB
-		// フォーカス移動：通常ツールバー左端ボタンへ、Shift押しはフォルダツリーへ
-		ev.shiftKey? $(selectFolder).trigger('selfclick') : $('.barbtn:visible').first().focus();
-		return false;
-*/
 	case 38: // ↑
 		$(this).prev().trigger('selfclick', [ev.shiftKey]);
 		return false;

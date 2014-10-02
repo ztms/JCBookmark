@@ -2035,16 +2035,13 @@ function setEvents(){
 				// 閉じる
 				$url.remove();
 				$pnl.remove();
-				$('#findstart').off('click');
-				$('#new100').off('click');
-				$('#old100').off('click');
+				$('#findstart,#new100,#old100').off('click');
 				$('#findstop').click().off('click');
 				var h = $('#findtab').height() +$('#findbox').height();
 				$wall.children('.column').each(function(){
 					this.style.paddingBottom = parseInt(this.style.paddingBottom) - h +'px';
 				});
-				$('#findtab').hide();
-				$('#findbox').hide();
+				$('#findtab,#findbox').hide();
 				$win.off('resize.findbox');
 			});
 			$win.on('resize.findbox',function(){
