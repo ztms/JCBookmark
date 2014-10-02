@@ -1404,12 +1404,21 @@ var findopt = function(){
 		}
 	};
 }();
-$('#find').click(function(){ itemList('finds'); }).mouseenter( findopt.show );
+$('#find').click(function(){ itemList('finds'); }).mouseenter( findopt.show ).focus( findopt.show );
 $('#keyword').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
-	case 13: $('#find').click(); return false;
+	case 13: $('#find').click(); return false; // Enter検索実行
 	}
-}).mouseenter( findopt.show );
+}).keydown(function(ev){
+	switch( ev.which || ev.keyCode || ev.charCode ){
+	case 40: $('#fregex').focus(); return false; // ↓で正規表現チェックボックスにフォーカス移動
+	}
+}).mouseenter( findopt.show ).focus( findopt.show );
+$('#fregex').keydown(function(ev){
+	switch( ev.which || ev.keyCode || ev.charCode ){
+	case 38: $('#keyword').focus(); return false; // ↑で検索キーワードにフォーカス移動
+	}
+});
 // すべて選択
 // TODO:アイテム欄が表示中だとぜんぶ選択されない
 $('#selectall').click(function(){
@@ -1545,13 +1554,15 @@ $('.barbtn')
 		switch( ev.which || ev.keyCode || ev.charCode ){
 		case 13: $(this).click(); return false;
 		}
-	})
+	});
+/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
 	// 右端ボタンTAB押しでフォルダツリーにフォーカス
 	.last().keydown(function(ev){
 		switch( ev.which || ev.keyCode || ev.charCode ){
 		case 9: if( !ev.shiftKey ){ $(selectFolder).trigger('selfclick'); return false; }
 		}
 	});
+*/
 // スクロールで編集ボックス確定(blurが発生しないので強制発行)
 $('#folderbox,#itembox').on('scroll',function(){ $('#editbox').blur(); });
 // ボーダードラッグ
@@ -2694,12 +2705,14 @@ function folderContextMenu(ev){
 }
 function folderKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
+/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
 	case 9: // TAB
 		// アイテム欄にフォーカス、Shift押してたらツールバー右端ボタンにフォーカス
-		if( ev.shiftKey ) $('.barbtn').last().focus();
+		if( ev.shiftKey ) $('.barbtn:visible').last().focus();
 		else if( selectItemLast ) $(selectItemLast).trigger('selfclick');
 		else $(doc.getElementById('items').children[0]).trigger('selfclick');
 		return false;
+*/
 	case 38: // ↑
 		$(this).prev().trigger('selfclick');
 		return false;
@@ -2716,10 +2729,12 @@ function folderKeyDown(ev){
 }
 function itemKeyDown(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
+/* 正規表現チェックボックスのフォーカス移動をどうするか面倒になりフォーカス順序制御やめ既定に
 	case 9: // TAB
 		// フォーカス移動：通常ツールバー左端ボタンへ、Shift押しはフォルダツリーへ
-		ev.shiftKey? $(selectFolder).trigger('selfclick') : $('.barbtn:first').focus();
+		ev.shiftKey? $(selectFolder).trigger('selfclick') : $('.barbtn:visible').first().focus();
 		return false;
+*/
 	case 38: // ↑
 		$(this).prev().trigger('selfclick', [ev.shiftKey]);
 		return false;
