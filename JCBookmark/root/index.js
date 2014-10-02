@@ -1944,6 +1944,7 @@ function setEvents(){
 	}
 	// 検索
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利？
+	$('#foundbox').height( $win.height() /4 );
 	$('#finding').progressbar().mousedown(function(ev){
 		// プログレスバーをD&Dで検索領域高さ変更
 		$(this).addClass('drag');
@@ -2002,7 +2003,6 @@ function setEvents(){
 		return function(){
 			var $box = $('#findbox');
 			var $tab = $('#findtab');
-			//if( $tab.css('display')!='none' ){ $tab.find('input').focus(); return; } // 既に表示→フォーカス
 			if( $tab.css('display')!='none' ){ $('#findhide').click(); return; } // 既に表示→隠す
 			var $found = $('#foundbox');
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
@@ -2058,7 +2058,7 @@ function setEvents(){
 			});
 			// キーワード検索
 			var timer = null;
-			$('#findstart').off('click').click(function(){
+			$('#findstart').click(function(){
 				clearTimeout( timer );
 				// 検索ワード
 				var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
@@ -2079,7 +2079,7 @@ function setEvents(){
 				var $pgbar = $('#finding').progressbar('value',0);
 				foundBoxInit();
 				$(this).hide();
-				$('#findstop').off('click').click(function(){
+				$('#findstop').click(function(){
 					clearTimeout( timer );
 					$(this).hide();
 					$('#findstart').show();
@@ -2142,8 +2142,8 @@ function setEvents(){
 				foundBoxInit();
 				for( var i=0 ,n=urls.length; i<n; i++ ) foundUrl( urls[i] );
 			}
-			$('#new100').off('click').click(function(){ sortUrlTop( 100 ,true ); });
-			$('#old100').off('click').click(function(){ sortUrlTop( 100 ); });
+			$('#new100').click(function(){ sortUrlTop( 100 ,true ); });
+			$('#old100').click(function(){ sortUrlTop( 100 ); });
 		};
 	}());
 	// ドラッグドロップ並べ替えイベント
