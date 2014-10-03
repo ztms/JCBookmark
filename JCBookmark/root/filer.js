@@ -137,15 +137,20 @@ var tree = {
 		}
 	}
 	// 新規フォルダ作成
-	,newFolder:function( title, pid ){
+	// title: フォルダ名
+	// pnode: 親フォルダノードまたはノードID
+	// index: 挿入位置配列インデックス
+	,newFolder:function( title ,pnode ,index ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
 			,title		:title || '新規フォルダ'
 			,child		:[]
 		};
-		// 指定ノードのchild先頭に追加する
-		( ( pid && tree.node(pid) ) || tree.top() ).child.unshift( node );
+		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
+		if( !pnode || !pnode.child ) pnode = tree.top() ,index=0;
+		else if( !index ) index=0;
+		pnode.child.splice( index ,0 ,node );
 		tree.modified(true);
 		return node;
 	}
@@ -160,11 +165,8 @@ var tree = {
 			,url		:url || ''
 			,icon		:icon || ''
 		};
-		if( !pnode || !pnode.child ){
-			pnode = tree.top();
-			index = 0;
-		}
-		else if( !index ) index = 0;
+		if( !pnode || !pnode.child ) pnode = tree.top() ,index=0;
+		else if( !index ) index=0;
 		pnode.child.splice( index, 0, node );
 		tree.modified(true);
 		return node;
@@ -452,9 +454,10 @@ $.css.add = function( rule ,index ){
 };
 // フォルダツリー生成
 // folderTree({
-//   click0	: true/false 最初のフォルダをクリックするかどうか
-//   clickID: クリックするフォルダノードID文字列
-//   done	: ツリー生成後に実行するfunction
+//   click0	  : bool 最初のフォルダをクリックするかどうか
+//   clickID  : string クリックするフォルダノードID文字列
+//   clickDone: function クリック後に実行する関数(クリックイベントに引数として渡る)
+//   done	  : function フォルダツリー生成後に実行する関数
 // });
 // TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
 // TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
@@ -571,7 +574,7 @@ var folderTree = function(){
 					if( index==0 ) $node.click();
 				}
 				else if( opt.clickID ){
-					if( node.id==opt.clickID ) $node.click();
+					if( node.id==opt.clickID ) $node.trigger('click',opt.clickDone);
 				}
 				else if( opt.selectID ){
 					if( node.id==opt.selectID ){
@@ -595,6 +598,14 @@ var folderTree = function(){
 	};
 }();
 // アイテム欄作成
+// itemList('?')				アイテム欄の種類を返却('child'|'deads'|'finds')
+// itemList('?timer')			アイテム欄用タイマが生きてる(処理中)かどうか
+// itemList(false)				処理中止
+// itemList( node [,done])		フォルダnodeのchildをアイテム欄に表示。完了後にdone実行。
+// itemList('finds')			検索実行
+// itemList('poke')				リンク切れ調査(アイテム欄の選択ブックマークURLのみ)
+// itemList('deads','folder')	リンク切れ調査(アイテム欄の選択ブックマークとフォルダ内)
+// itemList('deads', node )		リンク切れ調査(フォルダnode内ぜんぶ)
 var itemList = function(){
 	var $head = $('#itemhead');
 	var $head3 = $head.children('.misc');	// 可変項目ヘッダ(アイコン/場所/調査結果)
@@ -1171,7 +1182,7 @@ var itemList = function(){
 					index++; count--;
 				}
 				if( index < length ) timer = setTimeout(lister,0);
-				else $itemAppend(false);
+				else{ $itemAppend(false); if( arg1 ) arg1(); }
 			})();
 		}
 	};
@@ -1281,8 +1292,8 @@ $('#newfolder').click(function(){
 	var node = tree.newFolder( name, nid );
 	// フォルダツリー生成
 	folderTree({
-		clickID:nid
-		,done:function(){
+		 clickID:nid
+		,clickDone:function(){
 			// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
 			var $item = $('#item'+node.id);
 			// $item.mousedown().mouseup();と書きたいところだが、
@@ -1351,7 +1362,7 @@ $('#newitem').on({
 	}
 	,contextmenu:function(ev){
 		if( isLocalServer ){
-			var $menu = $('#contextmenu').width(250);
+			var $menu = $('#contextmenu').width( 250 );
 			var $box = $menu.children('div').empty();
 			// クリップボードから登録
 			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
@@ -1653,17 +1664,42 @@ $('#itembox').on({
 		}
 	}
 	// アイテム欄下余白コンテキストメニュー
-	// TODO:新規フォルダ作成
 	,contextmenu:function(ev){
-		if( itemList('?')=='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') && isLocalServer ){
-			var $menu = $('#contextmenu').width(250);
+		if( itemList('?')=='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') ){
+			var $menu = $('#contextmenu').width( 210 );
 			var $box = $menu.children('div').empty();
-			// クリップボードから登録
-			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+			if( isLocalServer ){
+				$menu.width( 250 );
+				$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+					$menu.hide();
+					// 選択フォルダ末尾に登録
+					var pnode = tree.node( selectFolder.id.slice(6) );
+					clipboardTo( pnode, pnode.child.length );
+				}));
+			}
+			$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
 				$menu.hide();
-				// 選択フォルダ末尾に登録
+				// 末尾に新規フォルダ作成
 				var pnode = tree.node( selectFolder.id.slice(6) );
-				clipboardTo( pnode, pnode.child.length );
+				var node = tree.newFolder( '' ,pnode ,pnode.child.length );
+				// フォルダツリー更新
+				folderTree({
+					 clickID:selectFolder.id.slice(6)
+					,clickDone:function(){
+						// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
+						var $item = $('#item'+node.id);
+						// $item.mousedown().mouseup();と書きたいところだが、
+						// IE8はmousedown()でエラー発生する仕様なのが影響してか、
+						// mouseup()およびその先の処理も実行されないもよう。
+						// 仕方がないのでsetTimeoutを使う。
+						setTimeout(function(){ $item.mousedown(); },0);
+						setTimeout(function(){
+							$item.mouseup();
+							// 名前変更・テキスト選択
+							edit( $item.children('.title')[0], {select:true} );
+						},1);
+					}
+				});
 			}));
 			// 表示
 			$menu.css({
@@ -1815,7 +1851,7 @@ function treeSave( arg ){
 	});
 }
 // マウスイベント
-function folderClick(ev){
+function folderClick( ev ,done ){
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
 	if( itemList('?')=='child' && $(this).hasClass('select') ){
@@ -1853,7 +1889,7 @@ function folderClick(ev){
 			$(selectFolder).removeClass('select').removeClass('inactive');
 			$(select=selectFolder=this).addClass('select').focus();
 			// アイテム欄作成
-			itemList( node );
+			itemList( node ,done );
 		}
 	}
 }
@@ -2472,17 +2508,46 @@ function itemContextMenu(ev){
 			}
 		}
 	}
-	if( itemList('?')=='child' && isLocalServer ){
-		// クリップボードから登録
-		if( width<250 ) width=250;
-		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+	if( itemList('?')=='child' ){
+		$box.append('<hr>');
+		if( isLocalServer ){
+			if( width<250 ) width=250;
+			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
+				$menu.hide();
+				// 選択アイテム位置に登録
+				var pnode = tree.nodeParent( nid );
+				for( var index=pnode.child.length-1; index>=0; index-- ){
+					if( pnode.child[index].id==nid ) break;
+				}
+				clipboardTo( pnode, index );
+			}));
+		}
+		$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
 			$menu.hide();
-			// 選択アイテム位置に登録
+			// 選択アイテム位置に新規フォルダ
 			var pnode = tree.nodeParent( nid );
 			for( var index=pnode.child.length-1; index>=0; index-- ){
 				if( pnode.child[index].id==nid ) break;
 			}
-			clipboardTo( pnode, index );
+			var node = tree.newFolder( '' ,pnode ,index );
+			// フォルダツリー更新
+			folderTree({
+				 clickID:selectFolder.id.slice(6)
+				,clickDone:function(){
+					// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
+					var $item = $('#item'+node.id);
+					// $item.mousedown().mouseup();と書きたいところだが、
+					// IE8はmousedown()でエラー発生する仕様なのが影響してか、
+					// mouseup()およびその先の処理も実行されないもよう。
+					// 仕方がないのでsetTimeoutを使う。
+					setTimeout(function(){ $item.mousedown(); },0);
+					setTimeout(function(){
+						$item.mouseup();
+						// 名前変更・テキスト選択
+						edit( $item.children('.title')[0], {select:true} );
+					},1);
+				}
+			});
 		}));
 	}
 	if( !$box.children().last().is('hr') ) $box.append('<hr>');

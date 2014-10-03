@@ -104,19 +104,24 @@ var tree = {
 		}( root || tree.top() );
 	}
 	// 新規フォルダ作成
-	,newFolder:function( title, pid ){
+	// title: フォルダ名
+	// pnode: 親フォルダノードまたはノードID
+	// index: 挿入位置配列インデックス
+	,newFolder:function( title ,pnode ,index ){
 		var node = {
 			id			:tree.root.nextid++
 			,dateAdded	:(new Date()).getTime()
 			,title		:title || '新規フォルダ'
 			,child		:[]
 		};
-		// 指定ノードのchild先頭に追加する
-		( ( pid && tree.node(pid) ) || tree.top() ).child.unshift( node );
+		if( oStr.call(pnode)==='[object String]' ) pnode = tree.node(pnode);
+		if( !pnode || !pnode.child ) pnode = tree.top() ,index=0;
+		else if( !index ) index=0;
+		pnode.child.splice( index ,0 ,node );
 		tree.modified(true);
 		return node;
 	}
-	// 新規アイテム作成
+	// 新規ブックマーク作成
 	// pnode: 親フォルダノード
 	// index: 挿入位置配列インデックス
 	,newURL:function( pnode, url, title, icon, index ){
@@ -127,16 +132,13 @@ var tree = {
 			,url		:url || ''
 			,icon		:icon || ''
 		};
-		if( !pnode || !pnode.child ){
-			pnode = tree.top();
-			index = 0;
-		}
-		else if( !index ) index = 0;
+		if( !pnode || !pnode.child ) pnode = tree.top() ,index=0;
+		else if( !index ) index=0;
 		pnode.child.splice( index, 0, node );
 		tree.modified(true);
 		return node;
 	}
-	// 属性変更
+	// 属性取得変更
 	// id:ノードID文字列、attr:属性名文字列、value:属性値
 	,nodeAttr:function( id, attr, value ){
 		if( arguments.length <2 ) return null;
