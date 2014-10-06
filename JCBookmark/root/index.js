@@ -1946,7 +1946,7 @@ function setEvents(){
 	}
 	// 検索
 	// TODO:検索ボックスの状態(表示ON/OFF・高さ)を保持すると便利？
-	$('#foundbox').height( $win.height() /4 );
+	$('#foundbox').height( $win.height() /3 );
 	$('#finding').progressbar().mousedown(function(ev){
 		// プログレスバーをD&Dで検索領域高さ変更
 		$(this).addClass('drag');
