@@ -2823,32 +2823,43 @@ HTTPGet* HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 				DWORD mode=0;
 				HRESULT res;
 				memset( tmp, 0, tmpbytes );
-				// 直接UTF-8変換してみる
-				res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
-				if( res==S_OK ){
-					memcpy( rsp->body ,tmp ,tmpbytes );
-					goto ok;
-				}
-				// 直接変換エラー時(なぜかEUCとか直接変換エラー)、まずSJIS(932)に変換
-				//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
-				tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
-				mode=0;
-				res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
-				if( res==S_OK ){
-					// 次にSJISからUTF8(65001)に変換
-					tmp[tmpbytes]='\0';
-					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1;
-					mode=0;
-					res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
+				switch( CP ){
+				case 932: case 20932: case 50220: case 50221: case 50222: case 51932:
+				by_sjis:
+					// 50220(ISO-2022-JP)を直接UTF-8変換するとエラーなく文字化けする事があり、932を
+					// 経由すると変換できるため最初から932経由にする。51932(EUC-JP)は直接UTF-8変換が
+					// エラーだったか？ということで日本語文字コードはSJIS経由が無難かもしれない。。
+					// まずSJIS(932)に変換
+					res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
 					if( res==S_OK ){
-					ok:
-						rsp->body[tmpbytes]='\0';
-						rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
-						LogW(L"文字コード%u->65001変換",CP);
+						// 次にSJISからUTF8(65001)に変換
+						tmp[tmpbytes]='\0';
+						tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
+						res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
+						if( res==S_OK ){
+						ok:
+							rsp->body[tmpbytes]='\0';
+							rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
+							LogW(L"文字コード%u->65001変換",CP);
+						}
+						else LogA("ConvertINetString(932->65001)エラー(%s)",url);
 					}
-					else LogA("ConvertINetString(932->65001)エラー(%s)",url);
+					else LogA("ConvertINetString(%u->932)エラー(%s)",CP,url);
+					break;
+				default:
+					// (日本語以外)直接UTF-8変換
+					res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
+					if( res==S_OK ){
+						memcpy( rsp->body ,tmp ,tmpbytes );
+						goto ok;
+					}
+					else{
+						// エラー時SJIS(932)経由を試す
+						//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+						tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
+						goto by_sjis;
+					}
 				}
-				else LogA("ConvertINetString(%u->932)エラー(%s)",CP,url);
 				free( tmp );
 			}
 			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
