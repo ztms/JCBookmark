@@ -2853,12 +2853,10 @@ HTTPGet* HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
 						memcpy( rsp->body ,tmp ,tmpbytes );
 						goto ok;
 					}
-					else{
-						// エラー時SJIS(932)経由を試す
-						//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
-						tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
-						goto by_sjis;
-					}
+					// エラー時SJIS(932)経由を試す
+					//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
+					goto by_sjis;
 				}
 				free( tmp );
 			}
@@ -5236,6 +5234,7 @@ unsigned __stdcall authenticate( void* tp )
 		UCHAR b64[SHA256_DIGEST_LENGTH*2]="";
 		if( !cp->sslp ) LogW(L"[%u]注意:暗号化されていない平文パスワードを受信しました",Num(cp));
 		// 設定ファイルパスワードハッシュ取得
+		// TODO:ソルト付きにすべき？
 		if( LoginPass( b64 ,sizeof(b64) ) && *b64 ){
 			size_t b64len = strlen(b64);
 			if( SHA256_DIGEST_LENGTH <= b64len ){
@@ -7321,6 +7320,7 @@ void ConfigSave( const ConfigData* dp )
 			if( dp->loginPass ){
 				// 新パスワード:SHA256ハッシュ
 				// http://www.askyb.com/cpp/openssl-sha256-hashing-example-in-cpp/
+				// TODO:ソルト付きハッシュで保存すべき？
 				// TODO:パスワード変更したらセッション(クッキー)削除すべき？でもGmail利用中に
 				// 別ブラウザでパスワード変更してもセッションは有効だった。ので問題ないかな。
 				UCHAR digest[SHA256_DIGEST_LENGTH]="";
@@ -8583,7 +8583,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// http://www.ipa.go.jp/about/press/20101111.html
 	GetSystemDirectoryA( path, sizeof(path) );
 	_snprintf(path,sizeof(path),"%s\\mlang.dll",path);
-	if( !(mlang.dll			= LoadLibraryA(path))
+	if( !(mlang.dll			= LoadLibraryA( path ))
 		|| !(mlang.Convert	= (CONVERTINETSTRING)GetProcAddress(mlang.dll,"ConvertINetString"))
 	){
 		LogW(L"mlang.dll無効");
@@ -9039,6 +9039,65 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	if( msg==taskbarRestart && !IsWindowVisible(hwnd) ) PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
+
+//
+// 指定のポートを使っているプロセスIDを取得
+// GetExtendedTcpTable は WinXP SP2 以降の iphlpapi.dll で新しく提供されたAPIらしい。
+// 引数 USHORT port 16bitネットワークバイトオーダーポート番号
+//
+DWORD PIDusingTcpPort( USHORT port )
+{
+	DWORD pid = 0;
+	// 必要バッファサイズを取得
+	DWORD bytes=0;
+	DWORD ret = GetExtendedTcpTable( NULL ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
+	if( ERROR_INSUFFICIENT_BUFFER==ret ){
+		// バッファ確保
+		MIB_TCPTABLE_OWNER_PID* tcp = malloc( bytes );
+		if( tcp ){
+			// 実データ取得
+			ret = GetExtendedTcpTable( tcp ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
+			if( NO_ERROR==ret ){
+				UINT i;
+				// 取得データ数:dwNumEntries
+				for( i=0; i<tcp->dwNumEntries; i++ ){
+					MIB_TCPROW_OWNER_PID row = tcp->table[i];
+					if( row.dwLocalPort==port ){
+						// ポート使用エントリ発見
+						pid = row.dwOwningPid;
+					}
+				}
+			}
+			else ErrorBoxW(L"GetExtendedTcpTableエラー(%u)",GetLastError());
+			free( tcp );
+		}
+		else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
+    }
+	else ErrorBoxW(L"GetExtendedTcpTableを利用できません(%u)",GetLastError());
+	return pid;
+}
+
+//
+// 指定のプロセスIDのウィンドウハンドルで指定のウィンドウクラスを持つウィンドウハンドルを取得
+//
+HWND WindowOfProcessHasClass( DWORD targetPID ,WCHAR* targetClass )
+{
+	HWND hwnd = GetTopWindow( NULL );
+	do {
+		DWORD pid;
+		GetWindowThreadProcessId( hwnd, &pid );
+		if( pid==targetPID ){
+			WCHAR class[256];
+			GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
+			if( wcscmp(class,targetClass)==0 ) return hwnd;
+		}
+	}
+	while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
+	return NULL;
+}
+
+HANDLE Mutex = NULL; // 多重起動防止ミューテックス
+
 // アプリ起動時
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
@@ -9048,6 +9107,9 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	InitializeCriticalSection( &LogCacheCS );
 	InitializeCriticalSection( &SessionCS );
 	InitCommonControls();
+	// 他プロセスからフォアグラウンド設定できるように(多重起動防止で前面にするため導入)
+	// http://dobon.net/vb/dotnet/process/appactivate.html
+	AllowSetForegroundWindow( ASFW_ANY );
 	// comctl32.dllバージョン確認、TOOLINFOW構造体サイズ決定
 	{
 		// ツールチップがぜんぜん動かないので調べた結果、ツールチップ表示で使うTOOLINFOW構造体は
@@ -9071,8 +9133,12 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		//   DllGetVersion function (Windows)
 		//   http://msdn.microsoft.com/ja-jp/library/windows/desktop/bb776404(v=vs.85).aspx
 		#define PACKVERSION(major,minor) MAKELONG(minor,major)
-		DWORD dwVersion=0;
-		HINSTANCE dll = LoadLibraryW( L"comctl32.dll" );
+		UCHAR path[MAX_PATH+1];
+		DWORD dwVersion =0;
+		HINSTANCE dll;
+		GetSystemDirectoryA( path, sizeof(path) );
+		_snprintf(path,sizeof(path),"%s\\comctl32.dll",path);
+		dll = LoadLibraryA( path );
 		if( dll )
 		{
 			DLLGETVERSIONPROC GetVersion = (DLLGETVERSIONPROC)GetProcAddress(dll,"DllGetVersion");
@@ -9122,9 +9188,49 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 			}
 		}
 	}
+	// 同じドキュメントルートの多重起動防止(v2.1以降のみ)
+	{
+		// ミューテックス名(グローバル)
+		WCHAR* name = wcsjoin( L"Global\\" ,DocumentRoot ,0,0,0 );
+		if( name ){
+			SECURITY_DESCRIPTOR sd;
+			SECURITY_ATTRIBUTES sa;
+			WCHAR* p;
+			InitializeSecurityDescriptor( &sd ,SECURITY_DESCRIPTOR_REVISION );
+			SetSecurityDescriptorDacl( &sd ,TRUE ,0 ,FALSE );
+			sa.nLength = sizeof(sa);
+			sa.lpSecurityDescriptor = &sd;
+			sa.bInheritHandle = TRUE;
+			// ミューテックス名 \ 使えないので / に変更
+			for( p=name+7; *p; p++ ){ if( *p==L'\\' ) *p = L'/'; }
+			// ミューテックス名文字ケース統一
+			_wcsupr( name + 7 );
+			Mutex = CreateMutexW( &sa ,FALSE ,name );
+			if( Mutex && GetLastError()==ERROR_ALREADY_EXISTS ) Mutex = NULL;
+			free( name );
+		}
+		else return NULL;
+	}
+	#define MAINFORMCLASS L"JCBookmarkMainForm"
+	ServerParamGet();
+	if( !Mutex ){
+		// ListenPortをつかんでいるプロセスの
+		DWORD pid = PIDusingTcpPort( htons((USHORT)wcstoul(ListenPort,NULL,0)) );
+		if( pid ){
+			// JCBookmarkメインウィンドウを
+			HWND hwnd = WindowOfProcessHasClass( pid ,MAINFORMCLASS );
+			if( hwnd ){
+				// 最前面に
+				SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
+				SetForegroundWindow( hwnd );
+			}
+			else ErrorBoxW(L"すでに動作中のJCBookmarkウィンドウが見つかりません。");
+		}
+		else ErrorBoxW(L"すでに動作中のJCBookmarkプロセスが見つかりません。");
+		return NULL;
+	}
 	// メインフォーム生成
 	{
-		#define MAINFORMCLASS L"JCBookmarkMainForm"
 		WNDCLASSEXW	wc;
 
 		memset( &wc, 0, sizeof(wc) );
@@ -9146,7 +9252,6 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 							,NULL, NULL, hinst, NULL
 			);
 			if( hwnd ){
-				ServerParamGet();
 				if( BootMinimal ){
 					// 起動時にタスクトレイに収納する
 					PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
@@ -9178,6 +9283,7 @@ void Cleanup( void )
 		free( lc );
 		lc = next;
 	}
+	CloseHandle( Mutex );
 	DeleteCriticalSection( &LogCacheCS );
 	DeleteCriticalSection( &SessionCS );
 	free( DocumentRoot );
