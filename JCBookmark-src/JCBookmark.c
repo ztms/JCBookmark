@@ -9060,7 +9060,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_COPYDATA:
 		// 受け取ったパスが自身のドキュメントルートと同じかどうかを返却(同じは1)
-		return ( wcscmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot )==0 )? 1 : 0;
+		return ( wcsicmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot )==0 )? 1 : 0;
 
 	case WM_DESTROY:
 		SocketShutdown();
