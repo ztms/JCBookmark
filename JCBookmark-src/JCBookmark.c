@@ -8566,6 +8566,72 @@ void MainFormTimer1000( void )
 		}
 	}
 }
+// 指定のポート使ってるプロセスIDを取得
+// GetExtendedTcpTable は WinXP SP2 以降の iphlpapi.dll で新しく提供されたAPIらしい。
+// 引数 USHORT port 16bitネットワークバイトオーダーポート番号
+DWORD PIDusingTcpPort( USHORT port )
+{
+	DWORD pid = 0;
+	// 必要バッファサイズを取得
+	DWORD bytes=0;
+	DWORD ret = GetExtendedTcpTable( NULL ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
+	if( ERROR_INSUFFICIENT_BUFFER==ret ){
+		// バッファ確保
+		MIB_TCPTABLE_OWNER_PID* tcp = malloc( bytes );
+		if( tcp ){
+			// 実データ取得
+			ret = GetExtendedTcpTable( tcp ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
+			if( NO_ERROR==ret ){
+				UINT i;
+				// 取得データ数:dwNumEntries
+				for( i=0; i<tcp->dwNumEntries; i++ ){
+					MIB_TCPROW_OWNER_PID row = tcp->table[i];
+					if( row.dwLocalPort==port ){
+						// ポート使用エントリ発見
+						pid = row.dwOwningPid;
+					}
+				}
+			}
+			else ErrorBoxW(L"GetExtendedTcpTableエラー(%u)",GetLastError());
+			free( tcp );
+		}
+		else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
+    }
+	else ErrorBoxW(L"GetExtendedTcpTableを利用できません(%u)",GetLastError());
+	return pid;
+}
+// 同じ待受ポート同じドキュメントルートで動いてるウィンドウ探す
+#define MAINFORMCLASS L"JCBookmarkMainForm"
+HWND FindConflictWindow( void )
+{
+	// ListenPortをつかんでいるプロセスID取得
+	DWORD listenPID = PIDusingTcpPort( htons((USHORT)wcstoul(ListenPort,NULL,0)) );
+	if( listenPID ){
+		// ウィンドウ列挙してJCBookmark探す
+		HWND hwnd = GetTopWindow( NULL );
+		do {
+			DWORD pid;
+			GetWindowThreadProcessId( hwnd, &pid );
+			if( pid==listenPID ){
+				WCHAR class[256];
+				GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
+				if( wcscmp(class,MAINFORMCLASS)==0 ){
+					// JCBookmarkメインウィンドウ発見
+					COPYDATASTRUCT cd;
+					cd.dwData = 0;
+					cd.cbData = (wcslen(DocumentRoot) + 1) * sizeof(WCHAR);
+					cd.lpData = DocumentRoot;
+					if( SendMessage( hwnd ,WM_COPYDATA ,0 ,(LPARAM)&cd )==0 ){
+						// 自身と同じドキュメントルート確定
+						return hwnd;
+					}
+				}
+			}
+		}
+		while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
+	}
+	return NULL;
+}
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
 // スタック1KB以上使うので関数化。
@@ -8618,6 +8684,17 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
 	if( !ListenStart() ){
+		HWND hwnd = FindConflictWindow();
+		if( hwnd ){
+			// 同じポート同じドキュメントルートで別のプロセスが先に動作しており、その事に気づかず
+			// 起動させた可能性が高く、また多重起動しても意味が無いので、そっちのメインフォームを
+			// 最前面に出して、自身は終了する。
+			ShowWindow( MainForm ,SW_HIDE );
+			SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
+			SetForegroundWindow( hwnd );
+			DestroyWindow( MainForm );
+			return;
+		}
 		ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
 		PostMessage( MainForm ,WM_COMMAND ,MAKEWPARAM(CMD_SETTING,0) ,0 );
 	}
@@ -9022,6 +9099,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0;
 
+	case WM_COPYDATA:
+		// 受け取ったパスが自身のドキュメントルートと同じかどうかを返却(同じは0)
+		return wcscmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot );
+
 	case WM_DESTROY:
 		SocketShutdown();
 		BrowserIconDestroy( browser );
@@ -9039,68 +9120,6 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	if( msg==taskbarRestart && !IsWindowVisible(hwnd) ) PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
-
-/*
-//
-// 指定のポートを使っているプロセスIDを取得
-// GetExtendedTcpTable は WinXP SP2 以降の iphlpapi.dll で新しく提供されたAPIらしい。
-// 引数 USHORT port 16bitネットワークバイトオーダーポート番号
-//
-DWORD PIDusingTcpPort( USHORT port )
-{
-	DWORD pid = 0;
-	// 必要バッファサイズを取得
-	DWORD bytes=0;
-	DWORD ret = GetExtendedTcpTable( NULL ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
-	if( ERROR_INSUFFICIENT_BUFFER==ret ){
-		// バッファ確保
-		MIB_TCPTABLE_OWNER_PID* tcp = malloc( bytes );
-		if( tcp ){
-			// 実データ取得
-			ret = GetExtendedTcpTable( tcp ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
-			if( NO_ERROR==ret ){
-				UINT i;
-				// 取得データ数:dwNumEntries
-				for( i=0; i<tcp->dwNumEntries; i++ ){
-					MIB_TCPROW_OWNER_PID row = tcp->table[i];
-					if( row.dwLocalPort==port ){
-						// ポート使用エントリ発見
-						pid = row.dwOwningPid;
-					}
-				}
-			}
-			else ErrorBoxW(L"GetExtendedTcpTableエラー(%u)",GetLastError());
-			free( tcp );
-		}
-		else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
-    }
-	else ErrorBoxW(L"GetExtendedTcpTableを利用できません(%u)",GetLastError());
-	return pid;
-}
-*/
-
-//
-// 指定のプロセスIDのウィンドウハンドルで指定のウィンドウクラスを持つハンドルを取得
-//
-HWND WindowOfProcessHasClass( DWORD targetPID ,WCHAR* targetClass )
-{
-	HWND hwnd = GetTopWindow( NULL );
-	do {
-		DWORD pid;
-		GetWindowThreadProcessId( hwnd, &pid );
-		if( pid==targetPID ){
-			WCHAR class[256];
-			GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
-			if( wcscmp(class,targetClass)==0 ) return hwnd;
-		}
-	}
-	while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
-	return NULL;
-}
-
-WCHAR* PidFile = NULL;
-HANDLE hPidFile = INVALID_HANDLE_VALUE;
-
 // アプリ起動時
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
@@ -9191,120 +9210,6 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 			}
 		}
 	}
-	// 同じドキュメントルートの多重起動防止(v2.1以降のみ)
-	#define MAINFORMCLASS L"JCBookmarkMainForm"
-	ServerParamGet();
-	PidFile = wcsdup( DocumentRoot );
-	if( PidFile ){
-		// \root -> \.pid に書き換え
-		wcscpy( PidFile + wcslen(PidFile) - 4 ,L".pid" );
-	}
-	else{
-		ErrorBoxW(L"L%u:wcsdupエラー",__LINE__);
-		return NULL;
-	}
-	hPidFile = CreateFileW( PidFile
-					,GENERIC_READ |GENERIC_WRITE
-					,FILE_SHARE_READ |FILE_SHARE_WRITE ,NULL
-					,OPEN_ALWAYS ,FILE_ATTRIBUTE_HIDDEN ,NULL
-	);
-	if( hPidFile !=INVALID_HANDLE_VALUE ){
-		int exist = 0;
-		if( LockFile( hPidFile ,0,0,16,0 ) ){
-			UCHAR pid[16]="";
-			DWORD bRead=0;
-			// 動作中プロセスID取得
-			ReadFile( hPidFile, pid, sizeof(pid), &bRead, NULL );
-			if( bRead ){
-				// プロセス存在確認
-				HANDLE proc = OpenProcess( SYNCHRONIZE, FALSE, strtoul(pid,NULL,0) );
-				if( proc ){
-					HWND hwnd;
-					CloseHandle( proc );
-					// 動作中JCBookmarkメインウィンドウを
-					hwnd = WindowOfProcessHasClass( strtoul(pid,NULL,0) ,MAINFORMCLASS );
-					if( hwnd ){
-						// 最前面にする
-						SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
-						SetForegroundWindow( hwnd );
-					}
-					else ErrorBoxW(L"このフォルダのJCBookmarkは動作中です。(%s)",pid);
-					exist = 1;
-				}
-			}
-			if( !exist ){
-				// 動作中なし、自身のプロセスIDをファイルに書き込む
-				DWORD written=0;
-				_snprintf(pid,sizeof(pid),"%u",GetCurrentProcessId());
-				SetFilePointer( hPidFile ,0,NULL ,FILE_BEGIN );
-				WriteFile( hPidFile ,pid ,strlen(pid) ,&written ,NULL );
-				SetEndOfFile( hPidFile );
-				FlushFileBuffers( hPidFile );
-			}
-			UnlockFile( hPidFile ,0,0,16,0 );
-		}
-		else{
-			ErrorBoxW(L"LockFile(%s)エラー(%u)",PidFile,GetLastError());
-			return NULL;
-		}
-		if( exist ) return NULL;
-	}
-	else{
-		ErrorBoxW(L"CreateFile(%s)エラー(%u)",PidFile,GetLastError());
-		return NULL;
-	}
-/*
-		// ミューテックス作成(グローバル)
-		WCHAR* name = wcsjoin( L"Global\\" ,DocumentRoot ,0,0,0 );
-		if( name ){
-			SECURITY_DESCRIPTOR sd;
-			SECURITY_ATTRIBUTES sa;
-			WCHAR* p;
-			InitializeSecurityDescriptor( &sd ,SECURITY_DESCRIPTOR_REVISION );
-			SetSecurityDescriptorDacl( &sd ,TRUE ,0 ,FALSE );
-			sa.nLength = sizeof(sa);
-			sa.lpSecurityDescriptor = &sd;
-			sa.bInheritHandle = TRUE;
-			// ミューテックス名 \ 使えないので / に変更
-			for( p=name+7; *p; p++ ){ if( *p==L'\\' ) *p = L'/'; }
-			// ミューテックス名文字ケース統一
-			_wcsupr( name + 7 );
-			Mutex = CreateMutexW( &sa ,FALSE ,name );
-			if( Mutex && GetLastError()==ERROR_ALREADY_EXISTS ) Mutex = NULL;
-			free( name );
-		}
-		else return NULL;
-	}
-	#define MAINFORMCLASS L"JCBookmarkMainForm"
-	ServerParamGet();
-	if( !Mutex ){
-		// ミューテックス作成できない＝すでにJCBookmark動作中
-		// ListenPortをつかんでいるプロセスの
-		DWORD pid = PIDusingTcpPort( htons((USHORT)wcstoul(ListenPort,NULL,0)) );
-		if( pid ){
-			// JCBookmarkメインウィンドウを
-			HWND hwnd = WindowOfProcessHasClass( pid ,MAINFORMCLASS );
-			if( hwnd ){
-				// 最前面にする
-				SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
-				SetForegroundWindow( hwnd );
-			}
-			else ErrorBoxW(L"このフォルダのJCBookmarkは動作中です。");
-		}
-		else ErrorBoxW(L"このフォルダのJCBookmarkは起動しています。");
-		// TODO:起動してるがListenしてないJCBookmarkを見つけられない。
-		// １つ目のJCBookmark起動しておいて、別フォルダで２つ目を同じポートで起動して
-		// エラーになった後、再度２つ目を起動すると、１つ目が最前面に来てしまう。
-		// "Listenポートをつかんでいるプロセス"というのが間違っている・・・
-		// やはりrootフォルダとプロセスを結びつけて探し出せる仕組みが必要か・・
-		// 共有メモリにrootフォルダパスを書いておくとか？
-		// でも異常終了した時に残って起動できなくなってしまいそう・・・
-		// やはりロックファイルを勝手に作ってLockFileExするか・・
-		// 隠しファイル属性を付けておけばいいかな・・
-		// CreateFile( FILE_ATTRIBUTE_HIDDEN
-		return NULL;
-	}
-*/
 	// メインフォーム生成
 	{
 		WNDCLASSEXW	wc;
@@ -9328,6 +9233,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 							,NULL, NULL, hinst, NULL
 			);
 			if( hwnd ){
+				ServerParamGet();
 				if( BootMinimal ){
 					// 起動時にタスクトレイに収納する
 					PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
@@ -9359,12 +9265,9 @@ void Cleanup( void )
 		free( lc );
 		lc = next;
 	}
-	CloseHandle( hPidFile );
-	DeleteFileW( PidFile );
 	DeleteCriticalSection( &LogCacheCS );
 	DeleteCriticalSection( &SessionCS );
 	free( DocumentRoot );
-	free( PidFile );
 	WSACleanup();
 #ifdef MEMLOG
 	if( mlog ) fclose(mlog);
