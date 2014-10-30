@@ -8618,7 +8618,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
 	if( !ListenStart() ){
-		ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
+		ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
 		PostMessage( MainForm ,WM_COMMAND ,MAKEWPARAM(CMD_SETTING,0) ,0 );
 	}
 	// タイマー処理
@@ -8963,7 +8963,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					MainFormTimer1000();				// タイトルバー
 					// Listen失敗時は再び設定ダイアログ
 					if( !success ){
-						ErrorBoxW(L"このポート番号は他で使われているかもしれません。");
+						ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
 						PostMessage( hwnd, WM_COMMAND, MAKEWPARAM(CMD_SETTING,0), 0 );
 					}
 				}
@@ -9078,7 +9078,7 @@ DWORD PIDusingTcpPort( USHORT port )
 }
 
 //
-// 指定のプロセスIDのウィンドウハンドルで指定のウィンドウクラスを持つウィンドウハンドルを取得
+// 指定のプロセスIDのウィンドウハンドルで指定のウィンドウクラスを持つハンドルを取得
 //
 HWND WindowOfProcessHasClass( DWORD targetPID ,WCHAR* targetClass )
 {
@@ -9190,7 +9190,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	}
 	// 同じドキュメントルートの多重起動防止(v2.1以降のみ)
 	{
-		// ミューテックス名(グローバル)
+		// ミューテックス作成(グローバル)
 		WCHAR* name = wcsjoin( L"Global\\" ,DocumentRoot ,0,0,0 );
 		if( name ){
 			SECURITY_DESCRIPTOR sd;
@@ -9214,19 +9214,26 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	#define MAINFORMCLASS L"JCBookmarkMainForm"
 	ServerParamGet();
 	if( !Mutex ){
+		// ミューテックス作成できない＝すでにJCBookmark動作中
 		// ListenPortをつかんでいるプロセスの
 		DWORD pid = PIDusingTcpPort( htons((USHORT)wcstoul(ListenPort,NULL,0)) );
 		if( pid ){
 			// JCBookmarkメインウィンドウを
 			HWND hwnd = WindowOfProcessHasClass( pid ,MAINFORMCLASS );
 			if( hwnd ){
-				// 最前面に
+				// 最前面にする
 				SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
 				SetForegroundWindow( hwnd );
 			}
 			else ErrorBoxW(L"すでに動作中のJCBookmarkウィンドウが見つかりません。");
 		}
 		else ErrorBoxW(L"すでに動作中のJCBookmarkプロセスが見つかりません。");
+		// TODO:起動してるがListenしてないJCBookmarkを見つけられない。
+		// でもListenできてないと使い道がないアプリだし問題ないかな・・？
+		// ミューテックスを作ったプロセスが簡単に取得できればいいけど無さそうなので、
+		// プロセス一覧を取得しておなじ実行ファイルから起動したプロセスを探すか・・
+		// その方が穴が無くてよいかな。。
+		// CreateToolhelp32Snapshot/Process32First/Process32Next
 		return NULL;
 	}
 	// メインフォーム生成
