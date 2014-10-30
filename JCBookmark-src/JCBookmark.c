@@ -9040,6 +9040,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
 
+/*
 //
 // 指定のポートを使っているプロセスIDを取得
 // GetExtendedTcpTable は WinXP SP2 以降の iphlpapi.dll で新しく提供されたAPIらしい。
@@ -9076,6 +9077,7 @@ DWORD PIDusingTcpPort( USHORT port )
 	else ErrorBoxW(L"GetExtendedTcpTableを利用できません(%u)",GetLastError());
 	return pid;
 }
+*/
 
 //
 // 指定のプロセスIDのウィンドウハンドルで指定のウィンドウクラスを持つハンドルを取得
@@ -9096,7 +9098,8 @@ HWND WindowOfProcessHasClass( DWORD targetPID ,WCHAR* targetClass )
 	return NULL;
 }
 
-HANDLE Mutex = NULL; // 多重起動防止ミューテックス
+WCHAR* PidFile = NULL;
+HANDLE hPidFile = INVALID_HANDLE_VALUE;
 
 // アプリ起動時
 HWND Startup( HINSTANCE hinst, int nCmdShow )
@@ -9189,7 +9192,68 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		}
 	}
 	// 同じドキュメントルートの多重起動防止(v2.1以降のみ)
-	{
+	#define MAINFORMCLASS L"JCBookmarkMainForm"
+	ServerParamGet();
+	PidFile = wcsdup( DocumentRoot );
+	if( PidFile ){
+		// \root -> \.pid に書き換え
+		wcscpy( PidFile + wcslen(PidFile) - 4 ,L".pid" );
+	}
+	else{
+		ErrorBoxW(L"L%u:wcsdupエラー",__LINE__);
+		return NULL;
+	}
+	hPidFile = CreateFileW( PidFile
+					,GENERIC_READ |GENERIC_WRITE
+					,FILE_SHARE_READ |FILE_SHARE_WRITE ,NULL
+					,OPEN_ALWAYS ,FILE_ATTRIBUTE_HIDDEN ,NULL
+	);
+	if( hPidFile !=INVALID_HANDLE_VALUE ){
+		int exist = 0;
+		if( LockFile( hPidFile ,0,0,16,0 ) ){
+			UCHAR pid[16]="";
+			DWORD bRead=0;
+			// 動作中プロセスID取得
+			ReadFile( hPidFile, pid, sizeof(pid), &bRead, NULL );
+			if( bRead ){
+				// プロセス存在確認
+				HANDLE proc = OpenProcess( SYNCHRONIZE, FALSE, strtoul(pid,NULL,0) );
+				if( proc ){
+					HWND hwnd;
+					CloseHandle( proc );
+					// 動作中JCBookmarkメインウィンドウを
+					hwnd = WindowOfProcessHasClass( strtoul(pid,NULL,0) ,MAINFORMCLASS );
+					if( hwnd ){
+						// 最前面にする
+						SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
+						SetForegroundWindow( hwnd );
+					}
+					else ErrorBoxW(L"このフォルダのJCBookmarkは動作中です。(%s)",pid);
+					exist = 1;
+				}
+			}
+			if( !exist ){
+				// 動作中なし、自身のプロセスIDをファイルに書き込む
+				DWORD written=0;
+				_snprintf(pid,sizeof(pid),"%u",GetCurrentProcessId());
+				SetFilePointer( hPidFile ,0,NULL ,FILE_BEGIN );
+				WriteFile( hPidFile ,pid ,strlen(pid) ,&written ,NULL );
+				SetEndOfFile( hPidFile );
+				FlushFileBuffers( hPidFile );
+			}
+			UnlockFile( hPidFile ,0,0,16,0 );
+		}
+		else{
+			ErrorBoxW(L"LockFile(%s)エラー(%u)",PidFile,GetLastError());
+			return NULL;
+		}
+		if( exist ) return NULL;
+	}
+	else{
+		ErrorBoxW(L"CreateFile(%s)エラー(%u)",PidFile,GetLastError());
+		return NULL;
+	}
+/*
 		// ミューテックス作成(グローバル)
 		WCHAR* name = wcsjoin( L"Global\\" ,DocumentRoot ,0,0,0 );
 		if( name ){
@@ -9233,8 +9297,14 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		// エラーになった後、再度２つ目を起動すると、１つ目が最前面に来てしまう。
 		// "Listenポートをつかんでいるプロセス"というのが間違っている・・・
 		// やはりrootフォルダとプロセスを結びつけて探し出せる仕組みが必要か・・
+		// 共有メモリにrootフォルダパスを書いておくとか？
+		// でも異常終了した時に残って起動できなくなってしまいそう・・・
+		// やはりロックファイルを勝手に作ってLockFileExするか・・
+		// 隠しファイル属性を付けておけばいいかな・・
+		// CreateFile( FILE_ATTRIBUTE_HIDDEN
 		return NULL;
 	}
+*/
 	// メインフォーム生成
 	{
 		WNDCLASSEXW	wc;
@@ -9289,10 +9359,12 @@ void Cleanup( void )
 		free( lc );
 		lc = next;
 	}
-	CloseHandle( Mutex );
+	CloseHandle( hPidFile );
+	DeleteFileW( PidFile );
 	DeleteCriticalSection( &LogCacheCS );
 	DeleteCriticalSection( &SessionCS );
 	free( DocumentRoot );
+	free( PidFile );
 	WSACleanup();
 #ifdef MEMLOG
 	if( mlog ) fclose(mlog);
