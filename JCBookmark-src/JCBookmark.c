@@ -9225,15 +9225,14 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 				SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
 				SetForegroundWindow( hwnd );
 			}
-			else ErrorBoxW(L"すでに動作中のJCBookmarkウィンドウが見つかりません。");
+			else ErrorBoxW(L"このフォルダのJCBookmarkは動作中です。");
 		}
-		else ErrorBoxW(L"すでに動作中のJCBookmarkプロセスが見つかりません。");
+		else ErrorBoxW(L"このフォルダのJCBookmarkは起動しています。");
 		// TODO:起動してるがListenしてないJCBookmarkを見つけられない。
-		// でもListenできてないと使い道がないアプリだし問題ないかな・・？
-		// ミューテックスを作ったプロセスが簡単に取得できればいいけど無さそうなので、
-		// プロセス一覧を取得しておなじ実行ファイルから起動したプロセスを探すか・・
-		// その方が穴が無くてよいかな。。
-		// CreateToolhelp32Snapshot/Process32First/Process32Next
+		// １つ目のJCBookmark起動しておいて、別フォルダで２つ目を同じポートで起動して
+		// エラーになった後、再度２つ目を起動すると、１つ目が最前面に来てしまう。
+		// "Listenポートをつかんでいるプロセス"というのが間違っている・・・
+		// やはりrootフォルダとプロセスを結びつけて探し出せる仕組みが必要か・・
 		return NULL;
 	}
 	// メインフォーム生成
