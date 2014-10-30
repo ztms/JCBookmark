@@ -8566,70 +8566,29 @@ void MainFormTimer1000( void )
 		}
 	}
 }
-// 指定のポート使ってるプロセスIDを取得
-// GetExtendedTcpTable は WinXP SP2 以降の iphlpapi.dll で新しく提供されたAPIらしい。
-// 引数 USHORT port 16bitネットワークバイトオーダーポート番号
-DWORD PIDusingTcpPort( USHORT port )
-{
-	DWORD pid = 0;
-	// 必要バッファサイズを取得
-	DWORD bytes=0;
-	DWORD ret = GetExtendedTcpTable( NULL ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
-	if( ERROR_INSUFFICIENT_BUFFER==ret ){
-		// バッファ確保
-		MIB_TCPTABLE_OWNER_PID* tcp = malloc( bytes );
-		if( tcp ){
-			// 実データ取得
-			ret = GetExtendedTcpTable( tcp ,&bytes ,TRUE ,AF_INET ,TCP_TABLE_OWNER_PID_ALL ,0 );
-			if( NO_ERROR==ret ){
-				UINT i;
-				// 取得データ数:dwNumEntries
-				for( i=0; i<tcp->dwNumEntries; i++ ){
-					MIB_TCPROW_OWNER_PID row = tcp->table[i];
-					if( row.dwLocalPort==port ){
-						// ポート使用エントリ発見
-						pid = row.dwOwningPid;
-					}
-				}
-			}
-			else ErrorBoxW(L"GetExtendedTcpTableエラー(%u)",GetLastError());
-			free( tcp );
-		}
-		else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
-    }
-	else ErrorBoxW(L"GetExtendedTcpTableを利用できません(%u)",GetLastError());
-	return pid;
-}
-// 同じ待受ポート同じドキュメントルートで動いてるウィンドウ探す
+// 同じドキュメントルートで動いてるJCBookmark探す
 #define MAINFORMCLASS L"JCBookmarkMainForm"
 HWND FindConflictWindow( void )
 {
-	// ListenPortをつかんでいるプロセスID取得
-	DWORD listenPID = PIDusingTcpPort( htons((USHORT)wcstoul(ListenPort,NULL,0)) );
-	if( listenPID ){
-		// ウィンドウ列挙してJCBookmark探す
-		HWND hwnd = GetTopWindow( NULL );
-		do {
-			DWORD pid;
-			GetWindowThreadProcessId( hwnd, &pid );
-			if( pid==listenPID ){
-				WCHAR class[256];
-				GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
-				if( wcscmp(class,MAINFORMCLASS)==0 ){
-					// JCBookmarkメインウィンドウ発見
-					COPYDATASTRUCT cd;
-					cd.dwData = 0;
-					cd.cbData = (wcslen(DocumentRoot) + 1) * sizeof(WCHAR);
-					cd.lpData = DocumentRoot;
-					if( SendMessage( hwnd ,WM_COPYDATA ,0 ,(LPARAM)&cd )==0 ){
-						// 自身と同じドキュメントルート確定
-						return hwnd;
-					}
-				}
+	// ウィンドウ列挙してJCBookmark探す
+	HWND hwnd = GetTopWindow( NULL );
+	do {
+		WCHAR class[256];
+		if( hwnd==MainForm ) continue;
+		GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
+		if( wcscmp(class,MAINFORMCLASS)==0 ){
+			// JCBookmarkメインフォーム発見
+			COPYDATASTRUCT cd;
+			cd.dwData = 0;
+			cd.cbData = (wcslen(DocumentRoot) + 1) * sizeof(WCHAR);
+			cd.lpData = DocumentRoot;
+			if( SendMessage( hwnd ,WM_COPYDATA ,0 ,(LPARAM)&cd ) ){
+				// 自身と同じドキュメントルート確定
+				return hwnd;
 			}
 		}
-		while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
 	}
+	while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
 	return NULL;
 }
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
@@ -8684,11 +8643,11 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
 	// 待受開始
 	if( !ListenStart() ){
+		// Listenエラー
 		HWND hwnd = FindConflictWindow();
 		if( hwnd ){
-			// 同じポート同じドキュメントルートで別のプロセスが先に動作しており、その事に気づかず
-			// 起動させた可能性が高く、また多重起動しても意味が無いので、そっちのメインフォームを
-			// 最前面に出して、自身は終了する。
+			// 同じドキュメントルートで別のexeが先に動作しており、その事に気づかず起動させた可能性が高く
+			// また多重起動の意味も無いので、そっちのメインフォームを最前面に出して、自身は終了する。
 			ShowWindow( MainForm ,SW_HIDE );
 			SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
 			SetForegroundWindow( hwnd );
@@ -9100,8 +9059,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_COPYDATA:
-		// 受け取ったパスが自身のドキュメントルートと同じかどうかを返却(同じは0)
-		return wcscmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot );
+		// 受け取ったパスが自身のドキュメントルートと同じかどうかを返却(同じは1)
+		return ( wcscmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot )==0 )? 1 : 0;
 
 	case WM_DESTROY:
 		SocketShutdown();
