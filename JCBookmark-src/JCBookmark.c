@@ -2250,6 +2250,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			// 名前解決
 			// TODO:WSAAsyncGetHostByNameが非同期名前解決だがメッセージ受信型？
 			// http://keicode.com/windows/async-gethostbyname.php
+			// http://eternalwindows.jp/network/winsock/winsock05s.html
 			ADDRINFOA*	addr = NULL;
 			ADDRINFOA	hint;
 			UCHAR*		port = strrchr(host,':');
@@ -2880,16 +2881,32 @@ UCHAR* htmlBotherErase( UCHAR* top )
 		if( script && (script[7]==' ' || script[7]=='>') ){
 			end = stristr(script+7,"</script>");
 			if( end ){
-				UCHAR quote1=0 ,quote2=0;
-				// クォート解析
+				// クォート・正規表現解析
+				UCHAR quote1=0 ,quote2=0 ,regexp=0;
 				p = script + 7;
 			retry:
 				for( ; p<end; p++ ){
-					if( *p=='\'' ){ if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; } else quote1=1; }
-					else if( *p=='"' ){ if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; } else quote2=1; }
+					if( *p=='\'' ){
+						if( !quote2 && !regexp ){
+							if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; }
+							else quote1=1;
+						}
+					}
+					else if( *p=='"' ){
+						if( !quote1 && !regexp ){
+							if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; }
+							else quote2=1;
+						}
+					}
+					else if( *p=='/' ){
+						if( !quote1 && !quote2 ){
+							if( regexp ){ if( *(p-1)!='\\' ) regexp=0; }
+							else regexp=1;
+						}
+					}
 				}
-				if( quote1 || quote2 ){
-					// </script>がクォートの中
+				if( quote1 || quote2 || regexp ){
+					// </script>がクォートまたは正規表現の中
 					UCHAR* newend = stristr(end+9,"</script>");
 					if( newend ){ end=newend; goto retry; }
 					//LogW(L"<script>閉タグが文字列として存在するが新たな閉タグが見つからない構文エラー？");
@@ -4621,7 +4638,7 @@ BOOL DIAMONDAPI fciTempFile( char* pszTempName, int cbTempName, void* pv )
 		if( GetTempPathA(MAX_PATH, dir) ){
 			// GetTempFileNameは実際にファイル作成までするもよう。
 			if( GetTempFileNameA(dir, "jcbkm", 0, pszTempName) ){
-			    success = TRUE;
+				success = TRUE;
 			}
 		}
 	}
@@ -8180,12 +8197,12 @@ DWORD ConfigDialog( UINT tabid )
 	data.result = ID_DLG_NULL;
 
 	memset( &wc, 0, sizeof(wc) );
-	wc.cbSize        = sizeof(wc);
+	wc.cbSize		 = sizeof(wc);
 	wc.cbWndExtra	 = DLGWINDOWEXTRA;
 	wc.lpfnWndProc   = ConfigDialogProc;
-	wc.hInstance     = hinst;
-	wc.hIcon	     = LoadIconA( hinst ,"0" );
-	wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+	wc.hInstance	 = hinst;
+	wc.hIcon		 = LoadIconA( hinst ,"0" );
+	wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
 	wc.lpszClassName = CONFIGDLGCLASS;
 
@@ -8804,12 +8821,12 @@ void AboutBox( void )
 	WNDCLASSEXW	wc;
 
 	memset( &wc, 0, sizeof(wc) );
-	wc.cbSize        = sizeof(wc);
+	wc.cbSize		 = sizeof(wc);
 	wc.cbWndExtra	 = DLGWINDOWEXTRA;
 	wc.lpfnWndProc   = AboutBoxProc;
-	wc.hInstance     = hinst;
-	wc.hIcon	     = LoadIconA( hinst, "0" );
-	wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+	wc.hInstance	 = hinst;
+	wc.hIcon		 = LoadIconA( hinst, "0" );
+	wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
 	wc.lpszClassName = ABOUTBOXCLASS;
 
@@ -9174,12 +9191,12 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		WNDCLASSEXW	wc;
 
 		memset( &wc, 0, sizeof(wc) );
-		wc.cbSize        = sizeof(wc);
+		wc.cbSize		 = sizeof(wc);
 		wc.cbWndExtra	 = DLGWINDOWEXTRA;
 		wc.lpfnWndProc   = MainFormProc;
-		wc.hInstance     = hinst;
-		wc.hIcon	     = LoadIconA( hinst, "0" );
-		wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+		wc.hInstance	 = hinst;
+		wc.hIcon		 = LoadIconA( hinst, "0" );
+		wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 		wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
 		wc.lpszClassName = MAINFORMCLASS;
 
