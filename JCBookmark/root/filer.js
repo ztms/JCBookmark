@@ -16,6 +16,36 @@ $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
 });
+// ツールチップ
+$.fn.tooltip = function(){
+	$(this).hover(function(){
+		var $this = $(this);
+		var txt = $this.attr('data-tip');
+		if( txt.length ){
+			var $tip = $('#tooltip');
+			var $horn1 = $tip.children('b');
+			var $horn2 = $tip.children('i');
+			var ofTip = $this.offset();
+			var ofHorn1 = { left:ofTip.left };
+			$tip.children('div').text( txt );
+			// 下に表示
+			ofTip.left += $this.outerWidth() / 2 - $tip.outerWidth() / 2;
+			ofTip.top += $this.outerHeight();
+			if( ofTip.left <0 ) ofTip.left = 0;
+			else{
+                var w = ofTip.left + $tip.outerWidth() - $(win).width();
+                if( w >0 ) ofTip.left -= w;
+            }
+			ofHorn1.left = ofHorn1.left - ofTip.left + $this.outerWidth() / 2 - $horn1.outerWidth() / 2;
+			ofHorn1.top = - $horn1.outerHeight() / 2;
+			$horn1.css({ left:ofHorn1.left ,top:ofHorn1.top });
+			$horn2.css({ left:ofHorn1.left + 2 ,top:ofHorn1.top + 4 });
+			$tip.css({ left:ofTip.left ,top:ofTip.top ,'padding-top':$horn2.outerHeight() / 2 - 3 }).show();
+		}
+	},function(){
+		$('#tooltip').hide();
+	});
+};
 var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
 var selectFolder = null;		// 選択フォルダ
@@ -409,7 +439,8 @@ var option = {
 	option.load(function(){
 		// 準備
 		var fontSize = (option.font.css()==='gothic.css')? 13 : 12;
-		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt{font-size:'+fontSize+'px;}');
+		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt, #tooltip{font-size:'+fontSize+'px;}');
+		//$.css.add('#tooltip{font-size:'+(fontSize+1)+'px;}');
 		$('#fontcss').attr('href',option.font.css());
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
@@ -418,6 +449,7 @@ var option = {
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) folderTree({ click0:true }); });
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
+	$('#home,#newfolder,#newitem,#find,#selectall,#delete,#deadlink,#logout').tooltip();
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
@@ -2177,6 +2209,8 @@ function itemDragStart( element, downX, downY ){
 			scroller(ev);
 		}
 	})
+	// TOOD:アイテム欄の下の余白にいる時にアイテム最後にドロップしたい
+	// TOOD:アイテム欄より上にいる時にアイテム先頭にドロップしたい
 	.on('mousemove.itemdrag','.folder, .item',function(ev){
 		if( !draggie ) itemDragJudge(ev);
 		if( draggie ){
@@ -3071,7 +3105,7 @@ function Confirm( arg ){
 		,close		:function(){ $(this).dialog('destroy'); }
 		,buttons	:{}
 	};
-	if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
+	if( arg.ok )  opt.buttons['O K']	= function(){ $(this).dialog('destroy'); arg.ok(); }
 	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
 	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
 	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }

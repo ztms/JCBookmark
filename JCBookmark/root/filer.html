@@ -9,18 +9,18 @@
 </head>
 <body style="visibility:hidden;">
 <div id=toolbar>
-  <img class=barbtn id=home src=home.png title="パネル画面に戻る (Esc)" tabindex=0>
-  <img class=barbtn id=newfolder src=newfolder.png title="新規フォルダ" tabindex=0>
+  <img class=barbtn id=home src=home.png data-tip="パネル画面に戻る (Esc)" tabindex=0>
+  <img class=barbtn id=newfolder src=newfolder.png data-tip="新規フォルダ作成" tabindex=0>
   <input id=newname placeholder="新規フォルダ名" title="新規フォルダ名">
-  <img class=barbtn id=newitem src=newitem.png title="新規ブックマークアイテム" tabindex=0>
+  <img class=barbtn id=newitem src=newitem.png data-tip="新規ブックマーク作成" tabindex=0>
   <input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">
-  <img class=barbtn id=find src=find.png title="検索" tabindex=0>
+  <img class=barbtn id=find src=find.png data-tip="ブックマーク検索" tabindex=0>
   <img class=barbtn id=findstop src=stop.png title="中止" tabindex=0>
   <div id=finding></div><input id=keyword placeholder="検索キーワード" title="検索キーワード">
-  <img class=barbtn id=selectall src=check.png title="すべて選択" tabindex=0>
-  <img class=barbtn id=delete src=delete.png title="削除 (Delete)" tabindex=0>
-  <img class=barbtn id=deadlink src=skull32.png title="リンク切れ調査(全フォルダ)" tabindex=0>
-  <img class=barbtn id=logout src=exit.png title="ログアウト" tabindex=0>
+  <img class=barbtn id=selectall src=check.png data-tip="アイテム欄のブックマークをすべて選択" tabindex=0>
+  <img class=barbtn id=delete src=delete.png data-tip="選択したブックマークを削除 (Delete)" tabindex=0>
+  <img class=barbtn id=deadlink src=skull32.png data-tip="リンク切れ調査(全フォルダ)開始" tabindex=0>
+  <img class=barbtn id=logout src=exit.png data-tip="ログアウト" tabindex=0>
   <br class=clear>
 </div>
 <div id=folderbox><div id=folders></div><div class=spacer></div></div>
@@ -30,6 +30,7 @@
 <div id=progress><img src=progress.gif></div>
 <div id=modified>★ 変更を保存するにはここをクリックしてください ★</div>
 <div id=findopt><input type=checkbox id=fregex tabindex=0><label for=fregex>正規表現</label></div>
+<div id=tooltip><b></b><div></div><i></i></div>
 <input id=editbox>
 <div id=dragbox></div>
 <div id=selectbox></div>

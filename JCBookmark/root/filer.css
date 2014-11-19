@@ -291,6 +291,35 @@ body {
 .clear {
 	clear:both;
 }
+/* ツールチップ */
+#tooltip {
+	display:none;
+	position:absolute;
+	overflow:hidden;
+}
+#tooltip div {
+	position:relative;
+	background:#444;
+	color:#fff;
+	padding:2px 7px;
+	border-radius:5px;
+	border:1px solid #ccc;
+	letter-spacing:1px;
+}
+#tooltip b {
+	position:absolute;
+	border-width:12px;
+	border-style:solid;
+	border-color:transparent;
+	border-bottom-color:#ccc;
+}
+#tooltip i {
+	position:absolute;
+	border-width:10px;
+	border-style:solid;
+	border-color:transparent;
+	border-bottom-color:#444;
+}
 /* ドラッグ中にカーソルと一緒に動く半透明ボックス */
 #dragbox {
 	display:none;
