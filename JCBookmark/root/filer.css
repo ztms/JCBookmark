@@ -53,6 +53,8 @@ body {
 	height:20px;
 	border:0;
 	border-radius:0;
+	padding:0;
+	margin:0;
 }
 #keyword {
 	background:transparent;
@@ -153,14 +155,14 @@ body {
 	line-height:20px;
 }
 #itemhead .title {
-	padding:0 0 0 7px;
 	color:#888;
+	text-indent:7px;
 }
 #itemhead .url,
 #itemhead .misc,
 #itemhead .date {
 	color:#888;
-	padding-left:5px;
+	text-indent:5px;
 }
 #itemhead .drag {
 	background:#fed;
@@ -261,26 +263,34 @@ body {
 	width:16px;
 	height:16px;
 }
-.sub {
+.sub, .appear {
 	float:left;
 	width:9px;
 	height:9px;
-	margin:3px 0 0 2px;
 	padding:1px;
 	border:1px solid transparent;
 }
-.sub:hover {
+.sub {
+	margin:3px 0 0 2px;
+}
+.appear {
+	margin:3px 0 0 0;
+}
+.sub:hover, .appear:hover {
 	border-color:#bbb;
 	background:#fff;
 }
-.select .sub:hover {
+.select .sub:hover,
+.select .appear:hover {
 	background:#669;
 }
-.inactive .sub {
+.inactive .sub,
+.inactive .appear {
 	border-color:#ccc;
 	background:#e5e5e5;
 }
-.inactive .sub:hover {
+.inactive .sub:hover,
+.inactive .appear:hover {
 	border-color:#bbb;
 	background:#fff;
 }
@@ -301,7 +311,7 @@ body {
 	position:relative;
 	background:#444;
 	color:#fff;
-	padding:2px 7px;
+	padding:2px 5px;
 	border-radius:5px;
 	border:1px solid #ccc;
 	letter-spacing:1px;

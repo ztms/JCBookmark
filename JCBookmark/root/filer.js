@@ -563,9 +563,9 @@ var folderTree = function(){
 				if( node.sub ){
 					var $s = $sub.clone();
 					if( isClose[node.id] ) $s.attr('src','plus.png');
-					$f.prepend( $s ).css('padding-left', node.depth *16 );
+					$f.prepend( $s ).css('padding-left', node.depth *17 ); // 階層インデント17px
 				}
-				else $f.css('padding-left', node.depth *16 +15 );	// +15px <img class=sub> の幅
+				else $f.css('padding-left', node.depth *17 +15 );	// 階層インデント17px +<img class=sub>の幅15px
 				return $f;
 			};
 		}();
@@ -634,6 +634,8 @@ var folderTree = function(){
 // itemList('?timer')			アイテム欄用タイマが生きてる(処理中)かどうか
 // itemList(false)				処理中止
 // itemList( node [,done])		フォルダnodeのchildをアイテム欄に表示。完了後にdone実行。
+// itemList('disappear',folder)	アイテム欄内フォルダ展開やめ
+// itemList('appear',folder)	アイテム欄内フォルダ展開
 // itemList('finds')			検索実行
 // itemList('poke')				リンク切れ調査(アイテム欄の選択ブックマークURLのみ)
 // itemList('deads','folder')	リンク切れ調査(アイテム欄の選択ブックマークとフォルダ内)
@@ -648,6 +650,7 @@ var itemList = function(){
 	var $ajax = null;						// ajaxオブジェクト
 	var queue = [];							// ajax待ちノード配列キュー
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
+	var appear = {};						// アイテム欄内フォルダ展開ノードID保持
 	$('#finding').offset($('#keyword').offset()).progressbar();
 	// 中断終了処理
 	function finalize( arg0 ){
@@ -677,6 +680,8 @@ var itemList = function(){
 	// TODO:この方式だと並列数が多くてぜんぶ正常/注意/死亡でない結果が増えてくると時間記録が
 	// スルーされて調節がぜんぜんされないことになってしまう。サーバ側でURL毎に時間を計測して
 	// 結果を返してもいいけど、それを考慮して並列数に反映する方式？アルゴリズム？が難しい。。
+	// TODO:受信タイムアウトが発生しても、他に同時処理してたURLが短時間で終わっているなら
+	// それは並列過多ではなくサーバ側の問題の可能性が高いので並列数を半減させる必要はない。
 	var parallel = 5;	// リンク切れ調査URL並列数
 	var timelog = [];	// 時間記録(並列数の調節用)
 	function paraAdjust( st ,time ){
@@ -780,10 +785,10 @@ var itemList = function(){
 			$itemAppend = function(){
 				var $item = $('<div class=item tabindex=0></div>')
 					.append('<img class=icon>')
-					.append($('<span class=title></span>').width( $head.children('.title').width() -18 ))
-					.append($('<span class=url></span>').width( $head.children('.url').width() +4 ))
-					.append($('<span class=place></span>').width( $head3.width() +4 ))
-					.append($('<span class=date></span>').width( $head.children('.date').width() +2 ))
+					.append($('<span class=title></span>').width( $head.children('.title').width() -25 ))
+					.append($('<span class=url></span>').width( $head.children('.url').width() -1 ))
+					.append($('<span class=place></span>').width( $head3.width() -1 ))
+					.append($('<span class=date></span>').width( $head.children('.date').width() -18 ))
 					.append('<br class=clear>')
 					.on('mouseleave',itemMouseLeave);
 				var $stico = $('<img class=icon style="margin-left:0">');
@@ -1062,10 +1067,10 @@ var itemList = function(){
 					if( node===false ){ $img.remove(); $item.remove(); return; }
 					date.setTime( node.dateAdded ||0 );
 					$icon.attr('src', node.icon ||'item.png');
-					$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -18 );
-					$url.text( node.url ).width( $hUrl.width() +4 );
-					$stat.text( txt ).prepend( $img.attr('src',ico) ).width( $head3.width() +4 );
-					$date.text( myFmt(date,now) ).width( $hDate.width() +2 );
+					$title.text( node.title ).attr('title', node.title).width( $hTitle.width() -25 );
+					$url.text( node.url ).width( $hUrl.width() -1 );
+					$stat.text( txt ).prepend( $img.attr('src',ico) ).width( $head3.width() -1 );
+					$date.text( myFmt(date,now) ).width( $hDate.width() -18 );
 					var $e = $item.clone(true).attr('id','item'+node.id).addClass( cls );
 					if( index++ %2 ) $e.addClass('bgcolor');
 					items.appendChild( $e[0] );
@@ -1150,22 +1155,27 @@ var itemList = function(){
 			$head3.text('アイコン / 調査結果');
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
-				var urlWidth = $head.children('.url').width() +4;
-				var iurlWidth = $head3.width() +4;
+				var urlWidth = $head.children('.url').width() -1;
+				var iurlWidth = $head3.width() -1;
 				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
-				var $icon = $('<img class=icon>');
-				var $title = $('<span class=title></span>').width( $head.children('.title').width() -18 );
+				var $icon = $('<img class=icon style="position:relative;">');
+				var $title = $('<span class=title></span>').width( $head.children('.title').width() -38 );
 				var $url = $('<span class=url></span>').width( urlWidth );
-				var $date = $('<span class=date></span>').width( $head.children('.date').width() +2 );
+				var $date = $('<span class=date></span>').width( $head.children('.date').width() -18 );
 				var $br = $('<br class=clear>');
+				var indent0 = 0; // アイテム欄内フォルダ展開階層インデント基底値
+				if( arg0==='appear'){
+					indent0 = parseInt( $(arg1).children('.title').css('text-indent')||0 ) +17; // インデント+17px
+				}
 				var $folder = $item.clone(true)
 					.addClass('folder')
+					.append('<img class=appear style="position:relative;">')
 					.append( $icon.clone().attr('src','folder.png') )
 					.append( $title.clone() )
 					.append( $('<span class=summary></span>').width( urlWidth +iurlWidth +6 ) )
 					.append( $date.clone() )
 					.append( $br.clone() );
-				$item.append( $icon )
+				$item.append( $icon.css('margin-left',16) )
 					.append( $title )
 					.append( $url )
 					.append( $('<span class=iconurl></span>').width( iurlWidth ) )
@@ -1174,16 +1184,18 @@ var itemList = function(){
 				var $stico = $('<img class=icon style="margin-left:0">');
 				var date = new Date();
 				var index = 0;
-				return function( node, now ){
-					if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
+				var newitem = function( node, now ,depth ,appear ){
+					var myindent = indent0 + depth * 17; // アイテム欄内フォルダ展開階層インデント17px
 					if( node.child ){
 						var $e = $folder.clone(true).attr('id','item'+node.id);
 						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
 						$e.children('.summary').text( smry );
+						$e.children('.appear').css('left',myindent).attr('src',appear ? 'minus.png':'plus.png');
+						$e.children('.icon').css('left',myindent);
 					}
 					else{
 						var $e = $item.clone(true).attr('id','item'+node.id);
-						$e.children('.icon').attr('src', node.icon ||'item.png');
+						$e.children('.icon').attr('src', node.icon ||'item.png').css('left',myindent);
 						$e.children('.url').text( node.url );
 						var st = results[node.url];
 						if( st ){
@@ -1195,27 +1207,103 @@ var itemList = function(){
 					}
 					date.setTime( node.dateAdded ||0 );
 					$e.children('.date').text( myFmt(date,now) );
-					$e.children('.title').text( node.title ).attr('title',node.title);
+					$e.children('.title').text( node.title ).attr('title',node.title).css('text-indent',myindent);
+					// TODO:アイテム欄内フォルダ展開により色が交互にならないパターンはまあいいかな…
 					if( index++ %2 ) $e.addClass('bgcolor');
 					if( st && st.grp==='D' ) $e.addClass('dead');
-					items.appendChild( $e[0] );
+					return $e[0];
 				};
+				return(
+					arg0==='appear' ?
+					function( node ,now ,prevSibling ,depth ,appear ){
+						// アイテム内フォルダ展開
+						if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
+						var item = newitem( node ,now ,depth ,appear );
+						prevSibling.parentNode.insertBefore( item ,prevSibling.nextSibling );
+						return item;
+					}
+					:function( node ,now ,depth ,appear ){
+						// アイテム欄新規
+						if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
+						items.appendChild( newitem( node ,now ,depth ,appear ) );
+					}
+				);
 			}();
-			items.innerHTML = '';
-			selectItemClear();
-			var now = (new Date()).getTime();
-			var child = arg0.child;
-			var length = child.length;
-			var index = 0;
-			(function lister(){
-				var count=10;
-				while( index < length && count>0 ){
-					$itemAppend( child[index], now );
-					index++; count--;
+			if( arg0==='disappear' ){
+				// アイテム欄内フォルダ展開やめ
+				var $item = $(arg1);
+				var indent = parseInt($item.children('.title').css('text-indent')||0);
+				$item = $item.next();
+				while( $item.hasClass('item') ){
+					if( indent < parseInt($item.children('.title').css('text-indent')||0) ){
+						var $next = $item.next();
+						$item.remove();
+						$item = $next;
+					}
+					else break;
 				}
-				if( index < length ) timer = setTimeout(lister,0);
-				else{ $itemAppend(false); if( arg1 ) arg1(); }
-			})();
+				delete appear[arg1.id.slice(4)];
+			}
+			else if( arg0==='appear' ){
+				// アイテム欄内フォルダ展開
+				var nid = arg1.id.slice(4);
+				var node = tree.node( nid );
+				if( node ){
+					var prevSibling = arg1;
+					var now = (new Date()).getTime();
+					var child = node.child;
+					var nodeQ = [];
+					var depthQ = [];
+					for( var i=0; i<child.length; i++ ){ nodeQ.push( child[i] ); depthQ.push(0); }
+					(function lister(){
+						var count=10;
+						while( nodeQ.length && count>0 ){
+							var node = nodeQ.shift();
+							var depth = depthQ.shift();
+							if( appear[node.id] ){
+								var child = node.child;
+								for( var i=child.length-1; i>=0; i-- ){
+									nodeQ.unshift( child[i] ); depthQ.unshift( depth +1 );
+								}
+								prevSibling = $itemAppend( node ,now ,prevSibling ,depth ,true );
+							}
+							else prevSibling = $itemAppend( node ,now ,prevSibling ,depth );
+							count--;
+						}
+						if( nodeQ.length ) timer = setTimeout(lister,0);
+						else{ $itemAppend(false); }
+					})();
+					appear[nid] = true;
+				}
+			}
+			else{
+				// アイテム欄新規作成
+				items.innerHTML = '';
+				//selectItemClear();
+				var now = (new Date()).getTime();
+				var child = arg0.child;
+				var nodeQ = [];
+				var depthQ = [];
+				for( var i=0; i<child.length; i++ ){ nodeQ.push( child[i] ); depthQ.push(0); }
+				(function lister(){
+					var count=10;
+					while( nodeQ.length && count>0 ){
+						var node = nodeQ.shift();
+						var depth = depthQ.shift();
+						if( appear[node.id] ){
+							var child = node.child;
+							for( var i=child.length-1; i>=0; i-- ){
+								nodeQ.unshift( child[i] ); depthQ.unshift( depth +1 );
+							}
+							$itemAppend( node ,now ,depth ,true );
+						}
+						else $itemAppend( node ,now ,depth );
+						count--;
+					}
+					if( nodeQ.length ) timer = setTimeout(lister,0);
+					else{ $itemAppend(false); if( arg1 ) arg1(); }
+				})();
+			}
 		}
 	};
 }();
@@ -1233,6 +1321,7 @@ $('#folderbox')
 	var data = { itemID:'', itemNotify:'' };
 	$('#itembox')
 	.on('mousedown','.item',data,itemMouseDown)
+	.on('mousedown','.appear',appearIcon)
 	.on('click','.item',data,itemClick)
 	.on('dblclick','.item',itemDblClick)
 	.on('selfclick','.item',itemSelfClick)
@@ -1654,7 +1743,7 @@ $('.itemborder').mousedown(function(ev){
 		var newAttrWidth = attrWidth + dx;
 		var newSmryWidth = smryWidth + dx;
 		var newLastWidth = lastWidth - dx;
-		if( newAttrheadWidth >20 && newLastheadWidth >20 ){
+		if( newAttrheadWidth >20 && newLastheadWidth >30 ){
 			$attrhead.width( newAttrheadWidth );
 			$lasthead.width( newLastheadWidth );
 			if( attrWidth ) $attr.width( newAttrWidth );
@@ -1778,9 +1867,9 @@ function resize(){
 		itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	}
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px(?)
-	var titleWidth = (itemsWidth /2.3)|0;									// 割合適当
-	var urlWidth = ((itemsWidth -titleWidth) /2.6)|0;						// 割合適当
-	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.9)|0;			// 割合適当
+	var titleWidth = (itemsWidth /2.22)|0;									// 割合適当
+	var urlWidth = ((itemsWidth -titleWidth) /2.5)|0;						// 割合適当
+	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.75)|0;			// 割合適当
 	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
 
 	$('#toolbar') // ボタン類がfloatで下にいかないよう
@@ -1799,7 +1888,7 @@ function resize(){
 				.children('.title').width( titleWidth ).end()
 				.children('.url').width( urlWidth ).end()
 				.children('.misc').width( iconWidth ).end()
-				.children('.date').width( dateWidth -38 ).end()			// -38px適当float対策
+				.children('.date').width( dateWidth ).end()
 				.outerHeight()
 			- $('#deadinfo')
 				.width( itemboxWidth )
@@ -1807,11 +1896,11 @@ function resize(){
 		);
 	$('#items')
 		.width( itemsWidth )
-		.find('.title').width( titleWidth -18 ).end()					// アイコンのぶん-18px
-		.find('.url').width( urlWidth +4 ).end()						// itemborderのぶん+4px
-		.find('.iconurl, .place, .status').width( iconWidth +4 ).end()	// itemborderのぶん+4px
-		.find('.summary').width( urlWidth +iconWidth +14 ).end()		// 見た目で合うように+14px
-		.find('.date').width( dateWidth -35);							// float対策適当-36px
+		.find('.title').width( titleWidth -(itemList('?')=='child'? 38:25) ).end()	// #itemheadと合うよう調節
+		.find('.url').width( urlWidth -1 ).end()						// #itemheadと合うよう調節
+		.find('.iconurl, .place, .status').width( iconWidth -1 ).end()	// #itemheadと合うよう調節
+		.find('.summary').width( urlWidth +iconWidth +4 ).end()			// #itemheadと合うよう調節
+		.find('.date').width( dateWidth -12 );							// float対策適当-12px
 }
 // 画面サイズ縦のみ変更
 function resizeV( padding ){
@@ -1947,6 +2036,8 @@ function itemSelfClick( ev, shiftKey ){
 }
 function itemMouseDown( ev, shiftKey ){
 	$('#editbox').blur();
+	// ＋－ボタンは無視
+	if( ev.target.className=='appear' ) return;
 	// イベント間通知
 	ev.data.itemID = this.id;
 	ev.data.itemNotify = '';
@@ -2046,10 +2137,10 @@ function folderMouseDown(ev){
 function subTreeIcon(){
 	var $my = $(this);
 	var $fo = $(this.parentNode);
-	var paddingLeft = parseInt($fo.css('padding-left')) +15;	// +15px <img class=sub> の幅
+	var paddingLeft = parseInt($fo.css('padding-left')||0) +15;	// +15px <img class=sub> の幅
 	if( /plus.png$/.test(this.src) ){
 		for( var $fo=$fo.next(); $fo.hasClass('folder'); $fo=$fo.next() ){
-			if( paddingLeft < parseInt($fo.css('padding-left')) )
+			if( paddingLeft < parseInt($fo.css('padding-left')||0) )
 				$fo = subView( $fo.show() );
 			else
 				break;
@@ -2058,7 +2149,7 @@ function subTreeIcon(){
 	}
 	else{
 		for( var $fo=$fo.next(); $fo.hasClass('folder'); $fo=$fo.next() ){
-			if( paddingLeft < parseInt($fo.css('padding-left')) )
+			if( paddingLeft < parseInt($fo.css('padding-left')||0) )
 				$fo.hide();
 			else
 				break;
@@ -2070,9 +2161,9 @@ function subTreeIcon(){
 		var child0 = $fo[0].children[0];
 		if( child0.className=='sub' ){
 			var show = /minus.png$/.test(child0.src);
-			var paddingLeft = parseInt($fo.css('padding-left')) +15;	// +15px <img class=sub> の幅
+			var paddingLeft = parseInt($fo.css('padding-left')||0) +15;	// +15px <img class=sub> の幅
 			for( var $nx=$fo.next(); $nx.hasClass('folder'); $nx=$nx.next() ){
-				if( paddingLeft < parseInt($nx.css('padding-left')) ){
+				if( paddingLeft < parseInt($nx.css('padding-left')||0) ){
 					if( show ) $nx = subView( $nx.show() );
 					$fo = $nx;
 				}
@@ -2080,6 +2171,17 @@ function subTreeIcon(){
 			}
 		}
 		return $fo;
+	}
+}
+// アイテム欄内フォルダ展開
+function appearIcon(){
+	if( /plus.png$/.test(this.src) ){
+		this.src = 'minus.png';
+		itemList('appear',this.parentNode);
+	}
+	else{
+		this.src = 'plus.png';
+		itemList('disappear',this.parentNode);
 	}
 }
 // アイテムドラッグ中自動スクロール
@@ -2209,8 +2311,8 @@ function itemDragStart( element, downX, downY ){
 			scroller(ev);
 		}
 	})
-	// TOOD:アイテム欄の下の余白にいる時にアイテム最後にドロップしたい
-	// TOOD:アイテム欄より上にいる時にアイテム先頭にドロップしたい
+	// TODO:アイテム欄の下の余白にいる時にアイテム最後にドロップ(.spacerでドロップできるように)
+	// TODO:アイテム欄より上にいる時にアイテム先頭にドロップ(ちょと面倒…)
 	.on('mousemove.itemdrag','.folder, .item',function(ev){
 		if( !draggie ) itemDragJudge(ev);
 		if( draggie ){
@@ -2387,7 +2489,9 @@ function itemClick(ev){
 		}
 	}
 }
-function itemDblClick(){
+function itemDblClick(ev){
+	// ＋－ボタンは無視
+	if( ev.target.className=='appear' ) return;
 	if( $(this).hasClass('folder') ){
 		// フォルダはフォルダ開く
 		// 自身ID=itemXXならフォルダID=folderXX
@@ -2408,7 +2512,6 @@ function itemDblClick(){
 	}
 	return false;
 }
-// TODO:新規フォルダ作成
 // TODO:Opera12で未選択アイテムのコンテキストメニューが出ない。選択アイテムは出る。
 // itemMouseDown()のitemSelectStart()をやめたら出た。Opera以外は問題ない。うーむ
 // ブラウザ判定はIEしかしてないし、右クリック判定もしてないし、あとまわし…。
@@ -2542,6 +2645,9 @@ function itemContextMenu(ev){
 			}
 		}
 	}
+	$box.append($('<a><img src=xxx.png>一括でタイトル・URLを変更</a>').click(function(){
+		// TODO:まめFileと同じような機能
+	}));
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
 		if( isLocalServer ){
@@ -2841,9 +2947,12 @@ function selectItemClear(){
 function edit( element, opt ){
 	var $editbox = $('#editbox');
 	var fontWeight = 'normal';
+	var indent = 0;
 	if( element ){
 		switch( element.className ){
-		case 'title': fontWeight = 'bold';
+		case 'title':
+			fontWeight = 'bold';
+			indent = parseInt( element.style.textIndent||0 );
 		case 'url':
 		case 'iconurl':
 			// element全体見えるようスクロール
@@ -2858,9 +2967,9 @@ function edit( element, opt ){
 				var offset = $e.offset();
 				var isFolderTree = (element.parentNode.id.indexOf('folder')==0)? true:false;
 				$editbox.css({
-					left			:offset.left -1
+					left			:offset.left +indent -1
 					,top			:offset.top -1
-					,width			:isFolderTree? $('#folders').width() -element.offsetLeft : element.offsetWidth -1
+					,width			:(isFolderTree? $('#folders').width() -element.offsetLeft : element.offsetWidth -1) -indent
 					,'padding-left'	:$e.css('padding-left')
 					,'font-weight'	:fontWeight
 				})
