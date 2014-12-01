@@ -1292,8 +1292,9 @@ function setEvents(){
 			function resize(){
 				clearTimeout(timer);
 				timer = setTimeout(function(){
+					var $p = $box.parent();
 					// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-					$area.height( $box.parent().height() -$box.prev().outerHeight() -20 );
+					$area.height( $p().height() -$box.prev().outerHeight() -20 ).width( $p().width() -30 );
 				},20);
 			}
 			resize();
