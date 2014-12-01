@@ -2330,7 +2330,6 @@ function itemDragStart( element, downX, downY ){
 			scroller(ev);
 		}
 	})
-	// TODO:アイテム欄の下の余白にいる時にアイテム最後にドロップ(.spacerでドロップできるように)
 	// TODO:アイテム欄より上にいる時にアイテム先頭にドロップ(ちょと面倒…)
 	.on('mousemove.itemdrag','.folder, .item, .spacer',function(ev){
 		if( !draggie ) itemDragJudge(ev);
@@ -2343,7 +2342,9 @@ function itemDragStart( element, downX, downY ){
 			// ドロップ要素スタイル適用
 			$this.removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
 			// 余白
-			if( $this.hasClass('spacer') ){ $this.addClass('dropTop'); return; }
+			if( $this.hasClass('spacer') ){
+				if( itemList('?')=='child' ) $this.addClass('dropTop'); return;
+			}
 			// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
 			var Y = ev.pageY - $this.offset().top;
 			if( draggie.id.indexOf('item')==0 ){
