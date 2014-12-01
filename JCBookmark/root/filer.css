@@ -294,9 +294,9 @@ body {
 	border-color:#bbb;
 	background:#fff;
 }
-/* 余白 */
+/* フォルダツリー,アイテム欄余白 */
 .spacer {
-	height:32px;
+	min-height:32px;
 }
 .clear {
 	clear:both;

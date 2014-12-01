@@ -307,8 +307,8 @@ var tree = {
 		return false;
 	}
 	// ノード移動(childに)
-	// ids:ノードID配列、dst:フォルダノードIDまたはノードオブジェクト
-	,moveChild:function( ids, dst ){
+	// ids:ノードID配列、dst:フォルダノードIDまたはノードオブジェクト、push:trueで末尾追加
+	,moveChild:function( ids, dst ,push ){
 		if( oStr.call(dst)==='[object String]' ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
@@ -336,8 +336,14 @@ var tree = {
 				})( tree.root.child );
 				// 貼り付け
 				if( clipboard.length ){
-					//for( var i=0; i<clipboard.length; i++ ) dst.child.push( clipboard[i] ); // 末尾に
-					for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] ); // 先頭に
+					if( push ){
+						// 末尾に
+						for( var i=0; i<clipboard.length; i++ ) dst.child.push( clipboard[i] );
+					}
+					else{
+						// 先頭に
+						for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] );
+					}
 					tree.modified(true);
 				}
 			}
@@ -440,7 +446,6 @@ var option = {
 		// 準備
 		var fontSize = (option.font.css()==='gothic.css')? 13 : 12;
 		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt, #tooltip{font-size:'+fontSize+'px;}');
-		//$.css.add('#tooltip{font-size:'+(fontSize+1)+'px;}');
 		$('#fontcss').attr('href',option.font.css());
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
@@ -449,7 +454,7 @@ var option = {
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) folderTree({ click0:true }); });
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
-	$('#home,#newfolder,#newitem,#find,#selectall,#delete,#deadlink,#logout').tooltip();
+	$('#home, #newfolder, #newitem, #find, #selectall, #delete, #deadlink, #logout').tooltip();
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
@@ -776,9 +781,9 @@ var itemList = function(){
 				};
 			}
 			kind = 'finds';
-			$('#deadinfo').trigger('dying').remove();
 			$head3.text('場所 / 調査結果');
-			$('#itembox').children('.spacer').html('<img src=wait.gif>');
+			$('#deadinfo').trigger('dying').remove();
+			$('#itembox').children('.spacer').height( 32 ).html('<img src=wait.gif>'); // アイテム欄余白32px
 			$('#find').hide();
 			$('#findstop').off().click(function(){ finalize(); }).show();
 			var items = doc.getElementById('items');
@@ -976,8 +981,8 @@ var itemList = function(){
 			// 中断される。(アイテム調査との違いに注意)
 			// TODO:フォルダ表示や検索で調査が中断される時は確認ダイアログ？
 			kind = 'deads';
-			$('#deadinfo').trigger('dying').remove();
 			$head3.text('調査結果');
+			$('#deadinfo').trigger('dying').remove();
 			var $ok = $('<span class=count>0</span>');
 			var $err = $ok.clone();
 			var $dead = $ok.clone();
@@ -1008,7 +1013,7 @@ var itemList = function(){
 				.width( $head.width() )
 				.insertBefore( $head );
 			$('#itembox').height( $('#folderbox').height() -$head.outerHeight() -$info.outerHeight() )
-				.children('.spacer').html('<img src=wait.gif>');
+				.children('.spacer').height( 32 ).html('<img src=wait.gif>'); // アイテム欄余白32px
 			// ノード配列作成
 			var queuer = function( node ){
 				if( node.url.length <=0 ) return;
@@ -1151,8 +1156,9 @@ var itemList = function(){
 		else{
 			// フォルダ表示
 			kind = 'child';
-			$('#deadinfo').trigger('dying').remove();
 			$head3.text('アイコン / 調査結果');
+			$('#deadinfo').trigger('dying').remove();
+			$('#itembox').children('.spacer').height( 32 ); // アイテム欄余白32px
 			var items = doc.getElementById('items');
 			$itemAppend = function(){
 				var urlWidth = $head.children('.url').width() -1;
@@ -1271,7 +1277,7 @@ var itemList = function(){
 							count--;
 						}
 						if( nodeQ.length ) timer = setTimeout(lister,0);
-						else{ $itemAppend(false); }
+						else{ $itemAppend(false); spacerHeight(); }
 					})();
 					appear[nid] = true;
 				}
@@ -1301,7 +1307,7 @@ var itemList = function(){
 						count--;
 					}
 					if( nodeQ.length ) timer = setTimeout(lister,0);
-					else{ $itemAppend(false); if( arg1 ) arg1(); }
+					else{ $itemAppend(false); spacerHeight(); if( arg1 ) arg1(); }
 				})();
 			}
 		}
@@ -1831,6 +1837,7 @@ $('#itembox').on({
 		}
 	}
 });
+$('#folderbox .spacer, #itembox .spacer').on('mouseleave',itemMouseLeave);
 // 独自フォーマット時刻文字列
 function myFmt( date, now ){
 	// 0=1970/1/1は空
@@ -1871,6 +1878,27 @@ function resize(){
 	var urlWidth = ((itemsWidth -titleWidth) /2.5)|0;						// 割合適当
 	var iconWidth = ((itemsWidth -titleWidth -urlWidth) /1.75)|0;			// 割合適当
 	var dateWidth = itemsWidth -titleWidth -urlWidth -iconWidth;
+	var itemboxHeight = folderboxHeight
+			- $('#itemhead')
+				.width( itemboxWidth )
+				.children('.title').width( titleWidth ).end()
+				.children('.url').width( urlWidth ).end()
+				.children('.misc').width( iconWidth ).end()
+				.children('.date').width( dateWidth ).end()
+				.outerHeight()
+			- $('#deadinfo')
+				.width( itemboxWidth )
+				.outerHeight();
+	var spacerHeight = itemboxHeight
+			- $('#items')
+				.width( itemsWidth )
+				.find('.title').width( titleWidth -(itemList('?')=='child'? 38:25) ).end()	// #itemheadと合うよう調節
+				.find('.url').width( urlWidth -1 ).end()						// #itemheadと合うよう調節
+				.find('.iconurl, .place, .status').width( iconWidth -1 ).end()	// #itemheadと合うよう調節
+				.find('.summary').width( urlWidth +iconWidth +4 ).end()			// #itemheadと合うよう調節
+				.find('.date').width( dateWidth -12 ).end()						// float対策適当-12px
+				.outerHeight();
+	if( spacerHeight <0 ) spacerHeight = 32; // アイテム欄余白高さ32px以上
 
 	$('#toolbar') // ボタン類がfloatで下にいかないよう
 		.width( (windowWidth <780)? 780 : windowWidth );
@@ -1881,33 +1909,24 @@ function resize(){
 		.height( folderboxHeight );
 	$('#itembox')
 		.width( itemboxWidth )
-		.height(
-			folderboxHeight
-			- $('#itemhead') // アイテムヘッダのボーダーと合うよう適当に増減して設定
-				.width( itemboxWidth )
-				.children('.title').width( titleWidth ).end()
-				.children('.url').width( urlWidth ).end()
-				.children('.misc').width( iconWidth ).end()
-				.children('.date').width( dateWidth ).end()
-				.outerHeight()
-			- $('#deadinfo')
-				.width( itemboxWidth )
-				.outerHeight()
-		);
-	$('#items')
-		.width( itemsWidth )
-		.find('.title').width( titleWidth -(itemList('?')=='child'? 38:25) ).end()	// #itemheadと合うよう調節
-		.find('.url').width( urlWidth -1 ).end()						// #itemheadと合うよう調節
-		.find('.iconurl, .place, .status').width( iconWidth -1 ).end()	// #itemheadと合うよう調節
-		.find('.summary').width( urlWidth +iconWidth +4 ).end()			// #itemheadと合うよう調節
-		.find('.date').width( dateWidth -12 );							// float対策適当-12px
+		.height( itemboxHeight )
+		.children('.spacer').height( spacerHeight );
 }
 // 画面サイズ縦のみ変更
 function resizeV( padding ){
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -padding;
+	var itemboxHeight =  folderboxHeight -$('#itemhead').outerHeight() -$('#deadinfo').outerHeight();
+	var spacerHeight = itemboxHeight - $('#items').outerHeight();
+	if( spacerHeight <0 ) spacerHeight = 32; // アイテム欄余白高さ32px以上
 	$('#folderbox').height( folderboxHeight );
 	$('#border').height( folderboxHeight );
-	$('#itembox').height( folderboxHeight -$('#itemhead').outerHeight() -$('#deadinfo').outerHeight() );
+	$('#itembox').height( itemboxHeight ).children('.spacer').height( spacerHeight );
+}
+// アイテム欄余白高さ調節
+function spacerHeight(){
+	var $itembox = $('#itembox');
+	var h = $itembox.height() - $('#items').outerHeight();
+	$itembox.children('.spacer').height( h<0 ? 32 : h ); // 32px以上
 }
 // 矩形選択
 // TODO:アイテム欄の上下自動スクロール
@@ -2313,16 +2332,18 @@ function itemDragStart( element, downX, downY ){
 	})
 	// TODO:アイテム欄の下の余白にいる時にアイテム最後にドロップ(.spacerでドロップできるように)
 	// TODO:アイテム欄より上にいる時にアイテム先頭にドロップ(ちょと面倒…)
-	.on('mousemove.itemdrag','.folder, .item',function(ev){
+	.on('mousemove.itemdrag','.folder, .item, .spacer',function(ev){
 		if( !draggie ) itemDragJudge(ev);
 		if( draggie ){
 			// ドラッグ先が自分の時は何もしない
 			if( draggie.id==this.id ) return;
 			var $this = $(this);
 			// 複数選択ドラッグアイテムどうしは何もしない(ドロップ不可)
-			if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
+			if( draggie.id.indexOf('item')==0 && $this.hasClass('select') && this.id.indexOf('item')==0 ) return;
 			// ドロップ要素スタイル適用
 			$this.removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
+			// 余白
+			if( $this.hasClass('spacer') ){ $this.addClass('dropTop'); return; }
 			// エレメント上端からマウスの距離 Y は 0～22くらいの範囲
 			var Y = ev.pageY - $this.offset().top;
 			if( draggie.id.indexOf('item')==0 ){
@@ -2400,7 +2421,7 @@ function itemDragStart( element, downX, downY ){
 		}
 		function ChildOnly(){ $this.addClass('dropIN'); }
 	})
-	.one('mouseup','.folder, .item',function(ev){
+	.one('mouseup','.folder, .item, .spacer',function(ev){
 		// ここはdocument.mouseupより前に実行されるみたいだけど、
 		// その挙動って前提にしちゃってもいいのかな？ダメな場合は改造が面倒だ…。
 		if( draggie ){
@@ -2411,8 +2432,20 @@ function itemDragStart( element, downX, downY ){
 			if( draggie.id.indexOf('item')==0 && this.id.indexOf('item')==0 && $this.hasClass('select') ) return;
 			// ドロップ処理
 			if( $this.hasClass('dropTop') ){
-				//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
-				tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
+				if( $this.hasClass('spacer') ){
+					if( this.parentNode.id=='folderbox' ){
+						// フォルダツリー余白、ごみ箱末尾に
+						tree.moveChild( dragItem.ids.concat() ,tree.trash() ,true );
+					}
+					else{
+						// アイテム欄余白、選択フォルダ末尾に
+						tree.moveChild( dragItem.ids.concat() ,selectFolder.id.slice(6) ,true );
+					}
+				}
+				else{
+					//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
+					tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
+				}
 			}
 			else if( $this.hasClass('dropBottom') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropBottomされました');
