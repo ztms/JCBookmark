@@ -32,6 +32,28 @@
 <div id=findopt><input type=checkbox id=fregex tabindex=0><label for=fregex>正規表現</label></div>
 <div id=tooltip><b></b><div></div><i></i></div>
 <input id=editbox>
+<div id=batch>
+  <div id=batchtabs>
+    <ul>
+      <li><a href="#batchTitle">タイトル</a></li>
+      <li><a href="#batchUrl">URL</a></li>
+      <li><a href="#batchIUrl">アイコンURL</a></li>
+    </ul>
+    <div id=batchTitle>
+      <table class=batchItem>
+	<tr><th class=before>現在</th><th></th><th class=after>実行後</th></tr>
+	<tr><td class=before><div></div></td><td class=play><img src="play.png"></td><td class=after><div></div></td></tr>
+      </table>
+      <table class=batchMenu>
+        <tr><th>先頭に挿入<input class=prefix placeholder="先頭に挿入">末尾に挿入<input class=suffix placeholder="末尾に挿入"></th></tr>
+        <tr><th>文字列置換<input class=search placeholder="前">を<input class=replace placeholder="後">に置換</th></tr>
+        <tr><th>正規表現置換<input class=regexp placeholder="s/\d+/_${1}_/"></th></tr>
+      </table>
+    </div>
+    <div id=batchUrl></div>
+    <div id=batchIUrl></div>
+  </div>
+</div>
 <div id=dragbox></div>
 <div id=selectbox></div>
 <div id=contextmenu><div></div></div>

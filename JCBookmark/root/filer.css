@@ -39,7 +39,7 @@ body {
 	position:relative;
 	float:left;
 	width:144px;
-	height:16px;
+	height:17px;
 	border:1px solid #bbb;
 	margin:7px 10px 0 3px;
 	padding:1px;
@@ -50,7 +50,7 @@ body {
 #finding {
 	position:absolute;
 	width:148px;
-	height:20px;
+	height:21px;
 	border:0;
 	border-radius:0;
 	padding:0;
@@ -148,11 +148,11 @@ body {
 	background:#eee;
 	border-bottom:1px solid #bbb;
 }
-#itemhead span, .folder span, .item span {
+#itemhead span {
 	display:inline-block;
-	height:19px;
+	height:20px;
 	cursor:default;
-	line-height:20px;
+	line-height:21px;
 }
 #itemhead .title {
 	color:#888;
@@ -180,10 +180,16 @@ body {
 }
 /* フォルダ・アイテム */
 .folder, .item {
-	height:20px;
+	height:21px;
 }
 .item {
 	padding-left:3px;
+}
+.folder span, .item span {
+	display:inline-block;
+	height:20px;
+	cursor:default;
+	line-height:22px;
 }
 .item .url,
 .item .iconurl,
@@ -311,7 +317,7 @@ body {
 	position:relative;
 	background:#444;
 	color:#fff;
-	padding:2px 5px;
+	padding:2px 5px 3px 5px;
 	border-radius:5px;
 	border:1px solid #ccc;
 	letter-spacing:1px;
@@ -335,8 +341,8 @@ body {
 	display:none;
 	position:absolute;
 	width:160px;
-	height:20px;
-	line-height:20px;
+	height:21px;
+	line-height:21px;
 	border:1px dotted #000;
 	background:#ddf;
 	filter:alpha(opacity=40);
@@ -351,8 +357,100 @@ body {
 	position:absolute;
 	left:0; top:-50px;
 	border:1px solid #ea0;
-	height:19px;
-	line-height:20px;
+	height:20px;
+	line-height:21px;
+}
+/* 一括変更ダイアログ */
+#batch {
+	display:none;
+	padding-bottom:0;
+}
+#batchtabs {
+	border:none;
+}
+#batchtabs .ui-tabs-nav {
+	background:transparent;
+	border-top:none;
+	border-left:none;
+	border-right:none;
+	border-radius:0;
+}
+#batchtabs .ui-tabs-panel {
+	border:1px solid #aaa;
+	border-top:none;
+	border-radius:0;
+}
+#batchtabs a {
+	outline:0;
+}
+#batchtabs .play {
+	width:26px;
+	text-align:center;
+}
+#batchtabs table {
+	border-collapse:collapse;
+}
+.batchItem {
+	width:100%;
+}
+.batchItem th.before, .batchItem th.after {
+	border:1px solid #aaa;
+	color:#555;
+	letter-spacing:0.3em;
+}
+.batchItem th.before {
+	background:#eee;
+}
+.batchItem th.after {
+	background:#ddd;
+}
+.batchItem td.before, .batchItem td.after {
+	border:1px solid #aaa;
+	vertical-align:top;
+}
+.batchItem div {
+	overflow:auto;
+}
+.batchItem i {
+	display:block;
+	position:relative;
+}
+.batchItem i.color {
+	background:#f0f2ff;
+}
+.batchItem i img {
+	position:absolute;
+	left:5px; top:1px;
+	width:16px; height:16px;
+	background:transparent;
+}
+.batchItem input {
+	display:block;
+	width:100%;
+	margin:0; padding:1px 0;
+	border:none;
+	text-indent:27px;
+	background:transparent;
+}
+.batchMenu {
+	margin:10px 0 0 0;
+	font-size:115%;
+}
+.batchMenu th {
+	text-align:left;
+}
+.batchMenu input {
+	margin:0 5px;
+	text-indent:3px;
+}
+.batchMenu .prefix,
+.batchMenu .suffix,
+.batchMenu .search,
+.batchMenu .replace {
+	width:250px;
+}
+.batchMenu .regexp {
+	width:500px;
 }
 /* マウス矩形選択ボックス */
 #selectbox {
@@ -478,7 +576,7 @@ body {
 }
 #deadinfo button { /* 中止ボタン */
 	float:right;
-	height:20px;
+	height:21px;
 	margin:1px 4px 0 0;
 	padding:0;
 }
@@ -497,6 +595,7 @@ body {
 }
 .ui-button-text {
 	font-weight:bold;
+	font-size:13px;
 	color:#555;
 }
 /* ドラッグ中アイテム */

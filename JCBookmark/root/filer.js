@@ -445,16 +445,16 @@ var option = {
 	option.load(function(){
 		// 準備
 		var fontSize = (option.font.css()==='gothic.css')? 13 : 12;
-		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt, #tooltip{font-size:'+fontSize+'px;}');
+		$.css.add('#toolbar input, #folderbox span, #itemhead span, #itembox span, #dragbox, #editbox, #findopt, #tooltip, #batch{font-size:'+fontSize+'px;}');
 		$('#fontcss').attr('href',option.font.css());
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
 		// ツリー描画
 		option_ok=true; if( tree_ok ) folderTree({ click0:true });
+		$('#home, #newfolder, #newitem, #find, #selectall, #delete, #deadlink, #logout').tooltip();
 	});
 	tree.load(function(){ tree_ok=true; if( option_ok ) folderTree({ click0:true }); });
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
-	$('#home, #newfolder, #newitem, #find, #selectall, #delete, #deadlink, #logout').tooltip();
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
@@ -568,9 +568,9 @@ var folderTree = function(){
 				if( node.sub ){
 					var $s = $sub.clone();
 					if( isClose[node.id] ) $s.attr('src','plus.png');
-					$f.prepend( $s ).css('padding-left', node.depth *17 ); // 階層インデント17px
+					$f.prepend( $s ).css('padding-left', node.depth *18 ); // 階層インデント18px
 				}
-				else $f.css('padding-left', node.depth *17 +15 );	// 階層インデント17px +<img class=sub>の幅15px
+				else $f.css('padding-left', node.depth *18 +15 );	// 階層インデント18px +<img class=sub>の幅15px
 				return $f;
 			};
 		}();
@@ -1171,7 +1171,7 @@ var itemList = function(){
 				var $br = $('<br class=clear>');
 				var indent0 = 0; // アイテム欄内フォルダ展開階層インデント基底値
 				if( arg0==='appear'){
-					indent0 = parseInt( $(arg1).children('.title').css('text-indent')||0 ) +17; // インデント+17px
+					indent0 = parseInt( $(arg1).children('.title').css('text-indent')||0 ) +18; // インデント+18px
 				}
 				var $folder = $item.clone(true)
 					.addClass('folder')
@@ -1191,7 +1191,7 @@ var itemList = function(){
 				var date = new Date();
 				var index = 0;
 				var newitem = function( node, now ,depth ,appear ){
-					var myindent = indent0 + depth * 17; // アイテム欄内フォルダ展開階層インデント17px
+					var myindent = indent0 + depth * 18; // アイテム欄内フォルダ展開階層インデント18px
 					if( node.child ){
 						var $e = $folder.clone(true).attr('id','item'+node.id);
 						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
@@ -1699,18 +1699,30 @@ $('#border').mousedown(function(ev){
 	var $border = $(this).addClass('drag');
 	var $folderbox = $('#folderbox');
 	var $itembox = $('#itembox');
+	var $items = $('#items');
+	var $itemheadLast = $('#itemhead span').last();	// アイテム欄右端の項目ヘッダ(.date)
+	var $itemsLast = $('#items').find('.'+$itemheadLast.attr('class'));
 	var folderboxWidth = $folderbox.width();
 	var itemboxWidth = $itembox.width();
+	var itemsWidth = $items.width();
+	var itemheadLastWidth = $itemheadLast.width();
+	var itemsLastWidth = $itemsLast.length? $itemsLast.width() : 0;
 	var downX = ev.pageX;
 	$(doc).on('mousemove.border',function(ev){
 		var dx = ev.pageX -downX;
 		var newFolderboxWidth = folderboxWidth +dx;
 		var newItemboxWidth = itemboxWidth -dx;
-		if( newFolderboxWidth >20 && newItemboxWidth >20 ){
+		var newItemsWidth = itemsWidth -dx;
+		var newItemheadLastWidth = itemheadLastWidth - dx;
+		var newItemsLastWidth = itemsLastWidth - dx;
+		if( newFolderboxWidth >20 && newItemsLastWidth >20 ){
 			$folderbox.width( newFolderboxWidth );
 			$itembox.width( newItemboxWidth );
 			$('#itemhead').width( newItemboxWidth );
 			$('#deadinfo').width( newItemboxWidth );
+			$items.width( newItemsWidth );
+			$itemheadLast.width( newItemheadLastWidth );
+			if( itemsLastWidth ) $itemsLast.width( newItemsLastWidth );
 		}
 	})
 	.one('mouseup',function(){
@@ -1720,7 +1732,6 @@ $('#border').mousedown(function(ev){
 	});
 });
 // アイテム欄項目ヘッダのボーダー
-// TODO:タイトル欄を右に広げたら行き止まり、左に広げても幅が変わらないのを改善したい…
 $('.itemborder').mousedown(function(ev){
 	$('#editbox').blur();
 	var $attrhead = $(this).prev();				// クリックしたボーダの左側の項目ヘッダ(.title/.url/.misc)
@@ -1749,7 +1760,7 @@ $('.itemborder').mousedown(function(ev){
 		var newAttrWidth = attrWidth + dx;
 		var newSmryWidth = smryWidth + dx;
 		var newLastWidth = lastWidth - dx;
-		if( newAttrheadWidth >20 && newLastheadWidth >30 ){
+		if( newAttrWidth >20 && newLastWidth >20 ){
 			$attrhead.width( newAttrheadWidth );
 			$lasthead.width( newLastheadWidth );
 			if( attrWidth ) $attr.width( newAttrWidth );
@@ -1866,11 +1877,11 @@ function myFmt( date, now ){
 function resize(){
 	$('#editbox').blur();
 	var windowWidth = $(win).width();// -1; // 適当-1px
-	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.3)|0;
+	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.4)|0;
 	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
 	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	if( itemboxWidth <20 ){	// アイテム欄狭すぎ自動調整20px適当
-		folderboxWidth = (windowWidth /5.3)|0;
+		folderboxWidth = (windowWidth /5.4)|0;
 		itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
 	}
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px(?)
@@ -2679,8 +2690,112 @@ function itemContextMenu(ev){
 			}
 		}
 	}
-	$box.append($('<a><img src=xxx.png>一括でタイトル・URLを変更</a>').click(function(){
+	$box.append($('<a><img src=xxx.png>一括でタイトル/URLを変更</a>').click(function(){
 		// TODO:まめFileと同じような機能
+		var $tabs = $('#batchtabs');
+		if( !$tabs.hasClass('ui-tabs') ){
+			// 初回実行時
+			$('#batchUrl').html( $('#batchTitle').html() );
+			$('#batchIUrl').html( $('#batchTitle').html() );
+			$tabs.tabs();
+		}
+		// ダイアログリサイズ
+		var resize = function(){
+			var timer = null;
+			return function(){ clearTimeout( timer ); timer = setTimeout( resizer ,20 ); };
+		}();
+		var $itembox = $('.batchItem td.before div, .batchItem td.after div');
+		var $batch = $('#batch').dialog({
+			title		:'一括でタイトル/URLを変更'
+			,modal		:true
+			,width		:$(win).width() * 0.8
+			,height		:$(win).height() * 0.7
+			,close		:close
+			,resize		:resize
+			,minWidth	:400
+			,buttons:{
+				'　実　行　':function(){}
+				,'キャンセル':close
+			}
+		});
+		// ボタン上部の罫線を消す
+		for( var $e=$batch.next(); $e.length; $e=$e.next() ){
+			if( $e.hasClass('ui-dialog-buttonpane') ) $e.css({
+				border:'none','margin-top':0,'padding-top':0
+			});
+		}
+		resizer();
+		// アイテム登録
+		var $titles0 = $('#batchTitle td.before div').empty();
+		var $titles1 = $('#batchTitle td.after div').empty();
+		var $urls0 = $('#batchUrl td.before div').empty();
+		var $urls1 = $('#batchUrl td.after div').empty();
+		var $iurls0 = $('#batchIUrl td.before div').empty();
+		var $iurls1 = $('#batchIUrl td.after div').empty();
+		var $item0 = $('<i><img><input readonly></i>');
+		var $item1 = $('<i><img><input></i>');
+		var items = doc.getElementById('items').children;
+		var length = items.length;
+		var index = 0;
+		var folder = 0;
+		var timer = null;
+		(function lister(){
+			var count = 10;
+			while( index < length && count >0 ){
+				var item = items[index];
+				if( $(item).hasClass('select') ){
+					var node = tree.node( item.id.slice(4) );
+					if( node ){
+						if( node.child ){
+							if( folder++ % 2 ){
+								$item0.addClass('color');
+								$item1.addClass('color');
+							}
+							else{
+								$item0.removeClass('color');
+								$item1.removeClass('color');
+							}
+							$item0.children('img').attr('src','folder.png');
+							$item1.children('img').attr('src','folder.png');
+							$titles0.append($item0.clone().children('input').val( node.title ).end());
+							$titles1.append($item1.clone().children('input').val( node.title ).end());
+						}
+						else{
+							var icon = node.icon ? node.icon : 'item.png';
+							$item0.children('img').attr('src',icon);
+							$item1.children('img').attr('src',icon);
+							if( index % 2 ){
+								$item0.addClass('color');
+								$item1.addClass('color');
+							}
+							else{
+								$item0.removeClass('color');
+								$item1.removeClass('color');
+							}
+							$titles0.append($item0.clone().children('input').val( node.title ).end());
+							$titles1.append($item1.clone().children('input').val( node.title ).end());
+							$urls0.append($item0.clone().children('input').val( node.url ).end());
+							$urls1.append($item1.clone().children('input').val( node.url ).end());
+							$iurls0.append($item0.clone().children('input').val( node.icon ).end());
+							$iurls1.append($item1.clone().children('input').val( node.icon ).end());
+						}
+					}
+				}
+				index++; count--;
+			}
+			if( index < length ) timer = setTimeout(lister,0);
+		})();
+		function resizer(){
+			var h = $batch.height() -5;
+			$tabs.height( h ).children('div').height( h -65 );
+			$itembox.height( h - 242 );
+		}
+		function close(){
+			clearTimeout( timer );
+			$item0.remove();
+			$item1.remove();
+			$batch.dialog('destroy');
+		}
 	}));
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
@@ -2693,7 +2808,7 @@ function itemContextMenu(ev){
 				for( var index=pnode.child.length-1; index>=0; index-- ){
 					if( pnode.child[index].id==nid ) break;
 				}
-				clipboardTo( pnode, index );
+				clipboardTo( pnode ,index ,tree.node( selectFolder.id.slice(6) ) );
 			}));
 		}
 		$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
@@ -3164,7 +3279,8 @@ function viewScroll( element ){
 // クリップボードのURLを新規登録
 // pnode :登録先フォルダノード
 // index :登録位置インデックス
-function clipboardTo( pnode, index ){
+// vnode :アイテム欄表示ノード
+function clipboardTo( pnode ,index ,vnode ){
 	$('#dialog').empty().text('処理中です...').dialog({
 		title	:'情報'
 		,width	:300
@@ -3192,13 +3308,14 @@ function clipboardTo( pnode, index ){
 			}
 			if( url ) itemAdd( url );
 			// アイテム欄更新
+			if( !vnode ) vnode = pnode;
 			if( itemList('?')=='deads' ){
 				Confirm({
 					msg:'このフォルダを表示しますか？#BR#(リンク切れ調査欄は消えます)'
-					,yes:function(){ $('#folder'+pnode.id).removeClass('select').click(); }
+					,yes:function(){ $('#folder'+vnode.id).removeClass('select').click(); }
 				});
 			}
-			else $('#folder'+pnode.id).removeClass('select').click();
+			else $('#folder'+vnode.id).removeClass('select').click();
 			// ajax完了待ち
 			(function completed(){
 				if( complete < ajaxs.length ) setTimeout(completed,250);
