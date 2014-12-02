@@ -1271,6 +1271,17 @@ function setEvents(){
 			for( var i=0, n=child.length; i<n; i++ ){
 				if( !child[i].child ) text += child[i].title + '\r' + child[i].url + '\r';
 			}
+			// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
+			// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
+			// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
+			// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
+			// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
+			// 表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れもなく追従性もよいので、
+			// できればCSSで高さ調節もしたいが…。
+			var resize = function(){
+				var timer = null;
+				return function(){ clearTimeout( timer ); timer = setTimeout( resizer ,20 ); };
+			}();
 			var $box = $('#editbox').empty().append($('<textarea></textarea>').text(text))
 			.dialog({
 				title	:'アイテムをテキストで取得'
@@ -1280,24 +1291,13 @@ function setEvents(){
 				,close	:function(){ $(this).dialog('destroy'); }
 				,resize	:resize
 			});
-			// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
-			// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
-			// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
-			// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
-			// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
-			// 表示の追従性が悪いのが難点。CSSのwidth:100%;は表示崩れもなく追従性もよいので、
-			// できればCSSで高さ調節もしたいが…。
-			var timer = null;
 			var $area = $box.find('textarea');
-			function resize(){
-				clearTimeout(timer);
-				timer = setTimeout(function(){
-					var $p = $box.parent();
-					// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-					$area.height( $p().height() -$box.prev().outerHeight() -20 ).width( $p().width() -30 );
-				},20);
+			function resizer(){
+				var $p = $box.parent();
+				// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+				$area.height( $p.height() - $box.prev().outerHeight() -20 );
 			}
-			resize();
+			resizer();
 		}))
 		.append('<hr>')
 		.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
@@ -2520,6 +2520,16 @@ function panelEdit( pid ){
 			else return false;
 		});
 	}
+	// CSSで高さを調節したいが、ダイアログリサイズでタイトルバーが２行になった時に
+	// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
+	// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
+	// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
+	// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
+	// 表示の追従性が悪いのが難点。CSSなら追従性もよいのだが…。
+	var resize = function(){
+		var timer = null;
+		return function(){ clearTimeout( timer ); timer = setTimeout( resizer ,20 ); };
+	}();
 	$editbox.dialog({
 		title	:'パネル編集（パネル名・アイテム編集）'
 		,modal	:true
@@ -2575,23 +2585,13 @@ function panelEdit( pid ){
 		$doc.off('click.paneledit mousedown.paneledit');
 		$editbox.dialog('destroy');
 	}
-	// CSSで高さを調節したいが、ダイアログリサイズでタイトルバーが２行になった時に
-	// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
-	// マウスを速く動かすと、このresizeイベントはきっちり発火されるのにダイアログ
-	// の大きさは途中までしか追従しないという、なんだか矛盾した挙動になるため、
-	// setTimeoutで回避。マウスが止まってから少し遅れて高さ方向が調節される感じで
-	// 表示の追従性が悪いのが難点。CSSなら追従性もよいのだが…。
-	var timer = null;
-	function resize(){
-		clearTimeout(timer);
-		timer = setTimeout(function(){
-			// $editbox.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-			var h = $editbox.parent().height() -$editbox.prev().outerHeight();
-			$editbox.height( h -77 ).find('.edit input').width( $itembox.width() -64 );
-			$itembox.height( h -99 );
-		},20);
+	function resizer(){
+		// $editbox.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
+		var h = $editbox.parent().height() -$editbox.prev().outerHeight();
+		$editbox.height( h -77 ).find('.edit input').width( $itembox.width() -64 );
+		$itembox.height( h -99 );
 	}
-	resize();
+	resizer();
 }
 // 変更保存
 function modifySave( arg ){
