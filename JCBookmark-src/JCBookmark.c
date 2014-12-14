@@ -4061,7 +4061,7 @@ unsigned __stdcall gzipcreater( void* tp )
 								LogW(L"gzip作成:%s",gzip);
 							}
 							else{
-								LogW(L"MoveFileExエラー(%u):%s",GetLastError(),gzip);
+								LogW(L"MoveFileExエラー(%u):%s",GetLastError(),gziptmp);
 								DeleteFileW( gziptmp );
 							}
 						}
@@ -6744,6 +6744,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 												cp->rsp.readfh = fh;
 												BufferSends( bp ,"Content-Encoding: gzip\r\n" );
 											}
+											free( gzip );
 										}
 									}
 								}
