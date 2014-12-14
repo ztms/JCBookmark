@@ -1168,6 +1168,7 @@ typedef struct {
 	UCHAR*		UserAgent;			// User-Agent
 	UCHAR*		IfModifiedSince;	// If-Modified-Since
 	UCHAR*		Cookie;				// Cookie
+	UCHAR*		AcceptEncoding;		// Accept-Encoding
 	UCHAR*		body;				// リクエストボディ開始位置
 	UCHAR*		boundary;			// Content-Type:multipart/form-dataのboundary
 	HANDLE		writefh;			// 書出ファイルハンドル
@@ -4004,6 +4005,82 @@ unsigned __stdcall analyzer( void* tp )
 	_endthreadex(0);
 	return 0;
 }
+// ファイルを全部メモリに読み込む。CreateFileMappingのがはやい…？
+typedef struct {
+	size_t bytes;	// 有効データバイト数
+	UCHAR data[1];	// bytesまで拡大
+} Memory;
+Memory* file2memory( const WCHAR* path )
+{
+	Memory* memory = NULL;
+	if( path && *path ){
+		HANDLE hFile = CreateFileW( path
+							,GENERIC_READ ,FILE_SHARE_READ
+							,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+		);
+		if( hFile != INVALID_HANDLE_VALUE ){
+			DWORD bytes = GetFileSize( hFile,NULL );
+			memory = malloc( sizeof(Memory) + bytes );
+			if( memory ){
+				DWORD bRead=0;
+				if( ReadFile( hFile, memory->data, bytes, &bRead, NULL ) && bRead==bytes ){
+					memory->data[bytes] = '\0';
+					memory->bytes = bytes;
+				}
+				else{
+					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+					free( memory ), memory=NULL;
+				}
+			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(Memory)+bytes);
+			CloseHandle( hFile );
+		}
+		else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
+	}
+	return memory;
+}
+// .gzipファイル生成
+unsigned __stdcall gzipcreater( void* tp )
+{
+	WCHAR* path = tp; // 圧縮対象ファイルパス(このスレッドで解放するmalloc領域)
+	if( path ){
+		WCHAR* gzip = wcsjoin( path ,L".gzip" ,0,0,0 );
+		if( gzip ){
+			Memory* mem;
+			DeleteFileW( gzip ); // このスレッド関数が動く直前に圧縮対象ファイルは更新されているので現在のgzip削除
+			mem = file2memory( path );
+			if( mem ){
+				WCHAR* gziptmp = wcsjoin( path ,L".gzip.tmp" ,0,0,0 );
+				if( gziptmp ){
+					gzFile gzp = gzopen_w( gziptmp ,"wb" );
+					if( gzp ){
+						size_t bytes = (size_t)gzwrite( gzp ,mem->data ,mem->bytes );
+						gzclose( gzp );
+						if( bytes==mem->bytes ){
+							if( MoveFileExW( gziptmp, gzip ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ) ){
+								LogW(L"gzip作成:%s",gzip);
+							}
+							else{
+								LogW(L"MoveFileExエラー(%u):%s",GetLastError(),gzip);
+								DeleteFileW( gziptmp );
+							}
+						}
+						else{
+							LogW(L"gzwrite: %u != %u",bytes,mem->bytes);
+							DeleteFileW( gziptmp );
+						}
+					}
+					free( gziptmp );
+				}
+				free( mem );
+			}
+			free( gzip );
+		}
+		free( path );
+	}
+	_endthreadex(0);
+	return 0;
+}
 
 
 
@@ -5326,6 +5403,19 @@ unsigned __stdcall authenticate( void* tp )
 //---------------------------------------------------------------------------------------------------------------
 // ソケット通信・HTTPプロトコル処理関連
 //
+// カンマ区切り単語文字列の中に指定の単語があればTRUE
+// Accept-Encoding: gzip,deflate,.. の中に gzip があるかどうかで利用
+BOOL csvHas( const UCHAR* csv ,const UCHAR* value )
+{
+	UCHAR* top = stristr( csv ,value );
+	if( top ){
+		UCHAR* end = top + strlen( value );
+		while( csv<top && *(top-1)==' ' ) top--;
+		while( *end==' ' ) end++;
+		if( (top==csv || *(top-1)==',') && (*end==',' || *end=='\0') ) return TRUE;
+	}
+	return FALSE;
+}
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
 BOOL FileBackup( const WCHAR* path )
@@ -5433,35 +5523,6 @@ WCHAR* RealPath( const UCHAR* path, WCHAR* realpath, size_t size )
 	}
 	return realpath;
 }
-// ファイルを全部メモリに読み込む。CreateFileMappingのがはやい…？
-UCHAR* file2memory( const WCHAR* path, BOOL fOpenErrLog )
-{
-	UCHAR* memory = NULL;
-	if( path && *path ){
-		HANDLE hFile = CreateFileW( path
-							,GENERIC_READ ,FILE_SHARE_READ
-							,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
-		);
-		if( hFile != INVALID_HANDLE_VALUE ){
-			DWORD size = GetFileSize( hFile,NULL );
-			memory = malloc( size +1 );
-			if( memory ){
-				DWORD bRead=0;
-				if( ReadFile( hFile, memory, size, &bRead, NULL ) && bRead==size ){
-					memory[size] = '\0';
-				}
-				else{
-					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-					free( memory ), memory=NULL;
-				}
-			}
-			else LogW(L"L%u:malloc(%u)エラー",__LINE__,size+1);
-			CloseHandle( hFile );
-		}
-		else if( fOpenErrLog ) LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,GetLastError());
-	}
-	return memory;
-}
 BOOL UnderDocumentRoot( const WCHAR* path )
 {
 	if( path && wcsnicmp(path,DocumentRoot,DocumentRootLen)==0 ){
@@ -5500,8 +5561,8 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 		// 1パートのみエンコードされていないプレーンテキスト前提。
 		// NETSCAPE-Bookmark-file-1 形式を JSON に変換する。
 		// 文字コードはUTF-8前提。チェックはしない。
-		UCHAR* data = file2memory( tmppath, TRUE );
-		if( data ){
+		Memory* mem = file2memory( tmppath );
+		if( mem ){
 			FILE* fp = _wfopen( tmppath, L"wb" );
 			if( fp ){
 				UCHAR* folderNameTop=NULL, *folderNameEnd=NULL;
@@ -5512,7 +5573,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 				int depth=0;
 				UCHAR last='\0';
 				UCHAR* p;
-				for( p=data; *p; p++ ){
+				for( p=mem->data; *p; p++ ){
 					if( strncmp(p,"<!-",3)==0 ){
 						comment=1;
 						p += 2;
@@ -5707,7 +5768,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 				LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
 				ResponseError(cp,"500 Internal Server Error");
 			}
-			free( data );
+			free( mem );
 		}
 		else ResponseError(cp,"500 Internal Server Error");
 	}
@@ -6113,6 +6174,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						UCHAR* ka = strHeaderValue(  req->head,"Connection");
 #endif
 						UCHAR* ck = strHeaderValue(  req->head,"Cookie");
+						UCHAR* ae = strHeaderValue(  req->head,"Accept-Encoding");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
 							UINT n = 0;
@@ -6128,6 +6190,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						if( ka && stricmp(chomp(ka),"keep-alive")==0 ) req->KeepAlive = 1;
 #endif
 						if( ck ) req->Cookie = chomp(ck);
+						if( ae ) req->AcceptEncoding = chomp(ae);
 					}
 					req->method = chomp(req->buf);
 					req->path = strchr(req->method,' ');
@@ -6651,12 +6714,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							else{
 							_200_ok:
-								// TODO:Content-Encoding:gzip送信するとインターネット経由でレスポンス改善？
-								BufferSendf( bp
-										,"HTTP/1.0 200 OK\r\n"
-										"Content-Length: %u\r\n"
-										,GetFileSize(cp->rsp.readfh,NULL)
-								);
+								BufferSends( bp ,"HTTP/1.0 200 OK\r\n" );
 								if( stricmp(file,"export.html")==0 ){
 									// エクスポートHTMLは特別扱い
 									// Chrome,Firefoxでは octet-stream にするだけで保存ダイアログ出たけど
@@ -6672,7 +6730,29 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											,(*realpath)? FileContentTypeW(realpath) : FileContentTypeA(file)
 									);
 								}
-								BufferSendf( bp ,"Last-Modified: %s\r\n" ,inetTime );
+								// Content-Encoding: gzip (HTTP/1.0応答でgzipだけど動いてるからいいかな…)
+								if( stricmp(file,"tree.json")==0 ){
+									if( csvHas(req->AcceptEncoding,"gzip") ){
+										WCHAR* gzip = wcsjoin( realpath ,L".gzip" ,0,0,0 );
+										if( gzip ){
+											HANDLE fh = CreateFileW( gzip
+													,GENERIC_READ ,FILE_SHARE_READ
+													,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+											);
+											if( fh != INVALID_HANDLE_VALUE ){
+												CloseHandle( cp->rsp.readfh );
+												cp->rsp.readfh = fh;
+												BufferSends( bp ,"Content-Encoding: gzip\r\n" );
+											}
+										}
+									}
+								}
+								BufferSendf( bp
+										,"Content-Length: %u\r\n"
+										"Last-Modified: %s\r\n"
+										,GetFileSize(cp->rsp.readfh,NULL)
+										,inetTime
+								);
 							}
 							GetSystemTime( &st );
 							InternetTimeFromSystemTimeA(&st,INTERNET_RFC1123_FORMAT,inetTime,sizeof(inetTime));
@@ -6807,6 +6887,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
 										)){
 											ResponseError(cp,"200 OK");
+											// tree.jsonは.gzipファイル作成
+											if( stricmp(file,"tree.json")==0 ){
+												_beginthreadex( NULL,0 ,gzipcreater ,(void*)wcsdup(realpath) ,0,NULL );
+											}
 										}
 										else{
 											LogW(L"[%u]MoveFileEx(%s)エラー%u",Num(cp),tmppath,GetLastError());
