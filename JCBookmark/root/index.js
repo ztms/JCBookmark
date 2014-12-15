@@ -939,7 +939,7 @@ function setEvents(){
 						var bookmarks={};
 						var favicons={};
 						Confirm({
-							msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+							msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
@@ -1037,7 +1037,7 @@ function setEvents(){
 					// IEお気に入りインポート
 					$('#ieico').click(function(){
 						Confirm({
-							msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかります。'
+							msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,width:390
 							,ok:function(){
 								MsgBox('処理中です...');
@@ -1062,7 +1062,7 @@ function setEvents(){
 					// Firefoxブックマークインポート
 					$('#firefoxico').click(function(){
 						Confirm({
-							msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかります。'
+							msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
@@ -2311,8 +2311,8 @@ var panelPopper = function(){
 					if( dx==0							// 垂直移動
 						|| (dx>0 && destX < ev.pageX)	// 逆方向
 						|| (dx<0 && ev.pageX < destX)	// 逆方向
-						|| destY < box.offsetTop		// box範囲外方向
-						|| destY > box.offsetTop + box.offsetHeight	// box範囲外方向
+						|| destY < box.offsetTop -64		// box範囲外方向(-64少し余裕)
+						|| destY > box.offsetTop + box.offsetHeight	+64 // box範囲外方向(+64少し余裕)
 					){
 						nextpop(ev);
 					}
