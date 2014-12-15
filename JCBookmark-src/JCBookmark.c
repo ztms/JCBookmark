@@ -5403,16 +5403,22 @@ unsigned __stdcall authenticate( void* tp )
 //---------------------------------------------------------------------------------------------------------------
 // ソケット通信・HTTPプロトコル処理関連
 //
-// カンマ区切り単語文字列の中に指定の単語があればTRUE
-// Accept-Encoding: gzip,deflate,.. の中に gzip があるかどうかで利用
-BOOL csvHas( const UCHAR* csv ,const UCHAR* value )
+// Accept-Encodingで指定の形式名が有効あればTRUE
+// RFCでは gzip;q=1.0, identity;q=0.5, .. とか q=XX が指定できるようだが実際見かけない。
+// とりあえず q=XX は無視して同じ名前があればOK。あと * 指定も仕様では存在するようだが無視。
+BOOL AcceptEncodingHas( Request* req ,const UCHAR* name )
 {
-	UCHAR* top = stristr( csv ,value );
-	if( top ){
-		UCHAR* end = top + strlen( value );
-		while( csv<top && *(top-1)==' ' ) top--;
-		while( *end==' ' ) end++;
-		if( (top==csv || *(top-1)==',') && (*end==',' || *end=='\0') ) return TRUE;
+	UCHAR* txt = req->AcceptEncoding;
+	if( txt ){
+		size_t len = strlen( name );
+		UCHAR* top;
+		while( (top = stristr( txt ,name )) ){
+			UCHAR* end = top + len;
+			while( txt<top && *(top-1)==' ' ) top--;
+			while( *end==' ' ) end++;
+			if( (top==txt || *(top-1)==',') && (*end==',' || *end==';' || *end=='\0') ) return TRUE;
+			txt = end;
+		}
 	}
 	return FALSE;
 }
@@ -6730,13 +6736,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											,(*realpath)? FileContentTypeW(realpath) : FileContentTypeA(file)
 									);
 								}
+								// tree.jsonはgzipファイルが存在すればそちらを返却。
 								// Content-Encoding:gzipをHTTP/1.0応答で使ってるけど動いてる…
 								// TODO:他のテキストファイルもgzipにした方が転送量の削減になるが、たくさん.gz
 								// ファイルを作っておくのもイマイチ…メモリ上にgzipデータを保持すればいいか？
-								// ただif-modified-sinceもあるので初回だけ使われる…うーむ何をどこまでやるのが
+								// ただIf-Modified-Sinceもあるので初回だけ使われる…うーむ何をどこまでやるのが
 								// 適切か…なんだかSPDYプロトコルがやっているようなチューニングな気もする。
 								if( stricmp(file,"tree.json")==0 ){
-									if( csvHas(req->AcceptEncoding,"gzip") ){
+									if( AcceptEncodingHas(req,"gzip") ){
 										WCHAR* gzip = wcsjoin( realpath ,L".gz" ,0,0,0 );
 										if( gzip ){
 											HANDLE fh = CreateFileW( gzip
