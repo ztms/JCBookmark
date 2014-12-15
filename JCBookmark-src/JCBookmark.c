@@ -4039,18 +4039,18 @@ Memory* file2memory( const WCHAR* path )
 	}
 	return memory;
 }
-// .gzipファイル生成
+// gzip圧縮ファイル生成
 unsigned __stdcall gzipcreater( void* tp )
 {
 	WCHAR* path = tp; // 圧縮対象ファイルパス(このスレッドで解放するmalloc領域)
 	if( path ){
-		WCHAR* gzip = wcsjoin( path ,L".gzip" ,0,0,0 );
+		WCHAR* gzip = wcsjoin( path ,L".gz" ,0,0,0 );
 		if( gzip ){
 			Memory* mem;
-			DeleteFileW( gzip ); // このスレッド関数が動く直前に圧縮対象ファイルは更新されているので現在のgzip削除
+			DeleteFileW( gzip ); // この関数に来る直前に圧縮対象ファイルは更新されているので今のgzip古い削除
 			mem = file2memory( path );
 			if( mem ){
-				WCHAR* gziptmp = wcsjoin( path ,L".gzip.tmp" ,0,0,0 );
+				WCHAR* gziptmp = wcsjoin( path ,L".gz.tmp" ,0,0,0 );
 				if( gziptmp ){
 					gzFile gzp = gzopen_w( gziptmp ,"wb" );
 					if( gzp ){
@@ -6730,10 +6730,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											,(*realpath)? FileContentTypeW(realpath) : FileContentTypeA(file)
 									);
 								}
-								// Content-Encoding: gzip (HTTP/1.0応答でgzipだけど動いてるからいいかな…)
+								// Content-Encoding:gzipをHTTP/1.0応答で使ってるけど動いてる…
+								// TODO:他のテキストファイルもgzipにした方が転送量の削減になるが、たくさん.gz
+								// ファイルを作っておくのもイマイチ…メモリ上にgzipデータを保持すればいいか？
+								// ただif-modified-sinceもあるので初回だけ使われる…うーむ何をどこまでやるのが
+								// 適切か…なんだかSPDYプロトコルがやっているようなチューニングな気もする。
 								if( stricmp(file,"tree.json")==0 ){
 									if( csvHas(req->AcceptEncoding,"gzip") ){
-										WCHAR* gzip = wcsjoin( realpath ,L".gzip" ,0,0,0 );
+										WCHAR* gzip = wcsjoin( realpath ,L".gz" ,0,0,0 );
 										if( gzip ){
 											HANDLE fh = CreateFileW( gzip
 													,GENERIC_READ ,FILE_SHARE_READ
@@ -6888,7 +6892,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
 										)){
 											ResponseError(cp,"200 OK");
-											// tree.jsonは.gzipファイル作成
+											// tree.jsonはgzipファイル作成
 											if( stricmp(file,"tree.json")==0 ){
 												_beginthreadex( NULL,0 ,gzipcreater ,(void*)wcsdup(realpath) ,0,NULL );
 											}
