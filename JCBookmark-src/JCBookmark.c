@@ -1,6 +1,6 @@
 ﻿// vim:set ts=4:vim modeline
 //
-//	JCBookmark専用HTTPサーバ
+//	JCBookmark専用HTTPサーバー
 //
 //	ファイル文字コード:UTF-8 (じゃないとブラウザで文字化け) BOM付 (じゃないとVCエラー)
 //
@@ -41,7 +41,7 @@
 //	http://www.hde.co.jp/press/column/detail.php?n=201010290
 //	http://dev.ariel-networks.com/wp/archives/258
 //	http://d.hatena.ne.jp/tk_4dd/20120128
-//	TODO:ログインパスワードにWindowsログインユーザのパスワードを使えるか？
+//	TODO:ログインパスワードにWindowsログインユーザーのパスワードを使えるか？
 //	LogonUser()とかGetUserName()とかあるけどWindowsの仕組みが面倒くさそう。NTLM認証ってなに？
 //	TODO:Windows2000対応
 //	GetNameInfoW が XP (SP2?) 以降のAPIらしいが、Win2000でもANSI版のgetnameinfoなら使えるらしい。
@@ -49,7 +49,7 @@
 //	ws2tcpip.h に加えて wspiapi.h を include すればよいと。たしかに起動時エラーは出なくなったけど、
 //	Unicode⇔ANSI変換が増えてごちゃごちゃするなぁ・・。でもこんどは FreeAddrInfoW でエラーになった。
 //	なるほどUnicode版の関数がないのか。まだ他にもあるのか？不明。うーむ・・対応できるけど、Windows2000
-//	で動く必要があるか？ブラウザ画面が使いたいだけならHTTPサーバは別マシンで起動しておけばよいので、
+//	で動く必要があるか？ブラウザ画面が使いたいだけならHTTPサーバーは別マシンで起動しておけばよいので、
 //	なんとかそれでおねがいしたい・・。ブラウザ画面は2000のOpera10.63で確認。ただし日本語表示は未確認。
 //	GetNameInfoW は WSAAddressToStringW が同機能だったけど、ポート番号付き文字列になってしまうようで
 //	単純置き換えではダメだった。
@@ -139,10 +139,10 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 #define CMD_CHROME		11		// Chromeボタン
 #define CMD_FIREFOX		12		// Firefoxボタン
 #define CMD_OPERA		13		// Operaボタン
-#define CMD_USER1		14		// ユーザ指定ブラウザ1
-#define CMD_USER2		15		// ユーザ指定ブラウザ2
-#define CMD_USER3		16		// ユーザ指定ブラウザ3
-#define CMD_USER4		17		// ユーザ指定ブラウザ4
+#define CMD_USER1		14		// ユーザー指定ブラウザ1
+#define CMD_USER2		15		// ユーザー指定ブラウザ2
+#define CMD_USER3		16		// ユーザー指定ブラウザ3
+#define CMD_USER4		17		// ユーザー指定ブラウザ4
 
 
 
@@ -393,12 +393,12 @@ UCHAR* chomp( UCHAR* s )
 
 
 //---------------------------------------------------------------------------------------------------------------
-// サーバログ。一旦メモリに溜めておき、1秒毎のWM_TIMERでListBoxにSendMessageする。
+// サーバーログ。一旦メモリに溜めておき、1秒毎のWM_TIMERでListBoxにSendMessageする。
 // はじめは毎回ListBoxにSendMessageしていたが、ワーカースレッドの終了待ちをメインスレッドの
 // 関数内でループ＋Sleepで待ってみたところ、なぜかワーカースレッドも停止。どうやらログ出力＝
 // ListBoxへのSendMessageで止まってフリーズしてしまう感じ。そりゃそうかメインスレッドでビジー
 // ループしてたらメッセージが処理できない。というわけでスレッドの実行を止めないようメモリに
-// キャッシュ。結果、同時接続負荷がかかるとウィンドウの反応が悪くなるが、HTTPサーバとしての
+// キャッシュ。結果、同時接続負荷がかかるとウィンドウの反応が悪くなるが、HTTPサーバーとしての
 // スループットは向上したようだ。
 //
 typedef struct LogCache {
@@ -685,10 +685,10 @@ UCHAR* urldupJSON( UCHAR* s )
 #define BI_CHROME		1		// Chrome
 #define BI_FIREFOX		2		// Firefox
 #define BI_OPERA		3		// Opera
-#define BI_USER1		4		// ユーザ指定ブラウザ1
-#define BI_USER2		5		// ユーザ指定ブラウザ2
-#define BI_USER3		6		// ユーザ指定ブラウザ3
-#define BI_USER4		7		// ユーザ指定ブラウザ4
+#define BI_USER1		4		// ユーザー指定ブラウザ1
+#define BI_USER2		5		// ユーザー指定ブラウザ2
+#define BI_USER3		6		// ユーザー指定ブラウザ3
+#define BI_USER4		7		// ユーザー指定ブラウザ4
 #define BI_COUNT		8
 // ブラウザ情報インデックスからブラウザボタンコマンドIDに変換
 #define BrowserCommand(i)	((i)+CMD_IE)
@@ -854,7 +854,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			);
 		}
 		br[BI_OPERA].exe = exe;
-		// 既定ブラウザ引数とユーザ指定ブラウザ
+		// 既定ブラウザ引数とユーザー指定ブラウザ
 		ini = AppFilePath(L"my.ini");
 		if( ini ){
 			FILE* fp = _wfopen(ini,L"rb");
@@ -929,7 +929,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			}
 			free( ini );
 		}
-		// ユーザ指定ブラウザ名
+		// ユーザー指定ブラウザ名
 		br[BI_USER1].name = br[BI_USER1].exe? PathFindFileNameW(br[BI_USER1].exe) : L"1";
 		br[BI_USER2].name = br[BI_USER2].exe? PathFindFileNameW(br[BI_USER2].exe) : L"2";
 		br[BI_USER3].name = br[BI_USER3].exe? PathFindFileNameW(br[BI_USER3].exe) : L"3";
@@ -2675,7 +2675,7 @@ retry_raw:
 	if( status !=Z_OK && status !=Z_STREAM_END ){
 		LogA("inflateエラー(%s), wbits=%d",z.msg?z.msg:"???",wbits);
 		inflateEnd(&z);
-		// サーバによりContent-Encoding:deflateの圧縮データにヘッダ情報が無くinflateエラー
+		// サーバーによりContent-Encoding:deflateの圧縮データにヘッダ情報が無くinflateエラー
 		// (incorrect header check)になる事があるもよう(例http://www.rareirishstuff.com/)。
 		// その場合はinflateInit2のwindowBitsを-15にして実行すると成功する事があるらしい。
 		if( status==Z_DATA_ERROR && wbits==WBITS_AUTO ){
@@ -3081,7 +3081,7 @@ void URLparse( URLparts* part ,UCHAR* url )
 }
 // URL比較
 // schemeとホスト名は文字ケース無視でよかったっけ？
-// パス文字列は文字ケース区別(するサーバがあるので)。
+// パス文字列は文字ケース区別(するサーバーがあるので)。
 int urlcmp( const UCHAR* url0 ,const UCHAR* url1 )
 {
 	int ret = strcmp( url0 ,url1 );
@@ -3734,7 +3734,7 @@ unsigned __stdcall poker( void* tp )
 // TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
 // 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
 // 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
-// できないっぽいので、やるとしたらサーバ側で自動で「18歳以上」をクリックする
+// できないっぽいので、やるとしたらサーバー側で自動で「18歳以上」をクリックする
 // 動作をやってしまうことか…。ブラウザが保持してるamazonクッキーを取得する手
 // はあるのかな？でもそんなことするアプリはセキュリティ的にまずそうで厳しいか。
 // しかしブラウザで表示してたタイトルを取得できないのはブックマークとしては
@@ -3742,7 +3742,7 @@ unsigned __stdcall poker( void* tp )
 // ブラウザのアドオンを使う手もあるか？
 // TODO:URLがPDFファイルや画像ファイルだった場合に、アイコン無しではなく
 // Content-Typeに応じたイメージアイコンだとちょっとだけ気の利いた感じになる？
-// でも既定のitem.pngを決めてるのはJS側なので、サーバからはContentTypeを返却して、
+// でも既定のitem.pngを決めてるのはJS側なので、サーバーからはContentTypeを返却して、
 // 画像ファイル種別に対応づけるのはJS側でいいかな。どちらにせよ今ContentTypeは
 // text/htmlだけ識別してあとは気にしてないので、そこを改造しなければならぬ・・
 typedef struct AnalyCTX {
@@ -4108,7 +4108,7 @@ unsigned __stdcall gzipcreater( void* tp )
 // http://support.mozilla.org/ja/kb/profiles-where-firefox-stores-user-data
 // http://firefox.geckodev.org/index.php?%E3%83%97%E3%83%AD%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB
 // TODO:Firefox起動引数で別のプロファイルフォルダを使うこともできるらしく、
-// そっちの places.sqlite を参照したい場合はフォルダをユーザ指定する機能をつけないと…
+// そっちの places.sqlite を参照したい場合はフォルダをユーザー指定する機能をつけないと…
 WCHAR* FirefoxPlacesPathAlloc( void )
 {
 	#define PROFILES_INI L"%APPDATA%\\Mozilla\\Firefox\\profiles.ini"
@@ -4171,10 +4171,10 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 // http://builder.japan.zdnet.com/html-css/sp_firefox-3-for-developer-2008/20381345/
 // どうせsqlite3を使うならノードツリーもFirefoxを参考にsqlite3で管理した方が後々楽かな？
 // ファイルの更新排他もsqlite3が勝手にやってくれるんだろうし…う～む。。
-// そうすればマルチユーザ対応で必要なサーバ側での更新管理もSQLで簡単かな？わからんが。
+// そうすればマルチユーザー対応で必要なサーバー側での更新管理もSQLで簡単かな？わからんが。
 // そうするとfaviconもFirefoxみたいにsqlite3にデータを入れて独自管理しまおうかという構想も出て
 // ぶっちゃけFirefoxのplaces.sqliteの真似実装みたいにはなりそうだがまあそれは置いておいて…う～む。。
-// SQLite⇔JSON変換をサーバ側でやることになるが、その遅延は無視できるレベルだろうか。
+// SQLite⇔JSON変換をサーバー側でやることになるが、その遅延は無視できるレベルだろうか。
 // 遅延というよりJSONパースもまだできない。SQLiteみたいなお手軽C言語用JSONライブラリはないのか。
 // http://mattn.kaoriya.net/software/lang/c/20090702153947.htm
 // http://blog.livedoor.jp/tek_nishi/archives/4950982.html
@@ -4412,7 +4412,7 @@ sqlite3_step:
 // %USERPROFILE%を使えばいいかな…？
 // %APPDATA%は？ググっても見つからない。一般的な環境変数ではないのか？Firefoxでは使ってるが…。
 // TODO:chrome.exe 起動オプション --user-data-dir で User Dataフォルダを指定できるらしい(?)
-// その場合そっちの Bookmarks ファイルを見に行くには…ユーザ入力の設定項目を作るしかないか…。
+// その場合そっちの Bookmarks ファイルを見に行くには…ユーザー入力の設定項目を作るしかないか…。
 WCHAR* ChromeBookmarksPathAlloc( void )
 {
 	OSVERSIONINFOA os;
@@ -5038,7 +5038,7 @@ BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
 
 
 //---------------------------------------------------------------------------------------------------------------
-// HTTPサーバ設定
+// HTTPサーバー設定
 //
 SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
 SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
@@ -6324,8 +6324,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// index.htmlサイドバーブラウザアイコン不要なものを隠すための情報。
 							//   {"chrome":0,"firefox":0,"ie":0,"opera":0}
 							// クライアントでindex.html受信後にajaxでこれを取得して非表示にしているが、
-							// そもそもサーバから返す時にHTML加工してしまう方が無駄がないような…。
-							// それを言ってしまうとtree.jsonもサーバ側でHTMLにした方が無駄がない…。
+							// そもそもサーバーから返す時にHTML加工してしまう方が無駄がないような…。
+							// それを言ってしまうとtree.jsonもサーバー側でHTMLにした方が無駄がない…。
 							Buffer* bp = &(cp->rsp.body);
 							UINT count=0;
 							BufferSend( bp ,"{" ,1 );
@@ -7178,7 +7178,7 @@ int TabCtrl_GetSelHasLParam( HWND hTab, int lParam )
 	}
 	return -1;
 }
-// SSL自己署名サーバ証明書・秘密鍵作成
+// SSL自己署名サーバー証明書・秘密鍵作成
 // TODO:証明書を見るで確認すると「拇印アルゴリズム:sha1」だが、それを設定するのはどこ？
 BOOL SSL_SelfCertCreate( const WCHAR* crtfile, const WCHAR* keyfile )
 {
@@ -7260,6 +7260,9 @@ BOOL SSL_SelfCertCreate( const WCHAR* crtfile, const WCHAR* keyfile )
 		LogW(L"X509_get_subject_nameエラー");
 		goto fin;
 	}
+	// TODO:CN(CommonName)はサーバー名を入れるようだが、*やlocalhostにしてブラウザに
+	// サーバー証明書をインポートしても警告は出てしまう。プライベート認証局(CA)を
+	// 作ってその証明書をインポートすればいけるのかな・・でも面倒くさいな・・。
 	LogW(L"X509_NAME_add_entry(C=JP,CN=JCBookmark)..");
 	if( !X509_NAME_add_entry_by_txt(name,"C",MBSTRING_ASC,"JP",-1,-1,0) ||
 		!X509_NAME_add_entry_by_txt(name,"CN",MBSTRING_ASC,"JCBookmark",-1,-1,0)
@@ -7320,7 +7323,7 @@ void SSL_CTX_UseCertificate( const WCHAR* crtfile, const WCHAR* keyfile )
 			if( SSL_CTX_use_certificate( ssl_ctx ,x509 )==1 ){
 				UCHAR buf[256];
 				BIO* bio = BIO_new( BIO_s_mem() );
-				LogW(L"SSLサーバ証明書");
+				LogW(L"SSLサーバー証明書");
 				X509_NAME_oneline( X509_get_subject_name(x509) ,buf ,sizeof(buf) );
 				buf[sizeof(buf)-1]='\0'; LogA("所有者:%s",buf);
 				X509_NAME_oneline( X509_get_issuer_name(x509) ,buf ,sizeof(buf) );
@@ -7653,9 +7656,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				my->hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
 				// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
 				ImageList_SetBkColor( my->hImage, GetSysColor(COLOR_BTNFACE) );
-				// HTTPサーバタブ(ID=0)
+				// HTTPサーバータブ(ID=0)
 				item.mask = TCIF_TEXT |TCIF_IMAGE |TCIF_PARAM;
-				item.pszText = L"HTTPサーバ";
+				item.pszText = L"HTTPサーバー";
 				item.iImage = ImageList_AddIcon( my->hImage, LoadIconA(hinst,"0") );
 				item.lParam = (LPARAM)0;					// タブ識別ID
 				TabCtrl_InsertItem( my->hTabc, 0, &item );		// タブインデックス
@@ -7721,7 +7724,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				if( sslcrt ){
 					my->hSSLCrt = CreateWindowW(
 								L"static"
-								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバー証明書：" SSL_CRT :L"サーバー証明書：なし"
 								,WS_CHILD |SS_SIMPLE
 								,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 					);
@@ -7980,7 +7983,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				}
 				// 該当タブのものだけ表示
 				switch( tabid ){
-				case 0: // HTTPサーバ
+				case 0: // HTTPサーバー
 					ShowWindow( my->hListenPortTxt	,SW_SHOW );
 					ShowWindow( my->hListenPort		,SW_SHOW );
 					ShowWindow( my->hBindAddrTxt	,SW_SHOW );
@@ -8001,7 +8004,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hBootMinimal	,SW_SHOW );
 					SetFocus( my->hListenPort );
 					break;
-				case 5: case 6: case 7: case 8: // ユーザ指定ブラウザ
+				case 5: case 6: case 7: case 8: // ユーザー指定ブラウザ
 					ShowWindow( my->hFOpen, SW_SHOW );
 				case 1: case 2: case 3: case 4: // 既定ブラウザ
 					ShowWindow( my->hBtnWoTxt, SW_SHOW );
@@ -8077,7 +8080,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 						WCHAR* sslkey = AppFilePath( SSL_KEY );
 						if( sslcrt && sslkey && !PathFileExistsW(sslcrt) && !PathFileExistsW(sslkey) &&
 							IDYES==MessageBoxW( hwnd
-									,L"HTTP(SSL)が有効ですがサーバ証明書がありません。"
+									,L"HTTP(SSL)が有効ですがサーバー証明書がありません。"
 									L"証明書（自己署名）をいま作成しますか？"
 									,L"確認" ,MB_YESNO |MB_ICONQUESTION
 							)
@@ -8086,7 +8089,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							BOOL success = SSL_SelfCertCreate( sslcrt ,sslkey );
 							SetCursor( cursor );
 							SetWindowTextW( my->hSSLCrt
-								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバー証明書：" SSL_CRT :L"サーバー証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
 								,PathFileExistsW(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
@@ -8107,7 +8110,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				DestroyWindow( hwnd );
 				break;
 
-			case ID_DLG_FOPEN: // ユーザ指定ブラウザ実行ファイルをファイル選択ダイアログで入力
+			case ID_DLG_FOPEN: // ユーザー指定ブラウザ実行ファイルをファイル選択ダイアログで入力
 				{
 					WCHAR wpath[MAX_PATH+1] = L"";
 					OPENFILENAMEW ofn;
@@ -8234,7 +8237,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							success = SSL_SelfCertCreate( sslcrt ,sslkey );
 							SetCursor( cursor );
 							SetWindowTextW( my->hSSLCrt
-								,PathFileExistsW(sslcrt)? L"サーバ証明書：" SSL_CRT :L"サーバ証明書：なし"
+								,PathFileExistsW(sslcrt)? L"サーバー証明書：" SSL_CRT :L"サーバー証明書：なし"
 							);
 							SetWindowTextW( my->hSSLKey
 								,PathFileExistsW(sslkey)? L"秘密鍵：" SSL_KEY :L"秘密鍵：なし"
@@ -8252,7 +8255,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 		case WM_DROPFILES:
 			{
-				// ドロップした場所がユーザ指定ブラウザEXEパス用エディットコントール上なら
+				// ドロップした場所がユーザー指定ブラウザEXEパス用エディットコントール上なら
 				// ファイルパスをEXEパスに反映する。その他のドロップ操作は無視。
 				WCHAR dropfile0[MAX_PATH+1]=L"";
 				POINT po;
@@ -8319,7 +8322,7 @@ DWORD ConfigDialog( UINT tabid )
 			EnableWindow( MainForm, FALSE );
 			// 初期表示タブ
 			PostMessage( hwnd, WM_TABSELECT, tabid, 0 );
-			// ユーザデータ
+			// ユーザーデータ
 			SetWindowLong( hwnd ,GWL_USERDATA ,(LONG)&data );
 			SendMessage( hwnd ,WM_CREATE_AFTER ,(WPARAM)hinst ,0 );
 			// ダイアログが結果を返すまでループ
@@ -8555,7 +8558,7 @@ HWND BrowserIconTipCreate( const BrowserIcon* browser )
 //---------------------------------------------------------------------------------------------------------------
 // メインフォーム関連
 //
-// サーバログをファイル保存
+// サーバーログをファイル保存
 void LogSave( void )
 {
 	LONG count = SendMessage( ListBox, LB_GETCOUNT, 0,0 );
