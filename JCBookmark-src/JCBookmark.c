@@ -1169,6 +1169,7 @@ typedef struct {
 	UCHAR*		IfModifiedSince;	// If-Modified-Since
 	UCHAR*		Cookie;				// Cookie
 	UCHAR*		AcceptEncoding;		// Accept-Encoding
+	UCHAR*		Host;				// Host
 	UCHAR*		body;				// リクエストボディ開始位置
 	UCHAR*		boundary;			// Content-Type:multipart/form-dataのboundary
 	HANDLE		writefh;			// 書出ファイルハンドル
@@ -3728,6 +3729,15 @@ unsigned __stdcall poker( void* tp )
 // クライアントからの要求 POST /:analyze HTTP/1.x で開始され、
 // 本文の1行1URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
 //		[{"title":"タイトル","icon":"URL"},{...}]
+// TODO:npmjsのファビコン/static/misc/favicon.icoが謎の挙動をする。
+// サイトURL:https://www.npmjs.com/package/st
+// ・Chromeでサイトを表示したタブに出る画像は16x16の[n]画像だが、
+// ・/static/misc/favicon.icoを直接表示すると64x64の[npm]画像が表示される。
+// ・Firefoxだとico直接表示しても16x16の[n]画像が表示される。
+// ・IE8だとChromeと同様だがなぜかSSL自己署名証明書の時とおなじ警告が出る。
+// ・JCBookmarkの<img>タグでは、Chromeだと64x64画像、Firefoxだと16x16画像になる。
+// ・リクエストによって返ってくる画像が異なるのか？
+// ・User-Agentの違いなのか何なのか不明で、SSLなのでキャプチャできない。
 // TODO:.xmlページのタイトルが取得できない。
 // view-source:http://www.usamimi.info/~hellfather/game/hash.xml
 // <desc title="文字列からハッシュを生成">
@@ -6181,6 +6191,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 #endif
 						UCHAR* ck = strHeaderValue(  req->head,"Cookie");
 						UCHAR* ae = strHeaderValue(  req->head,"Accept-Encoding");
+						UCHAR* ho = strHeaderValue(  req->head,"Host");
 						if( ct ) req->ContentType = chomp(ct);
 						if( cl ){
 							UINT n = 0;
@@ -6197,6 +6208,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 #endif
 						if( ck ) req->Cookie = chomp(ck);
 						if( ae ) req->AcceptEncoding = chomp(ae);
+						if( ho ) req->Host = chomp(ho);
 					}
 					req->method = chomp(req->buf);
 					req->path = strchr(req->method,' ');
@@ -6681,14 +6693,21 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
 								);
 								if( cp->rsp.readfh==INVALID_HANDLE_VALUE && PathIsDirectoryW(realpath) ){
-									// フォルダだった場合 index.html 補完
-									// TODO:MAX_PATH(260)を超えるにはGetFileAttributesで接頭詞"\\?\"
-									_snwprintf(realpath+len,sizeof(realpath)/sizeof(WCHAR)-len,L"\\%s",L"index.html");
-									realpath[sizeof(realpath)/sizeof(WCHAR)-1]=L'\0';
-									cp->rsp.readfh = CreateFileW( realpath
-											,GENERIC_READ ,FILE_SHARE_READ
-											,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+									// フォルダだった場合 / 補完リダイレクト
+									// TODO:301か302かどっち？301でいい？
+									BufferSendf( &(cp->rsp.body)
+											,"http%s://%s%s/"
+											,cp->sslp ? "s":"" ,req->Host ,req->path
 									);
+									BufferSendf( &(cp->rsp.head)
+											,"HTTP/1.0 301 Moved Permanently\r\n"
+											"Location: %s\r\n"
+											"Content-Type: text/plain\r\n"
+											"Content-Length: %u\r\n"
+											,cp->rsp.body.top
+											,cp->rsp.body.bytes
+									);
+									goto send_ready;
 								}
 							}
 						}
