@@ -2168,6 +2168,7 @@ typedef struct {
 	UINT		ContentLength;	// Content-Length値
 	UCHAR		ContentType;	// Content-Type識別
 	#define		TYPE_HTML		0x01
+	#define		TYPE_IMAGE		0x02
 	#define		TYPE_OTHER		0xff
 	UCHAR		charset;		// 文字コード識別
 	#define		CS_UTF8			0x01
@@ -2506,6 +2507,9 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											if( p ){
 												if( strnicmp(p,"text/html",9)==0 ){
 													rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+												}
+												else if( strnicmp(p,"image/",6)==0 ){
+													rsp->ContentType = TYPE_IMAGE; //LogW(L"画像");
 												}
 												else{
 													rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
@@ -2883,35 +2887,62 @@ UCHAR* htmlBotherErase( UCHAR* top )
 		if( script && (script[7]==' ' || script[7]=='>') ){
 			end = stristr(script+7,"</script>");
 			if( end ){
-				// クォート・正規表現解析
-				UCHAR quote1=0 ,quote2=0 ,regexp=0;
+				// JSコメント・クォート・正規表現解析
+				UCHAR prev=0 ,comment1=0 ,commentM=0 ,quote1=0 ,quote2=0 ,regexp=0;
 				p = script + 7;
 			retry:
 				for( ; p<end; p++ ){
 					if( *p=='\'' ){
-						if( !quote2 && !regexp ){
-							if( quote1 ){ if( *(p-1)!='\\' ) quote1=0; }
+						// シングルクォート
+						if( !quote2 && !comment1 && !commentM && !regexp ){
+							if( quote1 ){ if( prev!='\\' ) quote1=0; }
 							else quote1=1;
 						}
 					}
 					else if( *p=='"' ){
-						if( !quote1 && !regexp ){
-							if( quote2 ){ if( *(p-1)!='\\' ) quote2=0; }
+						// ダブルクォート
+						if( !quote1 && !comment1 && !commentM && !regexp ){
+							if( quote2 ){ if( prev!='\\' ) quote2=0; }
 							else quote2=1;
 						}
 					}
 					else if( *p=='/' ){
-						if( !quote1 && !quote2 ){
-							if( regexp ){ if( *(p-1)!='\\' ) regexp=0; }
-							else regexp=1;
+						if( *(p+1)=='/' ){
+							// 1行コメント開始
+							if( !quote1 && !quote2 && !commentM ) comment1=1;
+						}
+						else if( *(p+1)=='*' ){
+							// 複数行コメント /* 開始
+							if( !quote1 && !quote2 && !comment1 && !regexp ) commentM=1;
+						}
+						else{
+							// 複数行コメント */ おわり
+							if( prev=='*' && commentM ) commentM=0;
+							// 正規表現の開始か終わりか
+							else if( !quote1 && !quote2 && !comment1 && !commentM ){
+								if( regexp ){ if( prev!='\\' ) regexp=0; }
+								else{ /*LogA("正規表現開始 %s",p);*/ regexp=1; }
+							}
 						}
 					}
+					else if( *p=='\r' ){
+						// 1行コメントおわり
+						if( comment1 ) comment1=0;
+					}
+					else if( *p=='\n' ){
+						// 1行コメントおわり
+						if( comment1 ) comment1=0;
+					}
+					prev = *p;
 				}
-				if( quote1 || quote2 || regexp ){
-					// </script>がクォートまたは正規表現の中
+				//if( quote1 ) LogW(L"</script>がシングルクォートの中");
+				//if( quote2 ) LogW(L"</script>がダブルクォートの中");
+				//if( commentM ) LogW(L"</script>が複数行コメントの中");
+				//if( regexp ) LogW(L"</script>が正規表現の中");
+				if( quote1 || quote2 || commentM || regexp ){
 					UCHAR* newend = stristr(end+9,"</script>");
 					if( newend ){ end=newend; goto retry; }
-					//LogW(L"<script>閉タグが文字列として存在するが新たな閉タグが見つからない構文エラー？");
+					LogW(L"</script>閉タグが見つかりません");
 				}
 				p = end + 9 ;
 				//LogW(L"<script>%u文字塗りつぶし",p-script);
@@ -2919,7 +2950,7 @@ UCHAR* htmlBotherErase( UCHAR* top )
 				// 再検索
 			}
 			else{
-				//LogW(L"<script>閉タグがありません");
+				LogW(L"</script>閉タグがありません");
 				*script='\0';
 				break;
 			}
@@ -3729,6 +3760,10 @@ unsigned __stdcall poker( void* tp )
 // クライアントからの要求 POST /:analyze HTTP/1.x で開始され、
 // 本文の1行1URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
 //		[{"title":"タイトル","icon":"URL"},{...}]
+// TODO:http://bootstrap3.cyberlab.info/で一度だけ無限ループ発生？メインスレッド
+// の無限ループでないことは確定なくらいで、無限ループしてたワーカースレッドが何を
+// していたのか、どこで無限ループしたのか・・もはや不明。再現しない。
+// TODO:http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
 // TODO:npmjsのファビコン/static/misc/favicon.icoが謎の挙動をする。
 // サイトURL:https://www.npmjs.com/package/st
 // ・Chromeでサイトを表示したタブに出る画像は16x16の[n]画像だが、
@@ -3910,8 +3945,12 @@ unsigned __stdcall analyze( void* tp )
 					if( icon ){
 						PokeReport repo = {'?',"",NULL};
 						HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
-						if( tmp ) free( tmp );
-						if( repo.grp=='O' || repo.grp=='!' ){
+						UCHAR type = 0;
+						if( tmp ){
+							type = tmp->ContentType;
+							free( tmp );
+						}
+						if( type==TYPE_IMAGE && (repo.grp=='O' || repo.grp=='!') ){
 							if( repo.newurl ) free( icon ) ,icon = repo.newurl;
 						}
 						else{
