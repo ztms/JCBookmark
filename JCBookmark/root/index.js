@@ -39,8 +39,9 @@ var tree = {
 					$('#progress').hide();
 					$('#modified').show();
 				}
-				$wall.css('padding-top',22);
-				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
+				var h = $('#modified').outerHeight();
+				$wall.css('padding-top',h);
+				$('.itempop').each(function(){ if( this.offsetTop<h ) $(this).css('top',h); });
 			}
 			tree._modified = on;
 			return tree;
@@ -95,7 +96,7 @@ var tree = {
 		return function callee( node ){
 			if( node.id==id ) return node; // 見つけた
 			if( node.child ){
-				for( var i=node.child.length-1; i>=0; i-- ){
+				for( var i=node.child.length; i--; ){
 					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
@@ -227,7 +228,7 @@ var tree = {
 		if( oStr.call(dst)==='[object String]' ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-			for( var i=ids.length-1; i>=0; i-- ){
+			for( var i=ids.length; i--; ){
 				if( ids[i]==dst.id || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dst) )
 					ids.splice(i,1);
 			}
@@ -252,7 +253,7 @@ var tree = {
 				// 貼り付け
 				if( clipboard.length ){
 					//for( var i=0; i<clipboard.length; i++ ) dst.child.push( clipboard[i] ); // 末尾に
-					for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] ); // 先頭に
+					for( var i=clipboard.length; i--; ) dst.child.unshift( clipboard[i] ); // 先頭に
 					tree.modified(true);
 				}
 			}
@@ -262,7 +263,7 @@ var tree = {
 	// ids:ノードID配列、dstid:ノードID、isAfter:boolean
 	,moveSibling:function( ids, dstid, isAfter ){
 		// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-		for( var i=ids.length-1; i>=0; i-- ){
+		for( var i=ids.length; i--; ){
 			if( ids[i]==dstid || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dstid) )
 				ids.splice(i,1);
 		}
@@ -299,12 +300,12 @@ var tree = {
 								}else{
 									// (末尾ノード以外の)後に挿入＝次ノードの前に挿入(逆順に１つずつ)
 									i++;
-									for( var j=movenodes.length-1; j>=0; j-- )
+									for( var j=movenodes.length; j--; )
 										dstParent.child.splice(i,0, movenodes[j]);
 								}
 							}else{
 								// 前に挿入(逆順に１つずつ)
-								for( var j=movenodes.length-1; j>=0; j-- )
+								for( var j=movenodes.length; j--; )
 									dstParent.child.splice(i,0, movenodes[j]);
 							}
 							break;
@@ -342,9 +343,9 @@ var option = {
 		if( arguments.length ){
 			option._modified = on;
 			if( on ){
-				$('#modified').show();
-				$wall.css('padding-top',22);
-				$('.itempop').each(function(){ if( this.offsetTop<22 ) $(this).css('top',22); });
+				var h = $('#modified').show().outerHeight();
+				$wall.css('padding-top',h);
+				$('.itempop').each(function(){ if( this.offsetTop<h ) $(this).css('top',h); });
 			}
 			return option;
 		}
@@ -715,7 +716,7 @@ var paneler = function(){
 		var panelNode = {};
 		panelNode[ nodeTop.id ] = nodeTop;
 		(function panelNoder( child ){
-			for( var i=child.length-1; i>=0; i-- ){
+			for( var i=child.length; i--; ){
 				if( child[i].child ){
 					panelNode[ child[i].id ] = child[i];
 					panelNoder( child[i].child );
@@ -730,7 +731,7 @@ var paneler = function(){
 		var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
 		var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
 		(function layouter(){
-			var count=2;
+			var count = 2;
 			do{
 				var layoutSeek = false;
 				for( var coID in panelLayout ){
@@ -793,7 +794,7 @@ var paneler = function(){
 			}( nodeTop ));
 			var index=0, length=nodeList.length;
 			(function placer(){
-				var count=5;
+				var count = 5;
 				while( index < length && count>0 ){
 					panelCreate( nodeList[index], lowestColumn() );
 					index++; count--;
@@ -880,12 +881,12 @@ function columnHeightAdjust(){
 	var height = 0;
 	var padding = 50; // 50px初期値
 	var columns = $wall.children('.column');
-	for( var i=columns.length-1; i>=0; i-- ){
+	for( var i=columns.length; i--; ){
 		if( height < $(columns[i]).height() ) height = $(columns[i]).height();
 	}
 	if( $('#findtab').css('display')!='none' ) padding += $('#findtab').outerHeight();
 	if( $('#findbox').css('display')!='none' ) padding += $('#findbox').outerHeight();
-	for( var i=columns.length-1; i>=0; i-- ){
+	for( var i=columns.length; i--; ){
 		columns[i].style.paddingBottom = height - $(columns[i]).height() + padding +'px';
 	}
 }
@@ -1116,7 +1117,7 @@ function setEvents(){
 			if( panel.offsetTop +panel.offsetHeight < ev.pageY ){
 				above = panel;			// 一番下に新規パネル
 			}
-			for( var i=$panels.length-1; i>0; i-- ){
+			for( var i=$panels.length; i--; ){
 				if( ev.pageY < $panels[i].offsetTop &&
 					$panels[i-1].offsetTop +$panels[i-1].offsetHeight < ev.pageY ){
 					below = $panels[i]; // パネルとパネルの間
@@ -1926,7 +1927,7 @@ function setEvents(){
 					,'white-space'	:'nowrap'
 					,'font-weight'	:'bold'
 				}).appendTo(document.body);
-			for( var i=list.length-1; i>=0; i-- ){
+			for( var i=list.length; i--; ){
 				if( list[i].memo && list[i].memo.length>0 ){
 					var width = $span.text(list[i].memo).width();
 					if( width > maxWidth ) maxWidth = width;
@@ -2065,14 +2066,14 @@ function setEvents(){
 				clearTimeout( timer );
 				// 検索ワード
 				var words = $tab.find('input').val().split(/[ 　]+/); // 空白文字で分割
-				for( var i=words.length-1; i>=0; i-- ){
+				for( var i=words.length; i--; ){
 					if( words[i].length<=0 ) words.splice(i,1);
 					else words[i] = words[i].myNormal();
 				}
 				if( words.length<=0 ) return;
 				String.prototype.myFound = function(){
 					// AND検索(TODO:OR検索・大小文字区別対応する？)
-					for( var i=words.length-1; i>=0; i-- ){
+					for( var i=words.length; i--; ){
 						if( this.indexOf(words[i])<0 ) return false;
 					}
 					return true;
@@ -2122,13 +2123,13 @@ function setEvents(){
 			function sortUrlTop( max ,fromRecent ){
 				var target = findTarget();
 				var urls = [];
-				for( var i=target.panels.length-1; i>=0; i-- ){
+				for( var i=target.panels.length; i--; ){
 					var child = target.panels[i].child;
-					for( var j=child.length-1; j>=0; j-- ){
+					for( var j=child.length; j--; ){
 						var node = child[j];
 						if( node.child ) continue;
 						var date = node.dateAdded ||0;
-						for( var k=urls.length-1; k>=0; k-- ){
+						for( var k=urls.length; k--; ){
 							if( fromRecent ){
 								if( (urls[k].dateAdded||0) >=date ) break;
 							}
@@ -2277,7 +2278,7 @@ var panelPopper = function(){
 			if( bottomLine < panel.offsetTop + $(panel).outerHeight() )
 				bottomLine = panel.offsetTop + $(panel).outerHeight();
 			(function callee(){
-				var count=10;
+				var count = 10;
 				while( index < length && count>0 ){
 					if( !child[index].child ) $box.append( $newItem( child[index] ) );
 					index++; count--;
@@ -2311,8 +2312,8 @@ var panelPopper = function(){
 					if( dx==0							// 垂直移動
 						|| (dx>0 && destX < ev.pageX)	// 逆方向
 						|| (dx<0 && ev.pageX < destX)	// 逆方向
-						|| destY < box.offsetTop -64		// box範囲外方向(-64少し余裕)
-						|| destY > box.offsetTop + box.offsetHeight	+64 // box範囲外方向(+64少し余裕)
+						|| destY < box.offsetTop -32		// box範囲外方向(-32少し余裕)
+						|| destY > box.offsetTop + box.offsetHeight	+32 // box範囲外方向(+32少し余裕)
 					){
 						nextpop(ev);
 					}
@@ -2418,7 +2419,7 @@ function panelEdit( pid ){
 	var timer = null;
 	var $itembase = $('<a class=edit><img class=idel src=delete.png title="削除（ごみ箱）"><img class=icon><input></a>');
 	(function callee(){
-		var count=5;
+		var count = 5;
 		while( index < length && count>0 ){
 			var node = child[index];
 			if( !node.child ){
@@ -2548,7 +2549,7 @@ function panelEdit( pid ){
 				var idelsJSON = JSON.stringify(idels);	// JSON複製保持
 				tree.moveChild( idels, tree.trash() );	// idelsは空になる
 				idels = $.parseJSON(idelsJSON)			// 復元
-				for( var i=idels.length-1; i>=0; i-- ) $('#'+idels[i]).remove();
+				for( var i=idels.length; i--; ) $('#'+idels[i]).remove();
 				// アイテム変更
 				var $panelbox = $panel.find('.itembox');
 				$($itembox.children('.edit').get().reverse()).each(function(){
@@ -2634,7 +2635,7 @@ function analyzer( nodeTop ){
 	var timelog = [];		// 時間記録(並列数の調節用)(filer.jsとおなじ)
 	function paraAdjust( st ,time ){
 		var recvTimeout = false;
-		for( var i=st.length-1; i>=0; i-- ){
+		for( var i=st.length; i--; ){
 			switch( st[i].grp ){
 			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
 			case '?':
@@ -2653,7 +2654,7 @@ function analyzer( nodeTop ){
 				while( timelog.length >20 ) timelog.shift();
 				// 平均時間
 				var ave=0.0;
-				for( var i=timelog.length-1; i>=0; i-- ) ave += timelog[i];
+				for( var i=timelog.length; i--; ) ave += timelog[i];
 				ave /= timelog.length;
 				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
 				// 新しい並列数
@@ -2940,7 +2941,7 @@ function panelSortable(){
 				var $col = $(ev.target);
 				if( $col.hasClass('column') ){
 					var $next = null;
-					for( var i=ev.target.children.length-1; i>=0; i-- ){
+					for( var i=ev.target.children.length; i--; ){
 						var $panel = $(ev.target.children[i]);
 						if( $panel.hasClass('panel') && !$panel.hasClass('active') ){
 							if( ev.pageY < $panel.offset().top + $panel.outerHeight()/2 )
