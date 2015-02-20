@@ -68,7 +68,7 @@ body {
 	font-weight:bold;
 	white-space:nowrap;
 	overflow:hidden;
-	padding:1px 1px 1px 2px;
+	padding:1px 1px 2px 2px;
 	border-radius:2px 2px 0 0;
 }
 .icon {
@@ -76,7 +76,7 @@ body {
 	width:16px;
 	height:16px;
 	margin:0 6px 0 1px;
-	vertical-align:-4px;
+	vertical-align:-3px;
 	display:inline-block;
 }
 .pen, .plusminus {
@@ -84,7 +84,7 @@ body {
 	float:right;
 	width:13px;
 	height:13px;
-	margin:0 2px 0 0;
+	margin:1px 2px 0 0;
 	cursor:default;
 	border:1px solid transparent;
 	border-radius:2px;
@@ -474,7 +474,7 @@ body {
 #findbox {
 	width:100%;
 	padding:0 2px 0 1px;
-	border-radius:0; /* Firefoxメイリオ劣化対策 */
+	border-radius:3px; /* Firefoxでなぜかこの値がメイリオ描画の劣化を起こしたりする */
 }
 #findtab input {
 	width:230px;
