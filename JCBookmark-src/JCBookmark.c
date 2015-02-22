@@ -2887,63 +2887,6 @@ UCHAR* htmlBotherErase( UCHAR* top )
 		if( script && (script[7]==' ' || script[7]=='>') ){
 			end = stristr(script+7,"</script>");
 			if( end ){
-				// JSコメント・クォート・正規表現解析
-				UCHAR prev=0 ,comment1=0 ,commentM=0 ,quote1=0 ,quote2=0 ,regexp=0;
-				p = script + 7;
-			retry:
-				for( ; p<end; p++ ){
-					if( *p=='\'' ){
-						// シングルクォート
-						if( !quote2 && !comment1 && !commentM && !regexp ){
-							if( quote1 ){ if( prev!='\\' ) quote1=0; }
-							else quote1=1;
-						}
-					}
-					else if( *p=='"' ){
-						// ダブルクォート
-						if( !quote1 && !comment1 && !commentM && !regexp ){
-							if( quote2 ){ if( prev!='\\' ) quote2=0; }
-							else quote2=1;
-						}
-					}
-					else if( *p=='/' ){
-						if( *(p+1)=='/' ){
-							// 1行コメント開始
-							if( !quote1 && !quote2 && !commentM ) comment1=1;
-						}
-						else if( *(p+1)=='*' ){
-							// 複数行コメント /* 開始
-							if( !quote1 && !quote2 && !comment1 && !regexp ) commentM=1;
-						}
-						else{
-							// 複数行コメント */ おわり
-							if( prev=='*' && commentM ) commentM=0;
-							// 正規表現の開始か終わりか
-							else if( !quote1 && !quote2 && !comment1 && !commentM ){
-								if( regexp ){ if( prev!='\\' ) regexp=0; }
-								else{ /*LogA("正規表現開始 %s",p);*/ regexp=1; }
-							}
-						}
-					}
-					else if( *p=='\r' ){
-						// 1行コメントおわり
-						if( comment1 ) comment1=0;
-					}
-					else if( *p=='\n' ){
-						// 1行コメントおわり
-						if( comment1 ) comment1=0;
-					}
-					prev = *p;
-				}
-				//if( quote1 ) LogW(L"</script>がシングルクォートの中");
-				//if( quote2 ) LogW(L"</script>がダブルクォートの中");
-				//if( commentM ) LogW(L"</script>が複数行コメントの中");
-				//if( regexp ) LogW(L"</script>が正規表現の中");
-				if( quote1 || quote2 || commentM || regexp ){
-					UCHAR* newend = stristr(end+9,"</script>");
-					if( newend ){ end=newend; goto retry; }
-					LogW(L"</script>閉タグが見つかりません");
-				}
 				p = end + 9 ;
 				//LogW(L"<script>%u文字塗りつぶし",p-script);
 				memset( script ,' ' ,p-script );
