@@ -3780,7 +3780,7 @@ unsigned __stdcall analyze( void* tp )
 					begin++; end--;
 					while( isspace(*begin) ) begin++;
 					while( isspace(*end) ) end--;
-					if( begin < end ){
+					if( begin <= end ){
 						title = strndupJSON( begin, end - begin + 1 );
 						CRLFtoSPACE( title );
 					}
