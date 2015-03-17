@@ -8708,6 +8708,65 @@ HWND FindConflictWindow( void )
 	while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
 	return NULL;
 }
+// フォルダ選択ダイアログ
+// http://win32lab.com/tips/tips5.html
+// http://hp.vector.co.jp/authors/VA016117/shbff.html
+// http://www.kab-studio.biz/Programing/Codian/ShellExtension/02.html
+// http://sgsoftware.blog.fc2.com/blog-entry-1045.html
+int CALLBACK SHBrowseForFolderProc( HWND hwnd ,UINT msg ,LPARAM param ,LPARAM data)
+{
+    if( msg==BFFM_INITIALIZED ){
+		// ダイアログ表示後
+		// 初期選択フォルダ設定
+        SendMessage( hwnd ,BFFM_SETSELECTION ,(WPARAM)TRUE ,data );
+		// MoveWindow等でウィンドウサイズを変えたりできるが、一度サイズ変えたら残ってるようなのでよし。
+		// 外側だけ変えてもダメっぽく面倒そうだし。(http://www31.ocn.ne.jp/~heropa/vb0403.htm)
+    }
+    return 0;
+}
+void DocumentRootSelect( void )
+{
+	BOOL		ok = FALSE;
+    WCHAR		folder[MAX_PATH];
+    BROWSEINFOW	binfo;
+    ITEMIDLIST*	idlist;
+
+	GetModuleFileNameW( NULL ,folder ,MAX_PATH );
+	PathRemoveFileSpec( folder );
+
+    binfo.hwndOwner		= MainForm;
+    binfo.pidlRoot		= NULL;
+    binfo.pszDisplayName= folder;
+    binfo.lpszTitle		= L"rootフォルダがありません。別のフォルダをドキュメントルートにする場合は、フォルダを選択して OK をクリックしてください。";
+    binfo.ulFlags		= BIF_RETURNONLYFSDIRS |BIF_NEWDIALOGSTYLE;
+    binfo.lpfn			= &SHBrowseForFolderProc;						// コールバック関数
+    binfo.lParam		= (LPARAM)folder;								// コールバックに渡す引数
+    binfo.iImage		= (int)NULL;
+
+    idlist = SHBrowseForFolderW( &binfo );
+	if( idlist ){
+		if( SHGetPathFromIDListW( idlist ,folder ) ){					// ITEMIDLISTからパスを得る
+			WCHAR* root = wcsdup( folder );
+			if( root ){
+				free( DocumentRoot );
+				DocumentRoot = root;
+				DocumentRootLen = wcslen( root );
+				LogW(L"ドキュメントルート：%s",root);
+				ok = TRUE;
+			}
+			else LogW(L"L%u:mallocエラー",__LINE__);
+		}
+		else LogW(L"SGetPathFromIDListWエラー(%u)",GetLastError());
+		CoTaskMemFree( idlist );										// ITEMIDLISTの解放
+	}
+	else{
+		DWORD err = GetLastError();
+		if( err ) LogW(L"SHBrowseForFolderWエラー(%u)",err);
+		else ok = TRUE;													// キャンセル
+	}
+
+	if( !ok ) ErrorBoxW(L"エラーが発生しました。ドキュメントルートを変更できません。");
+}
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
 // スタック1KB以上使うので関数化。
@@ -8732,12 +8791,6 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		if( mlang.dll ) FreeLibrary( mlang.dll );
 		memset( &mlang, 0, sizeof(mlang) );
 	}
-	// 空ノードファイル作る。既存ファイル上書きしない。
-	GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
-	if( SetCurrentDirectoryW( DocumentRoot ) ){
-		MoveFileA( "tree.json.empty", "tree.json" );
-		SetCurrentDirectoryW( wpath );
-	}
 	// OpenSSL
 	SSL_library_init();
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
@@ -8758,6 +8811,25 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	else LogW(L"SSL_CTX_newエラー");
 	// クライアント初期化
 	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
+	// ドキュメントルート
+	// JCBookmarkとしては不要な機能だが、rootフォルダが存在しなかった場合ここで任意のフォルダを
+	// ドキュメントルートに設定して動作可能。テスト用簡易HTTPサーバとして使う用途向け。その場合
+	// ファイルを勝手に消さない(JCBookmarkのファイルではないため)。逆に言うと、JCBookmarkでない
+	// のにrootフォルダで起動した場合、rootフォルダ内ファイルが勝手に消される可能性がある要注意。
+	if( PathIsDirectoryW(DocumentRoot) ){
+		// 空ノードファイル作る。既存ファイル上書きしない。
+		GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
+		if( SetCurrentDirectoryW( DocumentRoot ) ){
+			MoveFileA( "tree.json.empty", "tree.json" );
+			SetCurrentDirectoryW( wpath );
+		}
+		// v1.8で無くなったファイル削除
+		_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\save.png",DocumentRoot);
+		DeleteFileW(wpath);
+		_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\saveshot.png",DocumentRoot);
+		DeleteFileW(wpath);
+	}
+	else DocumentRootSelect();
 	// 待受開始
 	if( !ListenStart() ){
 		// Listenエラー
@@ -8776,11 +8848,6 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	}
 	// タイマー処理
 	MainFormTimer1000();
-	// v1.8で無くなったファイル削除
-	_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\save.png",DocumentRoot);
-	DeleteFileW(wpath);
-	_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\saveshot.png",DocumentRoot);
-	DeleteFileW(wpath);
 }
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
@@ -9196,6 +9263,31 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	if( msg==taskbarRestart && !IsWindowVisible(hwnd) ) PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
+//
+WCHAR* ModuleFileNameAllocW( void )
+{
+	size_t length = 32;
+	WCHAR* wpath = NULL;
+	for( ;; ){
+		wpath = malloc( length * sizeof(WCHAR) );
+		if( wpath ){
+			DWORD len = GetModuleFileNameW( NULL, wpath, length );
+			if( len && len < length-1 ){
+				return wpath;
+			}
+			else{
+				free(wpath);
+				length += 32;
+			}
+		}
+		else{
+			ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
+			return NULL;
+		}
+	}
+	ErrorBoxW(L"L%u:unreachable point",__LINE__);
+	return NULL;
+}
 // アプリ起動時
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
@@ -9254,34 +9346,17 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	}
 	// ドキュメントルート(exeフォルダ\\root)
 	{
-		size_t length = 32;
-		WCHAR* wpath = NULL;
-		while( !wpath ){
-			wpath = malloc( length * sizeof(WCHAR) );
-			if( wpath ){
-				DWORD len = GetModuleFileNameW( NULL, wpath, length );
-				if( len && len < length-1 ){
-					WCHAR* p = wcsrchr(wpath,L'\\');
-					if( p ){
-						wcscpy( p+1, L"root" );
-						DocumentRootLen = wcslen( wpath );
-						DocumentRoot = wpath;
-						break;
-					}
-					else{
-						ErrorBoxW(L"GetModuleFileName()=%s",wpath);
-						free(wpath);
-						return NULL;
-					}
-				}
-				else{
-					free(wpath);
-					wpath = NULL;
-					length += 32;
-				}
+		WCHAR* root = ModuleFileNameAllocW();
+		if( root ){
+			WCHAR* p = wcsrchr(root,L'\\');
+			if( p ){
+				wcscpy( p+1, L"root" );
+				DocumentRoot = root;
+				DocumentRootLen = wcslen( root );
 			}
 			else{
-				ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
+				ErrorBoxW(L"GetModuleFileName()=%s",root);
+				free(root);
 				return NULL;
 			}
 		}
