@@ -2699,7 +2699,7 @@ retry_raw:
 }
 
 // HTTP圧縮コンテンツ伸長
-HTTPGet* HTTPGetContentDecode( HTTPGet* rsp ,const UCHAR* url )
+HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 {
 	if( rsp ){
 		// gzip,deflate伸長
@@ -2735,145 +2735,8 @@ HTTPGet* HTTPGetContentDecode( HTTPGet* rsp ,const UCHAR* url )
 	return rsp;
 }
 
-// mlang.dll文字コード変換
-#include <mlang.h>
-typedef HRESULT (APIENTRY *CONVERTINETSTRING)( LPDWORD,DWORD,DWORD,LPCSTR,LPINT,LPBYTE,LPINT );
-struct {
-	HMODULE				dll;
-	CONVERTINETSTRING	Convert;
-} mlang = { NULL, NULL };
-
-HTTPGet* HTTPGetHtmlToUTF8( HTTPGet* rsp ,const UCHAR* url )
-{
-	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
-	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
-	// とりあえずConvertINetString()で変換しておく。
-	if( rsp && rsp->ContentType==TYPE_HTML && mlang.Convert ){
-		DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
-		switch( rsp->charset ){
-		case CS_UTF8: CP = 65001; break;
-		case CS_SJIS: CP = 932;   break;
-		case CS_EUC : CP = 51932; break;
-		case CS_JIS : CP = 50221; break;
-		default:
-			if( rsp->body ){
-				// HTTPヘッダにcharset指定がなかった場合。
-				// HTMLヘッダ<meta>に従うべきだが、その文字列が既にエンコードされているので…。
-				// <meta>は無視して DetectInputCodepage() で判定する。MLDETECTCP_HTML を使えば
-				// それなりにちゃんと判定できているようにみえる(既定の MLDETECTCP_NONE は挙動
-				// 不審で使いものにならない)。「バベル」というC++ライブラリが評価高いようだが
-				// C++インタフェースのみ。
-				// http://yuzublo.blog48.fc2.com/blog-entry-29.html
-				IMultiLanguage2 *mlang2;
-				HRESULT res;
-				CoInitialize(NULL);
-				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
-				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
-				res = CoCreateInstance(
-							&CLSID_CMultiLanguage
-							,NULL
-							,CLSCTX_INPROC_SERVER
-							,&IID_IMultiLanguage2
-							,(void**)&mlang2
-				);
-				if( SUCCEEDED(res) ){
-					int dataLen = rsp->bytes - (rsp->body - rsp->buf);	// 判定データバイト
-					int count = 1;										// 判定結果の候補数
-					DetectEncodingInfo info;							// 判定結果
-					res = mlang2->lpVtbl->DetectInputCodepage( mlang2
-								,MLDETECTCP_HTML
-								,0
-								,rsp->body
-								,&dataLen
-								,&info
-								,&count
-					);
-					if( SUCCEEDED(res) ){
-						// oxfam.jpがタイトル取得できない問題でわかったが、日本語文字数が少なくて
-						// SJISかEUC-JPか判定できない場合、metaタグでcharset=euc-jpとなっていても
-						// 932が返ってくる。metaタグは見てくれないもよう。自力で「日本語文字数が
-						// 少なくてSJISかEUC-JPか判別不能」なことを確認して、charset=euc-jpの
-						// 場合は932→euc-jp(51932)に変更すると良い？そこまでしなくていいか…
-						CP = info.nCodePage;
-					}
-					mlang2->lpVtbl->Release( mlang2 );
-				}
-				CoUninitialize();
-			}
-		}
-		if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
-			BYTE* tmp;
-			int tmpbytes;
-			if( rsp->bufsize < rsp->bytes *2 ){
-				// UTF-8変換してバイト数が増える場合、変換後のUTF-8を格納できるだけの
-				// バッファを確保していないとConvertINetString()がエラーになるもよう。
-				// とりあえず受信データの2倍以上バッファを確保しておく。
-				size_t newsize = rsp->bufsize * 2;
-				HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
-				if( newrsp ){
-					int distance = (BYTE*)newrsp - (BYTE*)rsp;
-					memset( newrsp, 0, sizeof(HTTPGet) + newsize );
-					memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-					if( rsp->body ){
-						newrsp->head += distance;
-						newrsp->body += distance;
-					}
-					newrsp->bufsize = newsize;
-					free(rsp), rsp=newrsp;
-					LogW(L"バッファ拡大(文字コード変換)%ubytes",newsize);
-				}
-				else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
-			}
-			tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
-			tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
-			if( tmp ){
-				DWORD mode=0;
-				HRESULT res;
-				memset( tmp, 0, tmpbytes );
-				switch( CP ){
-				case 932: case 20932: case 50220: case 50221: case 50222: case 51932:
-				by_sjis:
-					// 50220(ISO-2022-JP)を直接UTF-8変換するとエラーなく文字化けする事があり、932を
-					// 経由すると変換できるため最初から932経由にする。51932(EUC-JP)は直接UTF-8変換が
-					// エラーだったか？ということで日本語文字コードはSJIS経由が無難かもしれない。。
-					// まずSJIS(932)に変換
-					res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
-					if( res==S_OK ){
-						// 次にSJISからUTF8(65001)に変換
-						tmp[tmpbytes]='\0';
-						tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
-						res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
-						if( res==S_OK ){
-						ok:
-							rsp->body[tmpbytes]='\0';
-							rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
-							LogW(L"文字コード%u->65001変換",CP);
-						}
-						else LogA("ConvertINetString(932->65001)エラー(%s)",url);
-					}
-					else LogA("ConvertINetString(%u->932)エラー(%s)",CP,url);
-					break;
-				default:
-					// (日本語以外)直接UTF-8変換
-					res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
-					if( res==S_OK ){
-						memcpy( rsp->body ,tmp ,tmpbytes );
-						goto ok;
-					}
-					// エラー時SJIS(932)経由を試す
-					//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
-					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
-					goto by_sjis;
-				}
-				free( tmp );
-			}
-			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
-		}
-	}
-	return rsp;
-}
-
-// <meta http-equiv=refresh ..>転送の誤検出を防ぐためHTMLを書き換える。
+// <meta http-equiv=refresh ..>転送検出や<meta charset=utf8>解析など、HTMLタグ自力解析する時
+// 誤判定を防ぐためHTMLを書き換える。
 // http://www.nifty.com/ や facebook で <noscript>タグ内に<meta http-equiv=refresh ..>があり、
 // 単純に<meta>を検索しただけでは誤検出(転送じゃないのに転送と判定)になってしまう。<noscript>
 // は無視でよいと思うので、<noscript>～</noscript>はあらかじめスペースで塗りつぶす。ついでに
@@ -2958,6 +2821,173 @@ UCHAR* htmlBotherErase( UCHAR* top )
 		else break; // <style>なし
 	}
 	return top;
+}
+
+// mlang.dll文字コード変換
+#include <mlang.h>
+typedef HRESULT (APIENTRY *CONVERTINETSTRING)( LPDWORD,DWORD,DWORD,LPCSTR,LPINT,LPBYTE,LPINT );
+struct {
+	HMODULE				dll;
+	CONVERTINETSTRING	Convert;
+} mlang = { NULL, NULL };
+
+HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
+{
+	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
+	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
+	// とりあえずConvertINetString()で変換しておく。
+	if( rsp && rsp->ContentType==TYPE_HTML && mlang.Convert ){
+		DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
+		switch( rsp->charset ){
+		case CS_UTF8: CP = 65001; break;
+		case CS_SJIS: CP = 932;   break;
+		case CS_EUC : CP = 51932; break;
+		case CS_JIS : CP = 50221; break;
+		default:
+			if( rsp->body ){
+				// HTTPヘッダにcharset指定がなかった場合。
+				// HTMLヘッダ<meta>に従うべきだが、その文字列が既にエンコードされているので…。
+				// <meta>は無視して DetectInputCodepage() で判定する。MLDETECTCP_HTML を使えば
+				// それなりにちゃんと判定できているようにみえる(既定の MLDETECTCP_NONE は挙動
+				// 不審で使いものにならない)。「バベル」というC++ライブラリが評価高いようだが
+				// C++インタフェースのみ。
+				// http://yuzublo.blog48.fc2.com/blog-entry-29.html
+				IMultiLanguage2 *mlang2;
+				HRESULT res;
+				CoInitialize(NULL);
+				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
+				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
+				res = CoCreateInstance(
+							&CLSID_CMultiLanguage
+							,NULL
+							,CLSCTX_INPROC_SERVER
+							,&IID_IMultiLanguage2
+							,(void**)&mlang2
+				);
+				if( SUCCEEDED(res) ){
+					int dataLen = rsp->bytes - (rsp->body - rsp->buf);	// 判定データバイト
+					int count = 1;										// 判定結果の候補数
+					DetectEncodingInfo info;							// 判定結果
+					res = mlang2->lpVtbl->DetectInputCodepage( mlang2
+								,MLDETECTCP_HTML
+								,0
+								,rsp->body
+								,&dataLen
+								,&info
+								,&count
+					);
+					if( SUCCEEDED(res) ){
+						// oxfam.jpがタイトル取得できない問題でわかったが、日本語文字数が少なくて
+						// SJISかEUC-JPか判定できない場合、metaタグでcharset=euc-jpとなっていても
+						// 932が返ってくる。metaタグは見てくれないもよう。自力で「日本語文字数が
+						// 少なくてSJISかEUC-JPか判別不能」なことを確認して、charset=euc-jpの
+						// 場合は932→euc-jp(51932)に変更すると良い？そこまでしなくていいか…
+						CP = info.nCodePage;
+						// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
+						// <meta charset=utf-8>なのに文字コード1252と誤判定しているもよう。
+						// 仕方ないので1252だった場合は<meta charset=を検索して修正。
+						if( CP==1252 ){
+							UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
+							UCHAR* meta ,*endtag ,*charset;
+							while(( meta = stristr(body ,"<meta ") )){
+								body = meta = meta + 6;
+								endtag = strchr(meta ,'>');
+								if( endtag ){
+									body = endtag + 1;
+									charset = stristr(meta ,"charset");
+									if( charset && charset < endtag ){
+										charset += 7;
+										while( *charset==' ' ) charset++;
+										if( *charset=='=' ){
+											charset++;
+											while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
+											if( strnicmp(charset,"utf-8",5)==0 ) charset += 5;
+											else if( strnicmp(charset,"utf8",4)==0 ) charset += 4;
+											switch( *charset ){ case '"':case '\'':case ' ':case '>':
+												LogW(L"DetectInputCodePage say 1252, but <meta charset=UTF-8>");
+												CP = 65001;
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+					mlang2->lpVtbl->Release( mlang2 );
+				}
+				CoUninitialize();
+			}
+		}
+		if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
+			BYTE* tmp;
+			int tmpbytes;
+			if( rsp->bufsize < rsp->bytes *2 ){
+				// UTF-8変換してバイト数が増える場合、変換後のUTF-8を格納できるだけの
+				// バッファを確保していないとConvertINetString()がエラーになるもよう。
+				// とりあえず受信データの2倍以上バッファを確保しておく。
+				size_t newsize = rsp->bufsize * 2;
+				HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+				if( newrsp ){
+					int distance = (BYTE*)newrsp - (BYTE*)rsp;
+					memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+					memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+					if( rsp->body ){
+						newrsp->head += distance;
+						newrsp->body += distance;
+					}
+					newrsp->bufsize = newsize;
+					free(rsp), rsp=newrsp;
+					LogW(L"バッファ拡大(文字コード変換)%ubytes",newsize);
+				}
+				else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
+			}
+			tmpbytes = rsp->bufsize - (rsp->body - rsp->buf);
+			tmp = malloc( tmpbytes-- );	// NULL終端文字ぶん減らしておく
+			if( tmp ){
+				DWORD mode=0;
+				HRESULT res;
+				memset( tmp, 0, tmpbytes );
+				switch( CP ){
+				case 932: case 20932: case 50220: case 50221: case 50222: case 51932:
+				by_sjis:
+					// 50220(ISO-2022-JP)を直接UTF-8変換するとエラーなく文字化けする事があり、932を
+					// 経由すると変換できるため最初から932経由にする。51932(EUC-JP)は直接UTF-8変換が
+					// エラーだったか？ということで日本語文字コードはSJIS経由が無難かもしれない。。
+					// まずSJIS(932)に変換
+					res = mlang.Convert( &mode, CP, 932, rsp->body, NULL, tmp, &tmpbytes );
+					if( res==S_OK ){
+						// 次にSJISからUTF8(65001)に変換
+						tmp[tmpbytes]='\0';
+						tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
+						res = mlang.Convert( &mode, 932, 65001, tmp, NULL, rsp->body, &tmpbytes );
+						if( res==S_OK ){
+						ok:
+							rsp->body[tmpbytes]='\0';
+							rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
+							LogW(L"文字コード%u->65001変換",CP);
+						}
+						else LogA("ConvertINetString(932->65001)エラー(%s)",url);
+					}
+					else LogA("ConvertINetString(%u->932)エラー(%s)",CP,url);
+					break;
+				default:
+					// (日本語以外)直接UTF-8変換
+					res = mlang.Convert( &mode, CP, 65001, rsp->body, NULL, tmp, &tmpbytes );
+					if( res==S_OK ){
+						memcpy( rsp->body ,tmp ,tmpbytes );
+						goto ok;
+					}
+					// エラー時SJIS(932)経由を試す
+					//LogA("ConvertINetString(%u->65001)エラー(%s)",CP,url);
+					tmpbytes = rsp->bufsize - (rsp->body - rsp->buf) -1; mode=0;
+					goto by_sjis;
+				}
+				free( tmp );
+			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,tmpbytes);
+		}
+	}
+	return rsp;
 }
 
 // 文字列先頭からN個まですべてアルファベットなら真
@@ -3351,12 +3381,15 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 	if( rsp ){
 	retry:
 		if( *abort ) goto fin;
+		rsp = HTTPContentDecode( rsp ,newurl? newurl :url0 );
+		if( rsp->ContentType==TYPE_HTML ){
+			rsp = HTTPContentToUTF8( rsp ,newurl? newurl :url0 );
+		}
 		if( hop++ >9 ){
 			LogW(L"転送回数が多すぎます");
 			if( rp ) rp->grp='?' ,strcpy(rp->msg,"転送が多すぎます");
 			goto fin;
 		}
-		rsp = HTTPGetContentDecode( rsp ,newurl? newurl :url0 );
 		// HTTP/1.x 200 OK
 		if( rsp->bytes >12 && rsp->buf[8]==' ' ){
 			switch( rsp->buf[9] ){	// 応答コードテキスト("200 OK"など)
@@ -3374,9 +3407,8 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				if( rsp->ContentType==TYPE_HTML ){
 					// <meta http-equiv="refresh" content="0;URL=新URL"> 方式の転送。時事ドットコムや@ITの
 					// 記事、他でもしばしば使われている。
-					UCHAR* body ,*meta;
-					rsp = HTTPGetHtmlToUTF8( rsp ,newurl? newurl :url0 );
-					body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
+					UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊だがanalyze()には関係ないので戻さない
+					UCHAR* meta;
 					while( meta = stristr(body,"<meta ") ){
 						UCHAR* endtag = strchr(meta,'>');
 						if( endtag ){
@@ -3706,7 +3738,6 @@ unsigned __stdcall poker( void* tp )
 // TODO:http://bootstrap3.cyberlab.info/で一度だけ無限ループ発生？メインスレッド
 // の無限ループでないことは確定なくらいで、無限ループしてたワーカースレッドが何を
 // していたのか、どこで無限ループしたのか・・もはや不明。再現しない。
-// TODO:http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
 // TODO:npmjsのファビコン/static/misc/favicon.icoが謎の挙動をする。
 // サイトURL:https://www.npmjs.com/package/st
 // ・Chromeでサイトを表示したタブに出る画像は16x16の[n]画像だが、
@@ -3769,7 +3800,6 @@ unsigned __stdcall analyze( void* tp )
 		if( *ctx->pAbort ) goto fin;
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
-			rsp = HTTPGetHtmlToUTF8( rsp ,ctx->url );
 			// タイトル取得
 			begin = stristr(rsp->body,"<title");
 			if( begin ){
@@ -8715,35 +8745,35 @@ HWND FindConflictWindow( void )
 // http://sgsoftware.blog.fc2.com/blog-entry-1045.html
 int CALLBACK SHBrowseForFolderProc( HWND hwnd ,UINT msg ,LPARAM param ,LPARAM data)
 {
-    if( msg==BFFM_INITIALIZED ){
+	if( msg==BFFM_INITIALIZED ){
 		// ダイアログ表示後
 		// 初期選択フォルダ設定
-        SendMessage( hwnd ,BFFM_SETSELECTION ,(WPARAM)TRUE ,data );
+		SendMessage( hwnd ,BFFM_SETSELECTION ,(WPARAM)TRUE ,data );
 		// MoveWindow等でウィンドウサイズを変えたりできるが、一度サイズ変えたら残ってるようなのでよし。
 		// 外側だけ変えてもダメっぽく面倒そうだし。(http://www31.ocn.ne.jp/~heropa/vb0403.htm)
-    }
-    return 0;
+	}
+	return 0;
 }
 void DocumentRootSelect( void )
 {
 	BOOL		ok = FALSE;
-    WCHAR		folder[MAX_PATH];
-    BROWSEINFOW	binfo;
-    ITEMIDLIST*	idlist;
+	WCHAR		folder[MAX_PATH];
+	BROWSEINFOW	binfo;
+	ITEMIDLIST*	idlist;
 
 	GetModuleFileNameW( NULL ,folder ,MAX_PATH );
 	PathRemoveFileSpec( folder );
 
-    binfo.hwndOwner		= MainForm;
-    binfo.pidlRoot		= NULL;
-    binfo.pszDisplayName= folder;
-    binfo.lpszTitle		= L"rootフォルダがありません。別のフォルダをドキュメントルートにする場合は、フォルダを選択して OK をクリックしてください。";
-    binfo.ulFlags		= BIF_RETURNONLYFSDIRS |BIF_NEWDIALOGSTYLE;
-    binfo.lpfn			= &SHBrowseForFolderProc;						// コールバック関数
-    binfo.lParam		= (LPARAM)folder;								// コールバックに渡す引数
-    binfo.iImage		= (int)NULL;
+	binfo.hwndOwner		= MainForm;
+	binfo.pidlRoot		= NULL;
+	binfo.pszDisplayName= folder;
+	binfo.lpszTitle		= L"rootフォルダがありません。別のフォルダをドキュメントルートにする場合は、フォルダを選択して OK をクリックしてください。";
+	binfo.ulFlags		= BIF_RETURNONLYFSDIRS |BIF_NEWDIALOGSTYLE;
+	binfo.lpfn			= &SHBrowseForFolderProc;						// コールバック関数
+	binfo.lParam		= (LPARAM)folder;								// コールバックに渡す引数
+	binfo.iImage		= (int)NULL;
 
-    idlist = SHBrowseForFolderW( &binfo );
+	idlist = SHBrowseForFolderW( &binfo );
 	if( idlist ){
 		if( SHGetPathFromIDListW( idlist ,folder ) ){					// ITEMIDLISTからパスを得る
 			WCHAR* root = wcsdup( folder );
