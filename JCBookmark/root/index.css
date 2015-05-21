@@ -204,10 +204,10 @@ body {
 #option button:active {
 	background:#fdc;
 }
-#page_title {
+#pageTitle {
 	width:200px;
 }
-#panel_width, #column_count, #font_size, #panel_marginV, #panel_marginH, #icon_size {
+#panelWidth, #columnCount, #fontSize, #panelMarginV, #panelMarginH, #iconSize {
 	width:60px;
 }
 #contextmenu {

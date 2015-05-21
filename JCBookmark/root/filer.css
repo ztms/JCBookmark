@@ -63,24 +63,56 @@ body {
 	display:none;
 	position:absolute;
 	background:#eee;
-	border-left:1px solid #aaa;
-	border-right:1px solid #aaa;
-	border-bottom:1px solid #aaa;
+	border:1px solid #777;
+	border-top:none;
 	border-radius:0 0 3px 3px;
-	box-shadow:0 3px 4px #555;
-	padding:5px;
-	min-width:137px;
-	line-height:15px;
+	box-shadow:0 3px 3px #777;
 	color:#333;
+}
+#findopt hr {
+	border-top:1px solid #999;
+	border-bottom:1px solid #fff;
+	margin:3px 0 3px 0;
 }
 #findopt label {
 	letter-spacing:1px;
-	padding:5px;
+	padding:0 7px 0 5px;
+	font-size:110%;
+	display:inline-block;
+}
+#findopt label:hover {
+	background:#fff;
+}
+#findopt > div {
+	width:100%;
+	text-align:center;
 }
 #fregex {
 	vertical-align:-3px;
 	width:15px;height:15px;
-	margin:0;
+	margin:5px 0 0 7px;
+}
+#new100, #old100 {
+	width:47%;
+	margin:5px 0 3px 0;
+	border:1px solid #bbb;
+	border-radius:3px;
+	background:#e5e5e5;
+	color:#666;
+	font-weight:bold;
+}
+#new100:hover, #old100:hover {
+	border-color:#999;
+	background:#fff;
+}
+/* TODO:なぜかFirefoxでactive効かない(Chrome/IE/Operaは効く) */
+#new100:active, #old100:active {
+	border-color:#da7;
+	background:#fff5f0;
+	color:#987;
+}
+#new100.disable, #old100.disable {
+	color:#ccc;
 }
 /* 変更保存リンクバー */
 #progress, #modified {
@@ -116,16 +148,18 @@ body {
 	background:#fff399;
 }
 /* フォルダ欄、アイテム欄 */
-#folderbox, #border, #itembox {
+#folderbox {
 	float:left;
+	overflow:auto;
 }
-#folderbox, #itembox {
+#itembox {
+	position:relative;
 	overflow:auto;
 }
 /* ボーダー */
 #border {
+	position:absolute;
 	width:5px;
-	height:620px;
 	border-left:1px solid #777;
 	border-right:1px solid #777;
 	background:#eee;
@@ -144,6 +178,7 @@ body {
 }
 /* アイテムヘッダ */
 #itemhead {
+	position:relative;
 	height:19px;
 	background:#eee;
 	border-bottom:1px solid #bbb;
@@ -156,7 +191,9 @@ body {
 }
 #itemhead .title {
 	color:#888;
-	text-indent:7px;
+}
+#itemhead .title i {
+	margin-left:7px; /* ie7で.titleのtext-indentがwidthと連動してしまい幅が崩れるためこのスペーサー導入 */
 }
 #itemhead .url,
 #itemhead .misc,
@@ -302,7 +339,8 @@ body {
 }
 /* フォルダツリー,アイテム欄余白 */
 .spacer {
-	min-height:32px;
+	min-height:48px;
+	border-top:4px solid transparent;
 }
 .clear {
 	clear:both;
@@ -483,7 +521,7 @@ body {
 	color:#000;
 	padding:3px 0 3px 9px;
 	font-size:13px;
-	line-height:17px;
+	line-height:15px;
 }
 #contextmenu a:hover {
 	color:#fff;
@@ -497,7 +535,7 @@ body {
 	width:16px;
 	height:16px;
 	margin:0 8px 0 0;
-	vertical-align:top;
+	vertical-align:-3px;
 	display:inline-block;
 }
 #contextmenu hr {
@@ -511,6 +549,10 @@ body {
 	line-height:1.5;
 	padding:20px;
 	white-space:normal;
+}
+#dialog .msg {
+	white-space:normal;
+	min-height:30px;
 }
 #dialog ul {
 	padding-left:20px;
@@ -560,6 +602,7 @@ body {
 }
 /* リンク切れ調査 */
 #deadinfo {
+	position:relative;
 	background:#ffa;
 	border-bottom:1px solid #bbb;
 	padding:1px 0 1px 0;

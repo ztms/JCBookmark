@@ -16,35 +16,38 @@ $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
 });
-// ツールチップ
+// jQueryツールチップ
 $.fn.tooltip = function(){
-	$(this).hover(function(){
-		var $this = $(this);
-		var txt = $this.attr('data-tip');
-		if( txt.length ){
-			var $tip = $('#tooltip');
-			var $horn1 = $tip.children('b');
-			var $horn2 = $tip.children('i');
-			var ofTip = $this.offset();
-			var ofHorn1 = { left:ofTip.left };
-			$tip.children('div').text( txt );
-			// 下に表示
-			ofTip.left += $this.outerWidth() / 2 - $tip.outerWidth() / 2;
-			ofTip.top += $this.outerHeight();
-			if( ofTip.left <0 ) ofTip.left = 0;
-			else{
-                var w = ofTip.left + $tip.outerWidth() - $(win).width();
-                if( w >0 ) ofTip.left -= w;
-            }
-			ofHorn1.left = ofHorn1.left - ofTip.left + $this.outerWidth() / 2 - $horn1.outerWidth() / 2;
-			ofHorn1.top = - $horn1.outerHeight() / 2;
-			$horn1.css({ left:ofHorn1.left ,top:ofHorn1.top });
-			$horn2.css({ left:ofHorn1.left + 2 ,top:ofHorn1.top + 4 });
-			$tip.css({ left:ofTip.left ,top:ofTip.top ,'padding-top':$horn2.outerHeight() / 2 - 3 }).show();
-		}
-	},function(){
-		$('#tooltip').hide();
-	});
+    return this.each(function(){
+	    $(this).hover(function(){
+		    var $this = $(this);
+		    var txt = $this.attr('data-tip');
+		    if( txt.length ){
+			    var $tip = $('#tooltip');
+			    var $horn1 = $tip.children('b');
+			    var $horn2 = $tip.children('i');
+			    var ofTip = $this.offset();
+			    var ofHorn1 = { left:ofTip.left };
+			    $tip.children('div').text( txt );
+			    // 下に表示
+			    ofTip.left += $this.outerWidth() / 2 - $tip.outerWidth() / 2;
+			    ofTip.top += $this.outerHeight();
+			    if( ofTip.left <0 ) ofTip.left = 0;
+			    else{
+				    var w = ofTip.left + $tip.outerWidth() - $(win).width();
+				    if( w >0 ) ofTip.left -= w;
+			    }
+			    ofHorn1.left = ofHorn1.left - ofTip.left + $this.outerWidth() / 2 - $horn1.outerWidth() / 2;
+			    ofHorn1.top = - $horn1.outerHeight() / 2;
+                if( IE && IE<8 ) ofHorn1.top -= 18; // IE7用詳細不明
+			    $horn1.css({ left:ofHorn1.left ,top:ofHorn1.top });
+			    $horn2.css({ left:ofHorn1.left + 2 ,top:ofHorn1.top + 4 });
+			    $tip.css({ left:ofTip.left ,top:ofTip.top ,'padding-top':$horn2.outerHeight() / 2 - 3 }).show();
+		    }
+	    },function(){
+		    $('#tooltip').hide();
+	    });
+    });
 };
 var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
@@ -52,6 +55,7 @@ var selectFolder = null;		// 選択フォルダ
 var selectItemLast = null;		// 最後に単選択(通常クリックおよびCtrl+クリック)したアイテム
 var draggie = null;				// ドラッグしている要素
 var dragItem = {};				// 複数選択ドラッグ情報
+var busyLoopCount = 10;			// ビジーループ回数
 var tree = {
 	// ルートノード
 	root:null
@@ -68,8 +72,9 @@ var tree = {
 					$('#progress').hide();
 					$('#modified').show();
 				}
-				$(doc.body).css('padding-top',22);
-				resizeV(22);
+				var h = $('#modified').outerHeight();
+				$(doc.body).css('padding-top',h);
+				resizeV( h );
 			}
 			tree._modified = on;
 			return tree;
@@ -114,7 +119,7 @@ var tree = {
 				return node;
 			}
 			if( node.child ){
-				for( var i=node.child.length-1; i>=0; i-- ){
+				for( var i=node.child.length; i--; ){
 					var found = callee( node.child[i] );
 					if( found ) return found;
 				}
@@ -312,7 +317,7 @@ var tree = {
 		if( oStr.call(dst)==='[object String]' ) dst = tree.node( dst );
 		if( dst && dst.child ){
 			// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-			for( var i=ids.length-1; i>=0; i-- ){
+			for( var i=ids.length; i--; ){
 				if( ids[i]==dst.id || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dst) )
 					ids.splice(i,1);
 			}
@@ -342,7 +347,7 @@ var tree = {
 					}
 					else{
 						// 先頭に
-						for( var i=clipboard.length-1; i>=0; i-- ) dst.child.unshift( clipboard[i] );
+						for( var i=clipboard.length; i--; ) dst.child.unshift( clipboard[i] );
 					}
 					tree.modified(true);
 				}
@@ -353,7 +358,7 @@ var tree = {
 	// ids:ノードID配列、dstid:ノードID、isAfter:boolean
 	,moveSibling:function( ids, dstid, isAfter ){
 		// 移動元ノード検査：移動元と移動先が同じ、移動不可ノード、移動元の子孫に移動先が存在したら除外
-		for( var i=ids.length-1; i>=0; i-- ){
+		for( var i=ids.length; i--; ){
 			if( ids[i]==dstid || !tree.movable(ids[i]) || tree.nodeAhasB(ids[i],dstid) )
 				ids.splice(i,1);
 		}
@@ -392,12 +397,12 @@ var tree = {
 								}else{
 									// (末尾ノード以外の)後に挿入＝次ノードの前に挿入(逆順に１つずつ)
 									i++;
-									for( var j=movenodes.length-1; j>=0; j-- )
+									for( var j=movenodes.length; j--; )
 										dstParent.child.splice(i,0, movenodes[j]);
 								}
 							}else{
 								// 前に挿入(逆順に１つずつ)
-								for( var j=movenodes.length-1; j>=0; j-- )
+								for( var j=movenodes.length; j--; )
 									dstParent.child.splice(i,0, movenodes[j]);
 							}
 							break;
@@ -440,8 +445,8 @@ var option = {
 };
 // ブックマークデータ取得
 (function(){
-	var option_ok = false;
-	var tree_ok = false;
+	var optionOK = false;
+	var treeOK = false;
 	option.load(function(){
 		// 準備
 		var fontSize = (option.font.css()==='gothic.css')? 13 : 12;
@@ -450,22 +455,72 @@ var option = {
 		resize.call( doc );	// 初期化のためwindowオブジェクトでない引数とりあえずdocument渡しておく
 		$('body').css('visibility','visible');
 		// ツリー描画
-		option_ok=true; if( tree_ok ) folderTree({ click0:true });
-		$('#home, #newfolder, #newitem, #find, #selectall, #delete, #deadlink, #logout').tooltip();
+		optionOK = true;
+		if( treeOK ) _folderTree();
+		$('#home, #newfolder, #newitem, #selectall, #delete, #deadlink, #logout, #new100, #old100, #findopt label').tooltip();
 	});
-	tree.load(function(){ tree_ok=true; if( option_ok ) folderTree({ click0:true }); });
-	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
+	tree.load(function(){
+		treeOK = true;
+		if( optionOK ) _folderTree();
+	});
+	$.ajax({
+		url:':clipboard.txt'
+		,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; }
+	});
+	function _folderTree(){
+		// フォルダツリーやアイテム欄生成などで、反応速度が遅れない程度にDOM生成ビジーループの実行回数を
+		// 制限してsetTimeoutループにしているが、遅いマシンならビジーループ回数を少なく、速いマシンなら
+		// ビジーループ回数を多く、自律的に調節したい。この一発目のfolderTree()の実行時間を見て、以降の
+		// ループ回数を決める。
+		var time = (new Date()).getTime();
+		var count = folderTree({ click0:true });
+		time = (new Date()).getTime() - time;
+		// きちんと測定する処理を走らせるのは時間かかるので行わず、今の自PCでChromeの時の実測結果から、
+		// 適当に問題ないだろう範囲でループ回数を増減させる程度にしておく。
+		// count は実際に生成フォルダの数で、フォルダ数が多ければ busyLoopCount と同じだが、フォルダ数が
+		// 少ない新規インストール時などはcount=4になる。実測しただいたいの平均time(ms)は以下。
+		//   count=  4, time= 70ms
+		//   count= 10, time= 80ms
+		//   count= 20, time=120ms
+		//   count= 50, time=250ms
+		//   count=100, time=400ms
+		// folderTree()一発目ではsetTimeoutループ以外の処理も含まれておりその時間をX、1フォルダ生成の
+		// 時間をYとすると、次の式になる。
+		//   ① X + Y * 4 = 70
+		//   ② X + Y * 10 = 80
+		//   ③ X + Y * 20 = 120
+		//   ④ X + Y * 50 = 250
+		//   ⑤ X + Y * 100 = 400
+		// 自PCではなんとなく busyLoopCount=20 くらいでいいかなと思っていたので、③を基準でいいかな？
+		// X = 50, Y=3.5 くらい。この値と、取得した time/count を使って busyLoopCount を調節する。
+		// たとえば count=10, time=30 を取得したとすると、自PCでcount=10は、
+		//   50 + 3.5 * 10 = 85
+		// time=85msになる。取得したtime=30msは自PCより速いためループ回数を基準の20よりも増やす。
+		// どれくらい増やすかは割合で、
+		//   20 * 85 / 30 = 56.666…
+		// busyLoopCountは 56 か 57 あたりに。
+		if( IE && IE<8 ){
+			// IE8はhttp/https混在サイトでダイアログ「セキュリティで保護されたWebページコンテンツのみ
+			// 表示しますか？」が出て、OKをクリックするまでの時間もtimeに含まれてちゃんと測定できない
+			// ので規定値のまま。
+		}
+		else{
+			busyLoopCount = Math.round( 20 * (50 + 3.5 * count) / time );
+			if( busyLoopCount <10 ) busyLoopCount = 10;
+			else if( busyLoopCount >100 ) busyLoopCount = 100;
+		}
+	}
 })();
 // CSSルール追加
 // http://d.hatena.ne.jp/ofk/20090716/1247719727 +$.browserを使わない +IE7fix
 $.css.add = function( rule ,index ){
 	var sheet = $.css.sheet;
 	if( !sheet ){
-		if('createStyleSheet' in document) sheet = document.createStyleSheet();
+		if('createStyleSheet' in doc) sheet = doc.createStyleSheet();
 		else{
-			sheet = document.createElement('style');
-			sheet.appendChild( document.createTextNode('') );
-			document.documentElement.appendChild( sheet );
+			sheet = doc.createElement('style');
+			sheet.appendChild( doc.createTextNode('') );
+			doc.documentElement.appendChild( sheet );
 			sheet = sheet.sheet;
 		}
 		$.css.sheet = sheet;
@@ -491,10 +546,10 @@ $.css.add = function( rule ,index ){
 };
 // フォルダツリー生成
 // folderTree({
-//   click0	  : bool 最初のフォルダをクリックするかどうか
-//   clickID  : string クリックするフォルダノードID文字列
-//   clickDone: function クリック後に実行する関数(クリックイベントに引数として渡る)
-//   done	  : function フォルダツリー生成後に実行する関数
+//   click0		:bool		最初のフォルダをクリックするかどうか
+//   clickID	:string		クリックするフォルダノードID文字列
+//   itemOption	:object		フォルダクリック後に実行されるitemList()の第2引数
+//   done		:function	フォルダツリー生成後に実行する関数
 // });
 // TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
 // TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
@@ -508,7 +563,7 @@ var folderTree = function(){
 		// setTimeoutで１フォルダずつDOM生成するためまずフォルダ情報配列をつくり、
 		var folderList = [];
 		function hasFolder( child ){
-			for( var i=child.length-1; i>=0; i-- ) if( child[i].child ) return true;
+			for( var i=child.length; i--; ) if( child[i].child ) return true;
 			return false;
 		}
 		(function toplist( node, depth ){
@@ -557,7 +612,7 @@ var folderTree = function(){
 			// 現在のサブツリー開閉状態を取得
 			var subs = $folders.find('.sub'); //$folders[0].querySelectorAll('.sub');
 			var isClose = {};
-			for( var i=subs.length-1; i>=0; i-- ){
+			for( var i=subs.length; i--; ){
 				isClose[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
 			}
 			return function( node ){
@@ -580,11 +635,11 @@ var folderTree = function(){
 		var hide = false;	// サブツリー非表示フラグ
 		var hideDepth = 0;	// サブツリー非表示階層
 		var box = doc.getElementById('folderbox');
+		var element = null;
 		var scrollLeft = box.scrollLeft;
 		var scrollTop = box.scrollTop;
-		$folders.empty();
-		(function callee(){
-			var count=10;
+		var lister = function(){
+			var count = busyLoopCount;
 			while( index < length && count>0 ){
 				// DOM生成
 				var node = folderList[index];
@@ -606,59 +661,69 @@ var folderTree = function(){
 					}
 				}
 				if( hide && hideDepth < node.depth ) $node.hide();
-				// アイテム欄表示オプション
-				if( opt.click0 ){
-					if( index==0 ) $node.click();
-				}
-				else if( opt.clickID ){
-					if( node.id==opt.clickID ) $node.trigger('click',opt.clickDone);
+				// 次
+				index++; count--;
+			}
+			// フォルダ生成ループ1回終了
+			if( !element ){
+				if( opt.clickID ){
+					// 指定フォルダクリック
+					element = doc.getElementById('folder'+ opt.clickID );
+					if( element ) $(element).trigger('click',opt.itemOption);
 				}
 				else if( opt.selectID ){
-					if( node.id==opt.selectID ){
+					// 指定フォルダ選択
+					element = doc.getElementById('folder'+ opt.selectID );
+					if( element ){
+						var $node = $(element).addClass('select');
 						selectFolder = $node[0];
-						$node.addClass('select');
 						if( opt.inactive ) $node.addClass('inactive');
 						else select = selectFolder;
 					}
 				}
-				// 次
-				index++; count--;
 			}
-			if( index < length ) timer = setTimeout(callee,0);
+			if( index < length ) timer = setTimeout(lister,0);
 			else{
 				$folder(false);
 				box.scrollLeft = scrollLeft;
 				box.scrollTop = scrollTop;
 				if( opt.done ) opt.done();
 			}
-		})();
+			return index;
+		};
+		$folders.empty();
+		var count = lister();
+		// 先頭フォルダクリック
+		if( opt.click0 ) $('#folder'+ folderList[0].id ).click();
+		return count;
 	};
 }();
 // アイテム欄作成
-// itemList('?')				アイテム欄の種類を返却('child'|'deads'|'finds')
-// itemList('?timer')			アイテム欄用タイマが生きてる(処理中)かどうか
-// itemList(false)				処理中止
-// itemList( node [,done])		フォルダnodeのchildをアイテム欄に表示。完了後にdone実行。
-// itemList('disappear',folder)	アイテム欄内フォルダ展開やめ
-// itemList('appear',folder)	アイテム欄内フォルダ展開
-// itemList('finds')			検索実行
-// itemList('poke')				リンク切れ調査(アイテム欄の選択ブックマークURLのみ)
-// itemList('deads','folder')	リンク切れ調査(アイテム欄の選択ブックマークとフォルダ内)
-// itemList('deads', node )		リンク切れ調査(フォルダnode内ぜんぶ)
+// itemList('?')							アイテム欄の種類を返却('child'|'deads'|'finds')
+// itemList('deadsRunning?')				フォルダリンク切れ調査実行中かどうか
+// itemList(false)							処理中止
+// itemList( node ,option )					フォルダnodeのchildをアイテム欄に表示。
+// itemList('disappear',folderNode )		アイテム欄内フォルダ展開やめ
+// itemList('appear',folderNode )			アイテム欄内フォルダ展開
+// itemList('appear',folderNode ,option )	アイテム欄内フォルダ展開(アイテム欄スクロール)
+// itemList('finds')						検索実行
+// itemList('poke')							リンク切れ調査(アイテム欄の選択ブックマークURLのみ)
+// itemList('deads','folder')				リンク切れ調査(アイテム欄の選択ブックマークとフォルダ内)
+// itemList('deads', node )					リンク切れ調査(フォルダnode内ぜんぶ)
 var itemList = function(){
 	var $head = $('#itemhead');
 	var $head3 = $head.children('.misc');	// 可変項目ヘッダ(アイコン/場所/調査結果)
-	var $itemAppend = null;					// アイテム１つ生成関数
+	var $itemAdds = [];						// アイテム１つ生成関数とタイマー{func,timer}の配列
 	var kind = 'child';						// アイテム欄の種類
 	var timer = null;						// setTimeoutID
 	var ajaxer = null;						// ajax発行関数
 	var $ajax = null;						// ajaxオブジェクト
 	var queue = [];							// ajax待ちノード配列キュー
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
-	var appear = {};						// アイテム欄内フォルダ展開ノードID保持
+	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持
 	$('#finding').offset($('#keyword').offset()).progressbar();
 	// 中断終了処理
-	function finalize( arg0 ){
+	function finalize( arg0 ,arg1 ){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
 		// ajax中止:アイテムリンク切れ調査は止めず・フォルダリンク切れ調査は止める
@@ -672,8 +737,33 @@ var itemList = function(){
 		$('#finding').progressbar('value',0);
 		$('#findstop').hide();
 		$('#find').show();
-		// 解放
-		if( $itemAppend ) $itemAppend(false) ,$itemAppend=null;
+		// アイテム生成中断
+		if( kind==='child' ){
+			// アイテム欄内でフォルダ開く時は継続中の展開処理は止めない(並列実行)
+			if( arg0==='appear' ) return;
+			// アイテム欄内でフォルダ閉じる時
+			if( arg0==='disappear' ){
+				var node = tree.node( arg1.id.slice(4) );
+				// 実行中のアイテム生成処理を調べて
+				for( var i=$itemAdds.length; i--; ){
+					var folderNode = $itemAdds[i].func('?');
+					if( folderNode ){
+						// このフォルダと配下フォルダの展開タイマーだけ止める
+						if( folderNode===arg1 || tree.nodeAhasB( node ,folderNode.id.slice(4) ) ){
+							clearTimeout( $itemAdds[i].timer );
+							$itemAdds[i].func(false); // 解放
+							$itemAdds.splice(i,1);
+						}
+					}
+				}
+				return;
+			}
+		}
+		for( var i=$itemAdds.length; i--; ){
+			clearTimeout( $itemAdds[i].timer );
+			$itemAdds[i].func(false); // 解放
+		}
+		$itemAdds.length = 0;
 	}
 	// リンク切れ調査URL並列数の調節(ネット回線が速いほど並列数を多く)
 	// ・並列数は少なめから開始
@@ -691,7 +781,7 @@ var itemList = function(){
 	var timelog = [];	// 時間記録(並列数の調節用)
 	function paraAdjust( st ,time ){
 		var recvTimeout = false;
-		for( var i=st.length-1; i>=0; i-- ){
+		for( var i=st.length; i--; ){
 			switch( st[i].grp ){
 			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
 			case '?':
@@ -710,7 +800,7 @@ var itemList = function(){
 				while( timelog.length >20 ) timelog.shift();
 				// 平均時間
 				var ave=0.0;
-				for( var i=timelog.length-1; i>=0; i-- ) ave += timelog[i];
+				for( var i=timelog.length; i--; ) ave += timelog[i];
 				ave /= timelog.length;
 				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
 				// 新しい並列数
@@ -735,18 +825,22 @@ var itemList = function(){
 		case 'O': return 'ok.png';		// 正常
 		case 'E': return 'delete.png';	// エラー
 		case 'D': return 'skull.png';	// 死亡
-		case '!': return 'warn.png';	// 注意
+		case '!': return 'warn20.png';	// 注意
 		}
-		return 'question.png';			// 不明
+		return 'ques20.png';			// 不明
 	}
-	return function( arg0 ,arg1 ){
+	return function( arg0 ,arg1 ,arg2 ){
 		if( arg0==='?' ) return kind;
-		if( arg0==='?timer' ) return timer;
-		finalize( arg0 );
+		if( arg0==='deadsRunning?' ) return (kind==='deads' && timer) ? true : false;
+		finalize( arg0 ,arg1 );
 		if( arg0===false ) return;
 		if( arg0==='finds' ){
 			// 検索
-			if( findopt.regex() ){
+			if( arg1==='new100' || arg1==='old100' ){
+				// 新旧100
+				$('#'+arg1).addClass('disable');
+			}
+			else if( findopt.regex() ){
 				// 正規表現
 				var pattern = $('#keyword').val();
 				if( pattern.length<=0 ) return;
@@ -766,7 +860,7 @@ var itemList = function(){
 			else{
 				// 通常
 				var words = $('#keyword').val().split(/[ 　]+/);
-				for( var i=words.length-1; i>=0; i-- ){
+				for( var i=words.length; i--; ){
 					if( words[i].length<=0 ) words.splice(i,1);
 					else words[i] = words[i].myNormal();
 				}
@@ -774,7 +868,7 @@ var itemList = function(){
 				String.prototype.myFound = function(){
 					// AND検索(TODO:OR検索・大小文字区別対応する？)
 					var str = this.myNormal();
-					for( var i=words.length-1; i>=0; i-- ){
+					for( var i=words.length; i--; ){
 						if( str.indexOf(words[i])<0 ) return false;
 					}
 					return true;
@@ -783,11 +877,18 @@ var itemList = function(){
 			kind = 'finds';
 			$head3.text('場所 / 調査結果');
 			$('#deadinfo').trigger('dying').remove();
-			$('#itembox').children('.spacer').height( 32 ).html('<img src=wait.gif>'); // アイテム欄余白32px
+			$('#itembox').children('.spacer').height( 48 ).html('<img src=wait.gif>'); // アイテム欄余白48px
 			$('#find').hide();
-			$('#findstop').off().click(function(){ finalize(); }).show();
+			$('#findstop').show().off('click').click(function(){
+				// 中止ボタン
+				finalize();
+				// 新旧100
+				if( arg1==='new100' || arg1==='old100' ) $('#'+arg1).removeClass('disable');
+			});
 			var items = doc.getElementById('items');
-			$itemAppend = function(){
+			var $itemAdd = { timer:null };
+			$itemAdds.push( $itemAdd );
+			$itemAdd.func = function(){
 				var $item = $('<div class=item tabindex=0></div>')
 					.append('<img class=icon>')
 					.append($('<span class=title></span>').width( $head.children('.title').width() -25 ))
@@ -804,7 +905,7 @@ var itemList = function(){
 					if( node.child ){
 						var $e = $item.clone(true).addClass('folder').attr('id','item'+node.id);
 						$e.children('.icon').attr('src','folder.png');
-						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
+						for( var smry='', i=node.child.length; i--; ) smry+='.';
 						$e.children('.url').text( smry );
 						$e.children('.place').text( place );
 					}
@@ -828,12 +929,12 @@ var itemList = function(){
 					items.appendChild( $e[0] );
 				};
 			}();
-			// フォルダ配列生成・ノード総数カウント
-			// ちょっともたつくのでsetTimeout実行して中止ボタンをすぐに表示する。
+			// フォルダ配列生成・ノード総数カウントして検索実行
+			// ちょっともたつくのでsetTimeout実行して中止ボタンをすぐに表示する
 			var folders = [{ node:tree.top(), place:'' }];	// フォルダ配列
 			var nodeTotal = 0;								// URL＋フォルダ数
 			timer = setTimeout(function(){
-				function counter( child, place ){
+				var counter = function( child, place ){
 					nodeTotal += child.length;
 					for( var i=0, n=child.length; i<n; i++ ){
 						if( child[i].child ){
@@ -842,7 +943,7 @@ var itemList = function(){
 							nodeTotal--;
 						}
 					}
-				}
+				};
 				(function( child ){
 					nodeTotal += child.length;
 					for( var i=0, n=child.length; i<n; i++ ){
@@ -856,22 +957,23 @@ var itemList = function(){
 				folders.push({ node:tree.trash(), place:'' });
 				counter( tree.trash().child, tree.trash().title );
 				nodeTotal += folders.length;
+				// 検索実行もいちおうsetTimeout
 				timer = setTimeout(findexe,0);
 			},0);
+			// 検索実行
 			var findexe = function(){
-				// 検索実行
 				items.innerHTML = '';
 				var $finding = $('#finding');
 				var now = (new Date()).getTime();
 				var index = 0;
 				var total = 0;
-				(function finder(){
+				var finder = function(){
 					var limit = total +21; // 20ノード以上ずつ
 					while( index < folders.length && total<limit ){
 						var folder = folders[index];
 						// フォルダ名
 						if( folder.node.title.myFound() ){
-							$itemAppend( folder.node, now, folder.place );
+							$itemAdd.func( folder.node, now, folder.place );
 						}
 						total++;
 						// ブックマークタイトルとURL
@@ -880,7 +982,7 @@ var itemList = function(){
 						for( var i=0, n=child.length; i<n; i++ ){
 							if( child[i].child ) continue;
 							if( (child[i].title +child[i].url).myFound() ){
-								$itemAppend( child[i], now, place );
+								$itemAdd.func( child[i], now, place );
 							}
 							total++;
 						}
@@ -890,11 +992,47 @@ var itemList = function(){
 					$finding.progressbar('value',total*100/nodeTotal);
 					// 次
 					if( index < folders.length ) timer = setTimeout(finder,0);
-					else{
-						finalize();
-						if( items.children.length<=0 ) $('#itembox').children('.spacer').text('見つかりません');
+					else finish();
+				};
+				// 新旧100
+				// TODO:ビジーループ型なので進捗バー処理なし(setTimeout型にするのが面倒)
+				var sortUrlTop = function( max ,fromRecent ){
+					var urls = [];
+					for( var i=folders.length; i--; ){
+						var folder = folders[i];
+						var place = (folder.place.length? folder.place +' > ' :'') +folder.node.title;
+						var child = folder.node.child;
+						for( var j=child.length; j--; ){
+							if( child[j].child ) continue;
+							var date = child[j].dateAdded ||0;
+							for( var k=urls.length; k--; ){
+								if( fromRecent ){
+									if( (urls[k].node.dateAdded||0) >=date ) break;
+								}
+								else{
+									if( (urls[k].node.dateAdded||0) <=date ) break;
+								}
+							}
+							if( ++k < max ){
+								urls.splice( k ,0 ,{ node:child[j] ,place:place });
+								if( urls.length >= max ) urls.length = max;
+							}
+						}
 					}
-				})();
+					for( var i=0 ,n=urls.length; i<n; i++ ){
+						$itemAdd.func( urls[i].node, now, urls[i].place );
+					}
+					$('#'+arg1).removeClass('disable');
+					finish();
+				};
+				// 検索終了
+				var finish = function(){
+					if( items.children.length<=0 ) $('#itembox').children('.spacer').text('見つかりません');
+					finalize();
+				};
+				if( arg1==='new100' ) return sortUrlTop( 100 ,true );
+				if( arg1==='old100' ) return sortUrlTop( 100 );
+				finder();
 			};
 		}
 		else if( arg0==='poke' ){
@@ -930,7 +1068,7 @@ var itemList = function(){
 						var node = tree.node( queue.shift() );
 						if( node ){
 							nodes.push( node );
-							reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
+							reqBody += ':'+node.url+'\r\n';
 						}
 					}
 					if( reqBody ){
@@ -993,8 +1131,8 @@ var itemList = function(){
 			var $okbox = $('<span><img class=icon src=ok.png>正常</span>').append( $ok );
 			var $errbox = $('<span><img class=icon src=delete.png>エラー</span>').append( $err );
 			var $deadbox = $('<span><img class=icon src=skull.png>リンク切れ</span>').append( $dead );
-			var $warnbox = $('<span><img class=icon src=warn.png>注意</span>').append( $warn );
-			var $unknownbox = $('<span><img class=icon src=question.png>不明</span>').append( $unknown );
+			var $warnbox = $('<span><img class=icon src=warn20.png>注意</span>').append( $warn );
+			var $unknownbox = $('<span><img class=icon src=ques20.png>不明</span>').append( $unknown );
 			var $folderName = $('<span></span>');
 			var $info = $('<div id=deadinfo>リンク切れ調査 <img class=icon src=folder.png></div>')
 				.on('dying',function(){ // 死に際
@@ -1011,9 +1149,10 @@ var itemList = function(){
 				.append( $totalbox ).append( $okbox ).append( $warnbox )
 				.append( $deadbox ).append( $errbox ).append( $unknownbox )
 				.width( $head.width() )
+				.css('left',$head.css('left') )
 				.insertBefore( $head );
 			$('#itembox').height( $('#folderbox').height() -$head.outerHeight() -$info.outerHeight() )
-				.children('.spacer').height( 32 ).html('<img src=wait.gif>'); // アイテム欄余白32px
+				.children('.spacer').height( 48 ).html('<img src=wait.gif>'); // アイテム欄余白48px
 			// ノード配列作成
 			var queuer = function( node ){
 				if( node.url.length <=0 ) return;
@@ -1052,7 +1191,9 @@ var itemList = function(){
 				childer( arg1.child );
 			}
 			// ajax発行
-			$itemAppend = function(){
+			var $itemAdd = { timer:null };
+			$itemAdds.push( $itemAdd );
+			$itemAdd.func = function(){
 				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
 				var $icon = $('<img class=icon>');
 				var $title = $('<span class=title></span>');
@@ -1089,7 +1230,7 @@ var itemList = function(){
 				for( var i=parallel; i>0 && qix < queue.length; i-- ){
 					var node = queue[qix++];
 					nodes.push( node );
-					reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えない)
+					reqBody += ':'+node.url+'\r\n';
 				}
 				if( reqBody ){
 					var start = new Date(); // 測定
@@ -1101,7 +1242,7 @@ var itemList = function(){
 							if( !ajaxer ) return;
 							for( var i=0; i<nodes.length; i++ ){
 								count.err++;
-								$itemAppend( nodes[i] ,'delete.png' ,xhr.status+' '+xhr.statusText );
+								$itemAdd.func( nodes[i] ,'delete.png' ,xhr.status+' '+xhr.statusText );
 							}
 						}
 						,success:function(data){
@@ -1119,7 +1260,7 @@ var itemList = function(){
 								case '!': count.warn++; break;				// 注意
 								default: count.unknown++;					// 不明
 								}
-								$itemAppend( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
+								$itemAdd.func( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
 							}
 							paraAdjust( data ,(new Date()).getTime() - start.getTime() );
 						}
@@ -1130,7 +1271,7 @@ var itemList = function(){
 			ajaxer(true);
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
-			(function waiter(){
+			var waiter = function(){
 				$ok.text( count.ok );
 				$err.text( count.err );
 				$dead.text( count.dead );
@@ -1151,16 +1292,34 @@ var itemList = function(){
 				if( count.unknown==0 ) $unknownbox.remove();
 				$info.find('button').remove();
 				finalize();
-			})();
+			};
+			waiter();
+		}
+		else if( arg0=='disappear' ){
+			// アイテム欄内フォルダ展開やめ
+			var $item = $(arg1);
+			var indent = parseInt($item.children('.title').css('text-indent')||0);
+			$item = $item.next();
+			while( $item.hasClass('item') ){
+				if( indent < parseInt($item.children('.title').css('text-indent')||0) ){
+					var $next = $item.next();
+					$item.remove();
+					$item = $next;
+				}
+				else break;
+			}
+			delete appearIDs[arg1.id.slice(4)];
 		}
 		else{
 			// フォルダ表示
 			kind = 'child';
 			$head3.text('アイコン / 調査結果');
 			$('#deadinfo').trigger('dying').remove();
-			$('#itembox').children('.spacer').height( 32 ); // アイテム欄余白32px
+			var itembox = doc.getElementById('itembox');
 			var items = doc.getElementById('items');
-			$itemAppend = function(){
+			var $itemAdd = { timer:null };
+			$itemAdds.push( $itemAdd );
+			$itemAdd.func = function(){
 				var urlWidth = $head.children('.url').width() -1;
 				var iurlWidth = $head3.width() -1;
 				var $item = $('<div class=item tabindex=0></div>').on('mouseleave',itemMouseLeave);
@@ -1169,9 +1328,12 @@ var itemList = function(){
 				var $url = $('<span class=url></span>').width( urlWidth );
 				var $date = $('<span class=date></span>').width( $head.children('.date').width() -18 );
 				var $br = $('<br class=clear>');
-				var indent0 = 0; // アイテム欄内フォルダ展開階層インデント基底値
+				var indent = 0;		// アイテム欄内フォルダ展開インデント(px)
+				var bgcolor = 0;	// 背景色用カウンタ
 				if( arg0==='appear'){
-					indent0 = parseInt( $(arg1).children('.title').css('text-indent')||0 ) +18; // インデント+18px
+					var $arg1 = $(arg1);
+					indent = parseInt( $arg1.children('.title').css('text-indent')||0 ) +18; // インデント+18px
+					if( !$arg1.hasClass('bgcolor') ) bgcolor++; // 背景色交互になるように
 				}
 				var $folder = $item.clone(true)
 					.addClass('folder')
@@ -1189,19 +1351,17 @@ var itemList = function(){
 					.append( $br );
 				var $stico = $('<img class=icon style="margin-left:0">');
 				var date = new Date();
-				var index = 0;
-				var newitem = function( node, now ,depth ,appear ){
-					var myindent = indent0 + depth * 18; // アイテム欄内フォルダ展開階層インデント18px
+				var newitem = function( node, now ,appear ){
 					if( node.child ){
 						var $e = $folder.clone(true).attr('id','item'+node.id);
-						for( var smry='', i=node.child.length-1; i>=0; i-- ) smry+='.';
+						for( var smry='', i=node.child.length; i--; ) smry+='.';
 						$e.children('.summary').text( smry );
-						$e.children('.appear').css('left',myindent).attr('src',appear ? 'minus.png':'plus.png');
-						$e.children('.icon').css('left',myindent);
+						$e.children('.appear').css('left',indent).attr('src',appear ? 'minus.png':'plus.png');
+						$e.children('.icon').css('left',indent);
 					}
 					else{
 						var $e = $item.clone(true).attr('id','item'+node.id);
-						$e.children('.icon').attr('src', node.icon ||'item.png').css('left',myindent);
+						$e.children('.icon').attr('src', node.icon ||'item.png').css('left',indent);
 						$e.children('.url').text( node.url );
 						var st = results[node.url];
 						if( st ){
@@ -1213,73 +1373,73 @@ var itemList = function(){
 					}
 					date.setTime( node.dateAdded ||0 );
 					$e.children('.date').text( myFmt(date,now) );
-					$e.children('.title').text( node.title ).attr('title',node.title).css('text-indent',myindent);
-					// TODO:アイテム欄内フォルダ展開により色が交互にならないパターンはまあいいかな…
-					if( index++ %2 ) $e.addClass('bgcolor');
+					$e.children('.title').text( node.title ).attr('title',node.title).css('text-indent',indent);
+					// TODO:アイテム欄内フォルダ展開で色が交互にならないパターンはまあいいかな…
+					if( bgcolor++ %2 ) $e.addClass('bgcolor');
 					if( st && st.grp==='D' ) $e.addClass('dead');
 					return $e[0];
 				};
 				return(
 					arg0==='appear' ?
-					function( node ,now ,prevSibling ,depth ,appear ){
+					function( node ,now ,prevSibling ,appear ){
 						// アイテム内フォルダ展開
+						if( node==='?' ) return arg1;
 						if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
-						var item = newitem( node ,now ,depth ,appear );
+						var item = newitem( node ,now ,appear );
 						prevSibling.parentNode.insertBefore( item ,prevSibling.nextSibling );
 						return item;
 					}
-					:function( node ,now ,depth ,appear ){
+					:function( node ,now ,appear ){
 						// アイテム欄新規
+						if( node==='?' ) return null;
 						if( node===false ){ $folder.remove(); $item.remove(); $stico.remove(); return; }
-						items.appendChild( newitem( node ,now ,depth ,appear ) );
+						var item = newitem( node ,now ,appear );
+						items.appendChild( item );
+						return item;
 					}
 				);
 			}();
-			if( arg0==='disappear' ){
-				// アイテム欄内フォルダ展開やめ
-				var $item = $(arg1);
-				var indent = parseInt($item.children('.title').css('text-indent')||0);
-				$item = $item.next();
-				while( $item.hasClass('item') ){
-					if( indent < parseInt($item.children('.title').css('text-indent')||0) ){
-						var $next = $item.next();
-						$item.remove();
-						$item = $next;
-					}
-					else break;
-				}
-				delete appear[arg1.id.slice(4)];
-			}
-			else if( arg0==='appear' ){
+			if( arg0==='appear' ){
 				// アイテム欄内フォルダ展開
 				var nid = arg1.id.slice(4);
-				var node = tree.node( nid );
-				if( node ){
+				var pnode = tree.node( nid );
+				if( pnode ){
 					var prevSibling = arg1;
 					var now = (new Date()).getTime();
-					var child = node.child;
-					var nodeQ = [];
-					var depthQ = [];
-					for( var i=0; i<child.length; i++ ){ nodeQ.push( child[i] ); depthQ.push(0); }
-					(function lister(){
-						var count=10;
-						while( nodeQ.length && count>0 ){
-							var node = nodeQ.shift();
-							var depth = depthQ.shift();
-							if( appear[node.id] ){
-								var child = node.child;
-								for( var i=child.length-1; i>=0; i-- ){
-									nodeQ.unshift( child[i] ); depthQ.unshift( depth +1 );
-								}
-								prevSibling = $itemAppend( node ,now ,prevSibling ,depth ,true );
+					var appearNodes = [];
+					var length = pnode.child.length;
+					var index = 0;
+					var lister = function(){
+						var count = busyLoopCount;
+						while( index < length && count>0 ){
+							var node = pnode.child[index];
+							if( appearIDs[node.id] ){
+								prevSibling = $itemAdd.func( node ,now ,prevSibling ,true );
+								appearNodes.push( prevSibling );
 							}
-							else prevSibling = $itemAppend( node ,now ,prevSibling ,depth );
-							count--;
+							else prevSibling = $itemAdd.func( node ,now ,prevSibling );
+							index++ ,count--;
 						}
-						if( nodeQ.length ) timer = setTimeout(lister,0);
-						else{ $itemAppend(false); spacerHeight(); }
-					})();
-					appear[nid] = true;
+						// 次
+						if( index < length ) $itemAdd.timer = setTimeout(lister,0);
+						else{
+							// 完了
+							$itemAdd.func(false);
+							for( var i=$itemAdds.length; i--; ){
+								if( $itemAdds[i]===$itemAdd ) $itemAdds.splice(i,1);
+							}
+							for( var i=0; i<appearNodes.length; i++ ){
+								itemList('appear',appearNodes[i] ,arg2 );
+							}
+							spacerHeight();
+							if( arg2 ){
+								if( arg2.scrollTop ) itembox.scrollTop = arg2.scrollTop;
+								if( arg2.eachChild ) arg2.eachChild();
+							}
+						}
+					};
+					appearIDs[nid] = true;
+					lister();
 				}
 			}
 			else{
@@ -1287,28 +1447,38 @@ var itemList = function(){
 				items.innerHTML = '';
 				//selectItemClear();
 				var now = (new Date()).getTime();
-				var child = arg0.child;
-				var nodeQ = [];
-				var depthQ = [];
-				for( var i=0; i<child.length; i++ ){ nodeQ.push( child[i] ); depthQ.push(0); }
-				(function lister(){
-					var count=10;
-					while( nodeQ.length && count>0 ){
-						var node = nodeQ.shift();
-						var depth = depthQ.shift();
-						if( appear[node.id] ){
-							var child = node.child;
-							for( var i=child.length-1; i>=0; i-- ){
-								nodeQ.unshift( child[i] ); depthQ.unshift( depth +1 );
-							}
-							$itemAppend( node ,now ,depth ,true );
-						}
-						else $itemAppend( node ,now ,depth );
-						count--;
+				var appearNodes = [];
+				var length = arg0.child.length;
+				var index = 0;
+				var lister = function(){
+					var count = busyLoopCount;
+					while( index < length && count>0 ){
+						var node = arg0.child[index];
+						if( appearIDs[node.id] )
+							appearNodes.push( $itemAdd.func( node ,now ,true ) );
+						else
+							$itemAdd.func( node ,now );
+						index++ ,count--;
 					}
-					if( nodeQ.length ) timer = setTimeout(lister,0);
-					else{ $itemAppend(false); spacerHeight(); if( arg1 ) arg1(); }
-				})();
+					// 次
+					if( index < length ) $itemAdd.timer = setTimeout(lister,0);
+					else{
+						// 完了
+						$itemAdd.func(false);
+						for( var i=$itemAdds.length; i--; ){
+							if( $itemAdds[i]===$itemAdd ) $itemAdds.splice(i,1);
+						}
+						for( var i=0; i<appearNodes.length; i++ ){
+							itemList('appear',appearNodes[i] ,arg1 );
+						}
+						spacerHeight();
+						if( arg1 ){
+							if( arg1.scrollTop ) itembox.scrollTop = arg1.scrollTop;
+							if( arg1.eachChild ) arg1.eachChild();
+						}
+					}
+				};
+				lister();
 			}
 		}
 	};
@@ -1340,8 +1510,11 @@ $(win).on('resize',resize);
 //
 $(doc).on({
 	mousedown:function(ev){
+		for( var e=ev.target; e; e=e.parentNode ){
+			// 右クリックメニュー消さず既定アクション停止
+			if( e.id=='contextmenu' ) return false;
+		}
 		// 右クリックメニュー隠す
-		for( var e=ev.target; e; e=e.parentNode ) if( e.id=='contextmenu' ) return false;
 		$('#contextmenu').hide();
 		if( onContextHide ) onContextHide();
 		// inputタグはフォーカスするためtrue返す
@@ -1378,8 +1551,8 @@ $('#modified').click(function(){ treeSave(); });
 $('#home').click(function(){
 	itemList(false);
 	if( tree.modified() ) Confirm({
-		width:380
-		,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+		width:420
+		,msg:'?変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
 		,yes:function(){ treeSave({ success:home }); }
 		,no:home
 	});
@@ -1387,12 +1560,12 @@ $('#home').click(function(){
 	function home(){ location.href = '/'; }
 });
 // ログアウト
-if( /session=.+/.test(document.cookie) ){
+if( /session=.+/.test(doc.cookie) ){
 	$('#logout').click(function(){
 		itemList(false);
 		if( tree.modified() ) Confirm({
-			width:380
-			,msg:'変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
+			width:450
+			,msg:'?変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
 			,yes:function(){ treeSave({ success:logout }); }
 			,no:logout
 		});
@@ -1403,7 +1576,7 @@ if( /session=.+/.test(document.cookie) ){
 				,error	:function(xhr){ Alert('エラー:'+xhr.status+' '+xhr.statusText); }
 				,success:function(data){
 					// dataはセッションID:過去日付でクッキー削除
-					document.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
+					doc.cookie = 'session='+data+'; expires=Thu, 01-Jan-1970 00:00:01 GMT';
 					location.reload(true);
 				}
 			});
@@ -1418,21 +1591,29 @@ $('#newfolder').click(function(){
 	var name = $('#newname').val();
 	var node = tree.newFolder( name, nid );
 	// フォルダツリー生成
+	var opt = {
+		 clickID:nid
+		,done   :function(){ $('#item'+ node.id ).trigger('selfclick'); }
+	};
+	if( !name.length ){
+		opt.eachChild = function(){
+			edit( $('#item'+ node.id ).children('.title')[0] ,{ select:true });
+		};
+	}
+	var $item = [];
 	folderTree({
 		 clickID:nid
-		,clickDone:function(){
-			// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
-			var $item = $('#item'+node.id);
-			// $item.mousedown().mouseup();と書きたいところだが、
-			// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-			// mouseup()およびその先の処理も実行されないもよう。
-			// 仕方がないのでsetTimeoutを使う。
-			setTimeout(function(){ $item.mousedown(); },0);
-			setTimeout(function(){
-				$item.mouseup();
-				// 名前変更・テキスト選択
-				if( !name.length ) edit( $item.children('.title')[0], {select:true} );
-			},1);
+		// アイテム欄で新フォルダ選択
+		,itemOption:{
+			eachChild:function(){
+				if( !$item.length ){
+					$item = $('#item'+ node.id ).trigger('selfclick');
+				}
+				if( $item.length && !name.length ){
+					// 名前変更・テキスト選択
+					edit( $item.children('.title')[0] ,{ select:true });
+				}
+			}
 		}
 	});
 	$('#newname').val('');
@@ -1451,15 +1632,15 @@ $('#newitem').on({
 		if( url.length ){
 			tree.modifing(true);
 			$.ajax({
-				type:'post'
+				 type:'post'
 				,url:':analyze'
 				,data:url+'\r\n'
-				,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+				,success:function(data){
 					data = data[0];
 					if( data.title.length ){
 						data.title = HTMLdec( data.title );
 						if( tree.nodeAttr( node.id,'title',data.title ) >1 )
-							$('#item'+node.id).find('.title').text( data.title );
+							$('#item'+node.id).find('.title').text( data.title ).attr('title',data.title);
 					}
 					if( data.icon.length ){
 						if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
@@ -1473,18 +1654,19 @@ $('#newitem').on({
 			});
 		}
 		// DOM再構築
-		$(selectFolder).removeClass('select').click();
-		// アイテム選択 ノードID=XXXならアイテムボックスID=itemXXX
-		var $item = $('#item'+node.id);
-		// $item.mousedown().mouseup();と書きたいところだが、
-		// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-		// mouseup()およびその先の処理も実行されないもよう。
-		// 仕方がないのでsetTimeoutを使う。
-		setTimeout(function(){ $item.mousedown(); },0);
-		setTimeout(function(){
-			$item.mouseup();
-			if( !url.length ) edit( $item.children('.url')[0] ); // URL編集
-		},1);
+		var $item = [];
+		itemList( tree.node( selectFolder.id.slice(6) ) ,{
+			eachChild:function(){
+				// 新アイテム選択
+				if( !$item.length ){
+					$item = $('#item'+ node.id ).trigger('selfclick');
+				}
+				if( $item.length && !url.length ){
+					// URL編集
+					edit( $item.children('.url')[0] );
+				}
+			}
+		});
 		$('#newurl').val('');
 	}
 	,contextmenu:function(ev){
@@ -1495,7 +1677,24 @@ $('#newitem').on({
 			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 				$menu.hide();
 				// 選択フォルダ先頭に登録
-				clipboardTo( tree.node( selectFolder.id.slice(6) ), 0 );
+				var pnode = tree.node( selectFolder.id.slice(6) );
+				clipboardTo( pnode ,0 ,function( nodes ){
+					var eachChild = function(){
+						// アイテム欄内でDOM作成ループがおわるたびに
+						for( var i=nodes.length; i--; ){
+							// 新アイテム要素発見したら選択状態にして配列から除外
+							var item = doc.getElementById('item'+ nodes[i].id );
+							if( item ){
+								// 先頭アイテムだけCtrlキー押下クリック(遅い)、それ以外は速いaddClass
+								if( i==0 ) $(item).trigger('selfclick',[false,true]);
+								else $(item).addClass('select');
+								nodes.splice(i,1);
+							}
+							else break;
+						}
+					};
+					itemList( pnode ,{ scrollTop:doc.getElementById('itembox').scrollTop ,eachChild:eachChild });
+				});
 			}));
 			// 表示
 			$menu.css({
@@ -1521,16 +1720,25 @@ var findopt = function(){
 	setTimeout(function(){
 		isRegex = $('#fregex').change(function(){ isRegex = $(this).prop('checked'); }).prop('checked');
 	},0);
-	var $box = $('#findopt');
 	return {
 		 regex:function(){ return isRegex; }
 		,show:function(){
+			var $box = $('#findopt');
 			if( $box.css('display')=='none' ){
-				var offset = $('#keyword').offset();
-				$box.css({ left:offset.left ,top:offset.top +20 }).show();
-				var area = $('#find').offset();
-				area.right = offset.left + $box.outerWidth();
-				area.bottom = offset.top + $box.outerHeight() +20;
+				// 表示
+				var $find = $('#find');
+				if( $find.css('display')=='none' ) $find = $('#findstop');
+				var $keyword = $('#keyword');
+				var area = $find.offset();
+				$box.css({
+					 left : area.left
+					,top  : area.top + $find.outerHeight()
+					,width: $keyword.offset().left + $keyword.outerWidth() - area.left
+				})
+				.show();
+				// 自身・検索アイコン・キーワード入力欄をあわせた矩形領域にカーソルがある間は表示
+				area.right = area.left + $box.outerWidth();
+				area.bottom = area.top + $box.outerHeight() + $find.outerHeight()
 				$(doc).on('mousemove.findopt',function(ev){
 					if( ev.pageX < area.left || area.right < ev.pageX ||
 						ev.pageY < area.top || area.bottom < ev.pageY ){
@@ -1543,6 +1751,7 @@ var findopt = function(){
 	};
 }();
 $('#find').click(function(){ itemList('finds'); }).mouseenter( findopt.show ).focus( findopt.show );
+$('#findstop').mouseenter( findopt.show ).focus( findopt.show );
 $('#keyword').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 13: $('#find').click(); return false; // Enter検索実行
@@ -1557,6 +1766,9 @@ $('#fregex').keydown(function(ev){
 	case 38: $('#keyword').focus(); return false; // ↑で検索キーワードにフォーカス移動
 	}
 });
+// 新旧100
+$('#new100').click(function(){ itemList('finds','new100'); });
+$('#old100').click(function(){ itemList('finds','old100'); });
 // すべて選択
 // TODO:アイテム欄が表示中だとぜんぶ選択されない
 $('#selectall').click(function(){
@@ -1586,12 +1798,17 @@ $('#delete').click(function(){
 			if( ids.length<=0 ) return;
 			var redraw = function(){
 				if( hasFolder ) folderTree({ clickID:selectFolder.id.slice(6) });
-				else itemList( tree.node(selectFolder.id.slice(6)) );
+				else{
+					itemList(
+						 tree.node( selectFolder.id.slice(6) )
+						,{ scrollTop:doc.getElementById('itembox').scrollTop }
+					);
+				}
 			};
 			if( tree.trashHas(ids[0]) ){
 				// ごみ箱
 				Confirm({
-					msg:ids.length+'個のアイテムを完全に消去します。'
+					msg:'!'+ ids.length +'個のアイテムを完全に消去します。'
 					,ok:function(){ tree.eraseNodes( ids ); redraw(); }
 				});
 			}
@@ -1614,7 +1831,7 @@ $('#delete').click(function(){
 			}
 			trashTitles += '</ul>';
 			var redraw = function(){
-				tree.moveChild( otherIDs.concat(), tree.trash() );
+				tree.moveChild( otherIDs.slice(0), tree.trash() );
 				if( hasFolder ){
 					// おなじフォルダを選択状態に
 					var nid = selectFolder.id.slice(6);
@@ -1624,10 +1841,10 @@ $('#delete').click(function(){
 				}
 				// 調査中にごみ箱を空にした場合など既にノードが存在しない場合がある。
 				// 存在しないノードは「移動しました」メッセージは出さずに消えるのみ。
-				for( var i=otherIDs.length-1; i>=0; i-- ) if( !tree.node(otherIDs[i]) ) otherIDs.splice(i,1);
+				for( var i=otherIDs.length; i--; ) if( !tree.node(otherIDs[i]) ) otherIDs.splice(i,1);
 				if( otherIDs.length ) Notify(otherIDs.length+'個のアイテムをごみ箱に移動しました。');
 				// アイテム欄で既に存在しないものを消去
-				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 					if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 				}
 			};
@@ -1635,9 +1852,9 @@ $('#delete').click(function(){
 				Confirm({
 					width:400 ,height:210 + trashIDs.length *19
 					,resize:true
-					,msg:trashIDs.length+'個のごみ箱アイテムを完全に消去します。'
+					,msg:'!'+ trashIDs.length +'個のごみ箱アイテムを完全に消去します。'
 					,$e:$(trashTitles)
-					,ok:function(){ tree.eraseNodes( trashIDs.concat() ); redraw(); }
+					,ok:function(){ tree.eraseNodes( trashIDs.slice(0) ); redraw(); }
 				});
 			}
 			else if( otherIDs.length>0 ) redraw();
@@ -1649,7 +1866,7 @@ $('#delete').click(function(){
 		if( tree.movable(nid) ){
 			if( tree.trashHas(nid) ){
 				Confirm({
-					msg:'フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
+					msg:'!フォルダ「' +$('.title',select).text() +'」を完全に消去します。'
 					,ok:function(){
 						var pid = tree.nodeParent(nid).id; // 親フォルダを選択
 						tree.eraseNode( nid );
@@ -1658,7 +1875,7 @@ $('#delete').click(function(){
 						case 'deads':
 							folderTree({ selectID:pid });
 							// アイテム欄で既に存在しないものを消去
-							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+							for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 							}
 							break;
@@ -1681,7 +1898,8 @@ $('#delete').click(function(){
 // リンク切れ調査(全フォルダ)
 $('#deadlink').click(function(){
 	Confirm({
-		msg:'全フォルダ(全ブックマークURL)のリンク切れ調査を行います。'
+		height:210
+		,msg:'i全フォルダ(全ブックマークURL)のリンク切れ調査を行います。 ブックマーク数が多いほど時間がかかります。'
 		,ok:function(){ itemList('deads',tree.root); }
 	});
 });
@@ -1702,6 +1920,7 @@ $('#border').mousedown(function(ev){
 	var $items = $('#items');
 	var $itemheadLast = $('#itemhead span').last();	// アイテム欄右端の項目ヘッダ(.date)
 	var $itemsLast = $('#items').find('.'+$itemheadLast.attr('class'));
+	var toolbarHeight = $('#toolbar').outerHeight();
 	var folderboxWidth = $folderbox.width();
 	var itemboxWidth = $itembox.width();
 	var itemsWidth = $items.width();
@@ -1717,6 +1936,7 @@ $('#border').mousedown(function(ev){
 		var newItemsLastWidth = itemsLastWidth - dx;
 		if( newFolderboxWidth >20 && newItemsLastWidth >20 ){
 			$folderbox.width( newFolderboxWidth );
+			$border.css({ left:newFolderboxWidth ,top:toolbarHeight });
 			$itembox.width( newItemboxWidth );
 			$('#itemhead').width( newItemboxWidth );
 			$('#deadinfo').width( newItemboxWidth );
@@ -1791,7 +2011,7 @@ $('#itembox').on({
 			$(selectFolder).addClass('inactive');
 			if( ev.ctrlKey ){
 				// 選択アイテムをアクティブに
-				for( var items=$items[0].children ,i=items.length-1; i>=0; i-- ){
+				for( var items=$items[0].children ,i=items.length; i--; ){
 					$(items[i]).removeClass('inactive');
 				}
 			}else{
@@ -1803,6 +2023,7 @@ $('#itembox').on({
 	}
 	// アイテム欄下余白コンテキストメニュー
 	,contextmenu:function(ev){
+		var itembox = this;
 		if( itemList('?')=='child' && (ev.target.className=='spacer' || ev.target.id=='itembox') ){
 			var $menu = $('#contextmenu').width( 210 );
 			var $box = $menu.children('div').empty();
@@ -1812,7 +2033,23 @@ $('#itembox').on({
 					$menu.hide();
 					// 選択フォルダ末尾に登録
 					var pnode = tree.node( selectFolder.id.slice(6) );
-					clipboardTo( pnode, pnode.child.length );
+					clipboardTo( pnode ,pnode.child.length ,function( nodes ){
+						var eachChild = function(){
+							// アイテム欄内でDOM作成ループがおわるたびに
+							for( var i=nodes.length; i--; ){
+								// 新アイテム要素発見したら選択状態にして配列から除外
+								var item = doc.getElementById('item'+ nodes[i].id );
+								if( item ){
+									// 先頭アイテムだけCtrlキー押下クリック(遅い)、それ以外は速いaddClass
+									if( i==0 ) $(item).trigger('selfclick',[false,true]);
+									else $(item).addClass('select');
+									nodes.splice(i,1);
+								}
+								else break;
+							}
+						};
+						itemList( pnode ,{ scrollTop:itembox.scrollTop ,eachChild:eachChild });
+					});
 				}));
 			}
 			$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
@@ -1821,21 +2058,22 @@ $('#itembox').on({
 				var pnode = tree.node( selectFolder.id.slice(6) );
 				var node = tree.newFolder( '' ,pnode ,pnode.child.length );
 				// フォルダツリー更新
+				var $item = [];
 				folderTree({
 					 clickID:selectFolder.id.slice(6)
-					,clickDone:function(){
-						// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
-						var $item = $('#item'+node.id);
-						// $item.mousedown().mouseup();と書きたいところだが、
-						// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-						// mouseup()およびその先の処理も実行されないもよう。
-						// 仕方がないのでsetTimeoutを使う。
-						setTimeout(function(){ $item.mousedown(); },0);
-						setTimeout(function(){
-							$item.mouseup();
-							// 名前変更・テキスト選択
-							edit( $item.children('.title')[0], {select:true} );
-						},1);
+					// 新フォルダ選択
+					// TODO:アイテム欄内フォルダ展開してると画面チカチカするレベル
+					,itemOption:{
+						 scrollTop:itembox.scrollTop
+						,eachChild:function(){
+							if( !$item.length ){
+								$item = $('#item'+ node.id ).trigger('selfclick');
+							}
+							if( $item.length ){
+								// 名前変更・テキスト選択
+								edit( $item.children('.title')[0] ,{ select:true });
+							}
+						}
 					}
 				});
 			}));
@@ -1874,15 +2112,19 @@ function myFmt( date, now ){
 	return Y +'/' +date +' ' +time;
 }
 // 画面縦横サイズ変更：windowから呼ばれた時はフォルダ欄の幅を維持し、それ以外は一定比率で決める
+// TODO:スクロールバーの幅を決め打ちじゃなく取得したい。
+// http://defghi1977-onblog.blogspot.jp/2012/10/blog-post_4.html
 function resize(){
 	$('#editbox').blur();
-	var windowWidth = $(win).width();// -1; // 適当-1px
+	var windowWidth = $(win).width(); // 適当-1px
+	var toolbarHeight = $('#toolbar').outerHeight() +(tree.modified()? $('#modified').outerHeight():0);
 	var folderboxWidth = (this==win)? $('#folderbox').width() : (windowWidth /5.4)|0;
-	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -(tree.modified()? 22:0);
-	var itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
+	var folderboxHeight = $(win).height() -toolbarHeight;
+	var borderWidth = $('#border').outerWidth();
+	var itemboxWidth = windowWidth -folderboxWidth -borderWidth;
 	if( itemboxWidth <20 ){	// アイテム欄狭すぎ自動調整20px適当
 		folderboxWidth = (windowWidth /5.4)|0;
-		itemboxWidth = windowWidth -folderboxWidth -$('#border').outerWidth();
+		itemboxWidth = windowWidth -folderboxWidth -borderWidth;
 	}
 	var itemsWidth = ((itemboxWidth <400)? 400 : itemboxWidth) -17;			// スクロールバー17px(?)
 	var titleWidth = (itemsWidth /2.22)|0;									// 割合適当
@@ -1892,6 +2134,7 @@ function resize(){
 	var itemboxHeight = folderboxHeight
 			- $('#itemhead')
 				.width( itemboxWidth )
+				.css('left',borderWidth )
 				.children('.title').width( titleWidth ).end()
 				.children('.url').width( urlWidth ).end()
 				.children('.misc').width( iconWidth ).end()
@@ -1899,8 +2142,9 @@ function resize(){
 				.outerHeight()
 			- $('#deadinfo')
 				.width( itemboxWidth )
+				.css('left',borderWidth )
 				.outerHeight();
-	var spacerHeight = itemboxHeight
+	var spacerHeight = itemboxHeight -4 // dropTopボーダー4px
 			- $('#items')
 				.width( itemsWidth )
 				.find('.title').width( titleWidth -(itemList('?')=='child'? 38:25) ).end()	// #itemheadと合うよう調節
@@ -1909,35 +2153,38 @@ function resize(){
 				.find('.summary').width( urlWidth +iconWidth +4 ).end()			// #itemheadと合うよう調節
 				.find('.date').width( dateWidth -12 ).end()						// float対策適当-12px
 				.outerHeight();
-	if( spacerHeight <0 ) spacerHeight = 32; // アイテム欄余白高さ32px以上
+	if( spacerHeight <0 ) spacerHeight = 48; // アイテム欄余白高さ48px以上
 
 	$('#toolbar') // ボタン類がfloatで下にいかないよう
 		.width( (windowWidth <780)? 780 : windowWidth );
 	$('#folderbox')
 		.width( folderboxWidth )
 		.height( folderboxHeight );
-	$('#border')
-		.height( folderboxHeight );
 	$('#itembox')
 		.width( itemboxWidth )
 		.height( itemboxHeight )
+		.css('left',borderWidth )
 		.children('.spacer').height( spacerHeight );
+	$('#border')
+		.height( folderboxHeight +1 )
+		.css({ left:folderboxWidth ,top:toolbarHeight });
 }
 // 画面サイズ縦のみ変更
-function resizeV( padding ){
-	var folderboxHeight = $(win).height() -$('#toolbar').outerHeight() -padding;
+function resizeV( paddingTop ){
+	var toolbarHeight = $('#toolbar').outerHeight() +( paddingTop ||0 );
+	var folderboxHeight = $(win).height() -toolbarHeight;
 	var itemboxHeight =  folderboxHeight -$('#itemhead').outerHeight() -$('#deadinfo').outerHeight();
-	var spacerHeight = itemboxHeight - $('#items').outerHeight();
-	if( spacerHeight <0 ) spacerHeight = 32; // アイテム欄余白高さ32px以上
+	var spacerHeight = itemboxHeight - $('#items').outerHeight() -4; // dropTopボーダー4px
+	if( spacerHeight <0 ) spacerHeight = 48; // アイテム欄余白高さ48px以上
 	$('#folderbox').height( folderboxHeight );
-	$('#border').height( folderboxHeight );
+	$('#border').height( folderboxHeight +1 ).css('top',toolbarHeight );
 	$('#itembox').height( itemboxHeight ).children('.spacer').height( spacerHeight );
 }
 // アイテム欄余白高さ調節
 function spacerHeight(){
 	var $itembox = $('#itembox');
-	var h = $itembox.height() - $('#items').outerHeight();
-	$itembox.children('.spacer').height( h<0 ? 32 : h ); // 32px以上
+	var h = $itembox.height() - $('#items').outerHeight() -4; // dropTopボーダー4px
+	$itembox.children('.spacer').height( h<0 ? 48 : h ); // 48px以上
 }
 // 矩形選択
 // TODO:アイテム欄の上下自動スクロール
@@ -1964,7 +2211,7 @@ function itemSelectStart( element, downX, downY ){
 		var rectBottom = rect.top + rect.height;
 		$('#selectbox').css( rect );
 		// 選択切り替え
-		for( var i=items.length-1; i>=0; i-- ){
+		for( var i=items.length; i--; ){
 			var item = items[i];
 			var offset = item.$.offset();
 			if( offset.top >= rect.top-15 && offset.top <= rectBottom-4 ){
@@ -1996,19 +2243,20 @@ function treeSave( arg ){
 		,success:function(){
 			$('#progress').hide();
 			$(doc.body).css('padding-top',0);
-			resizeV(0);
+			resizeV();
 			if( arg && arg.success ) arg.success();
 		}
 	});
 }
 // マウスイベント
-function folderClick( ev ,done ){
+// TODO:フォルダツリーもshift/ctrlキー押しながらクリックで複数選択してD&Dできるように
+function folderClick( ev ,itemOption ){
 	// ＋－ボタンは無視
 	if( ev.target.className=='sub' ) return;
 	if( itemList('?')=='child' && $(this).hasClass('select') ){
 		var $this = $(select=this);
 		// 選択アイテムを非アクティブに
-		for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+		for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 			var $item = $(items[i]);
 			if( $item.hasClass('select') ) $item.addClass('inactive');
 		}
@@ -2040,7 +2288,7 @@ function folderClick( ev ,done ){
 			$(selectFolder).removeClass('select').removeClass('inactive');
 			$(select=selectFolder=this).addClass('select').focus();
 			// アイテム欄作成
-			itemList( node ,done );
+			itemList( node ,itemOption );
 		}
 	}
 }
@@ -2052,19 +2300,20 @@ function folderDblClick(ev){
 		if( e[i].className=='sub' ) return subTreeIcon.call( e[i] );
 	}
 }
-function itemSelfClick( ev, shiftKey ){
+function itemSelfClick( ev, shiftKey ,ctrlKey ){
+	var data = [ shiftKey ,ctrlKey ];
 	if( IE && IE<9 ){
 		// IE8はmousedown()でエラー発生する仕様なのが影響してか、
 		// mouseup()が実行されない？仕方がないのでsetTimeoutを使う。
 		var $this = $(this);
-		setTimeout(function(){ $this.trigger('mousedown',shiftKey); },0);
-		setTimeout(function(){ $this.mouseup().click().focus(); },1);
+		setTimeout(function(){ $this.trigger('mousedown',data); },0);
+		setTimeout(function(){ $this.mouseup().click()/*.focus()*/; },1);
 	}
 	else{
-		$(this).trigger('mousedown',shiftKey).mouseup().click().focus();
+		$(this).trigger('mousedown',data).mouseup().click()/*.focus()*/;
 	}
 }
-function itemMouseDown( ev, shiftKey ){
+function itemMouseDown( ev, shiftKey ,ctrlKey ){
 	$('#editbox').blur();
 	// ＋－ボタンは無視
 	if( ev.target.className=='appear' ) return;
@@ -2072,10 +2321,11 @@ function itemMouseDown( ev, shiftKey ){
 	ev.data.itemID = this.id;
 	ev.data.itemNotify = '';
 	ev.shiftKey = shiftKey || ev.shiftKey;
+	ev.ctrlKey = ctrlKey || ev.ctrlKey;
 	// 選択フォルダ非アクティブ
 	$(selectFolder).addClass('inactive');
 	// 選択アイテムをアクティブに
-	for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+	for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 		$(items[i]).removeClass('inactive');
 	}
 	// アイテムはマウスダウンで選択状態にする(ちなみにフォルダツリーはクリック)
@@ -2130,7 +2380,7 @@ function itemMouseDown( ev, shiftKey ){
 			$(select=selectItemLast=this).focus();
 			// 選択済みアイテムの数
 			var selectCount=0;
-			for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+			for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 				if( $(items[i]).hasClass('select') ) selectCount++;
 			}
 			// 複数選択されていた場合、mouseup(click)で単選択に差し替え。
@@ -2447,25 +2697,25 @@ function itemDragStart( element, downX, downY ){
 				if( $this.hasClass('spacer') ){
 					if( this.parentNode.id=='folderbox' ){
 						// フォルダツリー余白、ごみ箱末尾に
-						tree.moveChild( dragItem.ids.concat() ,tree.trash() ,true );
+						tree.moveChild( dragItem.ids.slice(0) ,tree.trash() ,true );
 					}
 					else{
 						// アイテム欄余白、選択フォルダ末尾に
-						tree.moveChild( dragItem.ids.concat() ,selectFolder.id.slice(6) ,true );
+						tree.moveChild( dragItem.ids.slice(0) ,selectFolder.id.slice(6) ,true );
 					}
 				}
 				else{
 					//$debug.text(dragItem.ids+' が、'+this.id+' にdropTopされました');
-					tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
+					tree.moveSibling( dragItem.ids.slice(0), this.id.replace(/^\D*/,'') );
 				}
 			}
 			else if( $this.hasClass('dropBottom') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropBottomされました');
-				tree.moveSibling( dragItem.ids.concat(), this.id.replace(/^\D*/,''), true );
+				tree.moveSibling( dragItem.ids.slice(0), this.id.replace(/^\D*/,''), true );
 			}
 			else if( $this.hasClass('dropIN') ){
 				//$debug.text(dragItem.ids+' が、'+this.id+' にdropINされました');
-				tree.moveChild( dragItem.ids.concat(), this.id.replace(/^\D*/,'') );
+				tree.moveChild( dragItem.ids.slice(0), this.id.replace(/^\D*/,'') );
 			}
 			else return; // ドロップ不可
 			$this.removeClass('dropTop').removeClass('dropBottom').removeClass('dropIN');
@@ -2477,8 +2727,29 @@ function itemDragStart( element, downX, downY ){
 				Notify(dragItem.ids.length+'個のアイテムを移動しました。');
 				break;
 			case 'child':
-				if( dragItem.folderCount >0 ) folderTree({ clickID:selectFolder.id.slice(6) });
-				else itemList( tree.node(selectFolder.id.slice(6)) );
+				var folderID = selectFolder.id.slice(6);
+				var dragIDs = dragItem.ids.slice(0);
+				var itemOption = {
+					 scrollTop:doc.getElementById('itembox').scrollTop
+					,eachChild:function(){
+						// アイテム欄内でDOM作成ループがおわるたびに
+						for( var i=dragIDs.length; i--; ){
+							// 新アイテム要素発見したら選択状態にして配列から除外
+							var item = doc.getElementById('item'+ dragIDs[i] );
+							if( item ){
+								// 先頭アイテムだけCtrlキー押下クリック(遅い)、それ以外は速いaddClass
+								if( i==0 ) $(item).trigger('selfclick',[false,true]);
+								else $(item).addClass('select');
+								dragIDs.splice(i,1);
+							}
+							else break;
+						}
+					}
+				};
+				if( dragItem.folderCount >0 )
+					folderTree({ clickID:folderID ,itemOption:itemOption });
+				else
+					itemList( tree.node(folderID) ,itemOption );
 				break;
 			}
 			// なぜかIE8でdragbox消えずdropXXXスタイル解除されない。
@@ -2497,7 +2768,7 @@ function itemDragStart( element, downX, downY ){
 		if( draggie ){
 			if( draggie.id.indexOf('item')==0 ){
 				// アイテム欄でドラッグ
-				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 					$(items[i]).removeClass('draggie');
 				}
 			}else{
@@ -2529,7 +2800,8 @@ function itemClick(ev){
 			return;
 		case 'edit':
 			// 名前変更
-			edit( doc.elementFromPoint( ev.pageX, ev.pageY ) );
+			// selfclickの時はev.pageXやev.pageYはundefinedなので無視
+			if( ev.pageX ) edit( doc.elementFromPoint( ev.pageX, ev.pageY ) );
 			return;
 		}
 	}
@@ -2573,7 +2845,7 @@ function itemContextMenu(ev){
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).children('.icon').attr('src');
-	var width = 210;
+	var width = 220;
 	// 開く
 	if( $(item).hasClass('folder') ){
 		// フォルダ
@@ -2597,7 +2869,7 @@ function itemContextMenu(ev){
 				$box.append($('<a><img src='+iopen+'>URLを開く</a>').click(function(){
 					$menu.hide(); win.open( url );
 				}))
-				.append($('<a><img src=question.png>タイトル/アイコンを取得</a>').click(function(){
+				.append($('<a><img src=ques20.png>タイトル/アイコンを取得</a>').click(function(){
 					$menu.hide();
 					var $title = $('<input id=antitle>');
 					var $icon = $('<img src=wait.gif class=icon>');
@@ -2657,7 +2929,7 @@ function itemContextMenu(ev){
 						$.ajax({
 							type:'post'
 							,url:':analyze'
-							,data:url+'\r\n' // TODO:URLエスケープ(encodeURI使えない)
+							,data:url+'\r\n'
 							,error:function(){
 								if( url==$(item).children('.url').text() ){
 									$title.val('');
@@ -2724,7 +2996,6 @@ function itemContextMenu(ev){
 				border:'none','margin-top':0,'padding-top':0
 			});
 		}
-		resizer();
 		// アイテム登録
 		var $titles0 = $('#batchTitle td.before div').empty();
 		var $titles1 = $('#batchTitle td.after div').empty();
@@ -2739,8 +3010,8 @@ function itemContextMenu(ev){
 		var index = 0;
 		var folder = 0;
 		var timer = null;
-		(function lister(){
-			var count = 10;
+		var lister = function(){
+			var count = busyLoopCount;
 			while( index < length && count >0 ){
 				var item = items[index];
 				if( $(item).hasClass('select') ){
@@ -2784,18 +3055,20 @@ function itemContextMenu(ev){
 				index++; count--;
 			}
 			if( index < length ) timer = setTimeout(lister,0);
-		})();
-		function resizer(){
+		};
+		var resizer = function(){
 			var h = $batch.height() -5;
 			$tabs.height( h ).children('div').height( h -65 );
 			$itembox.height( h - 242 );
-		}
-		function close(){
+		};
+		var close = function(){
 			clearTimeout( timer );
 			$item0.remove();
 			$item1.remove();
 			$batch.dialog('destroy');
-		}
+		};
+		resizer();
+		lister();
 	}));
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
@@ -2805,36 +3078,56 @@ function itemContextMenu(ev){
 				$menu.hide();
 				// 選択アイテム位置に登録
 				var pnode = tree.nodeParent( nid );
-				for( var index=pnode.child.length-1; index>=0; index-- ){
+				for( var index=pnode.child.length; index--; ){
 					if( pnode.child[index].id==nid ) break;
 				}
-				clipboardTo( pnode ,index ,tree.node( selectFolder.id.slice(6) ) );
+				clipboardTo( pnode ,index ,function( nodes ){
+					var eachChild = function(){
+						// アイテム欄内でDOM作成ループがおわるたびに
+						for( var i=nodes.length; i--; ){
+							// 新アイテム要素発見したら選択状態にして配列から除外
+							var item = doc.getElementById('item'+ nodes[i].id );
+							if( item ){
+								// 先頭アイテムだけCtrlキー押下クリック(遅い)、それ以外は速いaddClass
+								if( i==0 ) $(item).trigger('selfclick',[false,true]);
+								else $(item).addClass('select');
+								nodes.splice(i,1);
+							}
+							else break;
+						}
+					};
+					itemList(
+						 tree.node( selectFolder.id.slice(6) )
+						,{ scrollTop:doc.getElementById('itembox').scrollTop ,eachChild:eachChild }
+					);
+				});
 			}));
 		}
 		$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
 			$menu.hide();
 			// 選択アイテム位置に新規フォルダ
 			var pnode = tree.nodeParent( nid );
-			for( var index=pnode.child.length-1; index>=0; index-- ){
+			for( var index=pnode.child.length; index--; ){
 				if( pnode.child[index].id==nid ) break;
 			}
 			var node = tree.newFolder( '' ,pnode ,index );
 			// フォルダツリー更新
+			var $item = [];
 			folderTree({
 				 clickID:selectFolder.id.slice(6)
-				,clickDone:function(){
-					// アイテム選択(ノードID=XXXならアイテムボックスID=itemXXX)
-					var $item = $('#item'+node.id);
-					// $item.mousedown().mouseup();と書きたいところだが、
-					// IE8はmousedown()でエラー発生する仕様なのが影響してか、
-					// mouseup()およびその先の処理も実行されないもよう。
-					// 仕方がないのでsetTimeoutを使う。
-					setTimeout(function(){ $item.mousedown(); },0);
-					setTimeout(function(){
-						$item.mouseup();
-						// 名前変更・テキスト選択
-						edit( $item.children('.title')[0], {select:true} );
-					},1);
+				,itemOption:{
+					 scrollTop:doc.getElementById('itembox').scrollTop
+					,eachChild:function(){
+						// 新フォルダ選択
+						// TODO:アイテム欄内フォルダ展開してると画面チカチカするレベル
+						if( !$item.length ){
+							$item = $('#item'+ node.id ).trigger('selfclick');
+						}
+						if( $item.length && !name.length ){
+							// 名前変更・テキスト選択
+							edit( $item.children('.title')[0] ,{ select:true });
+						}
+					}
 				}
 			});
 		}));
@@ -2846,7 +3139,7 @@ function itemContextMenu(ev){
 		}));
 	}
 	else{
-		if( url.length && !(itemList('?')==='deads' && itemList('?timer')) ){
+		if( url.length && !itemList('deadsRunning?') ){
 			$box.append($('<a><img src=skull.png>リンク切れ調査</a>').click(function(){
 				$menu.hide(); itemList('poke');
 			}));
@@ -2856,7 +3149,7 @@ function itemContextMenu(ev){
 			$box.append($('<a><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
 				$menu.hide();
 				var ico = $(item).children('.status').children('.icon').attr('src');
-				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 					var $item = $(items[i]);
 					if( $item.children('.status').children('.icon').attr('src')==ico )
 						$item.addClass('select');
@@ -2867,7 +3160,7 @@ function itemContextMenu(ev){
 			if( $status.text().match(/≫.+/) ){
 				$box.append($('<a><img src=pen.png>転送先URLに書き換え</a>').click(function(){
 					$menu.hide();
-					for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+					for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 						var $item = $(items[i]);
 						if( $item.hasClass('select') ){
 							var newurl = $item.children('.status').text().match(/≫.+/);
@@ -2884,7 +3177,7 @@ function itemContextMenu(ev){
 		if( itemList('?')=='deads' ){
 			$box.append($('<a><img src=minus.png>一覧から除外</a>').click(function(){
 				$menu.hide();
-				for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 					var $item = $(items[i]);
 					if( $item.hasClass('select') ) $item.remove();
 				}
@@ -2923,7 +3216,24 @@ function folderContextMenu(ev){
 		$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 			$menu.hide(); onContextHide();
 			// クリックフォルダ先頭に登録
-			clipboardTo( tree.node( nid ),0 );
+			var pnode = tree.node( nid );
+			clipboardTo( pnode ,0 ,function( nodes ){
+				var eachChild = function(){
+					// アイテム欄内でDOM作成ループがおわるたびに
+					for( var i=nodes.length; i--; ){
+						// 新アイテム要素発見したら選択状態にして配列から除外
+						var item = doc.getElementById('item'+ nodes[i].id );
+						if( item ){
+							// 先頭アイテムだけCtrlキー押下クリック(遅い)、それ以外は速いaddClass
+							if( i==0 ) $(item).trigger('selfclick',[false,true]);
+							else $(item).addClass('select');
+							nodes.splice(i,1);
+						}
+						else break;
+					}
+				};
+				$('#folder'+pnode.id).removeClass('select').trigger('click',{ eachChild:eachChild });
+			});
 		}));
 	}
 	$box.append($('<a><img src=newfolder.png>新規フォルダ作成</a>').click(function(){
@@ -2937,9 +3247,9 @@ function folderContextMenu(ev){
 		}
 		else{
 			folderTree({
-				selectID:selectFolder.id.slice(6)
-				,inactive:$(selectFolder).hasClass('inactive')
-				,done:titleEdit
+				 selectID: selectFolder.id.slice(6)
+				,inactive: $(selectFolder).hasClass('inactive')
+				,done	 : titleEdit
 			});
 		}
 	}))
@@ -2951,8 +3261,8 @@ function folderContextMenu(ev){
 		$box.append('<hr>').append($('<a><img src=delete.png>ごみ箱を空にする</a>').click(function(){
 			$menu.hide(); onContextHide();
 			Confirm({
-				width:400 ,height:180
-				,msg:'ごみ箱の全アイテム・フォルダを完全に消去します。'
+				width:420 ,height:180
+				,msg:'!ごみ箱の全アイテム・フォルダを完全に消去します。'
 				,ok:function(){
 					var sid = selectFolder.id.slice(6);
 					var selectTrash = tree.trashHas( sid );
@@ -2961,11 +3271,11 @@ function folderContextMenu(ev){
 					case 'finds':
 					case 'deads':
 						folderTree({
-							selectID:selectTrash? tree.top().id :sid
-							,inactive:$(selectFolder).hasClass('inactive')
+							 selectID: selectTrash? tree.top().id :sid
+							,inactive: $(selectFolder).hasClass('inactive')
 						});
 						// アイテム欄で既に存在しないものを消去
-						for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+						for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 							if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 						}
 						break;
@@ -2985,7 +3295,7 @@ function folderContextMenu(ev){
 				$menu.hide(); onContextHide();
 				Confirm({
 					width:400 ,height:200
-					,msg:'フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
+					,msg:'!フォルダ「' +$('.title',folder).text() +'」を完全に消去します。'
 					,ok:function(){
 						var sid = selectFolder.id.slice(6);
 						var pid = tree.nodeParent( nid ).id;
@@ -2994,16 +3304,16 @@ function folderContextMenu(ev){
 						case 'finds':
 						case 'deads':
 							folderTree({
-								selectID:tree.node(sid)? sid :tree.top().id
-								,inactive:$(selectFolder).hasClass('inactive')
+								 selectID: tree.node(sid)? sid :tree.top().id
+								,inactive: $(selectFolder).hasClass('inactive')
 							});
 							// アイテム欄で既に存在しないものを消去
-							for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+							for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 								if( !tree.node(items[i].id.slice(4)) ) $(items[i]).remove();
 							}
 							break;
 						case 'child':
-							folderTree({ clickID:tree.node(sid)? sid :pid });
+							folderTree({ clickID: tree.node(sid) ? sid :pid });
 							break;
 						}
 					}
@@ -3023,7 +3333,7 @@ function folderContextMenu(ev){
 				case 'child':
 					var isChild = false; // 選択フォルダの子フォルダを削除
 					var child = tree.node(sid).child;
-					for( var i=child.length-1; i>=0; i-- ){
+					for( var i=child.length; i--; ){
 						if( child[i].id==nid ){ isChild = true; break; }
 					}
 					tree.moveChild( [nid], tree.trash() );
@@ -3087,7 +3397,7 @@ function itemKeyPress(ev){
 	}
 }
 function selectItemClear(){
-	for( var items=doc.getElementById('items').children ,i=items.length-1; i>=0; i-- ){
+	for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 		$(items[i]).removeClass('select').removeClass('inactive');
 	}
 	selectItemLast = null;
@@ -3105,13 +3415,13 @@ function edit( element, opt ){
 		case 'url':
 		case 'iconurl':
 			// element全体見えるようスクロール
-			viewScroll( element );
+			//viewScroll( element );
 			// スクロールが発生した場合にscrollイベントが発生するが、ここで編集ボックス表示した後に
 			// scrollイベント発生するようで、そこで編集ボックスを消しているので、消えてしまう。
 			//		スクロール→編集ボックス表示→scrollイベントで編集ボックス消え
 			// 回避のためsetTimeoutで実行して、ここの処理より先にscrollイベントを発生させる。
 			//		スクロール→scrollイベントで編集ボックス消え→編集ボックス表示
-			setTimeout(function(){
+			//setTimeout(function(){
 				var $e = $(element);
 				var offset = $e.offset();
 				var isFolderTree = (element.parentNode.id.indexOf('folder')==0)? true:false;
@@ -3145,11 +3455,12 @@ function edit( element, opt ){
 									}
 								}
 								else if( $item.hasClass('folder') ){
-									// フォルダツリーでアイテム欄が親フォルダを表示していた場合アイテム欄を更新
-									// TODO:これはどんな操作で発生するんだったか…？実は不要…？
+									// フォルダツリーで
 									var pnode = tree.nodeParent(nid);
 									if( itemList('?')=='child' && selectFolder.id.slice(6)==pnode.id ){
-										itemList( pnode );
+										// アイテム欄が親フォルダを表示していた場合アイテム欄を更新
+										//itemList( pnode );
+										alert('TODO:これはどんな操作で発生するんだったか…？発生しないような…？');
 									}
 								}
 								break;
@@ -3163,12 +3474,12 @@ function edit( element, opt ){
 											type:'post'
 											,url:':analyze'
 											,data:value+'\r\n'
-											,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+											,success:function(data){
 												data = data[0];
 												if( data.title.length && node.title=='新規ブックマーク' ){
 													data.title = HTMLdec( data.title );
 													if( tree.nodeAttr( nid,'title',data.title ) >1 )
-														$('#item'+nid).find('.title').text( data.title );
+														$('#item'+nid).find('.title').text( data.title ).attr('title',data.title);
 												}
 												if( data.icon.length && (!node.icon|| !node.icon.length) ){
 													if( tree.nodeAttr( nid,'icon',data.icon ) >1 ){
@@ -3196,7 +3507,7 @@ function edit( element, opt ){
 								if( needWidth > foldersWidth ) $('#folders').width( needWidth );
 							}
 						}
-						// 終了隠す
+						// 完了フォーカス戻し
 						$(this).off().hide(); $e.trigger('selfclick');
 					}
 					// TAB,Enterで反映
@@ -3212,13 +3523,13 @@ function edit( element, opt ){
 					}
 				}).show().focus();
 				if( opt && opt.select ) $editbox.select();
-			},10);
+			//},10);
 			break;
 		case 'status':
 		case 'place':
 		case 'date':
 			// 場所/作成日時は変更禁止、値コピーのためボックス表示。
-			setTimeout(function(){
+			//setTimeout(function(){
 				var $e = $(element);
 				var offset = $e.offset();
 				$editbox.css({
@@ -3231,7 +3542,7 @@ function edit( element, opt ){
 				.val( $e.text() )
 				.on({
 					blur:function(){
-						// なにもしない消えるだけ
+						// なにもせずフォーカス戻し
 						$(this).off().hide(); $e.trigger('selfclick');
 					}
 					,keydown:function(ev){
@@ -3245,13 +3556,14 @@ function edit( element, opt ){
 						}
 					}
 				}).show().focus();
-			},10);
+			//},10);
 			break;
 		}
 	}
 	return $editbox;
 }
 // element全体見えるようスクロール
+/*
 function viewScroll( element ){
 	// スクロール対象ボックス確認
 	var boxid = element.parentNode.id;
@@ -3276,11 +3588,12 @@ function viewScroll( element ){
 	if( pos.bottom >= box.clientHeight )
 		box.scrollTop += pos.bottom - box.clientHeight +5;
 }
+*/
 // クリップボードのURLを新規登録
-// pnode :登録先フォルダノード
-// index :登録位置インデックス
-// vnode :アイテム欄表示ノード
-function clipboardTo( pnode ,index ,vnode ){
+// pnode: 登録先フォルダノード
+// index: 登録位置インデックス
+// after: 処理完了後コールバック
+function clipboardTo( pnode ,index ,after ){
 	$('#dialog').empty().text('処理中です...').dialog({
 		title	:'情報'
 		,width	:300
@@ -3296,46 +3609,25 @@ function clipboardTo( pnode ,index ,vnode ){
 			var regUrl = /^[A-Za-z]+:.+/;
 			var url = '';
 			var ajaxs = [];									// ajax配列
+			var nodes = [];									// 作成したノード配列
 			var complete = 0;								// 完了数カウント
 			tree.modifing(true);							// 編集中表示
-			for( var i=lines.length-1; i>=0; i-- ){			// 最後の行から
-				var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
-				if( regUrl.test(str) ){						// URL発見
-					if( url ) itemAdd( url );
-					url = str;
-				}
-				else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
-			}
-			if( url ) itemAdd( url );
-			// アイテム欄更新
-			if( !vnode ) vnode = pnode;
-			if( itemList('?')=='deads' ){
-				Confirm({
-					msg:'このフォルダを表示しますか？#BR#(リンク切れ調査欄は消えます)'
-					,yes:function(){ $('#folder'+vnode.id).removeClass('select').click(); }
-				});
-			}
-			else $('#folder'+vnode.id).removeClass('select').click();
-			// ajax完了待ち
-			(function completed(){
-				if( complete < ajaxs.length ) setTimeout(completed,250);
-				else tree.modifing(false);					// 編集完了
-			})();
-			function itemAdd( url ,title ){
+			var itemAdd = function( url ,title ){
 				// ノード作成
 				var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
 				if( node ){
+					nodes.push( node );
 					// タイトル/favicon取得
 					ajaxs.push($.ajax({
 						type:'post'
 						,url:':analyze'
 						,data:url+'\r\n'
-						,success:function(data){ // TODO:URLエスケープ(encodeURI使えない)
+						,success:function(data){
 							data = data[0];
 							if( !title && data.title.length ){
 								data.title = HTMLdec( data.title );
 								if( tree.nodeAttr( node.id,'title',data.title ) >1 )
-									$('#item'+node.id).find('.title').text( data.title );
+									$('#item'+node.id).find('.title').text( data.title ).attr('title',data.title);
 							}
 							if( data.icon.length ){
 								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
@@ -3348,7 +3640,23 @@ function clipboardTo( pnode ,index ,vnode ){
 						,complete:function(){ complete++; }
 					}));
 				}
+			};
+			for( var i=lines.length; i--; ){				// 最後の行から
+				var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
+				if( regUrl.test(str) ){						// URL発見
+					if( url ) itemAdd( url );
+					url = str;
+				}
+				else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
 			}
+			if( url ) itemAdd( url );
+			// ajax完了待ち
+			var completed = function(){
+				if( complete < ajaxs.length ) setTimeout(completed,250);
+				else tree.modifing(false);					// 編集完了
+			};
+			completed();
+			if( after ) after( nodes.reverse() );
 		}
 	});
 }
@@ -3360,11 +3668,13 @@ function Confirm( arg ){
 		title		:arg.title ||'確認'
 		,modal		:true
 		,resizable	:false
-		,width		:365
+		,width		:390
 		,height		:190
 		,close		:function(){ $(this).dialog('destroy'); }
 		,buttons	:{}
 	};
+	var ico = '';
+
 	if( arg.ok )  opt.buttons['O K']	= function(){ $(this).dialog('destroy'); arg.ok(); }
 	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
 	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
@@ -3383,9 +3693,16 @@ function Confirm( arg ){
 		opt.height = arg.height;
 	}
 	if( arg.resize ) opt.resizable = true;
+	switch( arg.msg[0] ){
+	case 'i': ico = 'info20.png'; arg.msg = arg.msg.slice(1); break;
+	case '?': ico = 'ques20.png'; arg.msg = arg.msg.slice(1); break;
+	case '!': ico = 'warn20.png'; arg.msg = arg.msg.slice(1); break;
+	}
+	ico = ico.length ? '<div class=msg style="background:url('+ico+') no-repeat;padding:0 0 0 30px;">':'<div class=msg>';
 
-	$('#dialog').html( HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') ).append( arg.$e ).dialog( opt );
+	$('#dialog').html( ico +HTMLenc( arg.msg ).replace(/#BR#/g,'<br>') +'</div>').append( arg.$e ).dialog( opt );
 }
+// TODO:アイコンつける(x,!とか)
 function Alert( msg ){
 	var opt ={
 		title		:'通知'

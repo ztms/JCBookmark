@@ -1,4 +1,6 @@
 // vim:set ts=4:vim modeline
+// TODO:PDFなどメジャーなファイル形式のブックマークアイテムのアイコンを既定で持つ。PDFはpublic domainのpng画像があるようだが(http://commons.wikimedia.org/wiki/File:Adobe_PDF_icon.png)、16x16にするとちょっと潰れてしまう。
+// TODO:外出先でブックマーク更新したの忘れて自宅で変更を消してしまうことしばしば・・。やはりそうならないような仕組みで動かしたい。とりあえず「いま表示してるデータが古くなった」事を検知する仕組みが必要か・・。
 // TODO:Chromeのブックマークバーみたいな固定バーが欲しい。パネルの右クリックメニュー「このタブを固定」でスタイル変更。新規ブックマーク登録ボックスも一緒に入るのはいいが新規登録ボタン(文字が入ってる時だけ表示)をどうするか。あと１行で収まらない時は２行でいいかな？
 // TODO:一括でパネル開閉
 // TODO:パネルの中にパネル、ポップアップは１列だけでなくドラッグで横に引き伸ばして複数列にできる、ポップアップ内でもパネル開閉ができる、ようするにポップアップはwallが出たり消えたりする感じ。配置を設定に持つのが大変そうだが・・
@@ -729,23 +731,29 @@ var paneler = function(){
 		var panelLayout = option.panel.layout();
 		var panelStatus = option.panel.status();
 		var placeList = {}; // 配置が完了したパネルリスト: キーがパネルID、値はtrue
-		var index = 0;		// 上の方に並ぶパネルから順に生成していくためのインデックス変数
-		(function layouter(){
-			var count = 2;
-			do{
-				var layoutSeek = false;
-				for( var coID in panelLayout ){
-					var coN = panelLayout[coID];
-					if( index < coN.length ){
-						var node = panelNode[ coN[index] ]; // tree.node( coN[index] );
-						if( node ) panelCreate( node, columns[coID] );
-						layoutSeek = true;
-					}
+		var panels = [];	// 上方にあるパネル順(生成する順)に並べた配列
+		var index = 0;
+		for( ;; ){
+			var done = true;
+			for( var coID in panelLayout ){
+				var coN = panelLayout[coID];
+				if( index < coN.length ){
+					var node = panelNode[ coN[index] ]; // tree.node( coN[index] );
+					if( node ) panels.push({ node:node ,column:columns[coID] });
+					done = false;
 				}
-				index++; count--;
 			}
-			while( layoutSeek && count>0 );
-			if( layoutSeek ) timer = setTimeout(layouter,0); else afterLayout();
+			if( done ) break; else index++;
+		}
+		index = 0;
+		(function layouter(){
+			var count = 10; // TODO:HW性能により動的可変になるとよい
+			while( index < panels.length && count ){
+				var panel = panels[index];
+				panelCreate( panel.node ,panel.column );
+				index++ ,count--;
+			}
+			if( index < panels.length ) timer = setTimeout(layouter,0); else afterLayout();
 		})();
 		// パネル１つ生成配置
 		function panelCreate( node, column ){
@@ -1377,7 +1385,7 @@ function setEvents(){
 	// パネル設定ダイアログ
 	$('#optionico').click(function(){
 		// ページタイトル
-		$('#page_title').val( option.page.title() )
+		$('#pageTitle').val( option.page.title() )
 		.off().on('input keyup paste',function(){
 			if( this.value != option.page.title() ){
 				option.page.title( this.value );
@@ -1393,7 +1401,7 @@ function setEvents(){
 			$('#colorcss').attr('href',option.color.css());
 		});
 		// 全体
-		$('input[name=wall_margin]').each(function(){
+		$('input[name=wallMargin]').each(function(){
 			if( this.value==option.wall.margin() ) $(this).prop('checked',true);
 		})
 		.off().change(function(){
@@ -1401,7 +1409,7 @@ function setEvents(){
 			$wall.css('margin',option.wall.margin());
 		});
 		// パネル幅
-		$('#panel_width').val( option.panel.width() )
+		$('#panelWidth').val( option.panel.width() )
 		.off().on('input keyup paste',function(){
 			if( !/^\d{3,4}$/.test(this.value) || this.value <100 || this.value >1000 ) return;
 			if( this.value !=option.panel.width() ){
@@ -1414,7 +1422,7 @@ function setEvents(){
 			if( val <1000 ){
 				option.panel.width( ++val );
 				optionApply();
-				$('#panel_width').val( val );
+				$('#panelWidth').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1422,11 +1430,11 @@ function setEvents(){
 			if( val >100 ){
 				option.panel.width( --val );
 				optionApply();
-				$('#panel_width').val( val );
+				$('#panelWidth').val( val );
 			}
 		});
 		// パネル余白
-		$('#panel_marginV').val( option.panel.margin.top() )
+		$('#panelMarginV').val( option.panel.margin.top() )
 		.off().on('input keyup paste',function(){
 			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >100 ) return;
 			if( this.value !=option.panel.margin.top() ){
@@ -1439,7 +1447,7 @@ function setEvents(){
 			if( val <50 ){
 				option.panel.margin.top( ++val );
 				optionApply();
-				$('#panel_marginV').val( val );
+				$('#panelMarginV').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1447,10 +1455,10 @@ function setEvents(){
 			if( val >0 ){
 				option.panel.margin.top( --val );
 				optionApply();
-				$('#panel_marginV').val( val );
+				$('#panelMarginV').val( val );
 			}
 		});
-		$('#panel_marginH').val( option.panel.margin.left() )
+		$('#panelMarginH').val( option.panel.margin.left() )
 		.off().on('input keyup paste',function(){
 			if( !/^\d{1,3}$/.test(this.value) || this.value <0 || this.value >100 ) return;
 			if( this.value !=option.panel.margin.left() ){
@@ -1463,7 +1471,7 @@ function setEvents(){
 			if( val <50 ){
 				option.panel.margin.left( ++val );
 				optionApply();
-				$('#panel_marginH').val( val );
+				$('#panelMarginH').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1471,11 +1479,11 @@ function setEvents(){
 			if( val >0 ){
 				option.panel.margin.left( --val );
 				optionApply();
-				$('#panel_marginH').val( val );
+				$('#panelMarginH').val( val );
 			}
 		});
 		// 列数
-		$('#column_count').val( option.column.count() )
+		$('#columnCount').val( option.column.count() )
 		.off().on('input keyup paste',function(){
 			if( !/^\d{1,2}$/.test(this.value) || this.value <1 || this.value >30 ) return;
 			if( this.value !=option.column.count() ){
@@ -1490,7 +1498,7 @@ function setEvents(){
 				columnCountChange( { prev:val, next:val+1 } );
 				option.column.count( ++val );
 				optionApply();
-				$('#column_count').val( val );
+				$('#columnCount').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1499,17 +1507,17 @@ function setEvents(){
 				columnCountChange( { prev:val, next:val-1 } );
 				option.column.count( --val );
 				optionApply();
-				$('#column_count').val( val );
+				$('#columnCount').val( val );
 			}
 		});
 		// アイコン拡大
-		$('#icon_size').val( option.icon.size() )
+		$('#iconSize').val( option.icon.size() )
 		.next().off().click(function(){
 			var val = option.icon.size();
 			if( val <24 ){
 				option.icon.size( ++val );
 				optionApply();
-				$('#icon_size').val( val );
+				$('#iconSize').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1517,17 +1525,17 @@ function setEvents(){
 			if( val >0 ){
 				option.icon.size( --val );
 				optionApply();
-				$('#icon_size').val( val );
+				$('#iconSize').val( val );
 			}
 		});
 		// フォントサイズ
-		$('#font_size').val( option.font.size() )
+		$('#fontSize').val( option.font.size() )
 		.next().off().click(function(){
 			var val = option.font.size();
 			if( val <24 ){
 				option.font.size( ++val );
 				optionApply();
-				$('#font_size').val( val );
+				$('#fontSize').val( val );
 			}
 		})
 		.next().off().click(function(){
@@ -1535,7 +1543,7 @@ function setEvents(){
 			if( val >9 ){
 				option.font.size( --val );
 				optionApply();
-				$('#font_size').val( val );
+				$('#fontSize').val( val );
 			}
 		});
 		// フォント - フォント種類ぶんのCSSファイルを切り替える方式。
@@ -1559,11 +1567,11 @@ function setEvents(){
 			,buttons:{
 				'パネル設定クリア':function(){
 					option.font.size(-1).column.count(-1).panel.margin.top(-1).panel.margin.left(-1).panel.width(-1);
-					$('#panel_width').val( option.panel.width() );
-					$('#panel_marginV').val( option.panel.margin.top() );
-					$('#panel_marginH').val( option.panel.margin.left() );
-					$('#column_count').val( option.column.count() );
-					$('#font_size').val( option.font.size() );
+					$('#panelWidth').val( option.panel.width() );
+					$('#panelMarginV').val( option.panel.margin.top() );
+					$('#panelMarginH').val( option.panel.margin.left() );
+					$('#columnCount').val( option.column.count() );
+					$('#fontSize').val( option.font.size() );
 					optionApply();
 				}
 				,'パネル配置クリア':function(){
