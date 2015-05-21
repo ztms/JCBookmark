@@ -1273,7 +1273,7 @@ function setEvents(){
 			$menu.hide();
 			panelEdit( panel.id );
 		}))
-		.append($('<a><img>アイテムをテキストで取得</a>').click(function(){
+		.append($('<a><img src=txt.png>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
 			var text='';
 			var child = tree.node( panel.id ).child;

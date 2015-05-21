@@ -2962,6 +2962,7 @@ function itemContextMenu(ev){
 			}
 		}
 	}
+    /*
 	$box.append($('<a><img src=xxx.png>一括でタイトル/URLを変更</a>').click(function(){
 		// TODO:まめFileと同じような機能
 		var $tabs = $('#batchtabs');
@@ -3070,6 +3071,7 @@ function itemContextMenu(ev){
 		resizer();
 		lister();
 	}));
+    */
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
 		if( isLocalServer ){
