@@ -4528,9 +4528,11 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, BYTE view )
 							UCHAR* pageJSON = strndupJSON( pageUrl ,strlen(pageUrl) );
 							if( count ) fputc(',',fp); else fputc('{',fp);
 							fprintf(fp,"\"%s\":\"%s\""
-									,pageUrl ? pageUrl : ""
-									,url ? url : ""
+									,pageJSON ? pageJSON : ""
+									,urlJSON ? urlJSON : ""
 							);
+							if( urlJSON ) free( urlJSON );
+							if( pageJSON ) free( pageJSON );
 							count++;
 						}
 					}
