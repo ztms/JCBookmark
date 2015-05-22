@@ -184,6 +184,9 @@ body {
 }
 #option label {
 	vertical-align:middle;
+	position: relative;
+	left:-2px;
+	padding-left:2px;
 }
 #option button {
 	width:18px;
