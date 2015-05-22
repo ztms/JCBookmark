@@ -827,7 +827,7 @@ var paneler = function(){
 							$.ajax({
 								type:'post'
 								,url:':analyze'
-								,data:this.value+'\r\n' // TODO:URLエスケープ(encodeURI使えん)
+								,data:this.value+'\r\n'
 								,success:function(data){
 									data = data[0];
 									if( data.title.length ){
@@ -951,8 +951,9 @@ function setEvents(){
 							msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,ok:function(){
 								MsgBox('処理中です...');
+								var time = (new Date()).getTime();
 								$.ajax({
-									url:':chrome.json'
+									url:':chrome.json?'+ time
 									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
@@ -960,7 +961,7 @@ function setEvents(){
 									,success:function( data ){
 										bookmarks = data;
 										$.ajax({
-											url:':chrome.icon.json'
+											url:':chrome.icon.json?'+ time
 											,success:function(data){ favicons = data; }
 											,complete:doImport
 										});
@@ -1051,8 +1052,7 @@ function setEvents(){
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
-									url:':favorites.json'
-									//url:':favorites.json?'	// ?をつけるとjsonが改行つき読みやすい
+									url:':favorites.json?'+ (new Date()).getTime()
 									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
@@ -1075,8 +1075,7 @@ function setEvents(){
 							,ok:function(){
 								MsgBox('処理中です...');
 								$.ajax({
-									url:':firefox.json'
-									//url:':firefox.json?'	// ?をつけるとjsonが改行つき読みやすい
+									url:':firefox.json?'+ (new Date()).getTime()
 									,error:function(xhr){
 										$('#dialog').dialog('destroy');
 										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
@@ -1247,7 +1246,7 @@ function setEvents(){
 							ajaxs.push($.ajax({
 								type:'post'
 								,url:':analyze'
-								,data:url+'\r\n' // TODO:URLエスケープ(encodeURI使えん)
+								,data:url+'\r\n'
 								,success:function(data){
 									data = data[0];
 									if( !title && data.title.length ){
@@ -1566,11 +1565,13 @@ function setEvents(){
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
-					option.font.size(-1).column.count(-1).panel.margin.top(-1).panel.margin.left(-1).panel.width(-1);
+					option.panel.width(-1).panel.margin.top(-1).panel.margin.left(-1);
+					option.font.size(-1).icon.size(-1).column.count(-1);
 					$('#panelWidth').val( option.panel.width() );
 					$('#panelMarginV').val( option.panel.margin.top() );
 					$('#panelMarginH').val( option.panel.margin.left() );
 					$('#columnCount').val( option.column.count() );
+					$('#iconSize').val( option.icon.size() );
 					$('#fontSize').val( option.font.size() );
 					optionApply();
 				}
@@ -1698,10 +1699,10 @@ function setEvents(){
 				// 日付時刻情報は、ADD_DATE=,LAST_MODIFIED=,LAST_VISIT=があるようだが、
 				// ADD_DATE=しか持ってないからそれだけでいいかな…。10桁なので1970/1/1
 				// からの秒数(UnixTime)かな？そういうことにしておこう。。
-				var add_date = ' ADD_DATE="' +parseInt( (node.dateAdded||0) /1000 ) +'"';
+				var add_date = ' ADD_DATE="'+ parseInt( (node.dateAdded||0) /1000 ) +'"';
 				if( node.child ){
 					// フォルダ
-					html += indent +'<DT><H3' +add_date +'>' +node.title +'</H3>\n';
+					html += indent +'<DT><H3'+ add_date +'>'+ HTMLenc(node.title||'') +'</H3>\n';
 					html += indent +'<DL><p>\n';
 					callee( node.child, depth+1 );
 					html += indent +'</DL><p>\n';
@@ -1721,9 +1722,9 @@ function setEvents(){
 					// おそらくICO形式だとサイズが無駄にデカいのでPNGにしてるのかな。JavaScriptで
 					// PNG変換とか無理ゲーなのでサーバ側でやるにしても、画像形式変換ライブラリを
 					// 使わないと…GDI+でいけるのかな？でもたいへん面倒なのでやめる。
-					var href = ' HREF="' +(node.url||'') +'"';			// TODO:URLエスケープ(encodeURI使えん)
-					var icon_uri = ' ICON_URI="' +(node.icon||'') +'"';	// TODO:URLエスケープ(encodeURI使えん)
-					html += indent +'<DT><A' +href +add_date +icon_uri +'>' +node.title +'</A>\n';
+					var href = ' HREF="'+ URLesc(node.url||'') +'"';
+					var icon_uri = ' ICON_URI="'+ URLesc(node.icon||'') +'"';
+					html += indent +'<DT><A'+ href + add_date + icon_uri +'>'+ HTMLenc(node.title||'') +'</A>\n';
 				}
 			}
 		}( tree.top().child, 1 ));
@@ -2386,7 +2387,7 @@ function panelEdit( pid ){
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
 						// TODO:ajax完了したかどうか不明(通知がない)
-						$.post(':analyze',this.value+'\r\n',function(data){ // TODO:URLエスケープ(encodeURI使えん)
+						$.post(':analyze',this.value+'\r\n',function(data){
 							data = data[0];
 							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
 							if( data.icon.length ) $icon.attr('src',data.icon);
@@ -2686,7 +2687,7 @@ function analyzer( nodeTop ){
 		for( var i=parallel; i>0 && qix < queue.length; i-- ){
 			var node = queue[qix++];
 			nodes.push( node );
-			reqBody += ':'+node.url+'\r\n'; // TODO:URLエスケープ(encodeURI使えん)
+			reqBody += ':'+node.url+'\r\n';
 		}
 		if( reqBody ){
 			var start = new Date(); // 測定
@@ -3323,6 +3324,15 @@ function MsgBox( msg ){
 		,width	:300
 		,height	:100
 	});
+}
+// URLエスケープ(エクスポートHTML用)
+function URLesc( s ){
+	var reg = /[ "]/g;
+	var map = {
+		 ' ':'%20'
+		,'"':'%22'
+	};
+	return s.replace(reg,function(m){ return map[m]; });
 }
 // HTMLエンコード
 function HTMLenc( html ){

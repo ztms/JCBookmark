@@ -1945,7 +1945,7 @@ NodeList* FavoriteListCreate( void )
 	return list;
 }
 // ノードリストをJSONでファイル出力
-void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, const UCHAR* view )
+void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view )
 {
 	UINT count=0;
 	if( depth==0 ){
@@ -1998,9 +1998,9 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, const UCH
 				",\"icon\":\"%s\"}"
 				,(*nextid)++
 				,node->dateAdded
-				,title?title:""
-				,node->url?node->url:""
-				,node->icon?node->icon:""
+				,title ? title : ""
+				,node->url ? node->url : ""
+				,node->icon ? node->icon : ""
 			);
 			count++;
 			if( view ) fputs("\r\n",fp);
@@ -4248,7 +4248,7 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 //   「すべてのブックマーク」の中に、「ブックマークツールバー」「ブクマークメニュー」「未整理」の順に
 //   並んでいるが、places.sqliteの中身を見てもそんな順番には並んでいない。
 //
-UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, const UCHAR* view )
+UINT FirefoxJSON( sqlite3* db, FILE* fp, int parent, UINT* nextid, UINT depth, BYTE view )
 {
 	sqlite3_stmt* bookmarks;
 	UCHAR* moz_bookmarks = "select id,type,fk,title,dateAdded from moz_bookmarks where parent=? order by position";
@@ -4279,7 +4279,7 @@ sqlite3_step:
 				if( sqlite3_data_count( places ) ){
 					if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
 						const UCHAR* url="";
-						const UCHAR* favicon_url="";
+						const UCHAR* faviconUrl="";
 						// faviconURL取得
 						sqlite3_stmt* favicons;
 						UCHAR* moz_favicons = "select url from moz_favicons where id=?";
@@ -4290,23 +4290,26 @@ sqlite3_step:
 						rc = sqlite3_step( favicons );
 						if( sqlite3_data_count( favicons ) ){
 							if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
-								favicon_url = sqlite3_column_text( favicons, 0 );
+								faviconUrl = sqlite3_column_text( favicons, 0 );
 							}
 						}
 						// URL取得
 						url = sqlite3_column_text( places, 0 );
 						// place:ではじまるURLは無視
 						if( url && strnicmp(url,"place:",6) ){
+							UCHAR* urlJSON = strndupJSON( url ,strlen(url) );
 							UCHAR* titleJSON = NULL;
-							if( title && *title )
-								titleJSON = strndupJSON( title, strlen(title) );
-							else
-								title = "(無題)";
-							if( !favicon_url )
-								favicon_url = "";
-							// 仮URL(http://www.mozilla.org/../made-up-favicon/..)除外
-							if( strstr(favicon_url,"://www.mozilla.org/") && strstr(favicon_url,"/made-up-favicon/") )
-								favicon_url = "";
+							UCHAR* faviconJSON = NULL;
+							if( title && *title ){
+								titleJSON = strndupJSON( title ,strlen(title) );
+							}
+							if( faviconUrl && *faviconUrl ){
+								// 仮URL(http://www.mozilla.org/../made-up-favicon/..)除外
+								if( strstr(faviconUrl,"://www.mozilla.org/") &&
+									strstr(faviconUrl,"/made-up-favicon/") )
+									;
+								else faviconJSON = strndupJSON( faviconUrl ,strlen(faviconUrl) );
+							}
 							if( view ){
 								if( count ) fputs("\r\n",fp);
 								for( n=depth+1; n; n-- ) fputs("\t",fp);
@@ -4320,11 +4323,13 @@ sqlite3_step:
 									",\"icon\":\"%s\"}"
 									,(*nextid)++
 									,_strtoui64(dateAdded,NULL,10)/1000
-									,titleJSON? titleJSON : title
-									,url
-									,favicon_url
+									,titleJSON ? titleJSON : "(無題)"
+									,urlJSON ? urlJSON : ""
+									,faviconJSON ? faviconJSON : ""
 							);
+							if( urlJSON ) free( urlJSON );
 							if( titleJSON ) free( titleJSON );
+							if( faviconJSON ) free( faviconJSON );
 							count++;
 						}
 						sqlite3_finalize( favicons );
@@ -4480,7 +4485,7 @@ WCHAR* ChromeFaviconsPathAlloc( void )
 // 実装は、まずテーブル icon_mapping の url をぜんぶ取得して、１エントリずつ対応
 // するテーブル favicons の url を取得するのかな…。テーブル favicons を検索する
 // 回数が多いけど、もっと楽に対応づけを一気に取得する方法が…わからん。
-UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, const UCHAR* view )
+UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, BYTE view )
 {
 	sqlite3_stmt* icon_mapping;
 	sqlite3_stmt* favicons;
@@ -4496,9 +4501,9 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, const UCHAR* view )
 	rc = sqlite3_step( icon_mapping );
 	if( sqlite3_data_count( icon_mapping ) ){
 		if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
-			const UCHAR* page_url = sqlite3_column_text( icon_mapping, 0 );
+			const UCHAR* pageUrl = sqlite3_column_text( icon_mapping, 0 );
 			int icon_id = sqlite3_column_int( icon_mapping, 1 );
-			if( page_url && *page_url ){
+			if( pageUrl && *pageUrl ){
 				int rc;
 				sqlite3_bind_int( favicons, 1, icon_id );
 				rc = sqlite3_step( favicons );
@@ -4506,13 +4511,13 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, const UCHAR* view )
 					if( rc==SQLITE_DONE || rc==SQLITE_ROW ){
 						const UCHAR* url = sqlite3_column_text( favicons, 0 );
 						if( url && *url ){
-							if( count ){
-								fputc(',',fp);
-							}
-							else{
-								fputc('{',fp);
-							}
-							fprintf(fp,"\"%s\":\"%s\"",page_url,url);
+							UCHAR* urlJSON = strndupJSON( url ,strlen(url) );
+							UCHAR* pageJSON = strndupJSON( pageUrl ,strlen(pageUrl) );
+							if( count ) fputc(',',fp); else fputc('{',fp);
+							fprintf(fp,"\"%s\":\"%s\""
+									,pageUrl ? pageUrl : ""
+									,url ? url : ""
+							);
 							count++;
 						}
 					}
@@ -5602,6 +5607,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 				UCHAR last='\0';
 				UCHAR* p;
 				for( p=mem->data; *p; p++ ){
+					while( isspace(*p) ) p++;
 					if( strncmp(p,"<!-",3)==0 ){
 						comment=1;
 						p += 2;
@@ -5647,7 +5653,11 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 						//     <DT><A HREF="ブックマークURL" ...
 						//   </DL><p>
 						// </DL><p>
-						if( strnicmp(p,"<DL><p>",7)==0 ){
+						if( strnicmp(p,"<p>",3)==0 ){
+							p += 2;
+							continue;
+						}
+						if( strnicmp(p,"<DL>",4)==0 ){
 							depth++;
 							if( depth>1 ){
 								// フォルダ
@@ -5669,10 +5679,10 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								last='[';
 								count=0;
 							}
-							p += 6;
+							p += 3;
 							continue;
 						}
-						if( strnicmp(p,"</DL><p>",8)==0 ){
+						if( strnicmp(p,"</DL>",5)==0 ){
 							depth--;
 							if( depth <=0 ){
 								// 最後の閉じタグ。ごみ箱エントリ出力して終了。
@@ -5687,7 +5697,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 							// フォルダ終わり
 							fputs("]}", fp);
 							last='}';
-							p += 7;
+							p += 4;
 							continue;
 						}
 						// <DT><H3 ADD_DATE="..">フォルダ名</H3>
@@ -5709,61 +5719,97 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 						}
 						// <DT><A HREF="ブックマークURL" ADD_DATE=".." ICON_URI="..">タイトル</A>
 						if( strnicmp(p,"<DT><A ",7)==0 ){
-							UCHAR* titleTop = strchr(p+7,'>');
-							UCHAR* titleEnd = NULL;
-							if( titleTop ){
-								UCHAR* urlTop = stristr(p+6," HREF=\"");
-								UCHAR* dateTop = stristr(p+6," ADD_DATE=\"");
-								UCHAR* iconTop = stristrL(p+6," ICON_URI=\"",titleTop);//ICON_URI=は存在しない場合があるので無駄に検索しないよう上限つき
-								UCHAR* urlEnd = NULL;
-								UCHAR* dateEnd = NULL;
-								UCHAR* iconEnd = NULL;
-								if( urlTop && urlTop < titleTop ){
-									urlTop += 7;
+							UCHAR* urlTop = NULL ,*urlEnd = NULL;
+							UCHAR* dateTop = NULL ,*dateEnd = NULL;
+							UCHAR* iconTop = NULL ,*iconEnd = NULL;
+							UCHAR* titleTop = NULL ,*titleEnd = NULL;
+							p += 7;
+							for( ;; ){
+								while( isspace(*p) ) p++;
+								if( *p == '>' ){
+									titleTop = p + 1;
+									titleEnd = stristr(titleTop,"</A>");
+									if( titleEnd ) p = titleEnd + 3;
+									else{
+										titleEnd = titleTop + strlen(titleTop);
+										p = titleEnd - 1;
+									}
+									break;
+								}
+								else if( strnicmp(p,"HREF=\"",6)==0 ){
+									urlTop = p + 6;
 									urlEnd = strchr(urlTop,'"');
+									if( urlEnd ) p = urlEnd + 1;
+									else{
+										urlEnd = urlTop + strlen(urlTop);
+										p = urlEnd - 1;
+										break;
+									}
 								}
-								if( dateTop && dateTop < titleTop ){
-									dateTop += 11;
+								else if( strnicmp(p,"ADD_DATE=\"",10)==0 ){
+									dateTop = p + 10;
 									dateEnd = strchr(dateTop,'"');
+									if( dateEnd ) p = dateEnd + 1;
+									else{
+										dateEnd = dateTop + strlen(dateTop);
+										p = dateEnd - 1;
+										break;
+									}
 								}
-								if( iconTop ){
-									iconTop += 11;
+								else if( strnicmp(p,"ICON_URI=\"",10)==0 ){
+									iconTop = p + 10;
 									iconEnd = strchr(iconTop,'"');
+									if( iconEnd ) p = iconEnd + 1;
+									else{
+										iconEnd = iconTop + strlen(iconTop);
+										p = iconEnd - 1;
+										break;
+									}
 								}
-								p = titleTop;
-								titleTop++;
-								titleEnd = stristr(titleTop,"</A>");
-								if( titleEnd ) p = titleEnd + 3;
-								// 書き出し
-								if( last=='}' ) fputc(',',fp);
-								fprintf(fp,"{\"id\":%u,\"url\":\"",nextid++);
-								if( urlTop && urlEnd )
-									fwrite( urlTop, urlEnd - urlTop, 1, fp );
-								fputs("\",\"title\":\"",fp);
-								if( titleTop && titleEnd ){
-									UCHAR* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
+								else{
+									// 不明属性無視
+									for( p++; !isspace(*p) && *p!='>'; p++ );
+								}
+							}
+							// 書き出し
+							if( last=='}' ) fputc(',',fp);
+							fprintf(fp,"{\"id\":%u,\"url\":\"",nextid++);
+							if( urlTop && urlEnd ){
+								UCHAR* strJSON = strndupJSON( urlTop, urlEnd - urlTop );
+								if( strJSON ){
+									fputs( strJSON, fp );
+									free( strJSON );
+								}
+							}
+							fputs("\",\"title\":\"",fp);
+							if( titleTop && titleEnd ){
+								UCHAR* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
+								if( strJSON ){
+									fputs( strJSON, fp );
+									free( strJSON );
+								}
+							}
+							fputs("\",\"dateAdded\":\"",fp);
+							if( dateTop && dateEnd ){
+								fwrite( dateTop, dateEnd - dateTop, 1, fp );
+								fwrite( "000", 3, 1, fp );
+							}
+							fputs("\",\"icon\":\"",fp);
+							if( iconTop && iconEnd ){
+								*iconEnd = '\0';
+								if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
+									; // Mozilla仮URL無視
+								else{
+									UCHAR* strJSON = strndupJSON( iconTop, iconEnd - iconTop );
 									if( strJSON ){
 										fputs( strJSON, fp );
 										free( strJSON );
 									}
 								}
-								fputs("\",\"dateAdded\":\"",fp);
-								if( dateTop && dateEnd ){
-									fwrite( dateTop, dateEnd - dateTop, 1, fp );
-									fwrite( "000", 3, 1, fp );
-								}
-								fputs("\",\"icon\":\"",fp);
-								if( iconTop && iconEnd ){
-									*iconEnd = '\0';
-									if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
-										; // Mozilla仮URL無視
-									else fwrite( iconTop, iconEnd - iconTop, 1, fp );
-									*iconEnd = '"';
-								}
-								fputs("\"}",fp);
-								last='}';
+								*iconEnd = '"';
 							}
-							else p += 6;
+							fputs("\"}",fp);
+							last='}';
 							continue;
 						}
 					}
@@ -6610,7 +6656,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								if( fp ){
 									UINT nextid=1;	// ノードID
 									UINT depth=0;	// 階層深さ
-									NodeListJSON( list, fp, &nextid, depth, cp->req.param );
+									//NodeListJSON( list, fp, &nextid, depth, 1 );
+									NodeListJSON( list, fp, &nextid, depth, 0 );
 									fclose( fp );
 									if( nextid >1 ){
 										cp->rsp.readfh = CreateFileW( tmppath
@@ -6635,7 +6682,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 										int parent=0;	// places.sqliteルートエントリparentID
 										UINT nextid=1;	// ノードID
 										UINT depth=0;	// 階層深さ
-										FirefoxJSON( db, fp, parent, &nextid, depth, cp->req.param );
+										//FirefoxJSON( db, fp, parent, &nextid, depth, 1 );
+										FirefoxJSON( db, fp, parent, &nextid, depth, 0 );
 										fclose( fp );
 										if( nextid >1 ){
 											cp->rsp.readfh = CreateFileW( tmppath
@@ -6675,7 +6723,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								if( sqlite3_open16( favicons, &db )==SQLITE_OK ){
 									FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 									if( fp ){
-										UINT count = ChromeFaviconJSON( db, fp, cp->req.param );
+										//UINT count = ChromeFaviconJSON( db, fp, 1 );
+										UINT count = ChromeFaviconJSON( db, fp, 0 );
 										fclose( fp );
 										if( count ){
 											cp->rsp.readfh = CreateFileW( tmppath
@@ -6758,7 +6807,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// IE8は出てくれない。しょうがなくContent-Dispositionもつける。
 									BufferSends( bp
 											,"Content-Type: application/octet-stream\r\n"
-											"Content-Disposition: attachment; filename=\"bookmark.html\"\r\n"
+											 "Content-Disposition: attachment; filename=\"bookmark.html\"\r\n"
 									);
 								}
 								else{
@@ -6792,7 +6841,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 								BufferSendf( bp
 										,"Content-Length: %u\r\n"
-										"Last-Modified: %s\r\n"
+										 "Last-Modified: %s\r\n"
 										,GetFileSize(cp->rsp.readfh,NULL)
 										,inetTime
 								);
