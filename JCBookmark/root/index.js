@@ -1,4 +1,4 @@
-// vim:set ts=4:vim modeline
+// vim:set ts=4 noexpandtab:vim modeline
 // TODO:PDFなどメジャーなファイル形式のブックマークアイテムのアイコンを既定で持つ。PDFはpublic domainのpng画像があるようだが(http://commons.wikimedia.org/wiki/File:Adobe_PDF_icon.png)、16x16にするとちょっと潰れてしまう。
 // TODO:外出先でブックマーク更新したの忘れて自宅で変更を消してしまうことしばしば・・。やはりそうならないような仕組みで動かしたい。とりあえず「いま表示してるデータが古くなった」事を検知する仕組みが必要か・・。
 // TODO:Chromeのブックマークバーみたいな固定バーが欲しい。パネルの右クリックメニュー「このタブを固定」でスタイル変更。新規ブックマーク登録ボックスも一緒に入るのはいいが新規登録ボタン(文字が入ってる時だけ表示)をどうするか。あと１行で収まらない時は２行でいいかな？
@@ -2640,24 +2640,40 @@ function analyzer( nodeTop ){
 	var queue = [];			// ajax待ちノード配列
 	var qix = 0;			// ノード配列インデックス
 	var complete = 0;		// 解析完了数
-	var parallel = 5;		// リンク切れ調査URL並列数(filer.jsとおなじ)
+	var parallel = 5;		// 解析URL並列数(filer.jsとおなじ)
 	var timelog = [];		// 時間記録(並列数の調節用)(filer.jsとおなじ)
-	function paraAdjust( st ,time ){
-		var recvTimeout = false;
+	function paraAdjust( st ){
+		var times = 0;			// 正常通信の数
+		var timeAve = 0;		// 正常通信の平均時間
+		var timeouts = 0;		// タイムアウト発生回数
 		for( var i=st.length; i--; ){
-			switch( st[i].grp ){
-			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
+			switch( st[i].kind ){
+			case 'O': case 'D': case '!':	// 正常・死亡・注意(通信正常)
+				times++;
+				timeAve += st[i].time;
+				break;
 			case '?':
 				if( st[i].msg.indexOf('受信タイムアウト')>=0 ){	// 受信タイムアウト(並列過多かも)
-					recvTimeout = true;
+					timeouts++;
 					break;
 				}
-			default: return;
+			default: return; // 調節しない
 			}
 		}
-		if( st.length==parallel ){
-			// 時間記録
-			timelog.push( time );
+		if( times ) timeAve = timeAve / times;
+		if( timeouts && parallel >1 ){
+			if( !times || timeAve >2100 ){
+				//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
+				//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+				var para = Math.floor( parallel /2 );
+				//console.log('並列数を半減'+ parallel +' -> '+ para);
+				parallel=para ,timelog.length=0;
+				return;
+			}
+		}
+		if( times ){
+			// 正常通信の平均時間記録
+			timelog.push( timeAve );
 			// 直近5回以上20回までの
 			if( timelog.length >4 ){
 				while( timelog.length >20 ) timelog.shift();
@@ -2665,20 +2681,14 @@ function analyzer( nodeTop ){
 				var ave=0.0;
 				for( var i=timelog.length; i--; ) ave += timelog[i];
 				ave /= timelog.length;
-				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
 				// 新しい並列数
 				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
 				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
 				if( para != parallel ){
-					// 変更
-					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
+					//console.log('正常通信の平均時間'+ ave);
+					//console.log('並列数を変更'+ parallel +' -> '+ para);
 					parallel=para ,timelog.length=0;
 				}
-			}
-			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
-				var para = Math.floor( parallel /2 );	// 並列数を半減
-				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
-				parallel=para ,timelog.length=0;
 			}
 		}
 	}
@@ -2690,7 +2700,6 @@ function analyzer( nodeTop ){
 			reqBody += ':'+node.url+'\r\n';
 		}
 		if( reqBody ){
-			var start = new Date(); // 測定
 			$ajax = $.ajax({
 				type:'post'
 				,url:':analyze'
@@ -2698,7 +2707,7 @@ function analyzer( nodeTop ){
 				,success:function(data){
 					// data.length==nodes.length のはずだが…
 					for( var i=0; i<nodes.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
-					paraAdjust( data ,(new Date()).getTime() - start.getTime() );
+					paraAdjust( data );
 				}
 				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(); }
 			});

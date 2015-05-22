@@ -1,4 +1,4 @@
-// vim:set ts=4:vim modeline
+// vim:set ts=4 noexpandtab:vim modeline
 (function( $, win, doc, oStr, IE ){
 'use strict';
 /*
@@ -18,36 +18,36 @@ $.ajaxSetup({
 });
 // jQueryツールチップ
 $.fn.tooltip = function(){
-    return this.each(function(){
-	    $(this).hover(function(){
-		    var $this = $(this);
-		    var txt = $this.attr('data-tip');
-		    if( txt.length ){
-			    var $tip = $('#tooltip');
-			    var $horn1 = $tip.children('b');
-			    var $horn2 = $tip.children('i');
-			    var ofTip = $this.offset();
-			    var ofHorn1 = { left:ofTip.left };
-			    $tip.children('div').text( txt );
-			    // 下に表示
-			    ofTip.left += $this.outerWidth() / 2 - $tip.outerWidth() / 2;
-			    ofTip.top += $this.outerHeight();
-			    if( ofTip.left <0 ) ofTip.left = 0;
-			    else{
-				    var w = ofTip.left + $tip.outerWidth() - $(win).width();
-				    if( w >0 ) ofTip.left -= w;
-			    }
-			    ofHorn1.left = ofHorn1.left - ofTip.left + $this.outerWidth() / 2 - $horn1.outerWidth() / 2;
-			    ofHorn1.top = - $horn1.outerHeight() / 2;
-                if( IE && IE<8 ) ofHorn1.top -= 18; // IE7用詳細不明
-			    $horn1.css({ left:ofHorn1.left ,top:ofHorn1.top });
-			    $horn2.css({ left:ofHorn1.left + 2 ,top:ofHorn1.top + 4 });
-			    $tip.css({ left:ofTip.left ,top:ofTip.top ,'padding-top':$horn2.outerHeight() / 2 - 3 }).show();
-		    }
-	    },function(){
-		    $('#tooltip').hide();
-	    });
-    });
+	return this.each(function(){
+		$(this).hover(function(){
+			var $this = $(this);
+			var txt = $this.attr('data-tip');
+			if( txt.length ){
+				var $tip = $('#tooltip');
+				var $horn1 = $tip.children('b');
+				var $horn2 = $tip.children('i');
+				var ofTip = $this.offset();
+				var ofHorn1 = { left:ofTip.left };
+				$tip.children('div').text( txt );
+				// 下に表示
+				ofTip.left += $this.outerWidth() / 2 - $tip.outerWidth() / 2;
+				ofTip.top += $this.outerHeight();
+				if( ofTip.left <0 ) ofTip.left = 0;
+				else{
+					var w = ofTip.left + $tip.outerWidth() - $(win).width();
+					if( w >0 ) ofTip.left -= w;
+				}
+				ofHorn1.left = ofHorn1.left - ofTip.left + $this.outerWidth() / 2 - $horn1.outerWidth() / 2;
+				ofHorn1.top = - $horn1.outerHeight() / 2;
+				if( IE && IE<8 ) ofHorn1.top -= 18; // IE7用詳細不明
+				$horn1.css({ left:ofHorn1.left ,top:ofHorn1.top });
+				$horn2.css({ left:ofHorn1.left + 2 ,top:ofHorn1.top + 4 });
+				$tip.css({ left:ofTip.left ,top:ofTip.top ,'padding-top':$horn2.outerHeight() / 2 - 3 }).show();
+			}
+		},function(){
+			$('#tooltip').hide();
+		});
+	});
 };
 var isLocalServer = true;		// ローカルHTTPサーバー(通常)
 var select = null;				// 選択フォルダorアイテム
@@ -772,29 +772,42 @@ var itemList = function(){
 	// ・2秒という値はサーバ側の内部タイムアウト値4秒(固定)からなんとなく
 	// ・ただし受信タイムアウトが発生した場合はすぐさま並列数を半減させる
 	// ・NEGiESで帯域制限かけて並列数が増減することを確認する
-	// TODO:この方式だと並列数が多くてぜんぶ正常/注意/死亡でない結果が増えてくると時間記録が
-	// スルーされて調節がぜんぜんされないことになってしまう。サーバ側でURL毎に時間を計測して
-	// 結果を返してもいいけど、それを考慮して並列数に反映する方式？アルゴリズム？が難しい。。
-	// TODO:受信タイムアウトが発生しても、他に同時処理してたURLが短時間で終わっているなら
-	// それは並列過多ではなくサーバ側の問題の可能性が高いので並列数を半減させる必要はない。
+	// TODO:やはりサーバー側での並列だとタイムアウトに引きずられてイマイチ遅い感じがする。
+	// クライアント側のajaxを並列化すればもっと速くなるだろうけど、並列数の調節が面倒…。
 	var parallel = 5;	// リンク切れ調査URL並列数
 	var timelog = [];	// 時間記録(並列数の調節用)
-	function paraAdjust( st ,time ){
-		var recvTimeout = false;
+	function paraAdjust( st ){
+		var times = 0;			// 正常通信の数
+		var timeAve = 0;		// 正常通信の平均時間
+		var timeouts = 0;		// タイムアウト発生回数
 		for( var i=st.length; i--; ){
-			switch( st[i].grp ){
-			case 'O': case 'D': case '!': break;			// 正常・死亡・注意(通信正常)
+			switch( st[i].kind ){
+			case 'O': case 'D': case '!':   // 正常・死亡・注意(通信正常)
+				times++;
+				timeAve += st[i].time;
+				break;
 			case '?':
 				if( st[i].msg.indexOf('受信タイムアウト')>=0 ){	// 受信タイムアウト(並列過多かも)
-					recvTimeout = true;
+					timeouts++;
 					break;
 				}
-			default: return;
+			default: return; // 調節しない
 			}
 		}
-		if( st.length==parallel ){
-			// 時間記録
-			timelog.push( time );
+		if( times ) timeAve = timeAve / times;
+		if( timeouts && parallel >1 ){
+			if( !times || timeAve >2100 ){
+				//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
+				//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+				var para = Math.floor( parallel /2 );
+				//console.log('並列数を半減'+ parallel +' -> '+ para);
+				parallel=para ,timelog.length=0;
+				return;
+			}
+		}
+		if( times ){
+			// 正常通信の平均時間記録
+			timelog.push( timeAve );
 			// 直近5回以上20回までの
 			if( timelog.length >4 ){
 				while( timelog.length >20 ) timelog.shift();
@@ -802,26 +815,20 @@ var itemList = function(){
 				var ave=0.0;
 				for( var i=timelog.length; i--; ) ave += timelog[i];
 				ave /= timelog.length;
-				//$debug.html($debug.html() +timelog.length +'=' +ave +'<br>');
 				// 新しい並列数
 				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
 				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
 				if( para != parallel ){
-					// 変更
-					//$debug.html($debug.html() +parallel +' -> ' +para +'<br>');
+					//console.log('正常通信の平均時間'+ ave);
+					//console.log('並列数を変更'+ parallel +' -> '+ para);
 					parallel=para ,timelog.length=0;
 				}
-			}
-			else if( recvTimeout && parallel >1 ){		// 受信タイムアウト発生
-				var para = Math.floor( parallel /2 );	// 並列数を半減
-				//$debug.html($debug.html() +parallel +' -> ' +para +' (timeout)<br>');
-				parallel=para ,timelog.length=0;
 			}
 		}
 	}
 	// リンク切れ調査結果アイコン画像
 	function stIcoSrc( st ){
-		switch( st.grp ){
+		switch( st.kind ){
 		case 'O': return 'ok.png';		// 正常
 		case 'E': return 'delete.png';	// エラー
 		case 'D': return 'skull.png';	// 死亡
@@ -925,7 +932,7 @@ var itemList = function(){
 					$e.children('.date').text( myFmt(date,now) );
 					$e.children('.title').text( node.title ).attr('title', node.title);
 					if( index++ %2 ) $e.addClass('bgcolor');
-					if( st && st.grp==='D' ) $e.addClass('dead');
+					if( st && st.kind==='D' ) $e.addClass('dead');
 					items.appendChild( $e[0] );
 				};
 			}();
@@ -1072,7 +1079,6 @@ var itemList = function(){
 						}
 					}
 					if( reqBody ){
-						var start = new Date(); // 測定
 						$ajax = $.ajax({
 							type:'post'
 							,url:':poke'
@@ -1101,9 +1107,9 @@ var itemList = function(){
 									}
 									$st.text( st.msg +(st.url.length? ' ≫'+st.url :'') )
 									.prepend( $stico.clone().attr('src',stIcoSrc(st)) );
-									if( st.grp==='D' ) $st.parent().addClass('dead');
+									if( st.kind==='D' ) $st.parent().addClass('dead');
 								}
-								paraAdjust( data ,(new Date()).getTime() - start.getTime() );
+								paraAdjust( data );
 							}
 							,complete:function(){ $ajax=null; if( ajaxer ) ajaxer(true); }
 						});
@@ -1233,7 +1239,6 @@ var itemList = function(){
 					reqBody += ':'+node.url+'\r\n';
 				}
 				if( reqBody ){
-					var start = new Date(); // 測定
 					$ajax = $.ajax({
 						type:'post'
 						,url:':poke'
@@ -1253,7 +1258,7 @@ var itemList = function(){
 								var st = data[i];
 								if( node.url ) results[node.url] = st;
 								var cls = '';
-								switch( st.grp ){
+								switch( st.kind ){
 								case 'O': count.ok++; continue;				// 正常
 								case 'E': count.err++; break;				// エラー
 								case 'D': count.dead++; cls='dead'; break;	// 死亡
@@ -1262,7 +1267,7 @@ var itemList = function(){
 								}
 								$itemAdd.func( node ,stIcoSrc(st) ,st.msg +(st.url.length?' ≫'+st.url:'') ,cls );
 							}
-							paraAdjust( data ,(new Date()).getTime() - start.getTime() );
+							paraAdjust( data );
 						}
 						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(true); }
 					});
@@ -1376,7 +1381,7 @@ var itemList = function(){
 					$e.children('.title').text( node.title ).attr('title',node.title).css('text-indent',indent);
 					// TODO:アイテム欄内フォルダ展開で色が交互にならないパターンはまあいいかな…
 					if( bgcolor++ %2 ) $e.addClass('bgcolor');
-					if( st && st.grp==='D' ) $e.addClass('dead');
+					if( st && st.kind==='D' ) $e.addClass('dead');
 					return $e[0];
 				};
 				return(
@@ -2962,7 +2967,7 @@ function itemContextMenu(ev){
 			}
 		}
 	}
-    /*
+	/*
 	$box.append($('<a><img src=xxx.png>一括でタイトル/URLを変更</a>').click(function(){
 		// TODO:まめFileと同じような機能
 		var $tabs = $('#batchtabs');
@@ -3071,7 +3076,7 @@ function itemContextMenu(ev){
 		resizer();
 		lister();
 	}));
-    */
+	*/
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
 		if( isLocalServer ){

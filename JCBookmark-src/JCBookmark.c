@@ -1,4 +1,4 @@
-﻿// vim:set ts=4:vim modeline
+﻿// vim:set ts=4 noexpandtab:vim modeline
 //
 //	JCBookmark専用HTTPサーバー
 //
@@ -2185,9 +2185,10 @@ typedef struct {
 
 // 死活確認結果報告用
 typedef struct {
-	UCHAR	grp;		// グループ識別文字
+	UCHAR	kind;		// 結果種別
 	UCHAR	msg[256];	// メッセージ
 	UCHAR*	newurl;		// 転送先(変更)URL
+	DWORD	time;		// かかった時間
 } PokeReport;
 
 // 外部クッキー
@@ -2214,7 +2215,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 	// プロトコル
 	if( !url || !*url ){
 		LogW(L"URLが空です");
-		if( rp ) rp->grp='E' ,strcpy(rp->msg,"URLが空です");
+		if( rp ) rp->kind='E' ,strcpy(rp->msg,"URLが空です");
 		goto fin;
 	}
 	if( strnicmp(url,"http://",7)==0 ){
@@ -2228,13 +2229,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 		if( ssl_ctx ) isSSL = TRUE;
 		else{
 			LogW(L"SSL利用できません");
-			if( rp ) rp->grp='?' ,strcpy(rp->msg,"SSL利用できません");
+			if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL利用できません");
 			goto fin;
 		}
 	}
 	else{
 		LogA("不明なプロトコル:%s",url);
-		if( rp ) rp->grp='E' ,strcpy(rp->msg,"不明なプロトコル");
+		if( rp ) rp->kind='E' ,strcpy(rp->msg,"不明なプロトコル");
 		goto fin;
 	}
 	// ホスト名
@@ -2282,22 +2283,22 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// TODO:Connection Refused もここを通るようだが、WSAGetLastError()が
 									// WSAECONNREFUSED ではなく WSAEWOULDBLOCK になるのはなぜ・・・
 									LogA("[%u]connect失敗%u(%s:%s)",sock,WSAGetLastError(),host,port);
-									if( rp ) rp->grp='E' ,strcpy(rp->msg,"接続できません");
+									if( rp ) rp->kind='E' ,strcpy(rp->msg,"接続できません");
 								}
 							}
 							else{
 								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
-								if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+								if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 							}
 							break;
 						case WSA_WAIT_TIMEOUT:
 							LogA("[%u]connectタイムアウト(%s:%s)",sock,host,port);
-							if( rp ) rp->grp='?' ,strcpy(rp->msg,"接続タイムアウト");
+							if( rp ) rp->kind='?' ,strcpy(rp->msg,"接続タイムアウト");
 							break;
 						case WSA_WAIT_FAILED:
 						default:
 							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
-							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 						}
 					}
 					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
@@ -2305,7 +2306,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 				}
 				else{
 					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
-					if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+					if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 				}
 				WSACloseEvent( ev );
 				// 送受信
@@ -2353,13 +2354,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									if( ++retry <10 ){ Sleep(500); goto retry; }
 								}
 								else LogA("[%u]SSL_connect(%s:%s)=%d,エラー%d",sock,host,port,ret,err);
-								if( rp ) rp->grp='?' ,strcpy(rp->msg,"SSL接続できません");
+								if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL接続できません");
 								ssl_ok = FALSE;
 							}
 						}
 						else{
 							LogW(L"[%u]SSL_newエラー",sock);
-							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 							ssl_ok = FALSE;
 						}
 					}
@@ -2408,12 +2409,12 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								int nfds = readable( sock, timelimit - timeGetTime() );
 								if( *abort ) break;
 								if( nfds==0 ){
-									if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信タイムアウト");
+									if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信タイムアウト");
 									break;
 								}
 								else if( nfds==SOCKET_ERROR ){
 									LogW(L"[%u]selectエラー%u",sock,WSAGetLastError());
-									if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+									if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 									break;
 								}
 								if( sslp ){
@@ -2424,7 +2425,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									if( *abort ) break;
 									if( len==0 ){
 										// コネクション切断
-										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信データなし");
+										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
 										break;
 									}
 									else if( len <0 ){
@@ -2439,7 +2440,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 										}
 										else{
 											LogW(L"[%u]SSL_read()=%d,不明なエラー%d",sock,len,err);
-											if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信エラー(SSL)");
+											if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー(SSL)");
 											break;
 										}
 									}
@@ -2449,12 +2450,12 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									if( *abort ) break;
 									if( len==0 ){
 										// コネクション切断
-										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信データなし");
+										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
 										break;
 									}
 									else if( len <0 ){
 										LogW(L"[%u]recv()=%d,エラー%u",sock,len,WSAGetLastError());
-										if( rp && !*rsp->buf ) rp->grp='?' ,strcpy(rp->msg,"受信エラー");
+										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー");
 										break;
 									}
 								}
@@ -2585,7 +2586,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 						}
 						else{
 							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
-							if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 						}
 					}
 					if( sslp ){
@@ -2598,19 +2599,19 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			}
 			else{
 				LogA("ホスト%sが見つかりません",host);
-				if( rp ) rp->grp='?' ,strcpy(rp->msg,"ホストが見つかりません");
+				if( rp ) rp->kind='?' ,strcpy(rp->msg,"ホストが見つかりません");
 			}
 			if( addr ) FreeAddrInfoA( addr );
 			free( host );
 		}
 		else{
 			LogW(L"L%u:strdupエラー",__LINE__);
-			if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー");
+			if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 		}
 	}
 	else{
 		LogA("不正なURL:%s",url);
-		if( rp ) rp->grp='E' ,strcpy(rp->msg,"不正なURL");
+		if( rp ) rp->kind='E' ,strcpy(rp->msg,"不正なURL");
 	}
 fin:
 	if( rsp ){
@@ -3374,6 +3375,7 @@ void CookieDestroy( Cookie* cookie )
 // httpGET()の結果が転送の場合はさらにhttpGET()して返却
 HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeReport* rp )
 {
+	DWORD start = timeGetTime();
 	HTTPGet* rsp = httpGET( url0 ,ua ,abort ,rp ,0 );
 	Cookie* cookie = NULL;
 	UCHAR* newurl = NULL;
@@ -3387,7 +3389,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 		}
 		if( hop++ >9 ){
 			LogW(L"転送回数が多すぎます");
-			if( rp ) rp->grp='?' ,strcpy(rp->msg,"転送が多すぎます");
+			if( rp ) rp->kind='?' ,strcpy(rp->msg,"転送が多すぎます");
 			goto fin;
 		}
 		// HTTP/1.x 200 OK
@@ -3443,7 +3445,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 													goto retry;
 												}
 											}
-											else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
+											else{ if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
 											*endtag='>'; // 元に戻す
 											goto fin;
 										}
@@ -3461,9 +3463,9 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				// それを転送とみなさないため。
 				if( rp ){
 					if( newurl && urlcmp(newurl,url0) )
-						rp->grp='!';
+						rp->kind='!';
 					else
-						rp->grp='O' ,free(newurl) ,newurl=NULL;
+						rp->kind='O' ,free(newurl) ,newurl=NULL;
 				}
 				break;
 			case '3': // 3xx 転送
@@ -3503,12 +3505,12 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 								goto retry;
 							}
 						}
-						else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
+						else{ if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー"); }
 						goto fin;
 					}
 					else LogW(L"3xxリダイレクト応答でLocationヘッダがありません");
 				}
-				if( rp ) rp->grp='!';
+				if( rp ) rp->kind='!';
 				break;
 			case '4': // 4xx クライアントエラー
 				// YouTubeがアクセスしすぎるとすべて 429 Too Many Requests で閲覧できなくなるが、しば
@@ -3517,36 +3519,39 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 				switch( rsp->buf[10] ){
 				case '0':
 					switch( rsp->buf[11] ){
-					case '4':if( rp ) rp->grp='D'; break;	// 404 Not Found =死亡
-					default: if( rp ) rp->grp='E';			// 40x =エラー
+					case '4':if( rp ) rp->kind='D'; break;	// 404 Not Found =死亡
+					default: if( rp ) rp->kind='E';			// 40x =エラー
 					}
 					break;
 				case '1':
 					switch( rsp->buf[11] ){
-					case '0':if( rp ) rp->grp='D'; break;	// 410 Gone =死亡
-					default: if( rp ) rp->grp='E';			// 41x =エラー
+					case '0':if( rp ) rp->kind='D'; break;	// 410 Gone =死亡
+					default: if( rp ) rp->kind='E';			// 41x =エラー
 					}
 					break;
-				default: if( rp ) rp->grp='E';				// 4xx =エラー
+				default: if( rp ) rp->kind='E';				// 4xx =エラー
 				}
 				break;
 			case '5': // 5xx サーバーエラー
-				if( rp ) rp->grp='E'; // Error
+				if( rp ) rp->kind='E'; // Error
 				break;
 			//case '1': // 情報(HTTP/1.1以降)
 			default:
-				if( rp ) rp->grp='?';
+				if( rp ) rp->kind='?';
 			}
 			if( rp ){
 				strncpy( rp->msg ,rsp->buf + 9 ,sizeof(rp->msg) );	// 応答コードテキスト("200 OK"など)
 				rp->msg[sizeof(rp->msg)-1]='\0';
 			}
 		}
-		else{ if( rp ) rp->grp='?' ,strcpy(rp->msg,"不明なHTTP応答"); }
+		else{ if( rp ) rp->kind='?' ,strcpy(rp->msg,"不明なHTTP応答"); }
 	}
 fin:
 	CookieDestroy( cookie );
-	if( rp ) rp->newurl = newurl;
+	if( rp ){
+		rp->newurl = newurl;
+		rp->time = timeGetTime() - start;
+	}
 	else if( newurl ) free( newurl );
 	return rsp;
 }
@@ -3608,7 +3613,7 @@ unsigned __stdcall poke( void* tp )
 	// http://www.buseireann.ie/site/home/
 	// http://www.ns.nl/en/home
 	// http://www.flatfoot56.com/main.html →上位にアクセスすると転送される
-	if( ctx->repo.grp=='D' && !ctx->repo.newurl ){
+	if( ctx->repo.kind=='D' && !ctx->repo.newurl ){
 		UCHAR* upper = strdup( ctx->url );
 		if( upper ){
 			UCHAR* path = strstr(upper,"://");		// URLのパス開始点
@@ -3624,11 +3629,11 @@ unsigned __stdcall poke( void* tp )
 						if( sl ) sl[1]='\0';
 					}
 					if( strcmp( ctx->url ,upper ) ){
-						PokeReport repo = {'?',"不明な処理結果です",NULL};
+						PokeReport repo = {'?',"不明な処理結果です",NULL,0};
 						HTTPGet* rsp = httpGETs( upper ,ctx->userAgent ,ctx->pAbort ,&repo );
 						if( rsp ){
 							free( rsp );
-							if( repo.grp=='O' || repo.grp=='!' ){
+							if( repo.kind=='O' || repo.kind=='!' ){
 								if( repo.newurl ){
 									ctx->upper = strdup( repo.newurl );
 									free( repo.newurl );
@@ -3659,9 +3664,10 @@ PokeCTX* PokeStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		ctx->userAgent		= userAgent;
 		ctx->pAbort			= pAbort;
 		//ctx->upper			= NULL;
-		ctx->repo.grp		= '?';
+		ctx->repo.kind		= '?';
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
+		ctx->repo.time		= 0;
 		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)ctx ,0,NULL );
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(PokeCTX));
@@ -3706,12 +3712,16 @@ unsigned __stdcall poker( void* tp )
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
 		for( ctx=ctx0 ,count=0; ctx; ctx=ctx->next ,count++ ){
 			PokeReport* rp = &(ctx->repo);
-			LogA("[%u]URL%u:%c,%s,%s",Num(cp),count,rp->grp,rp->msg,rp->newurl?rp->newurl:"");
+			LogA("[%u]URL%u:%c,%s,%s",Num(cp),count,rp->kind,rp->msg,rp->newurl?rp->newurl:"");
 			BufferSendf( &(cp->rsp.body)
-					//,"%s{\"grp\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"upper\":\"%s\"}"
-					,"%s{\"grp\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\"}"
+					//,"%s{\"kind\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"time\":%u,\"upper\":\"%s\"}"
+					,"%s{\"kind\":\"%c\",\"msg\":\"%s\",\"url\":\"%s\",\"time\":%u}"
 					,(ctx==ctx0)? "":","
-					,rp->grp ,rp->msg ,rp->newurl? rp->newurl :"" //,ctx->upper? ctx->upper :""
+					,rp->kind
+					,rp->msg
+					,rp->newurl? rp->newurl :""
+					,rp->time
+					//,ctx->upper? ctx->upper :""
 			);
 		}
 		BufferSend( &(cp->rsp.body) ,"]" ,1 );
@@ -3895,10 +3905,10 @@ unsigned __stdcall analyze( void* tp )
 			}
 			// URL取得確認
 			if( icon ){
-				PokeReport repo = {'?',"",NULL};
+				PokeReport repo = {'?',"",NULL,0};
 				HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
 				if( tmp ) free( tmp );
-				if( repo.grp=='O' || repo.grp=='!' ){
+				if( repo.kind=='O' || repo.kind=='!' ){
 					if( repo.newurl ) free( icon ) ,icon = repo.newurl;
 				}
 				else{
@@ -3916,14 +3926,14 @@ unsigned __stdcall analyze( void* tp )
 					if( slash ) *slash = '\0';
 					icon = strjoin( ctx->url ,"/favicon.ico" ,0,0,0 );
 					if( icon ){
-						PokeReport repo = {'?',"",NULL};
+						PokeReport repo = {'?',"",NULL,0};
 						HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
 						UCHAR type = 0;
 						if( tmp ){
 							type = tmp->ContentType;
 							free( tmp );
 						}
-						if( type==TYPE_IMAGE && (repo.grp=='O' || repo.grp=='!') ){
+						if( type==TYPE_IMAGE && (repo.kind=='O' || repo.kind=='!') ){
 							if( repo.newurl ) free( icon ) ,icon = repo.newurl;
 						}
 						else{
@@ -3952,9 +3962,10 @@ AnalyCTX* AnalyStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		ctx->pAbort			= pAbort;
 		ctx->pageTitle		= NULL;
 		ctx->favicon		= NULL;
-		ctx->repo.grp		= '?';
+		ctx->repo.kind		= '?';
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
+		ctx->repo.time		= 0;
 		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)ctx ,0,NULL );
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(AnalyCTX));
@@ -4001,11 +4012,13 @@ unsigned __stdcall analyzer( void* tp )
 			PokeReport* rp = &(ctx->repo);
 			LogA("[%u]URL%u:%s,%s",Num(cp),count,ctx->pageTitle?ctx->pageTitle:"",ctx->favicon?ctx->favicon:"");
 			BufferSendf( &(cp->rsp.body)
-					,"%s{\"title\":\"%s\",\"icon\":\"%s\",\"grp\":\"%c\",\"msg\":\"%s\"}"
+					,"%s{\"title\":\"%s\",\"icon\":\"%s\",\"kind\":\"%c\",\"msg\":\"%s\",\"time\":%u}"
 					,(ctx==ctx0)? "":","
 					,ctx->pageTitle? ctx->pageTitle :""
 					,ctx->favicon? ctx->favicon :""
-					,rp->grp ,rp->msg
+					,rp->kind
+					,rp->msg
+					,rp->time
 			);
 		}
 		BufferSend( &(cp->rsp.body) ,"]" ,1 );
