@@ -8922,6 +8922,11 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 		DeleteFileW(wpath);
 		_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\saveshot.png",DocumentRoot);
 		DeleteFileW(wpath);
+		// v2.1で無くなったファイル削除
+		_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\question.png",DocumentRoot);
+		DeleteFileW(wpath);
+		_snwprintf(wpath,sizeof(wpath)/sizeof(WCHAR),L"%s\\warn.png",DocumentRoot);
+		DeleteFileW(wpath);
 	}
 	else DocumentRootSelect();
 	// 待受開始
