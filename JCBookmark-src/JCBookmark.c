@@ -92,6 +92,13 @@
 // なぜ？上位互換ではないの？0x0500台に定義すれば出るが、0x0500や0x0501だと関数
 // 未定義エラーが発生する。0x0502ならバルーン出たので採用。
 #define _WIN32_WINNT 0x0502
+// メモリリーク検出
+// _CrtSetDbgFlag()とセット
+#ifdef _DEBUG
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -108,6 +115,7 @@
 #include <stdarg.h>
 #include "sqlite3.h"
 #include "openssl/ssl.h"
+#include "openssl/err.h"
 #include "openssl/rand.h"
 
 #define		WM_SOCKET			WM_APP			// ソケットイベントメッセージ
@@ -165,7 +173,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -1271,8 +1279,8 @@ void SocketBlocking( SOCKET sock )
 }
 void ClientShutdown( TClient* cp )
 {
-	WCHAR wpath[MAX_PATH+1]=L"";
 	if( cp ){
+		WCHAR wpath[MAX_PATH+1]=L"";
 		CloseHandle( cp->thread );
 		CloseHandle( cp->req.writefh );
 		CloseHandle( cp->rsp.readfh );
@@ -3652,6 +3660,7 @@ unsigned __stdcall poke( void* tp )
 		}
 	}
 	*/
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -3683,6 +3692,7 @@ unsigned __stdcall poker( void* tp )
 	PokeCTX*	ctx;
 	UINT		count	= 0;
 	// リクエストボディ1行1URL取得スレッド生成
+	// TODO:1つはスレッドでなくこの関数自身で実行すればよい（スレッド数減らせる）
 	while( *bp ){
 		if( isCRLF(*bp) ){
 			*bp++ = '\0';				// req.body破壊
@@ -3738,6 +3748,7 @@ unsigned __stdcall poker( void* tp )
 	}
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -3919,8 +3930,8 @@ unsigned __stdcall analyze( void* tp )
 			// <link>がなかったらhttp(s)://host/favicon.icoがあるか確認
 			if( !icon ){
 				UCHAR* host = strstr(ctx->url,"://");
-				UCHAR* slash;
 				if( host ){
+					UCHAR* slash;
 					host += 3;
 					slash = strchr(host,'/');
 					if( slash ) *slash = '\0';
@@ -3949,6 +3960,7 @@ unsigned __stdcall analyze( void* tp )
 		ctx->favicon = icon;
 	fin:free( rsp );
 	}
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -3981,6 +3993,7 @@ unsigned __stdcall analyzer( void* tp )
 	AnalyCTX*	ctx;
 	UINT		count	= 0;
 	// リクエストボディ1行1URL取得スレッド生成
+	// TODO:1つはスレッドでなくこの関数自身で実行すればよい（スレッド数減らせる）
 	while( *bp ){
 		if( isCRLF(*bp) ){
 			*bp++ = '\0';				// req.body破壊
@@ -4037,6 +4050,7 @@ unsigned __stdcall analyzer( void* tp )
 	}
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -4113,6 +4127,7 @@ unsigned __stdcall gzipcreater( void* tp )
 		}
 		free( path );
 	}
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -5428,6 +5443,7 @@ unsigned __stdcall authenticate( void* tp )
 	else ResponseError(cp,"400 Bad Request");
 	// 終了
 	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
@@ -5617,7 +5633,6 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 				UCHAR* folderDateTop=NULL, *folderDateEnd=NULL;
 				BYTE comment=0, doctype=0, topentry=0;
 				UINT nextid=3;
-				UINT count=0;
 				int depth=0;
 				UCHAR last='\0';
 				UCHAR* p;
@@ -5692,7 +5707,6 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								}
 								fputs("\",\"child\":[",fp);
 								last='[';
-								count=0;
 							}
 							p += 3;
 							continue;
@@ -6015,7 +6029,6 @@ BOOL ListenStart( void )
 {
 	ADDRINFOW*	adr		= NULL;
 	ADDRINFOW	hint;
-	BOOL		success	= FALSE;
 
 	memset( &hint, 0, sizeof(hint) );
 	hint.ai_socktype = SOCK_STREAM;
@@ -7732,9 +7745,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				TCITEMW item;
 				WCHAR* sslcrt = AppFilePath( SSL_CRT );
 				WCHAR* sslkey = AppFilePath( SSL_KEY );
-				UINT tabid;
 				RECT rc;
-				UINT i;
 				// フォント
 				my->hFontM = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 				my->hFontS = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
@@ -7886,7 +7897,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 				br = BrowserInfoAlloc();
 				if( br ){
-					for( tabid=1,i=0; i<BI_COUNT; i++, tabid++ ){
+					UINT tabid=1 ,i=0;
+					for( ; i<BI_COUNT; i++, tabid++ ){
 						if( br[i].exe || (BI_USER1<=i && i<=BI_USER4) ){
 							my->hIcon[i] = FileIconLoad( br[i].exe );
 							item.pszText = br[i].name;
@@ -8867,7 +8879,6 @@ void DocumentRootSelect( void )
 void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip )
 {
 	UCHAR path[MAX_PATH+1];
-	WCHAR wpath[MAX_PATH+1];
 	// タイマー起動
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
 	// ブラウザ起動ボタン
@@ -8911,6 +8922,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	// ファイルを勝手に消さない(JCBookmarkのファイルではないため)。逆に言うと、JCBookmarkでない
 	// のにrootフォルダで起動した場合、rootフォルダ内ファイルが勝手に消される可能性がある要注意。
 	if( PathIsDirectoryW(DocumentRoot) ){
+		WCHAR wpath[MAX_PATH+1];
 		// 空ノードファイル作る。既存ファイル上書きしない。
 		GetCurrentDirectoryW( sizeof(wpath)/sizeof(WCHAR), wpath );
 		if( SetCurrentDirectoryW( DocumentRoot ) ){
@@ -9132,6 +9144,19 @@ void AboutBox( void )
 	}
 	else LogW(L"RegisterClassエラー");
 }
+// SSL_library_initに対応する終了関数
+#include "openssl/conf.h"
+#include "openssl/engine.h"
+void SSL_library_fin( void )
+{
+	ENGINE_cleanup();
+	CONF_modules_unload(1);
+	ERR_free_strings();
+	CRYPTO_cleanup_all_ex_data();
+	EVP_cleanup();
+	ERR_remove_state(0);
+	sk_SSL_COMP_free(SSL_COMP_get_compression_methods());
+}
 // メインフォームWindowProc
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -9349,6 +9374,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		SocketShutdown();
 		BrowserIconDestroy( browser );
 		TrayIconNotify( hwnd, NIM_DELETE );
+		if( ssl_ctx ) SSL_CTX_free( ssl_ctx );
+		SSL_library_fin();
 		if( mlang.dll ) FreeLibrary( mlang.dll ), memset(&mlang,0,sizeof(mlang));
 		ReleaseDC( ListBox, ListBoxDC ), ListBoxDC=NULL;
 		CloseHandle( ThisProcess ), ThisProcess=NULL;
@@ -9366,9 +9393,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 WCHAR* ModuleFileNameAllocW( void )
 {
 	size_t length = 32;
-	WCHAR* wpath = NULL;
 	for( ;; ){
-		wpath = malloc( length * sizeof(WCHAR) );
+		WCHAR* wpath = malloc( length * sizeof(WCHAR) );
 		if( wpath ){
 			DWORD len = GetModuleFileNameW( NULL, wpath, length );
 			if( len && len < length-1 ){
@@ -9527,7 +9553,13 @@ void Cleanup( void )
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};
-
+#ifdef _DEBUG
+	// アプリ終了時に解放されてないメモリ領域を検出する
+	_CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) |_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
+	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、
+	// {数字} の番号を書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
+	//_CrtSetBreakAlloc(172211);
+#endif
 	if( Startup( hinst, nCmdShow ) ){
 		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
 			if( !IsDialogMessage( MainForm, &msg ) ){
