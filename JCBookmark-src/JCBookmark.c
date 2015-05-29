@@ -92,8 +92,7 @@
 // なぜ？上位互換ではないの？0x0500台に定義すれば出るが、0x0500や0x0501だと関数
 // 未定義エラーが発生する。0x0502ならバルーン出たので採用。
 #define _WIN32_WINNT 0x0502
-// メモリリーク検出
-// _CrtSetDbgFlag()とセット
+// メモリリーク検出(_CrtSetDbgFlagとセット)
 #ifdef _DEBUG
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
@@ -173,7 +172,9 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#ifndef _CRTDBG_MAP_ALLOC
+#define MEMLOG
+#endif
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -2044,6 +2045,38 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 
 
 
+//#define HEAPCHECK
+#ifdef HEAPCHECK
+// http://www.kaimei.org/read/internal/safety
+#include <malloc.h>
+void heapWalk( void )
+{
+    _HEAPINFO info;
+    int status;
+    info._pentry = NULL;  // 最初のヒープエントリを指すために NULL をセット
+    while( (status=_heapwalk(&info))==_HEAPOK ){  // エントリが正常な場合
+        //printf("%6s メモリブロック位置 %Fp 大きさ %4.4X\n",
+            //(info._useflag == _USEDENTRY ? "使用中" : "未使用"), info._pentry, info._size);
+    }
+    switch( status ){
+    case _HEAPEMPTY   : ErrorBoxW(L"ヒープが初期化されていません\n"); break;
+    case _HEAPEND     : /*printf("ヒープの終端まで正常に達しました\n");*/ break;
+    case _HEAPBADPTR  : ErrorBoxW(L"_HEAPINFO._pentry にヒープへの有効なポインタがありません\n"); break;
+    case _HEAPBADBEGIN: ErrorBoxW(L"初期ヘッダ情報を検出できないか無効です\n"); break;
+    case _HEAPBADNODE : ErrorBoxW(L"不正なノードが検出されたかヒープが壊れています\n"); break;
+    default           : ErrorBoxW(L"未知のエラーです\n");
+    }
+}
+#endif
+
+
+
+
+
+
+
+
+
 //---------------------------------------------------------------------------------------------------------------
 // 外部接続・HTTPクライアント関連
 //
@@ -3563,7 +3596,7 @@ fin:
 	else if( newurl ) free( newurl );
 	return rsp;
 }
-// 指定URL死活確認を行うスレッド関数
+// 指定URL死活確認
 // クライアントからの要求 POST /:poke HTTP/1.x で開始され、
 // 本文の1行1URLの
 // - URLに接続しGETリクエストを送って応答を確認する。
@@ -3585,9 +3618,9 @@ typedef struct PokeCTX {
 	//UCHAR*		upper;		// out URLが死んでいた時の上位パスURL
 	PokeReport	repo;		// out 死活結果
 } PokeCTX;
-unsigned __stdcall poke( void* tp )
+// URL1つ用
+void Poke( PokeCTX* ctx )
 {
-	PokeCTX* ctx = tp;
 	UCHAR* hash = strchr(ctx->url,'#');
 	HTTPGet* rsp;
 	// URLの#以降を除去
@@ -3660,11 +3693,16 @@ unsigned __stdcall poke( void* tp )
 		}
 	}
 	*/
+}
+// URL1つ用スレッド関数
+unsigned __stdcall PokeThread( void* tp )
+{
+	Poke( (PokeCTX*)tp );
 	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
-PokeCTX* PokeStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
+PokeCTX* PokeCTXalloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 {
 	PokeCTX* ctx = malloc( sizeof(PokeCTX) );
 	if( ctx ){
@@ -3677,11 +3715,12 @@ PokeCTX* PokeStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
 		ctx->repo.time		= 0;
-		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,poke ,(void*)ctx ,0,NULL );
+		ctx->thread			= NULL;
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(PokeCTX));
 	return ctx;
 }
+// 複数URL用スレッド関数
 unsigned __stdcall poker( void* tp )
 {
 	TClient*	cp		= tp;
@@ -3689,34 +3728,45 @@ unsigned __stdcall poker( void* tp )
 	UCHAR*		bp		= url;
 	PokeCTX*	ctx0	= NULL;
 	PokeCTX*	ctxN	= NULL;
+	PokeCTX*	ctxZ	= NULL;
 	PokeCTX*	ctx;
 	UINT		count	= 0;
-	// リクエストボディ1行1URL取得スレッド生成
-	// TODO:1つはスレッドでなくこの関数自身で実行すればよい（スレッド数減らせる）
+	// リクエストボディ1行1URL取得、調査スレッド生成
 	while( *bp ){
 		if( isCRLF(*bp) ){
 			*bp++ = '\0';				// req.body破壊
 			while( isCRLF(*bp) ) bp++;	// 空行無視
 			if( *url==':' ) url++;		// 空URL防止用行頭':'スキップ
-			ctx = PokeStart( url ,cp->req.UserAgent ,&(cp->abort) );
+			ctx = PokeCTXalloc( url ,cp->req.UserAgent ,&(cp->abort) );
 			if( ctx ){
-				// 単方向リスト末尾
-				if( ctx0 ){
-					ctxN->next = ctx;
-					ctxN = ctx;
+				if( count ){
+					ctx->thread = (HANDLE)_beginthreadex( NULL,0 ,PokeThread ,(void*)ctx ,0,NULL );
+					Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避にもなる？）
+					// 単方向リスト末尾
+					if( ctx0 ) ctxN->next = ctx ,ctxN = ctx;
+					else ctx0 = ctxN = ctx;
 				}
-				else ctx0 = ctxN = ctx;
+				else{
+					// 1つ目のURLはここで直接処理(後で)
+					ctxZ = ctx;
+				}
 				LogA("[%u]URL%u:%s",Num(cp),count++,url);
 			}
 			url = bp;
 		}
 		else bp++;
 	}
-	// スレッド待機
+	// 調査スレッドと並列で1つ目のURL処理
+	if( ctxZ ) Poke( ctxZ );
+	// 調査スレッド待機
 	for( ctx=ctx0; ctx; ctx=ctx->next ){
-		WaitForSingleObject( ctx->thread ,INFINITE );
-		CloseHandle( ctx->thread );
+		if( ctx->thread ){
+			WaitForSingleObject( ctx->thread ,INFINITE );
+			CloseHandle( ctx->thread );
+		}
 	}
+	// 直接処理したエントリをリスト先頭に追加
+	if( ctxZ ) ctxZ->next = ctx0 ,ctx0 = ctxZ;
 	// レスポンス作成
 	if( !cp->abort ){
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
@@ -3752,7 +3802,7 @@ unsigned __stdcall poker( void* tp )
 	_endthreadex(0);
 	return 0;
 }
-// 指定URLのタイトルとか解析するスレッド関数
+// 指定URLのタイトルとかfavicon解析
 // クライアントからの要求 POST /:analyze HTTP/1.x で開始され、
 // 本文の1行1URLのタイトルとfaviconを解析し、JSON形式の応答文字列を生成する。
 //		[{"title":"タイトル","icon":"URL"},{...}]
@@ -3795,9 +3845,9 @@ typedef struct AnalyCTX {
 	UCHAR*		favicon;	// out ページファビコン
 	PokeReport	repo;		// out 死活結果
 } AnalyCTX;
-unsigned __stdcall analyze( void* tp )
+// URL1つ用
+void Analyze( AnalyCTX* ctx )
 {
-	AnalyCTX* ctx = tp;
 	UCHAR* hash = strchr(ctx->url,'#');
 	HTTPGet* rsp;
 	// URLの#以降を除去
@@ -3960,11 +4010,16 @@ unsigned __stdcall analyze( void* tp )
 		ctx->favicon = icon;
 	fin:free( rsp );
 	}
+}
+// URL1つ用スレッド関数
+unsigned __stdcall AnalyzeThread( void* tp )
+{
+	Analyze( (AnalyCTX*)tp );
 	ERR_remove_state(0);
 	_endthreadex(0);
 	return 0;
 }
-AnalyCTX* AnalyStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
+AnalyCTX* AnalyCTXalloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 {
 	AnalyCTX* ctx = malloc( sizeof(AnalyCTX) );
 	if( ctx ){
@@ -3978,11 +4033,12 @@ AnalyCTX* AnalyStart( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
 		ctx->repo.time		= 0;
-		ctx->thread			= (HANDLE)_beginthreadex( NULL,0 ,analyze ,(void*)ctx ,0,NULL );
+		ctx->thread			= NULL;
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(AnalyCTX));
 	return ctx;
 }
+// 複数URL用スレッド関数
 unsigned __stdcall analyzer( void* tp )
 {
 	TClient*	cp		= tp;
@@ -3990,34 +4046,50 @@ unsigned __stdcall analyzer( void* tp )
 	UCHAR*		bp		= url;
 	AnalyCTX*	ctx0	= NULL;
 	AnalyCTX*	ctxN	= NULL;
+	AnalyCTX*	ctxZ	= NULL;
 	AnalyCTX*	ctx;
 	UINT		count	= 0;
-	// リクエストボディ1行1URL取得スレッド生成
-	// TODO:1つはスレッドでなくこの関数自身で実行すればよい（スレッド数減らせる）
+	// リクエストボディ1行1URL取得、解析スレッド生成
 	while( *bp ){
 		if( isCRLF(*bp) ){
 			*bp++ = '\0';				// req.body破壊
 			while( isCRLF(*bp) ) bp++;	// 空行無視
 			if( *url==':' ) url++;		// 空URL防止用行頭':'スキップ
-			ctx = AnalyStart( url ,cp->req.UserAgent ,&(cp->abort) );
+			ctx = AnalyCTXalloc( url ,cp->req.UserAgent ,&(cp->abort) );
 			if( ctx ){
-				// 単方向リスト末尾
-				if( ctx0 ){
-					ctxN->next = ctx;
-					ctxN = ctx;
+				if( count ){
+					// 2つ目以降のURLを別スレッドで
+					ctx->thread = (HANDLE)_beginthreadex( NULL,0 ,AnalyzeThread ,(void*)ctx ,0,NULL );
+					Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避にもなる？）
+					// 単方向リスト末尾
+					if( ctx0 ) ctxN->next = ctx ,ctxN = ctx;
+					else ctx0 = ctxN = ctx;
 				}
-				else ctx0 = ctxN = ctx;
+				else{
+					// 1つ目のURLはここで直接処理(後で)
+					ctxZ = ctx;
+				}
 				LogA("[%u]URL%u:%s",Num(cp),count++,url);
 			}
 			url = bp;
 		}
 		else bp++;
 	}
-	// スレッド待機
+	// 解析スレッドと並列で1つ目のURL処理
+	if( ctxZ ) Analyze( ctxZ );
+	// 解析スレッド待機
 	for( ctx=ctx0; ctx; ctx=ctx->next ){
-		WaitForSingleObject( ctx->thread ,INFINITE );
-		CloseHandle( ctx->thread );
+		if( ctx->thread ){
+			WaitForSingleObject( ctx->thread ,INFINITE );
+			CloseHandle( ctx->thread );
+			ctx->thread = NULL;
+		}
 	}
+	// 直接処理したエントリをリスト先頭に追加
+	if( ctxZ ) ctxZ->next = ctx0 ,ctx0 = ctxZ;
+#ifdef HEAPCHECK
+	heapWalk();
+#endif
 	// レスポンス作成
 	if( !cp->abort ){
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
@@ -6888,6 +6960,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyzer ,(void*)cp ,0,NULL );
+									Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避？）
 								}
 								else goto recv_more;
 							}
@@ -6896,6 +6969,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poker ,(void*)cp ,0,NULL );
+									Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避？）
 								}
 								else goto recv_more;
 							}
@@ -9553,12 +9627,11 @@ void Cleanup( void )
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};
-#ifdef _DEBUG
+#ifdef _CRTDBG_MAP_ALLOC
 	// アプリ終了時に解放されてないメモリ領域を検出する
 	_CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) |_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
-	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、
-	// {数字} の番号を書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
-	//_CrtSetBreakAlloc(172211);
+	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
+	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
 	if( Startup( hinst, nCmdShow ) ){
 		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
