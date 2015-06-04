@@ -2247,6 +2247,20 @@ typedef struct Cookie {
 	UCHAR	name[1];		// NAME(と他のメンバのポイント先になる可変長バッファ)
 } Cookie;
 
+CRITICAL_SECTION GetAddrInfoCS = {0};	// GetAddrInfoスレッド間排他
+
+// GetAddrInfoAの並列実行数を制限する。インポートfavicon解析で並列30くらいになると原因不明の
+// 異常終了が発生する問題を回避するため(真の原因は不明だがこれで異常終了しにくくなったので…)。
+// 10並列くらいなら大丈夫かな？と思ってセマフォを使ってみたが、やはり異常終了したので、
+// クリティカルセクションで逐次実行。
+int myGetAddrInfoA( UCHAR* host ,UCHAR* port ,const ADDRINFOA* hint ,ADDRINFOA** addr )
+{
+	int err;
+	EnterCriticalSection( &GetAddrInfoCS );
+	err = GetAddrInfoA( host, port, hint, addr );
+	LeaveCriticalSection( &GetAddrInfoCS );
+	return err;
+}
 // HTTPクライアント
 HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeReport* rp ,const UCHAR* cookie )
 {
@@ -2303,7 +2317,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			memset( &hint, 0, sizeof(hint) );
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
-			if( GetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
+			if( myGetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
 				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
 				BOOL		connected	= FALSE;
 				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
@@ -9495,6 +9509,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
 	InitializeCriticalSection( &SessionCS );
+	InitializeCriticalSection( &GetAddrInfoCS );
 	InitCommonControls();
 	// 他プロセスからフォアグラウンド設定できるように(多重起動防止で前面にするため導入)
 	// http://dobon.net/vb/dotnet/process/appactivate.html
@@ -9617,13 +9632,90 @@ void Cleanup( void )
 	}
 	DeleteCriticalSection( &LogCacheCS );
 	DeleteCriticalSection( &SessionCS );
+	DeleteCriticalSection( &GetAddrInfoCS );
 	free( DocumentRoot );
 	WSACleanup();
 #ifdef MEMLOG
 	if( mlog ) fclose(mlog);
 #endif
 }
+//#define SELF_DEBUGGER
+#ifdef SELF_DEBUGGER
+// 自分自身をデバッグ実行
+// インポートfavicon解析で並列30くらいになると原因不明の異常終了が発生する問題の調査で導入
+BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
+{
+	DWORD code = ex->ExceptionRecord.ExceptionCode;
+	switch( code ){
+	case EXCEPTION_BREAKPOINT : return FALSE;
+	case EXCEPTION_SINGLE_STEP: return FALSE;
+	case EXCEPTION_ACCESS_VIOLATION: ErrorBoxW(L"アクセス違反が発生しました"); break;
+	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: ErrorBoxW(L"配列境界超過が発生しました"); break;
+	case EXCEPTION_DATATYPE_MISALIGNMENT: ErrorBoxW(L"例外 EXCEPTION_DATATYPE_MISALIGNMENT が発生しました"); break;
+	case EXCEPTION_FLT_DENORMAL_OPERAND: ErrorBoxW(L"例外 EXCEPTION_FLT_DENORMAL_OPERAND が発生しました"); break;
+	case EXCEPTION_FLT_DIVIDE_BY_ZERO: ErrorBoxW(L"浮動小数点ゼロ除算が発生しました"); break;
+	case EXCEPTION_FLT_INEXACT_RESULT: ErrorBoxW(L"例外 EXCEPTION_FLT_INEXACT_RESULT が発生しました"); break;
+	case EXCEPTION_FLT_INVALID_OPERATION: ErrorBoxW(L"例外 EXCEPTION_FLT_INVALID_OPERATION が発生しました"); break;
+	case EXCEPTION_FLT_OVERFLOW: ErrorBoxW(L"浮動小数点オーバーフローが発生しました"); break;
+	case EXCEPTION_FLT_STACK_CHECK: ErrorBoxW(L"例外 EXCEPTION_FLT_STACK_CHECK が発生しました"); break;
+	case EXCEPTION_FLT_UNDERFLOW: ErrorBoxW(L"浮動小数点アンダーフローが発生しました"); break;
+	case EXCEPTION_ILLEGAL_INSTRUCTION: ErrorBoxW(L"例外 EXCEPTION_ILLEGAL_INSTRUCTION が発生しました"); break;
+	case EXCEPTION_IN_PAGE_ERROR: ErrorBoxW(L"例外 EXCEPTION_IN_PAGE_ERROR が発生しました"); break;
+	case EXCEPTION_INT_DIVIDE_BY_ZERO: ErrorBoxW(L"整数ゼロ除算が発生しました"); break;
+	case EXCEPTION_INT_OVERFLOW: ErrorBoxW(L"整数オーバーフローが発生しました"); break;
+	case EXCEPTION_INVALID_DISPOSITION: ErrorBoxW(L"例外 EXCEPTION_INVALID_DISPOSITION が発生しました"); break;
+	case EXCEPTION_NONCONTINUABLE_EXCEPTION: ErrorBoxW(L"例外 EXCEPTION_NONCONTINUABLE_EXCEPTION が発生しました"); break;
+	case EXCEPTION_PRIV_INSTRUCTION: ErrorBoxW(L"例外 EXCEPTION_PRIV_INSTRUCTION が発生しました"); break;
+	case EXCEPTION_STACK_OVERFLOW: ErrorBoxW(L"スタックオーバーフローが発生しました"); break;
+	default: ErrorBoxW(L"不明な例外 0x%x (%u) が発生しました",code,code);
+	}
+	return TRUE;
+}
+int SelfDebugger( void )
+{
+	WCHAR exe[MAX_PATH+1];
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	BOOL ok;
 
+	GetModuleFileNameW( NULL ,exe ,MAX_PATH );
+	exe[MAX_PATH] = L'\0';
+
+	memset( &pi ,0 ,sizeof(pi) );
+	memset( &si ,0 ,sizeof(si) );
+	si.cb = sizeof(STARTUPINFO);
+
+	ok = CreateProcessW(
+			exe ,NULL,NULL,NULL,FALSE
+			,NORMAL_PRIORITY_CLASS |DEBUG_ONLY_THIS_PROCESS
+			,NULL,NULL ,&si ,&pi
+	);
+	if( ok ){
+		DEBUG_EVENT de;
+		de.dwProcessId = pi.dwProcessId;
+		de.dwThreadId = pi.dwThreadId;
+		while( WaitForDebugEvent(&de,INFINITE) ){
+			switch( de.dwDebugEventCode ){
+			//case LOAD_DLL_DEBUG_EVENT      : break;
+			//case UNLOAD_DLL_DEBUG_EVENT    : break;
+			//case CREATE_PROCESS_DEBUG_EVENT: break;
+			//case CREATE_THREAD_DEBUG_EVENT : break;
+			//case EXIT_THREAD_DEBUG_EVENT   : break;
+			//case OUTPUT_DEBUG_STRING_EVENT : break;
+			case EXIT_PROCESS_DEBUG_EVENT: goto exit;
+			case EXCEPTION_DEBUG_EVENT: if( ExceptionHandler(&(de.u.Exception)) ) goto exit; break;
+			//case RIP_EVENT: ErrorBoxW(L"RIP_EVENTが発生しました"); goto exit;
+			}
+			ContinueDebugEvent( de.dwProcessId ,de.dwThreadId ,DBG_CONTINUE );
+		}
+	exit:
+		CloseHandle( pi.hThread );
+		CloseHandle( pi.hProcess );
+	}
+	else ErrorBoxW(L"CreateProcessエラー%u",GetLastError());
+	return 0;
+}
+#endif
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};
@@ -9632,6 +9724,9 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 	_CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) |_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
+#endif
+#ifdef SELF_DEBUGGER
+	if( !IsDebuggerPresent() ) return SelfDebugger();
 #endif
 	if( Startup( hinst, nCmdShow ) ){
 		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
