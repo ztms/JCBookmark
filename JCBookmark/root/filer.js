@@ -716,9 +716,12 @@ var itemList = function(){
 	var $itemAdds = [];						// アイテム１つ生成関数とタイマー{func,timer}の配列
 	var kind = 'child';						// アイテム欄の種類
 	var timer = null;						// setTimeoutID
-	var ajaxer = null;						// ajax発行関数
-	var $ajax = null;						// ajaxオブジェクト
+	var ajaxCreate = null;					// ajax発行関数
+	var rooms = [];							// ajax管理配列
+	var roomMax = 5;						// ajax管理配列数(クライアント側並列ajax数)上限
 	var queue = [];							// ajax待ちノード配列キュー
+	var parallel = 1;						// 調節並列数(クライアント側ajax数×サーバー側並列数)
+	var capacity = 10;						// 全体並列数上限(約)
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
 	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持
 	$('#finding').offset($('#keyword').offset()).progressbar();
@@ -728,8 +731,11 @@ var itemList = function(){
 		clearTimeout(timer) ,timer=null;
 		// ajax中止:アイテムリンク切れ調査は止めず・フォルダリンク切れ調査は止める
 		if( kind==='deads' || arg0==='deads' ){
-			if( ajaxer ) ajaxer(false) ,ajaxer=null;
-			if( $ajax ) $ajax.abort() ,$ajax=null;
+			if( ajaxCreate ) ajaxCreate(false) ,ajaxCreate=null;
+			if( rooms.length ){
+				for( var i=rooms.length; i--; ) if( rooms[i].$ajax ) rooms[i].$ajax.abort();
+				rooms = [];
+			}
 			queue.length = 0;
 		}
 		// 検索終了
@@ -765,17 +771,34 @@ var itemList = function(){
 		}
 		$itemAdds.length = 0;
 	}
-	// リンク切れ調査URL並列数の調節(ネット回線が速いほど並列数を多く)
+	// リンク切れ調査URL並列数の調節(低速環境は並列数を少なく)
 	// ・並列数は少なめから開始
 	// ・すべて正常/注意/死亡だった(＝通信が行われた)時のかかった時間を記録する
 	// ・かかった時間の平均値が、2秒以内になるよう並列数を増減させる
 	// ・2秒という値はサーバ側の内部タイムアウト値4秒(固定)からなんとなく
 	// ・ただし受信タイムアウトが発生した場合はすぐさま並列数を半減させる
 	// ・NEGiESで帯域制限かけて並列数が増減することを確認する
-	// TODO:やはりサーバー側での並列だとタイムアウトに引きずられてイマイチ遅い感じがする。
-	// クライアント側のajaxを並列化すればもっと速くなるだろうけど、並列数の調節が面倒…。
-	var parallel = 5;	// リンク切れ調査URL並列数
-	var timelog = [];	// 時間記録(並列数の調節用)
+	function ajaxStart(){
+		if( !ajaxCreate ) return;
+		// 現在の並列数
+		var people = 0;
+		for( var i=rooms.length; i--; ){
+			people += rooms[i].nodes.length;
+			//console.log('room['+ i +']='+ rooms[i].nodes.length);
+		}
+		//console.log('現在の並列数'+ people);
+		var vacancy = roomMax - rooms.length;
+		// 現在の並列数が上限未満で空きがあれば新規ajax発行
+		if( people < parallel && vacancy ){
+			var quotie = Math.floor( parallel / roomMax );
+			var remain = parallel % roomMax;
+			for( var i=vacancy; i--; ){
+				var count = quotie;
+				if( remain ) count++ ,remain--;
+				ajaxCreate( count );
+			}
+		}
+	}
 	function paraAdjust( st ){
 		var times = 0;			// 正常通信の数
 		var timeAve = 0;		// 正常通信の平均時間
@@ -796,33 +819,23 @@ var itemList = function(){
 		}
 		if( times ) timeAve = timeAve / times;
 		if( timeouts && parallel >1 ){
-			if( !times || timeAve >2100 ){
-				//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
-				//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+			//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
+			//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+			if( !times || timeAve >1000 ){
 				var para = Math.floor( parallel /2 );
 				//console.log('並列数を半減'+ parallel +' -> '+ para);
-				parallel=para ,timelog.length=0;
+				parallel = para;
 				return;
 			}
+			//else console.log('正常通信の時間は短いため並列数は維持');
 		}
 		if( times ){
-			// 正常通信の平均時間記録
-			timelog.push( timeAve );
-			// 直近5回以上20回までの
-			if( timelog.length >4 ){
-				while( timelog.length >20 ) timelog.shift();
-				// 平均時間
-				var ave=0.0;
-				for( var i=timelog.length; i--; ) ave += timelog[i];
-				ave /= timelog.length;
-				// 新しい並列数
-				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
-				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
-				if( para != parallel ){
-					//console.log('正常通信の平均時間'+ ave);
-					//console.log('並列数を変更'+ parallel +' -> '+ para);
-					parallel=para ,timelog.length=0;
-				}
+			//console.log('正常通信の平均時間'+ timeAve);
+			var para = Math.floor( parallel * (1000.0 / timeAve) );	// 1秒で完了する数に近づける
+			if( para <1 ) para=1; else if( para >capacity ) para = capacity;
+			if( para != parallel ){
+				//console.log('並列数を変更'+ parallel +' -> '+ para);
+				parallel = para;
 			}
 		}
 	}
@@ -836,6 +849,7 @@ var itemList = function(){
 		}
 		return 'ques20.png';			// 不明
 	}
+	// itemList本体
 	return function( arg0 ,arg1 ,arg2 ){
 		if( arg0==='?' ) return kind;
 		if( arg0==='deadsRunning?' ) return (kind==='deads' && timer) ? true : false;
@@ -1065,28 +1079,28 @@ var itemList = function(){
 				}
 			}
 			// ajax発行
-			if( !ajaxer ){
+			if( !ajaxCreate ){
 				var $stico = $('<img class=icon style="margin-left:0">');
-				ajaxer = function( Q ){
-					if( Q===false ){ $stico.remove(); return; }
-					if( $ajax ) return;
-					var nodes = [] ,reqBody = '';
-					for( var i=parallel; i>0 && queue.length; i-- ){
+				ajaxCreate = function( nodeCount ){
+					if( nodeCount===false ){ $stico.remove(); return; }
+					var entry = { nodes:[] } ,reqBody = '';
+					for( var i=nodeCount; i-- && queue.length; ){
 						var node = tree.node( queue.shift() );
 						if( node ){
-							nodes.push( node );
-							reqBody += ':'+node.url+'\r\n';
+							entry.nodes.push( node );
+							reqBody += ':'+ node.url +'\r\n';
 						}
 					}
 					if( reqBody ){
-						$ajax = $.ajax({
+						//console.log('ajax発行、URL='+ entry.nodes.length);
+						entry.$ajax = $.ajax({
 							type:'post'
 							,url:':poke'
 							,data:reqBody
 							,error:function(xhr){
-								if( !ajaxer ) return;
-								for( var i=0; i<nodes.length; i++ ){
-									var $st = $('#item'+nodes[i].id).children('.url').next();
+								if( !ajaxCreate ) return;
+								for( var i=0; i<entry.nodes.length; i++ ){
+									var $st = $('#item'+entry.nodes[i].id).children('.url').next();
 									if( !$st.hasClass('status') ){
 										$st.removeClass('iconurl').removeClass('place').addClass('status');
 									}
@@ -1095,10 +1109,10 @@ var itemList = function(){
 								}
 							}
 							,success:function(data){
-								if( !ajaxer ) return;
-								// data.length==nodes.length のはずだが…
-								for( var i=0; i<nodes.length; i++ ){
-									var node = nodes[i];
+								if( !ajaxCreate ) return;
+								// data.length==entry.nodes.length のはず…
+								for( var i=0; i<entry.nodes.length; i++ ){
+									var node = entry.nodes[i];
 									var st = data[i];
 									var $st = $('#item'+node.id).children('.url').next();
 									if( node.url ) results[node.url] = st;
@@ -1111,12 +1125,19 @@ var itemList = function(){
 								}
 								paraAdjust( data );
 							}
-							,complete:function(){ $ajax=null; if( ajaxer ) ajaxer(true); }
+							,complete:function(){
+								// エントリ削除
+								var index = $.inArray( entry ,rooms );
+								if( index >=0 ) rooms.splice(index,1);
+								// 次
+								ajaxStart();
+							}
 						});
+						rooms.push( entry );
 					}
 				};
 			}
-			ajaxer(true);
+			ajaxStart();
 		}
 		else if( arg0==='deads' ){
 			// リンク切れ調査(フォルダ)
@@ -1230,31 +1251,32 @@ var itemList = function(){
 			}();
 			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
-			ajaxer = function( Q ){
-				if( Q===false ) return;
-				var nodes = [] ,reqBody = '';
-				for( var i=parallel; i>0 && qix < queue.length; i-- ){
+			ajaxCreate = function( nodeCount ){
+				if( nodeCount===false ) return;
+				var entry = { nodes:[] } ,reqBody = '';
+				for( var i=nodeCount; i-- && qix < queue.length; ){
 					var node = queue[qix++];
-					nodes.push( node );
+					entry.nodes.push( node );
 					reqBody += ':'+node.url+'\r\n';
 				}
 				if( reqBody ){
-					$ajax = $.ajax({
+					//console.log('ajax発行、URL='+ entry.nodes.length);
+					entry.$ajax = $.ajax({
 						type:'post'
 						,url:':poke'
 						,data:reqBody
 						,error:function(xhr){
-							if( !ajaxer ) return;
-							for( var i=0; i<nodes.length; i++ ){
+							if( !ajaxCreate ) return;
+							for( var i=0; i<entry.nodes.length; i++ ){
 								count.err++;
-								$itemAdd.func( nodes[i] ,'delete.png' ,xhr.status+' '+xhr.statusText );
+								$itemAdd.func( entry.nodes[i] ,'delete.png' ,xhr.status+' '+xhr.statusText );
 							}
 						}
 						,success:function(data){
-							if( !ajaxer ) return;
-							// data.length==nodes.length のはずだが…
-							for( var i=0; i<nodes.length; i++ ){
-								var node = nodes[i];
+							if( !ajaxCreate ) return;
+							// data.length==entry.nodes.length のはず…
+							for( var i=0; i<entry.nodes.length; i++ ){
+								var node = entry.nodes[i];
 								var st = data[i];
 								if( node.url ) results[node.url] = st;
 								var cls = '';
@@ -1269,11 +1291,19 @@ var itemList = function(){
 							}
 							paraAdjust( data );
 						}
-						,complete:function(){ if( ajaxer ) count.total+=nodes.length ,ajaxer(true); }
+						,complete:function(){
+							count.total += entry.nodes.length;
+							// エントリ削除
+							var index = $.inArray( entry ,rooms );
+							if( index >=0 ) rooms.splice(index,1);
+							// 次
+							ajaxStart();
+						}
 					});
+					rooms.push(entry);
 				}
 			};
-			ajaxer(true);
+			ajaxStart();
 			items.innerHTML = '';
 			// 完了待ち進捗表示ループ
 			var waiter = function(){

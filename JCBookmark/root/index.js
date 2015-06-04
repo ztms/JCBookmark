@@ -560,7 +560,7 @@ var option = {
 				// しまう場合がある？
 				if( option.modified() ) return option;
 				if( tree.modified() ){ option.modified(true); return option; }
-				option.save({ error:function(){option.modified(true);} });
+				option.save({ error:function(){ option.modified(true); } });
 				return option;
 			}
 			return option.data.panel.status;
@@ -2636,12 +2636,66 @@ function modifySave( arg ){
 function analyzer( nodeTop ){
 	var timer = null;		// タイマーID
 	var total = 0;			// URL総数
-	var $ajax = null;		// ajaxオブジェクト
-	var queue = [];			// ajax待ちノード配列
+	var rooms = [];			// ajax管理配列
+	var roomMax = 5;		// ajax管理配列数(クライアント側並列ajax数)上限
+	var queue = [];			// 解析待ちノード配列
 	var qix = 0;			// ノード配列インデックス
 	var complete = 0;		// 解析完了数
-	var parallel = 5;		// 解析URL並列数(filer.jsとおなじ)
-	var timelog = [];		// 時間記録(並列数の調節用)(filer.jsとおなじ)
+	var parallel = 1;		// 調節並列数(クライアント側ajax数×サーバー側並列数)
+	var capacity = 10;		// 全体並列数上限(約)
+	var ajaxCreate = function( nodeCount ){
+		var entry = { nodes:[] } ,reqBody = '';
+		for( var i=nodeCount; i-- && qix < queue.length; ){
+			var node = queue[qix++];
+			entry.nodes.push( node );
+			reqBody += ':'+ node.url +'\r\n';
+		}
+		if( reqBody ){
+			//console.log('ajax発行、URL='+ entry.nodes.length);
+			entry.$ajax = $.ajax({
+				type:'post'
+				,url:':analyze'
+				,data:reqBody
+				,success:function(data){
+					// data.length==entry.nodes.length のはず…
+					for( var i=entry.nodes.length; i--; ){
+						if( data[i].icon.length ) entry.nodes[i].icon = data[i].icon;
+					}
+					paraAdjust( data );
+				}
+				,complete:function(){
+					complete += entry.nodes.length;
+					// エントリ削除
+					var index = $.inArray( entry ,rooms );
+					if( index >=0 ) rooms.splice(index,1);
+					// 次
+					ajaxStart();
+				}
+			});
+			rooms.push( entry );
+		}
+	};
+	function ajaxStart(){
+		if( !ajaxCreate ) return;
+		// 現在の並列数
+		var people = 0;
+		for( var i=rooms.length; i--; ){
+			people += rooms[i].nodes.length;
+			//console.log('room['+ i +']='+ rooms[i].nodes.length);
+		}
+		//console.log('現在の並列数'+ people);
+		var vacancy = roomMax - rooms.length;
+		// 現在の並列数が上限未満で空きがあれば新規ajax発行
+		if( people < parallel && vacancy ){
+			var quotie = Math.floor( parallel / roomMax );
+			var remain = parallel % roomMax;
+			for( var i=vacancy; i--; ){
+				var count = quotie;
+				if( remain ) count++ ,remain--;
+				ajaxCreate( count );
+			}
+		}
+	}
 	function paraAdjust( st ){
 		var times = 0;			// 正常通信の数
 		var timeAve = 0;		// 正常通信の平均時間
@@ -2662,60 +2716,32 @@ function analyzer( nodeTop ){
 		}
 		if( times ) timeAve = timeAve / times;
 		if( timeouts && parallel >1 ){
-			if( !times || timeAve >2100 ){
-				//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
-				//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+			//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
+			//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
+			if( !times || timeAve >1000 ){
 				var para = Math.floor( parallel /2 );
 				//console.log('並列数を半減'+ parallel +' -> '+ para);
-				parallel=para ,timelog.length=0;
+				parallel = para;
 				return;
 			}
+			//else console.log('正常通信の時間は短いため並列数は維持');
 		}
 		if( times ){
-			// 正常通信の平均時間記録
-			timelog.push( timeAve );
-			// 直近5回以上20回までの
-			if( timelog.length >4 ){
-				while( timelog.length >20 ) timelog.shift();
-				// 平均時間
-				var ave=0.0;
-				for( var i=timelog.length; i--; ) ave += timelog[i];
-				ave /= timelog.length;
-				// 新しい並列数
-				var para = Math.floor( parallel * (2000.0 / ave) );	// 割合的に2秒に近づける
-				if( para <1 ) para=1; else if( para >32 ) para=32;	// 並列数最小1～最大32
-				if( para != parallel ){
-					//console.log('正常通信の平均時間'+ ave);
-					//console.log('並列数を変更'+ parallel +' -> '+ para);
-					parallel=para ,timelog.length=0;
-				}
+			//console.log('正常通信の平均時間'+ timeAve);
+			var para = Math.floor( parallel * (1000.0 / timeAve) );	// 1秒で完了する数に近づける
+			if( para <1 ) para=1; else if( para >capacity ) para = capacity;
+			if( para != parallel ){
+				//console.log('並列数を変更'+ parallel +' -> '+ para);
+				parallel = para;
 			}
 		}
 	}
-	var ajaxer = function(){
-		var nodes = [] ,reqBody = '';
-		for( var i=parallel; i>0 && qix < queue.length; i-- ){
-			var node = queue[qix++];
-			nodes.push( node );
-			reqBody += ':'+node.url+'\r\n';
-		}
-		if( reqBody ){
-			$ajax = $.ajax({
-				type:'post'
-				,url:':analyze'
-				,data:reqBody
-				,success:function(data){
-					// data.length==nodes.length のはずだが…
-					for( var i=0; i<nodes.length; i++ ) if( data[i].icon.length ) nodes[i].icon = data[i].icon;
-					paraAdjust( data );
-				}
-				,complete:function(){ complete+=nodes.length; if( ajaxer ) ajaxer(); }
-			});
-		}
-	};
 	function skip(){
-		clearTimeout(timer) ,timer=null, ajaxer=null;
-		if( $ajax ) $ajax.abort() ,$ajax=null;
+		clearTimeout(timer) ,timer=null, ajaxCreate=null;
+		if( rooms.length ){
+			for( var i=rooms.length; i--; ) if( rooms[i].$ajax ) rooms[i].$ajax.abort();
+			rooms = [];
+		}
 		queue.length = 0;
 		$('#dialog').dialog('destroy');
 		importer( nodeTop );
@@ -2745,7 +2771,7 @@ function analyzer( nodeTop ){
 		}
 	}( nodeTop ));
 	// ajax開始
-	ajaxer();
+	ajaxStart();
 	// 進捗表示
 	$msg.text('ブックマーク'+total+'個のうち、'+queue.length+'個のファビコンがありません。ファビコンを取得しています...' );
 	$count.text('(0/'+queue.length+')');
