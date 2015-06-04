@@ -2718,7 +2718,7 @@ function analyzer( nodeTop ){
 		if( timeouts && parallel >1 ){
 			//console.log('並列数'+ parallel +'でタイムアウト'+ timeouts +'回発生');
 			//console.log('正常通信数'+ times +', 正常通信の平均時間'+ timeAve);
-			if( !times || timeAve >1000 ){
+			if( !times || timeAve >1500 ){
 				var para = Math.floor( parallel /2 );
 				//console.log('並列数を半減'+ parallel +' -> '+ para);
 				parallel = para;
@@ -2728,7 +2728,7 @@ function analyzer( nodeTop ){
 		}
 		if( times ){
 			//console.log('正常通信の平均時間'+ timeAve);
-			var para = Math.floor( parallel * (1000.0 / timeAve) );	// 1秒で完了する数に近づける
+			var para = Math.floor( parallel * (1500.0 / timeAve) );	// 1.5秒で完了する数に近づける
 			if( para <1 ) para=1; else if( para >capacity ) para = capacity;
 			if( para != parallel ){
 				//console.log('並列数を変更'+ parallel +' -> '+ para);
