@@ -730,13 +730,15 @@ var itemList = function(){
 		// タイマー中止
 		clearTimeout(timer) ,timer=null;
 		// ajax中止:アイテムリンク切れ調査は止めず・フォルダリンク切れ調査は止める
-		if( kind==='deads' || arg0==='deads' ){
-			if( ajaxCreate ) ajaxCreate(false) ,ajaxCreate=null;
-			if( rooms.length ){
-				for( var i=rooms.length; i--; ) if( rooms[i].$ajax ) rooms[i].$ajax.abort();
-				rooms = [];
+		if( !(arg0==='poke' && ajaxCreate && ajaxCreate('?')==='poke') ){
+			if( kind==='deads' || arg0==='deads' ){
+				if( ajaxCreate ) ajaxCreate(false) ,ajaxCreate=null;
+				if( rooms.length ){
+					for( var i=rooms.length; i--; ) if( rooms[i].$ajax ) rooms[i].$ajax.abort();
+					rooms = [];
+				}
+				queue.length = 0;
 			}
-			queue.length = 0;
 		}
 		// 検索終了
 		$('#itembox').children('.spacer').empty();
@@ -1062,8 +1064,6 @@ var itemList = function(){
 			// キューに入ったものは(画面上はわからないが)調査が継続する。(フォルダ調査との違いに注意)
 			// ただしフォルダリンク切れ調査が開始された場合、アイテム調査は中断(キューに残った未調査
 			// ぶんは破棄)される。
-			// TODO:フォルダリンク切れ調査の結果アイテム欄で、アイテム右クリックのリンク切れ調査を連続
-			// 実行すると、前回実行して「調査中...」のものが中断されて調査中のままになってしまう。
 			// ノード配列作成
 			var items = doc.getElementById('items').children;
 			for( var i=0, n=items.length; i<n; i++ ){
@@ -1082,6 +1082,7 @@ var itemList = function(){
 			if( !ajaxCreate ){
 				var $stico = $('<img class=icon style="margin-left:0">');
 				ajaxCreate = function( nodeCount ){
+					if( nodeCount==='?' ) return 'poke';
 					if( nodeCount===false ){ $stico.remove(); return; }
 					var entry = { nodes:[] } ,reqBody = '';
 					for( var i=nodeCount; i-- && queue.length; ){
@@ -1252,6 +1253,7 @@ var itemList = function(){
 			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
 			ajaxCreate = function( nodeCount ){
+				if( nodeCount==='?' ) return 'deads';
 				if( nodeCount===false ) return;
 				var entry = { nodes:[] } ,reqBody = '';
 				for( var i=nodeCount; i-- && qix < queue.length; ){
