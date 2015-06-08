@@ -173,7 +173,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F58C10
 // 
 #ifndef _CRTDBG_MAP_ALLOC
-#define MEMLOG
+//#define MEMLOG
 #endif
 #ifdef MEMLOG
 FILE* mlog=NULL;
@@ -603,7 +603,7 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 		if( dup ){
 			UCHAR* dst = dup;
 			int i;
-			for( i=n; i>0; i-- ){
+			for( i=n; i--; ){
 				if( *src=='\t' ){
 					// http://cakephp.org/の<title>にTAB文字(0x09)が含まれており、Chrome/Firefoxで
 					// なぜかJSONパースできず$.ajax()がエラーになるようで、仕方なく \t に変換する。
@@ -949,7 +949,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 void BrowserInfoFree( BrowserInfo br[BI_COUNT] )
 {
 	UINT i;
-	for( i=0; i<BI_COUNT; i++ ){
+	for( i=BI_COUNT; i--; ){
 		if( br[i].exe ) free( br[i].exe );
 		if( br[i].arg ) free( br[i].arg );
 	}
@@ -7625,7 +7625,7 @@ void ConfigSave( const ConfigData* dp )
 			WCHAR	ini[MAX_PATH+1] = L"";
 			UCHAR	b64txt[SHA256_DIGEST_LENGTH*2]="";
 			UINT	i;
-			for( i=0; i<BI_COUNT; i++ ){
+			for( i=BI_COUNT; i--; ){
 				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
 				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
 			}
@@ -7675,7 +7675,7 @@ void ConfigSave( const ConfigData* dp )
 				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i]	? "1":"");
 			}
 			if( listenPort ) free( listenPort );
-			for( i=0; i<BI_COUNT; i++ ){
+			for( i=BI_COUNT; i--; ){
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
 			}
@@ -8259,14 +8259,14 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							)
 						){ SetFocus( my->hLoginPass ); return 0; }
 					}
-					for( i=0; i<BI_COUNT; i++ ){
+					for( i=BI_COUNT; i--; ){
 						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
 						data.wArg[i] = WindowTextAllocW( my->hArg[i] );
 						data.hide[i] = isChecked( my->hHide[i] );
 					}
 					ConfigSave( &data );
 					if( data.loginPass ) free( data.loginPass );
-					for( i=0; i<BI_COUNT; i++ ){
+					for( i=BI_COUNT; i--; ){
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
 					}
@@ -8468,7 +8468,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			return 0;
 
 		case WM_DESTROY:
-			{ UINT i; for(i=0;i<BI_COUNT;i++) DestroyIcon( my->hIcon[i] ); }
+			{ UINT i; for(i=BI_COUNT;i--;) DestroyIcon( my->hIcon[i] ); }
 			ImageList_Destroy( my->hImage );
 			DeleteObject( my->hFontM );
 			DeleteObject( my->hFontS );
@@ -8560,7 +8560,7 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 {
 	if( br ){
 		UINT i;
-		for( i=0; i<BI_COUNT; i++ ){
+		for( i=BI_COUNT; i--; ){
 			if( br[i].hwnd ) DestroyWindow( br[i].hwnd );
 			if( br[i].icon ) DestroyIcon( br[i].icon );
 			if( br[i].text ) free( br[i].text );
@@ -8853,7 +8853,7 @@ void MainFormTimer1000( void )
 	// 座りやがるので10秒くらいで切断したくなる。が、短すぎると他に問題が発生しないか気がかり。
 	{
 		int i;
-		for( i=CLIENT_MAX-1; i>=0; i-- ){
+		for( i=CLIENT_MAX; i--; ){
 			if( Client[i].sock !=INVALID_SOCKET ){
 				TClient* cp = &(Client[i]);
 				cp->silent++;
@@ -9003,7 +9003,7 @@ void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip
 	}
 	else LogW(L"SSL_CTX_newエラー");
 	// クライアント初期化
-	{ UINT i; for( i=0; i<CLIENT_MAX; i++ ) ClientInit( &(Client[i]) ); }
+	{ UINT i; for( i=CLIENT_MAX; i--; ) ClientInit( &(Client[i]) ); }
 	// ドキュメントルート
 	// JCBookmarkとしては不要な機能だが、rootフォルダが存在しなかった場合ここで任意のフォルダを
 	// ドキュメントルートに設定して動作可能。テスト用簡易HTTPサーバとして使う用途向け。その場合
