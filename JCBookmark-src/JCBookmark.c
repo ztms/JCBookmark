@@ -81,20 +81,24 @@
 #pragma comment(lib,"iphlpapi.lib")
 #pragma comment(lib,"libeay32.lib")
 #pragma comment(lib,"ssleay32.lib")
+
 // 非ユニコード(Lなし)文字列リテラルをUTF-8でexeに格納する#pragma。
 // KB980263を適用しないと有効にならない。Expressには正式リリースされていない
 // hotfixにも見えるが、ググって非公式サイトからexeダウンロードして適用したら
 // 期待通り動作した。いいのかなダメかな・・。
 #pragma execution_character_set("utf-8")
+
 // うざいC4996警告無視
 #pragma warning(disable:4996)
+
 // タスクトレイアイコンのバルーンチップが、_WIN32_WINNT=0x0600(既定)だと出ない。
 // なぜ？上位互換ではないの？0x0500台に定義すれば出るが、0x0500や0x0501だと関数
 // 未定義エラーが発生する。0x0502ならバルーン出たので採用。
 #define _WIN32_WINNT 0x0502
+
 // メモリリーク検出(_CrtSetDbgFlagとセット)
-#ifdef _DEBUG
-#define _CRTDBG_MAP_ALLOC
+//#define _CRTDBG_MAP_ALLOC
+#ifdef _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
 #include <crtdbg.h>
 #endif
@@ -161,7 +165,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 
 
 //---------------------------------------------------------------------------------------------------------------
-// 自力メモリリークチェック用ログ生成
+// 自力メモリリーク＆破壊チェック用ログ生成
 // memory.log に確保アドレス＋ソース行数と解放アドレスを記録する。
 // スクリプト memory.pl でログから解放漏れを検出。
 //   >perl memory.pl < memory.log
@@ -172,9 +176,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-#ifndef _CRTDBG_MAP_ALLOC
 //#define MEMLOG
-#endif
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -198,31 +200,63 @@ SIZE_T PF( void )
 	}
 	return 0;
 }
-void* malloc_( size_t size, UINT line )
+// 先頭にmallocバイト数と境界識別子、末尾に境界識別子を入れた領域を確保して
+// freeの時に破壊(オーバーフロー・アンダーフロー)がないか検査する
+// +-------+----------+--------------+----------+
+// | bytes | boundary | bytes buffer | boundary |
+// +-------+----------+--------------+----------+
+#define BOUNDARY 0xAAAAAAAA // 境界識別子(できるだけ利用されないビット列が良いがよくわからんので適当)
+void* malloc_( size_t bytes, UINT line )
 {
-	void* p = malloc( size );
-	if( !mlog ) mlogopen();
-	if( mlog && p ) fprintf(mlog,"+%p:L%u:malloc(%u) (%ukb)\r\n",p,line,size,PF());
+	// 検査用の領域をプラスして確保
+	void* p = malloc( bytes + sizeof(size_t) + sizeof(UINT) * 2 );
+	if( p ){
+		if( !mlog ) mlogopen();
+		if( mlog ) fprintf(mlog,"+%p:L%u:malloc(%u) (PF%ukb)\r\n",p,line,bytes,PF());
+		// 先頭にmallocバイト数
+		*(size_t*)p = bytes;
+		p = (BYTE*)p + sizeof(size_t);
+		// 次に境界識別子
+		*(UINT*)p = BOUNDARY;
+		p = (BYTE*)p + sizeof(UINT);
+		// 末尾に境界識別子
+		*(UINT*)((BYTE*)p + bytes) = BOUNDARY;
+	}
 	return p;
 }
 void free_( void* p, UINT line )
 {
-	free( p );
-	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",p,line,PF());
+	if( p ){
+		BOOL underflow = FALSE ,overflow = FALSE;
+		// アンダーフロー検査
+		p = (BYTE*)p - sizeof(UINT);
+		if( *(UINT*)p != BOUNDARY ) underflow = TRUE;
+		p = (BYTE*)p - sizeof(size_t);
+		if( !underflow ){
+			// オーバーフロー検査
+			size_t bytes = *(size_t*)p;
+			if( *(UINT*)((BYTE*)p + sizeof(size_t) + sizeof(UINT) + bytes) != BOUNDARY ) overflow = TRUE;
+		}
+		// 解放
+		free( p );
+		if( !mlog ) mlogopen();
+		if( mlog ) fprintf(mlog ,"-%p:L%u %s%s(PF%ukb)\r\n"
+				,p ,line ,(underflow ? "underflow ":"") ,(overflow ? "overflow ":"") ,PF()
+		);
+	}
 }
 char* strdup_( LPCSTR str, UINT line )
 {
-	size_t size = strlen(str)+1;
-	char* p = malloc_( size, line );
-	if( p ) memcpy( p, str, size );
+	size_t bytes = strlen(str)+1;
+	char* p = malloc_( bytes, line );
+	if( p ) memcpy( p, str, bytes );
 	return p;
 }
 WCHAR* wcsdup_( LPCWSTR wstr, UINT line )
 {
-	size_t size = (wcslen(wstr)+1)*sizeof(WCHAR);
-	WCHAR* p = malloc_( size, line );
-	if( p ) memcpy( p, wstr, size );
+	size_t bytes = (wcslen(wstr)+1)*sizeof(WCHAR);
+	WCHAR* p = malloc_( bytes, line );
+	if( p ) memcpy( p, wstr, bytes );
 	return p;
 }
 FILE* fopen_( LPCSTR path, LPCSTR mode, UINT line )
@@ -2247,13 +2281,12 @@ typedef struct Cookie {
 	UCHAR	name[1];		// NAME(と他のメンバのポイント先になる可変長バッファ)
 } Cookie;
 
-CRITICAL_SECTION GetAddrInfoCS = {0};	// GetAddrInfoスレッド間排他
-
-// GetAddrInfoAの並列実行数を制限する。インポートfavicon解析で並列30くらいになると原因不明の
-// 異常終了が発生する問題を回避するため(真の原因は不明だがこれで異常終了しにくくなったので…)。
-// 10並列くらいなら大丈夫かな？と思ってセマフォを使ってみたが、やはり異常終了したので、
-// クリティカルセクションで逐次実行。
-int myGetAddrInfoA( UCHAR* host ,UCHAR* port ,const ADDRINFOA* hint ,ADDRINFOA** addr )
+// GetAddrInfoAの並列実行を制限する。
+// 例外0x6bb(1723)RPC_S_SERVER_TOO_BUSYの発生を抑制する。この例外が何なのかよくわかっていないが
+// 並列実行するとインポートfavicon取得やリンク切れ調査でものすごいたくさん発生するもよう。ただ
+// アプリが落ちるわけでもなく、IDEデバッグ中でもブレークせずスルーされる。無害な例外なのか？
+CRITICAL_SECTION GetAddrInfoCS = {0};
+int _GetAddrInfoA( UCHAR* host ,UCHAR* port ,const ADDRINFOA* hint ,ADDRINFOA** addr )
 {
 	int err;
 	EnterCriticalSection( &GetAddrInfoCS );
@@ -2317,7 +2350,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			memset( &hint, 0, sizeof(hint) );
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
-			if( myGetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
+			if( _GetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
 				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
 				BOOL		connected	= FALSE;
 				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
@@ -3755,7 +3788,6 @@ unsigned __stdcall poker( void* tp )
 			if( ctx ){
 				if( count ){
 					ctx->thread = (HANDLE)_beginthreadex( NULL,0 ,PokeThread ,(void*)ctx ,0,NULL );
-					Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避にもなる？）
 					// 単方向リスト末尾
 					if( ctx0 ) ctxN->next = ctx ,ctxN = ctx;
 					else ctx0 = ctxN = ctx;
@@ -4074,7 +4106,6 @@ unsigned __stdcall analyzer( void* tp )
 				if( count ){
 					// 2つ目以降のURLを別スレッドで
 					ctx->thread = (HANDLE)_beginthreadex( NULL,0 ,AnalyzeThread ,(void*)ctx ,0,NULL );
-					Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避にもなる？）
 					// 単方向リスト末尾
 					if( ctx0 ) ctxN->next = ctx ,ctxN = ctx;
 					else ctx0 = ctxN = ctx;
@@ -6974,7 +7005,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyzer ,(void*)cp ,0,NULL );
-									Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避？）
 								}
 								else goto recv_more;
 							}
@@ -6983,7 +7013,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
 									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poker ,(void*)cp ,0,NULL );
-									Sleep(50); // 並列数が多いスレッドはちょっと待つ（原因不明の異常終了の回避？）
 								}
 								else goto recv_more;
 							}
@@ -9639,6 +9668,7 @@ void Cleanup( void )
 	if( mlog ) fclose(mlog);
 #endif
 }
+
 //#define SELF_DEBUGGER
 #ifdef SELF_DEBUGGER
 // 自分自身をデバッグ実行
@@ -9647,8 +9677,11 @@ BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
 {
 	DWORD code = ex->ExceptionRecord.ExceptionCode;
 	switch( code ){
-	case EXCEPTION_BREAKPOINT : return FALSE;
-	case EXCEPTION_SINGLE_STEP: return FALSE;
+	// 無視(続行)
+	case EXCEPTION_BREAKPOINT:
+	case EXCEPTION_SINGLE_STEP:
+	case RPC_S_SERVER_TOO_BUSY: return FALSE;
+	// 深刻(停止)
 	case EXCEPTION_ACCESS_VIOLATION: ErrorBoxW(L"アクセス違反が発生しました"); break;
 	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: ErrorBoxW(L"配列境界超過が発生しました"); break;
 	case EXCEPTION_DATATYPE_MISALIGNMENT: ErrorBoxW(L"例外 EXCEPTION_DATATYPE_MISALIGNMENT が発生しました"); break;
@@ -9716,18 +9749,22 @@ int SelfDebugger( void )
 	return 0;
 }
 #endif
+
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};
+
 #ifdef _CRTDBG_MAP_ALLOC
 	// アプリ終了時に解放されてないメモリ領域を検出する
 	_CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) |_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
+
 #ifdef SELF_DEBUGGER
 	if( !IsDebuggerPresent() ) return SelfDebugger();
 #endif
+
 	if( Startup( hinst, nCmdShow ) ){
 		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
 			if( !IsDialogMessage( MainForm, &msg ) ){
