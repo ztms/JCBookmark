@@ -176,7 +176,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void mlogopen( void )
@@ -4035,17 +4035,17 @@ void Analyze( AnalyCTX* ctx )
 					if( icon ){
 						PokeReport repo = {'?',"",NULL,0};
 						HTTPGet* tmp = httpGETs( icon ,ctx->userAgent ,ctx->pAbort ,&repo );
-						UCHAR type = 0;
+						//UCHAR type = 0;
 						if( tmp ){
-							type = tmp->ContentType;
+							//type = tmp->ContentType;
 							free( tmp );
 						}
-						if( type==TYPE_IMAGE && (repo.kind=='O' || repo.kind=='!') ){
-							if( repo.newurl ) free( icon ) ,icon = repo.newurl;
+						if( /*type==TYPE_IMAGE &&*/ (repo.kind=='O' || repo.kind=='!') ){
+							if( repo.newurl ) free(icon) ,icon=repo.newurl;
 						}
 						else{
-							free( icon ) ,icon=NULL;
-							if( repo.newurl ) free( repo.newurl );
+							free(icon) ,icon=NULL;
+							if( repo.newurl ) free(repo.newurl);
 						}
 					}
 					if( slash ) *slash = '/';
