@@ -2642,13 +2642,49 @@ function analyzer( nodeTop ){
 	var qix = 0;			// ノード配列インデックス
 	var complete = 0;		// 解析完了数
 	var parallel = 1;		// 調節並列数(クライアント側ajax数×サーバー側並列数)
-	var capacity = 10;		// 全体並列数上限(約)
+	var capacity = 100;		// 全体並列数上限(約)
+	var faviconPool = {
+		// 取得したfaviconを使いまわすためのプール
+		// YouTubeに大量アクセスするとなぜかJCBookmark.exeが落ちるので導入
+		// あとニュース系ポータル系などfaviconが１つ固定でパスがいっぱいあるサイトは同様
+		// TODO:こういう機能はWebサイトに置いてAPI的に使うのがいいのかな…
+		pool:{}
+		,add:function( url ,favicon ){
+			var host = url.hostName();
+			switch( host ){
+			/* YouTube */ case 'www.youtube.com': case 'jp.youtube.com':
+			/* ポータル */ case 'headlines.yahoo.co.jp': case 'news.nifty.com': case 'news.goo.ne.jp':
+			/* SNS */ case 'twitter.com':
+			/* メディア */ case 'www3.nhk.or.jp': case 'www.yomiuri.co.jp': case 'www.asahi.com':
+			case 'mainichi.jp': case 'www.jiji.com': case 'www.47news.jp':
+			/* QAサイト */ case 'stackoverflow.com': case 'ja.stackoverflow.com':
+			case 'www.atmarkit.co.jp': case 'qa.atmarkit.co.jp':
+			/* ニュース系 */ case 'gihyo.jp': case 'www.itmedia.co.jp': case 'gigazine.net':
+			case 'qiita.com': case 'matome.naver.jp':
+				faviconPool.pool[host] = favicon;
+			}
+		}
+		,get:function( url ){
+			var host = url.hostName();
+			if( host in faviconPool.pool ) return faviconPool.pool[host];
+			return null;
+		}
+	};
 	var ajaxCreate = function( nodeCount ){
 		var entry = { nodes:[] } ,reqBody = '';
-		for( var i=nodeCount; i-- && qix < queue.length; ){
+		for( var i=nodeCount; i && qix < queue.length; ){
 			var node = queue[qix++];
-			entry.nodes.push( node );
-			reqBody += ':'+ node.url +'\r\n';
+			var favicon = faviconPool.get( node.url );
+			if( favicon ){
+				//console.log(node.url+'はプールのfavicon('+favicon+')を採用');
+				node.icon = favicon;
+				complete++;
+			}
+			else{
+				entry.nodes.push( node );
+				reqBody += ':'+ node.url +'\r\n';
+				i--;
+			}
 		}
 		if( reqBody ){
 			//console.log('ajax発行、URL='+ entry.nodes.length);
@@ -2659,7 +2695,10 @@ function analyzer( nodeTop ){
 				,success:function(data){
 					// data.length==entry.nodes.length のはず…
 					for( var i=entry.nodes.length; i--; ){
-						if( data[i].icon.length ) entry.nodes[i].icon = data[i].icon;
+						if( data[i].icon.length ){
+							entry.nodes[i].icon = data[i].icon;
+							faviconPool.add( entry.nodes[i].url ,data[i].icon );
+						}
 					}
 					paraAdjust( data );
 				}
@@ -2696,6 +2735,7 @@ function analyzer( nodeTop ){
 			}
 		}
 	}
+	// 並列数を調節
 	function paraAdjust( st ){
 		var times = 0;			// 正常通信の数
 		var timeAve = 0;		// 正常通信の平均時間
@@ -2736,6 +2776,7 @@ function analyzer( nodeTop ){
 			}
 		}
 	}
+	// 中断して次に進む
 	function skip(){
 		clearTimeout(timer) ,timer=null, ajaxCreate=null;
 		if( rooms.length ){
@@ -3393,6 +3434,10 @@ function HTMLdec( html ){
 }
 // URL先頭プロトコル文字列除去
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
+// URLホスト部を取得
+String.prototype.hostName = function(){
+	return (/^\w+:\/\/([^\/]+)/.test(this)) ? RegExp.$1.toLowerCase() :'';
+};
 // 検索用に文字列を正規化
 // http://logicalerror.seesaa.net/article/275434211.html
 // http://www.openspc2.org/reibun/javascript/business/003/
