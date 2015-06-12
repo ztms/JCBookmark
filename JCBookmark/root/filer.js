@@ -720,8 +720,8 @@ var itemList = function(){
 	var rooms = [];							// ajax管理配列
 	var roomMax = 5;						// ajax管理配列数(クライアント側並列ajax数)上限
 	var queue = [];							// ajax待ちノード配列キュー
-	var parallel = 1;						// 調節並列数(クライアント側ajax数×サーバー側並列数)
-	var capacity = 10;						// 全体並列数上限(約)
+	var parallel = 2;						// 調節並列数(クライアント側ajax数×サーバー側並列数)
+	var capacity = 50;						// 全体並列数上限(約)
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
 	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持
 	$('#finding').offset($('#keyword').offset()).progressbar();
@@ -1081,6 +1081,7 @@ var itemList = function(){
 			// ajax発行
 			if( !ajaxCreate ){
 				var $stico = $('<img class=icon style="margin-left:0">');
+				parallel = 2;
 				ajaxCreate = function( nodeCount ){
 					if( nodeCount==='?' ) return 'poke';
 					if( nodeCount===false ){ $stico.remove(); return; }
@@ -1252,6 +1253,7 @@ var itemList = function(){
 			}();
 			var count = { total:0 ,ok:0 ,err:0 ,dead:0 ,warn:0 ,unknown:0 };
 			var	qix = 0;
+			parallel = 2;
 			ajaxCreate = function( nodeCount ){
 				if( nodeCount==='?' ) return 'deads';
 				if( nodeCount===false ) return;

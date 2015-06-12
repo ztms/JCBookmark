@@ -2642,7 +2642,7 @@ function analyzer( nodeTop ){
 	var qix = 0;			// ノード配列インデックス
 	var complete = 0;		// 解析完了数
 	var parallel = 1;		// 調節並列数(クライアント側ajax数×サーバー側並列数)
-	var capacity = 100;		// 全体並列数上限(約)
+	var capacity = 50;		// 全体並列数上限(約)
 	var faviconPool = {
 		// 取得したfaviconを使いまわすためのプール
 		// YouTubeに大量アクセスするとなぜかJCBookmark.exeが落ちるので導入
