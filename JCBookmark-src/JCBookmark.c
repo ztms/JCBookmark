@@ -3665,14 +3665,47 @@ typedef struct PokeCTX {
 	//UCHAR*		upper;		// out URLが死んでいた時の上位パスURL
 	PokeReport	repo;		// out 死活結果
 } PokeCTX;
+// YouTubeに短時間で多量アクセスするとなぜかアクセス違反で落ちてしまうので
+// クリティカルセクションとSleepでゆっくり順序アクセスする
+CRITICAL_SECTION PokeYouTubeCS = {0};
+void strlower( UCHAR* p )
+{
+	for( ; *p; p++ ) *p = tolower(*p);
+}
+BOOL isYouTube( const UCHAR* url )
+{
+	BOOL is = FALSE;
+	UCHAR* top = strstr(url,"://");
+	if( top ){
+		UCHAR* end ,*host;
+		top += 3;
+		end = strchr(top,'/');
+		host = end ? strndup(top,end-top) : strdup(top);
+		if( host ){
+			strlower(host);
+			// youtube.com
+			if( strcmp(host,"youtube.com")==0 ) is = TRUE;
+			else{
+				// xxx.youtube.com
+				UCHAR* y = strchr(host,'.');
+				if( y && strcmp(y+1,"youtube.com")==0 ) is = TRUE;
+			}
+			free( host );
+		}
+	}
+	return is;
+}
 // URL1つ用
 void Poke( PokeCTX* ctx )
 {
 	UCHAR* hash = strchr(ctx->url,'#');
+	BOOL youtube = isYouTube(ctx->url);
 	HTTPGet* rsp;
 	// URLの#以降を除去
 	if( hash ) *hash = '\0';
+	if( youtube ) EnterCriticalSection( &PokeYouTubeCS ) ,Sleep(1000);
 	rsp = httpGETs( ctx->url ,ctx->userAgent ,ctx->pAbort ,&(ctx->repo) );
+	if( youtube ) LeaveCriticalSection( &PokeYouTubeCS );
 	// #復活
 	if( hash ){
 		*hash = '#';
@@ -8880,6 +8913,8 @@ void MainFormTimer1000( void )
 	// データを送ってこない異常時が考えられるが、ほとんど発生しないためタイムアウトはそれほど短く
 	// ない分単位でよさそう。だがkeep-alive有効の場合は普通にFirefoxが何本も接続を切らないまま居
 	// 座りやがるので10秒くらいで切断したくなる。が、短すぎると他に問題が発生しないか気がかり。
+	// リンク切れ調査(poke)でYouTubeを順序アクセスにしたら待機中に無通信監視1分に引っかかって
+	// スレッド中断されてしまう(実際は無通信ではない)ので3分に延長。keepaliveは使ってない無視。
 	{
 		int i;
 		for( i=CLIENT_MAX; i--; ){
@@ -8890,7 +8925,7 @@ void MainFormTimer1000( void )
 				if( (cp->status==CLIENT_KEEP_ALIVE && cp->silent >10) || // 10秒
 					(cp->status!=CLIENT_KEEP_ALIVE && cp->silent >60) ){ // 1分
 #else
-				if( cp->silent >60 ){ // 1分
+				if( cp->silent >180 ){ // 3分
 #endif
 					if( cp->status==CLIENT_THREADING ){
 						// スレッド終了待たないとアクセス違反で落ちる
@@ -9539,6 +9574,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 	InitializeCriticalSection( &LogCacheCS );
 	InitializeCriticalSection( &SessionCS );
 	InitializeCriticalSection( &GetAddrInfoCS );
+	InitializeCriticalSection( &PokeYouTubeCS );
 	InitCommonControls();
 	// 他プロセスからフォアグラウンド設定できるように(多重起動防止で前面にするため導入)
 	// http://dobon.net/vb/dotnet/process/appactivate.html
@@ -9662,6 +9698,7 @@ void Cleanup( void )
 	DeleteCriticalSection( &LogCacheCS );
 	DeleteCriticalSection( &SessionCS );
 	DeleteCriticalSection( &GetAddrInfoCS );
+	DeleteCriticalSection( &PokeYouTubeCS );
 	free( DocumentRoot );
 	WSACleanup();
 #ifdef MEMLOG
