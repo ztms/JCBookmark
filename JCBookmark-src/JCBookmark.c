@@ -9710,7 +9710,7 @@ void Cleanup( void )
 #ifdef SELF_DEBUGGER
 // 自分自身をデバッグ実行
 // インポートfavicon解析で並列30くらいになると原因不明の異常終了が発生する問題の調査で導入
-BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
+BOOL DebugExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
 {
 	DWORD code = ex->ExceptionRecord.ExceptionCode;
 	switch( code ){
@@ -9773,7 +9773,7 @@ int SelfDebugger( void )
 			//case EXIT_THREAD_DEBUG_EVENT   : break;
 			//case OUTPUT_DEBUG_STRING_EVENT : break;
 			case EXIT_PROCESS_DEBUG_EVENT: goto exit;
-			case EXCEPTION_DEBUG_EVENT: if( ExceptionHandler(&(de.u.Exception)) ) goto exit; break;
+			case EXCEPTION_DEBUG_EVENT: if( DebugExceptionHandler(&(de.u.Exception)) ) goto exit;
 			//case RIP_EVENT: ErrorBoxW(L"RIP_EVENTが発生しました"); goto exit;
 			}
 			ContinueDebugEvent( de.dwProcessId ,de.dwThreadId ,DBG_CONTINUE );
