@@ -3312,7 +3312,7 @@ function folderContextMenu(ev){
 					case 'finds':
 					case 'deads':
 						folderTree({
-							 selectID: selectTrash? tree.top().id :sid
+							 selectID: selectTrash ? tree.trash().id : sid
 							,inactive: $(selectFolder).hasClass('inactive')
 						});
 						// アイテム欄で既に存在しないものを消去
@@ -3321,7 +3321,7 @@ function folderContextMenu(ev){
 						}
 						break;
 					case 'child':
-						if( selectTrash ) folderTree({ click0:true });
+						if( selectTrash || sid==tree.trash().id ) folderTree({ clickID:tree.trash().id });
 						else folderTree({ selectID:sid ,inactive:$(selectFolder).hasClass('inactive') });
 						break;
 					}
