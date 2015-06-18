@@ -167,8 +167,8 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //---------------------------------------------------------------------------------------------------------------
 // 自力メモリリーク＆破壊チェック用ログ生成
 // memory.log に確保アドレス＋ソース行数と解放アドレスを記録する。
-// スクリプト memory.pl でログから解放漏れを検出。
-//   >perl memory.pl < memory.log
+// スクリプト memory.js でログから解放漏れを検出。
+//   >cscript memory.js
 //
 // memory.log の例
 //   +00F56B20:malloc(102):.\JCBookmark.c:450
@@ -176,10 +176,14 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 //   -00F56B20
 //   -00F58C10
 // 
+// 自分自身をデバッグ実行する機能を入れたことで VisualStudioのIDEからデバッグ実行した時は
+// memory.log がクリアされず既存の memory.log が存在したら追記されていってしまうので注意。
+// 回避が面倒なのでとりあえず手動で memory.log を消す運用で対処。
+//
 #define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
-void mlogopen( void )
+void _mlogopen( BOOL delete )
 {
 	WCHAR log[MAX_PATH+1]=L"";
 	WCHAR* p;
@@ -187,9 +191,12 @@ void mlogopen( void )
 	p = wcsrchr(log,L'\\');
 	if( p ){
 		wcscpy( p+1, L"memory.log" );
-		mlog = _wfopen( log, L"wb" );
+		if( delete ) DeleteFileW( log );
+		else mlog = _wfopen( log, L"ab" );
 	}
 }
+#define mlogopen() _mlogopen( FALSE )
+#define mlogclear() _mlogopen( TRUE )
 SIZE_T PF( void )
 {
 	if( ThisProcess ){
@@ -494,10 +501,16 @@ void LogW( const WCHAR* fmt, ... )
 	CRLFtoSPACEW( wstr );
 	LogCacheAdd( wstr );
 }
+void _LogA( UCHAR* msg )
+{
+	WCHAR wstr[LOGMAX]=L"";
+	CRLFtoSPACE( msg );
+	MultiByteToWideChar( CP_UTF8, 0, msg, -1, wstr, LOGMAX );
+	LogCacheAdd( wstr );
+}
 void LogA( const UCHAR* fmt, ... )
 {
 	UCHAR		msg[LOGMAX]="";
-	WCHAR		wstr[LOGMAX]=L"";
 	va_list		arg;
 	SYSTEMTIME	st;
 	int			len;
@@ -511,9 +524,7 @@ void LogA( const UCHAR* fmt, ... )
 	va_end( arg );
 
 	msg[sizeof(msg)-1] = '\0';
-	CRLFtoSPACE( msg );
-	MultiByteToWideChar( CP_UTF8, 0, msg, -1, wstr, LOGMAX );
-	LogCacheAdd( wstr );
+	_LogA( msg );
 }
 
 UCHAR* WideCharToUTF8alloc( const WCHAR* wstr )
@@ -9031,6 +9042,8 @@ void DocumentRootSelect( void )
 void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip )
 {
 	UCHAR path[MAX_PATH+1];
+	// 親プロセス(デバッガ)から送られてきた異常終了ログを出力
+	{ UCHAR msg[LOGMAX]; while( fgets(msg,sizeof(msg),stdin) ) _LogA(chomp(msg)); }
 	// タイマー起動
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
 	// ブラウザ起動ボタン
@@ -9706,110 +9719,273 @@ void Cleanup( void )
 #endif
 }
 
-//#define SELF_DEBUGGER
-#ifdef SELF_DEBUGGER
-// 自分自身をデバッグ実行
-// インポートfavicon解析で並列30くらいになると原因不明の異常終了が発生する問題の調査で導入
-BOOL DebugExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// 自分自身をデバッグ実行して例外をキャッチ、勝手に再起動する。
+// インポートfavicon解析で並列30くらいになると原因不明の異常終了が発生する問題の調査で導入。
+// 原因不明のアクセス違反と異常終了が回避できないので、もう発生したら勝手に再起動する仕組みを入れる。
+// 親プロセス(デバッガ)はウィンドウを持たず自分自身をデバッグ実行して例外検知する。
+// 異常終了の検知情報は、再起動後の子プロセス(通常ウィンドウ)側で表示する。
+// 勝手に再起動は、OS標準の例外処理ダイアログも止めて、なにも確認せずに再起動する。
+//
+// 異常終了ログエントリ(単方向リスト)
+typedef struct DebuggerLog {
+	struct DebuggerLog* next;
+	UCHAR text[1];
+} DebuggerLog;
+
+DebuggerLog* DebuggerLog0 = NULL; // 異常終了ログ先頭
+DebuggerLog* DebuggerLogN = NULL; // 異常終了ログ末尾
+
+void DebuggerLogAdd( const UCHAR* text )
 {
+	size_t bytes = strlen( text );
+	DebuggerLog* entry = malloc( sizeof(DebuggerLog) + bytes );
+	if( entry ){
+		memcpy( entry->text, text, bytes );
+		entry->text[bytes] = '\0';
+		entry->next = NULL;
+		// リスト末尾追加
+		if( DebuggerLogN ) DebuggerLogN->next = entry;
+		DebuggerLogN = entry;
+		if( !DebuggerLog0 ) DebuggerLog0 = entry;
+	}
+	else ErrorBoxW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(DebuggerLog)+bytes);
+}
+void DeLog( const UCHAR* fmt, ... )
+{
+	UCHAR		msg[LOGMAX]="";
+	va_list		arg;
+	SYSTEMTIME	st;
+	int			len;
+
+	GetLocalTime( &st );
+	len =_snprintf( msg,sizeof(msg),"%02d:%02d:%02d.%03d ",
+					st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );
+
+	va_start( arg, fmt );
+	_vsnprintf( msg+len, sizeof(msg)-len, fmt, arg );
+	va_end( arg );
+
+	msg[sizeof(msg)-1] = '\0';
+	CRLFtoSPACE( msg );
+	DebuggerLogAdd( msg );
+}
+void DebuggerLogFree( void )
+{
+	DebuggerLog* lp = DebuggerLog0;
+	while( lp ){
+		DebuggerLog* next = lp->next;
+		free( lp );
+		lp = next;
+	}
+	DebuggerLog0 = DebuggerLogN = NULL;
+}
+BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
+{
+	// EXCEPTION_RECORD structure
+	// https://msdn.microsoft.com/ja-jp/library/windows/desktop/aa363082%28v=vs.85%29.aspx
 	DWORD code = ex->ExceptionRecord.ExceptionCode;
 	switch( code ){
-	// 無視(続行)
+	// 例外コード
+	// https://msdn.microsoft.com/ja-jp/library/cc428942.aspx
+	// 無視してよい例外
 	case EXCEPTION_BREAKPOINT:
 	case EXCEPTION_SINGLE_STEP:
 	case RPC_S_SERVER_TOO_BUSY: return FALSE;
-	// 深刻(停止)
-	case EXCEPTION_ACCESS_VIOLATION: ErrorBoxW(L"アクセス違反が発生しました"); break;
-	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: ErrorBoxW(L"配列境界超過が発生しました"); break;
-	case EXCEPTION_DATATYPE_MISALIGNMENT: ErrorBoxW(L"例外 EXCEPTION_DATATYPE_MISALIGNMENT が発生しました"); break;
-	case EXCEPTION_FLT_DENORMAL_OPERAND: ErrorBoxW(L"例外 EXCEPTION_FLT_DENORMAL_OPERAND が発生しました"); break;
-	case EXCEPTION_FLT_DIVIDE_BY_ZERO: ErrorBoxW(L"浮動小数点ゼロ除算が発生しました"); break;
-	case EXCEPTION_FLT_INEXACT_RESULT: ErrorBoxW(L"例外 EXCEPTION_FLT_INEXACT_RESULT が発生しました"); break;
-	case EXCEPTION_FLT_INVALID_OPERATION: ErrorBoxW(L"例外 EXCEPTION_FLT_INVALID_OPERATION が発生しました"); break;
-	case EXCEPTION_FLT_OVERFLOW: ErrorBoxW(L"浮動小数点オーバーフローが発生しました"); break;
-	case EXCEPTION_FLT_STACK_CHECK: ErrorBoxW(L"例外 EXCEPTION_FLT_STACK_CHECK が発生しました"); break;
-	case EXCEPTION_FLT_UNDERFLOW: ErrorBoxW(L"浮動小数点アンダーフローが発生しました"); break;
-	case EXCEPTION_ILLEGAL_INSTRUCTION: ErrorBoxW(L"例外 EXCEPTION_ILLEGAL_INSTRUCTION が発生しました"); break;
-	case EXCEPTION_IN_PAGE_ERROR: ErrorBoxW(L"例外 EXCEPTION_IN_PAGE_ERROR が発生しました"); break;
-	case EXCEPTION_INT_DIVIDE_BY_ZERO: ErrorBoxW(L"整数ゼロ除算が発生しました"); break;
-	case EXCEPTION_INT_OVERFLOW: ErrorBoxW(L"整数オーバーフローが発生しました"); break;
-	case EXCEPTION_INVALID_DISPOSITION: ErrorBoxW(L"例外 EXCEPTION_INVALID_DISPOSITION が発生しました"); break;
-	case EXCEPTION_NONCONTINUABLE_EXCEPTION: ErrorBoxW(L"例外 EXCEPTION_NONCONTINUABLE_EXCEPTION が発生しました"); break;
-	case EXCEPTION_PRIV_INSTRUCTION: ErrorBoxW(L"例外 EXCEPTION_PRIV_INSTRUCTION が発生しました"); break;
-	case EXCEPTION_STACK_OVERFLOW: ErrorBoxW(L"スタックオーバーフローが発生しました"); break;
-	default: ErrorBoxW(L"不明な例外 0x%x (%u) が発生しました",code,code);
+	// 致命的な例外
+	case EXCEPTION_ACCESS_VIOLATION: DeLog("メモリアクセス違反が発生しました"); break;
+	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: DeLog("配列の範囲外アクセスが発生しました"); break;
+	case EXCEPTION_DATATYPE_MISALIGNMENT: DeLog("データ境界整列不正アクセスが発生しました"); break;
+	case EXCEPTION_FLT_DENORMAL_OPERAND: DeLog("浮動小数点演算オペランドが不正規化値です"); break;
+	case EXCEPTION_FLT_DIVIDE_BY_ZERO: DeLog("浮動小数点ゼロ除算が発生しました"); break;
+	case EXCEPTION_FLT_INEXACT_RESULT: DeLog("浮動小数点演算の結果が不明です"); break;
+	case EXCEPTION_FLT_INVALID_OPERATION: DeLog("浮動小数点演算で不明な例外が発生しました"); break;
+	case EXCEPTION_FLT_OVERFLOW: DeLog("浮動小数点がオーバーフローしました"); break;
+	case EXCEPTION_FLT_UNDERFLOW: DeLog("浮動小数点がアンダーフローしました"); break;
+	case EXCEPTION_FLT_STACK_CHECK: DeLog("浮動小数点演算でスタックが溢れました"); break;
+	case EXCEPTION_ILLEGAL_INSTRUCTION: DeLog("不正な命令が実行されました"); break;
+	case EXCEPTION_IN_PAGE_ERROR: DeLog("ページアクセス不正が発生しました"); break;
+	case EXCEPTION_INT_DIVIDE_BY_ZERO: DeLog("整数ゼロ除算が発生しました"); break;
+	case EXCEPTION_INT_OVERFLOW: DeLog("整数がオーバーフローしました"); break;
+	case EXCEPTION_INVALID_DISPOSITION: DeLog("例外 EXCEPTION_INVALID_DISPOSITION が発生しました"); break;
+	case EXCEPTION_NONCONTINUABLE_EXCEPTION: DeLog("実行継続不能な例外が発生しました"); break;
+	case EXCEPTION_PRIV_INSTRUCTION: DeLog("許可されない命令が実行されました"); break;
+	case EXCEPTION_STACK_OVERFLOW: DeLog("スタックオーバーフローが発生しました"); break;
+	default: DeLog("不明な例外 0x%x (%u) が発生しました",code,code);
 	}
 	return TRUE;
 }
-int SelfDebugger( void )
+DWORD DebugWait( PROCESS_INFORMATION* pi )
 {
-	WCHAR exe[MAX_PATH+1];
-	STARTUPINFO si;
-	PROCESS_INFORMATION pi;
-	BOOL ok;
+	DEBUG_EVENT de;
 
-	GetModuleFileNameW( NULL ,exe ,MAX_PATH );
-	exe[MAX_PATH] = L'\0';
+	de.dwProcessId = pi->dwProcessId;
+	de.dwThreadId = pi->dwThreadId;
 
-	memset( &pi ,0 ,sizeof(pi) );
-	memset( &si ,0 ,sizeof(si) );
-	si.cb = sizeof(STARTUPINFO);
-
-	ok = CreateProcessW(
-			exe ,NULL,NULL,NULL,FALSE
-			,NORMAL_PRIORITY_CLASS |DEBUG_ONLY_THIS_PROCESS
-			,NULL,NULL ,&si ,&pi
-	);
-	if( ok ){
-		DEBUG_EVENT de;
-		de.dwProcessId = pi.dwProcessId;
-		de.dwThreadId = pi.dwThreadId;
-		while( WaitForDebugEvent(&de,INFINITE) ){
-			switch( de.dwDebugEventCode ){
-			//case LOAD_DLL_DEBUG_EVENT      : break;
-			//case UNLOAD_DLL_DEBUG_EVENT    : break;
-			//case CREATE_PROCESS_DEBUG_EVENT: break;
-			//case CREATE_THREAD_DEBUG_EVENT : break;
-			//case EXIT_THREAD_DEBUG_EVENT   : break;
-			//case OUTPUT_DEBUG_STRING_EVENT : break;
-			case EXIT_PROCESS_DEBUG_EVENT: goto exit;
-			case EXCEPTION_DEBUG_EVENT: if( DebugExceptionHandler(&(de.u.Exception)) ) goto exit;
-			//case RIP_EVENT: ErrorBoxW(L"RIP_EVENTが発生しました"); goto exit;
+	while( WaitForDebugEvent(&de,INFINITE) ){
+		switch( de.dwDebugEventCode ){
+		// 正常終了
+		case EXIT_PROCESS_DEBUG_EVENT: return 0;
+		// 例外
+		case EXCEPTION_DEBUG_EVENT:
+			if( ExceptionHandler(&(de.u.Exception)) ){
+				return de.u.Exception.ExceptionRecord.ExceptionCode;
 			}
-			ContinueDebugEvent( de.dwProcessId ,de.dwThreadId ,DBG_CONTINUE );
+			break;
+		//case LOAD_DLL_DEBUG_EVENT      : break;
+		//case UNLOAD_DLL_DEBUG_EVENT    : break;
+		//case CREATE_PROCESS_DEBUG_EVENT: break;
+		//case CREATE_THREAD_DEBUG_EVENT : break;
+		//case EXIT_THREAD_DEBUG_EVENT   : break;
+		//case OUTPUT_DEBUG_STRING_EVENT : break;
+		//case RIP_EVENT: ErrorBoxW(L"RIP_EVENTが発生しました"); goto exit;
 		}
-	exit:
-		CloseHandle( pi.hThread );
-		CloseHandle( pi.hProcess );
+		ContinueDebugEvent( de.dwProcessId ,de.dwThreadId ,DBG_CONTINUE );
 	}
-	else ErrorBoxW(L"CreateProcessエラー%u",GetLastError());
+	// ここは通らないはずだがコンパイル警告が出るし適当に例外コード割当てておく…
+	return EXCEPTION_INVALID_DISPOSITION;
+}
+BOOL LogPipeCreate( HANDLE* read ,HANDLE* write )
+{
+	BOOL ok = FALSE;
+	HANDLE tmp;
+
+	if( CreatePipe( &tmp ,write ,NULL,0 ) ){
+		HANDLE process = GetCurrentProcess();
+		if( DuplicateHandle( process ,tmp ,process ,read ,0,TRUE ,DUPLICATE_SAME_ACCESS ) ){
+			ok = TRUE;
+		}
+		else{
+			ErrorBoxW(L"DuplicateHandleエラー%u",GetLastError());
+			CloseHandle( *write );
+		}
+		CloseHandle( tmp );
+	}
+	else ErrorBoxW(L"CreatePipeエラー%u",GetLastError());
+
+	return ok;
+}
+unsigned __stdcall SelfDebugThread( void* tp )
+{
+	DWORD ex = 0;
+	HANDLE readp ,writep;
+	// パイプを子プロセスの標準入力につなげる
+	if( LogPipeCreate( &readp ,&writep ) ){
+		WCHAR exe[MAX_PATH+1];
+		STARTUPINFO si;
+		PROCESS_INFORMATION pi;
+
+		GetModuleFileNameW( NULL ,exe ,MAX_PATH );
+		exe[MAX_PATH] = L'\0';
+
+		memset( &pi ,0 ,sizeof(pi) );
+		memset( &si ,0 ,sizeof(si) );
+		si.cb         = sizeof(STARTUPINFO);
+		si.dwFlags    = STARTF_USESTDHANDLES;
+		si.hStdInput  = readp;
+		si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+		si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
+		// 子プロセスデバッグ起動
+		if( CreateProcessW(
+				exe ,NULL,NULL,NULL ,TRUE
+				,NORMAL_PRIORITY_CLASS |DEBUG_ONLY_THIS_PROCESS
+				,NULL,NULL ,&si ,&pi
+		)){
+			// 異常終了ログを子プロセスに送る
+			DebuggerLog* lp;
+			BOOL err = FALSE;
+			for( lp=DebuggerLog0; lp; lp=lp->next ){
+				DWORD written;
+				if( !WriteFile( writep ,lp->text ,strlen(lp->text) ,&written ,NULL ) ) err = TRUE;
+				WriteFile( writep ,"\r\n" ,2 ,&written ,NULL );
+			}
+			if( err ) ErrorBoxW(L"WriteFile(pipe)エラー%u",GetLastError());
+			CloseHandle( readp );
+			CloseHandle( writep );
+			// 子プロセス終了待機
+			ex = DebugWait( &pi );
+			CloseHandle( pi.hThread );
+			CloseHandle( pi.hProcess );
+		}
+		else{
+			ErrorBoxW(L"CreateProcessエラー%u",GetLastError());
+			CloseHandle( readp );
+			CloseHandle( writep );
+		}
+	}
+	// 子プロセス異常終了例外コード
+	*(DWORD*)tp = ex;
+	// 異常終了した子プロセスはデバッグ中で停止状態のまま存在しており、このスレッド終了と共に終了する。
+	// OS標準の例外処理ダイアログを出さずにどうやってできるだけ安全に終了させるかはっきりとは不明だが
+	// TerminateProcess()よりは安全という噂なのでスレッドを使っている。
+	// http://www.woodmann.com/forum/archive/index.php/t-8049.html
+	ERR_remove_state(0);
+	_endthreadex(0);
 	return 0;
 }
+int SelfDebugger( void )
+{
+	HANDLE thread;
+	DWORD ex;
+	int count = 0;
+#ifdef MEMLOG
+	mlogclear();
 #endif
+retry:
+	// 子プロセス起動用スレッドを生成する。
+	// 子プロセスの異常終了時にTerminateProcess()で殺すより親スレッドが終了した方がいくらか安全？
+	// http://www.woodmann.com/forum/archive/index.php/t-8049.html
+	// TerminateProcess()で殺していた時は「アプリケーションを正しく初期化できませんでした(0xc0000142)」
+	// というダイアログが子プロセス再起動時にけっこう頻繁に出てしまっていたが、スレッドにしたらそれが
+	// 解消したような気がする。
+	ex = 0;
+	thread = (HANDLE)_beginthreadex( NULL,0 ,SelfDebugThread ,(void*)&ex ,0,NULL );
+	WaitForSingleObject( thread ,INFINITE );
+	// 子プロセス異常終了したら勝手に再起動
+	if( ex ){
+		// もし起動するだけで異常終了するような状況だと無限ループしてしまうので10回くらいまでにしておく
+		if( count++ <10 ){ DeLog("再起動.."); goto retry; }
+		ErrorBoxW(L"致命的な例外 0x%x (%u) により JCBookmark.exe は終了しました。",ex,ex);
+	}
+	// 正常終了、親デバッガも終了
+	DebuggerLogFree();
+#ifdef MEMLOG
+	if( mlog ) fclose(mlog);
+#endif
+	return 0;
+}
 
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
 	MSG msg = {0};
-
 #ifdef _CRTDBG_MAP_ALLOC
 	// アプリ終了時に解放されてないメモリ領域を検出する
 	_CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) |_CRTDBG_ALLOC_MEM_DF |_CRTDBG_LEAK_CHECK_DF);
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
-
-#ifdef SELF_DEBUGGER
-	if( !IsDebuggerPresent() ) return SelfDebugger();
-#endif
-
-	if( Startup( hinst, nCmdShow ) ){
-		while( GetMessage( &msg, NULL, 0,0 ) >0 ){
-			if( !IsDialogMessage( MainForm, &msg ) ){
-				TranslateMessage( &msg );
-				DispatchMessage( &msg );
+	if( IsDebuggerPresent() ){
+		if( Startup( hinst, nCmdShow ) ){
+			while( GetMessage( &msg, NULL, 0,0 ) >0 ){
+				if( !IsDialogMessage( MainForm, &msg ) ){
+					TranslateMessage( &msg );
+					DispatchMessage( &msg );
+				}
 			}
 		}
+		Cleanup();
+		return (int)msg.wParam;
 	}
-	Cleanup();
-	return (int)msg.wParam;
+	return SelfDebugger();
 }
