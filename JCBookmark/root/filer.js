@@ -1684,7 +1684,7 @@ $('#newitem').on({
 					if( data.icon.length ){
 						if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
 							$('#item'+node.id)
-							.find('.icon').attr('src',data.icon).end()
+							.children('.icon').attr('src',data.icon).end()
 							.find('.iconurl').text( data.icon );
 						}
 					}
@@ -3525,7 +3525,7 @@ function edit( element, opt ){
 												if( data.icon.length && (!node.icon|| !node.icon.length) ){
 													if( tree.nodeAttr( nid,'icon',data.icon ) >1 ){
 														$('#item'+nid)
-														.find('.icon').attr('src',data.icon).end()
+														.children('.icon').attr('src',data.icon).end()
 														.find('.iconurl').text( data.icon );
 													}
 												}
@@ -3673,7 +3673,7 @@ function clipboardTo( pnode ,index ,after ){
 							if( data.icon.length ){
 								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
 									$('#item'+node.id)
-									.find('.icon').attr('src',data.icon).end()
+									.children('.icon').attr('src',data.icon).end()
 									.find('.iconurl').text( data.icon );
 								}
 							}
