@@ -9791,7 +9791,7 @@ void DebuggerLogFree( void )
 	}
 	DebuggerLog0 = DebuggerLogN = NULL;
 }
-BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
+DWORD ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
 {
 	// EXCEPTION_RECORD structure
 	// https://msdn.microsoft.com/ja-jp/library/windows/desktop/aa363082%28v=vs.85%29.aspx
@@ -9799,11 +9799,7 @@ BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
 	switch( code ){
 	// 例外コード
 	// https://msdn.microsoft.com/ja-jp/library/cc428942.aspx
-	// 無視してよい例外
-	case EXCEPTION_BREAKPOINT:
-	case EXCEPTION_SINGLE_STEP:
-	case RPC_S_SERVER_TOO_BUSY: return FALSE;
-	// 致命的な例外
+	// 致命的(続行不能)例外
 	case EXCEPTION_ACCESS_VIOLATION: DeLog("メモリアクセス違反が発生しました"); break;
 	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: DeLog("配列の範囲外アクセスが発生しました"); break;
 	case EXCEPTION_DATATYPE_MISALIGNMENT: DeLog("データ境界整列不正アクセスが発生しました"); break;
@@ -9822,9 +9818,13 @@ BOOL ExceptionHandler( EXCEPTION_DEBUG_INFO* ex )
 	case EXCEPTION_NONCONTINUABLE_EXCEPTION: DeLog("実行継続不能な例外が発生しました"); break;
 	case EXCEPTION_PRIV_INSTRUCTION: DeLog("許可されない命令が実行されました"); break;
 	case EXCEPTION_STACK_OVERFLOW: DeLog("スタックオーバーフローが発生しました"); break;
-	default: DeLog("不明な例外 0x%x (%u) が発生しました",code,code);
+	// 続行できる例外
+	case EXCEPTION_BREAKPOINT:
+	case EXCEPTION_SINGLE_STEP: return DBG_CONTINUE;
+	// TODO:不明な例外をどうすべきかイマイチ謎…
+	default: /*DeLog("不明な例外 0x%x (%u) が発生しました",code,code);*/ return DBG_EXCEPTION_NOT_HANDLED;
 	}
-	return TRUE;
+	return 0;
 }
 DWORD DebugWait( PROCESS_INFORMATION* pi )
 {
@@ -9834,15 +9834,16 @@ DWORD DebugWait( PROCESS_INFORMATION* pi )
 	de.dwThreadId = pi->dwThreadId;
 
 	while( WaitForDebugEvent(&de,INFINITE) ){
+		DWORD flag;
 		switch( de.dwDebugEventCode ){
 		// 正常終了
 		case EXIT_PROCESS_DEBUG_EVENT: return 0;
 		// 例外
 		case EXCEPTION_DEBUG_EVENT:
-			if( ExceptionHandler(&(de.u.Exception)) ){
-				return de.u.Exception.ExceptionRecord.ExceptionCode;
-			}
-			break;
+			flag = ExceptionHandler(&(de.u.Exception));
+			if( !flag ) return de.u.Exception.ExceptionRecord.ExceptionCode;
+			ContinueDebugEvent( de.dwProcessId ,de.dwThreadId ,flag );
+			continue;
 		//case LOAD_DLL_DEBUG_EVENT      : break;
 		//case UNLOAD_DLL_DEBUG_EVENT    : break;
 		//case CREATE_PROCESS_DEBUG_EVENT: break;
