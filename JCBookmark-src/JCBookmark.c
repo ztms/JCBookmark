@@ -380,7 +380,7 @@ int closesocket_( SOCKET sock, UINT line )
 
 
 //---------------------------------------------------------------------------------------------------------------
-// 共通
+// ログ関数を使わない共通関数
 //
 void ErrorBoxA( const UCHAR* fmt, ... )
 {
@@ -433,6 +433,14 @@ UCHAR* chomp( UCHAR* s )
 	}
 	return s;
 }
+// BackSlash -> Slash
+UCHAR* BStoSL( UCHAR* s )
+{
+	if( s ){ UCHAR* p=s; for( ; *p; p++ ) if( *p=='\\' ) *p='/'; }
+	return s;
+}
+
+
 
 
 
@@ -527,6 +535,19 @@ void LogA( const UCHAR* fmt, ... )
 	_LogA( msg );
 }
 
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// 文字列系
+// UTF8 <=> Unicode(UTF-16)
 UCHAR* WideCharToUTF8alloc( const WCHAR* wstr )
 {
 	if( wstr ){
@@ -561,6 +582,27 @@ WCHAR* MultiByteToWideCharAlloc( const UCHAR* utf8, UINT cp )
 		else LogW(L"L%u:malloc(%u)エラー",__LINE__,(count+1)*sizeof(WCHAR));
 	}
 	return NULL;
+}
+// 環境変数展開
+WCHAR* ExpandEnvironmentStringsAllocW( const WCHAR* path )
+{
+	DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
+	WCHAR* path2 = malloc( length * sizeof(WCHAR) );
+	if( path2 ){
+		ExpandEnvironmentStringsW( path, path2, length );
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
+	return path2;
+}
+UCHAR* ExpandEnvironmentStringsAllocA( const UCHAR* path )
+{
+	DWORD bytes = ExpandEnvironmentStringsA( path, NULL, 0 );
+	UCHAR* path2 = malloc( bytes );
+	if( path2 ){
+		ExpandEnvironmentStringsA( path, path2, bytes );
+	}
+	else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
+	return path2;
 }
 // 文字列連結
 // 実装が面倒なので可変引数は使わない。
@@ -704,7 +746,7 @@ WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
 	}
 	return NULL;
 }
-// IEお気に入り(.url)ファイルURL文字列複製(JSON出力用)
+// IEお気に入り(.url)URL=文字列複製(JSON出力用)
 // - 改行文字以降を削除
 // - 先頭の連続するダブルクォート文字をスキップ、対応する閉ダブルクォートが存在すれば併せて削除
 //   (もし閉ダブルクォートだけが存在しても無視)
@@ -721,6 +763,32 @@ UCHAR* urldupJSON( UCHAR* s )
 		return strndupJSON(s,n);
 	}
 	return s;
+}
+// IEお気に入りIconFile=用
+UCHAR* icondupJSON( UCHAR* s )
+{
+	UCHAR* icon = NULL;
+
+	if( strstr(s,"://") ) icon = urldupJSON(s);
+	else{
+		// 例) %ProgramFiles%\Internet Explorer\Images\bing.ico
+		// ローカルファイルパスしかも環境変数入りの場合があり、
+		// これがそのまま<img>のsrc=に入るとIEがJSエラーで動作不能。
+		// 環境変数は展開してfile:///～に変換。
+		// TODO:IEでお気に入りエクスポートしたらこのパスもそのままだったので
+		// HTMLインポートの方も直さないと…。でもChromeやFirefoxは動くし…
+		UCHAR* path = ExpandEnvironmentStringsAllocA(s);
+		if( path ){
+			// file:/// は file://localhost/ の略
+			UCHAR* iconurl = strjoin("file:///",BStoSL(path),0,0,0);
+			if( iconurl ){
+				icon = urldupJSON(iconurl);
+				free(iconurl);
+			}
+			free(path);
+		}
+	}
+	return icon;
 }
 
 
@@ -1034,22 +1102,12 @@ BOOL SetCurrentDirectorySelf( void )
 //   してくれるので、拡張子がない入力に用いる。ただし.lnkは実行形式とみなされず無視のもよう。
 //   拡張子がないファイルが実際に存在しても(実行不能なためか)無視される。
 // * SearchPath関数は、拡張子は補わない。拡張子がある場合はこの関数を用いる。
-WCHAR* ExpandEnvironmentStringsAlloc( const WCHAR* path )
-{
-	DWORD length = ExpandEnvironmentStringsW( path, NULL, 0 );
-	WCHAR* path2 = malloc( length * sizeof(WCHAR) );
-	if( path2 ){
-		ExpandEnvironmentStringsW( path, path2, length );
-	}
-	else LogW(L"L%u:malloc(%u)エラー",__LINE__,length*sizeof(WCHAR));
-	return path2;
-}
 WCHAR* myPathResolve( const WCHAR* path )
 {
 	WCHAR* realpath = NULL;
 	if( path ){
 		// 環境変数(%windir%など)展開
-		WCHAR* path2 = ExpandEnvironmentStringsAlloc( path );
+		WCHAR* path2 = ExpandEnvironmentStringsAllocW( path );
 		if( path2 ){
 			if( PathIsRelativeW(path2) ){
 				// 相対パス
@@ -1120,7 +1178,7 @@ WCHAR* myPathResolve( const WCHAR* path )
 				}
 				if( realpath ){
 					// App Paths が環境変数入りパスの場合がある
-					WCHAR* realpath2 = ExpandEnvironmentStringsAlloc( realpath );
+					WCHAR* realpath2 = ExpandEnvironmentStringsAllocW( realpath );
 					if( realpath2 ){
 						free( realpath );
 						realpath = realpath2;
@@ -1573,7 +1631,7 @@ WCHAR* FavoritesPathAlloc( void )
 				// データ取得
 				if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)value, &bytes )==ERROR_SUCCESS ){
 					// 環境変数展開
-					path = ExpandEnvironmentStringsAlloc( value );
+					path = ExpandEnvironmentStringsAllocW( value );
 				}
 				else LogW(L"RegQueryValueExW(%s)エラー%u",subkey,GetLastError());
 				free( value );
@@ -1689,7 +1747,7 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 												url = urldupJSON(line+4);
 											}
 											else if( strnicmp(line,"IconFile=",9)==0 ){
-												icon = urldupJSON(line+9);
+												icon = icondupJSON(line+9);
 											}
 											if( url && icon ) break;
 										}
@@ -4326,7 +4384,7 @@ WCHAR* FirefoxPlacesPathAlloc( void )
 	#define PLACES_SQLITE L"places.sqlite"
 	WCHAR* places = NULL;
 	// 環境変数展開
-	WCHAR* profiles = ExpandEnvironmentStringsAlloc( PROFILES_INI );
+	WCHAR* profiles = ExpandEnvironmentStringsAllocW( PROFILES_INI );
 	if( profiles ){
 		WCHAR path[MAX_PATH+1];
 		GetPrivateProfileStringW(L"Profile0",L"Path",L"",path,sizeof(path)/sizeof(WCHAR),profiles);
@@ -4644,7 +4702,7 @@ WCHAR* ChromeBookmarksPathAlloc( void )
 		path = L"%USERPROFILE%\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks";
 	}
 	// 環境変数展開
-	return ExpandEnvironmentStringsAlloc( path );
+	return ExpandEnvironmentStringsAllocW( path );
 }
 // Chrome Bookmarks と同じフォルダの Favicons ファイルパス
 WCHAR* ChromeFaviconsPathAlloc( void )
