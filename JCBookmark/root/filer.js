@@ -2057,7 +2057,7 @@ $('#itembox').on({
 				// 選択なし
 				selectItemClear();
 			}
-			itemSelectStart( null, downX, downY );
+			if( ev.which==1 ) itemSelectStart( null, downX, downY ); // 左ボタンのみ(Opera12/IE11用なぜか)
 		}
 	}
 	// アイテム欄下余白コンテキストメニュー
@@ -2399,7 +2399,7 @@ function itemMouseDown( ev, shiftKey ,ctrlKey ){
 			// なにも選択されてないので単選択
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( this, ev.pageX, ev.pageY );
+			if( ev.which==1 ) itemSelectStart( this, ev.pageX, ev.pageY ); // 左ボタンのみ(Opera12/IE11用なぜか)
 		}
 	}else if( ev.ctrlKey ){
 		// 単選択(選択追加)
@@ -2411,7 +2411,7 @@ function itemMouseDown( ev, shiftKey ,ctrlKey ){
 			// 未選択は選択
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( this, ev.pageX, ev.pageY );
+			if( ev.which==1 ) itemSelectStart( this, ev.pageX, ev.pageY ); // 左ボタンのみ(Opera12/IE11用なぜか)
 		}
 	}else{
 		// 単選択(差し替え)
@@ -2433,7 +2433,7 @@ function itemMouseDown( ev, shiftKey ,ctrlKey ){
 			selectItemClear();
 			$(select=selectItemLast=this).addClass('select').focus();
 			// 矩形選択
-			itemSelectStart( this, ev.pageX, ev.pageY );
+			if( ev.which==1 ) itemSelectStart( this, ev.pageX, ev.pageY ); // 左ボタンのみ(Opera12/IE11用なぜか)
 		}
 	}
 	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
@@ -2868,9 +2868,6 @@ function itemDblClick(ev){
 	}
 	return false;
 }
-// TODO:Opera12で未選択アイテムのコンテキストメニューが出ない。選択アイテムは出る。
-// itemMouseDown()のitemSelectStart()をやめたら出た。Opera以外は問題ない。うーむ
-// ブラウザ判定はIEしかしてないし、右クリック判定もしてないし、あとまわし…。
 // TODO:左ボタンドラッグと右ボタンドラッグを区別していないので、右ドラッグした時に
 // たまたまカーソル下に要素があればコンテキストメニューが出て、なければ出ないという
 // 挙動になる。右ドラッグ用メニュー「ここに移動」「ここにコピー」などを作るべき？
