@@ -128,7 +128,7 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
-#define		APPNAME				L"JCBookmark v2.1"
+#define		APPNAME				L"JCBookmark v2.2dev"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -180,7 +180,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 // memory.log がクリアされず既存の memory.log が存在したら追記されていってしまうので注意。
 // 回避が面倒なのでとりあえず手動で memory.log を消す運用で対処。
 //
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void _mlogopen( BOOL delete )
