@@ -6795,7 +6795,18 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 													,u8name
 													,FileTimeToJSTime( &wfd.ftLastWriteTime )
 											);
-											if( PathFileExistsW(wtxt) ) BufferSendFile( bp ,wtxt );
+											if( PathFileExistsW(wtxt) ){
+												//BufferSendFile( bp ,wtxt );
+												Memory* memo = file2memory( wtxt );
+												if( memo ){
+													UCHAR* json = strndupJSON( memo->data ,memo->bytes );
+													if( json ){
+														BufferSends( bp ,json );
+														free( json );
+													}
+													free( memo );
+												}
+											}
 											BufferSend( bp ,"\"}" ,2 );
 										}
 										else err = TRUE;
