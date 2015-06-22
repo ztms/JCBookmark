@@ -219,7 +219,7 @@ void* malloc_( size_t bytes, UINT line )
 	void* p = malloc( bytes + sizeof(size_t) + sizeof(UINT) * 2 );
 	if( p ){
 		if( !mlog ) mlogopen();
-		if( mlog ) fprintf(mlog,"+%p:L%u:malloc(%u) (PF%ukb)\r\n",p,line,bytes,PF());
+		if( mlog ) fprintf(mlog,"+%p:L%u:malloc(%lu) (PF%lukb)\r\n",p,line,bytes,PF());
 		// 先頭にmallocバイト数
 		*(size_t*)p = bytes;
 		p = (BYTE*)p + sizeof(size_t);
@@ -247,7 +247,7 @@ void free_( void* p, UINT line )
 		// 解放
 		free( p );
 		if( !mlog ) mlogopen();
-		if( mlog ) fprintf(mlog ,"-%p:L%u %s%s(PF%ukb)\r\n"
+		if( mlog ) fprintf(mlog ,"-%p:L%u %s%s(PF%lukb)\r\n"
 				,p ,line ,(underflow ? "underflow ":"") ,(overflow ? "overflow ":"") ,PF()
 		);
 	}
@@ -270,20 +270,20 @@ FILE* fopen_( LPCSTR path, LPCSTR mode, UINT line )
 {
 	FILE* fp = fopen( path, mode );
 	if( !mlog ) mlogopen();
-	if( mlog && fp ) fprintf(mlog,"+%p:L%u:fopen(%s) (%ukb)\r\n",fp,line,path,PF());
+	if( mlog && fp ) fprintf(mlog,"+%p:L%u:fopen(%s) (%lukb)\r\n",fp,line,path,PF());
 	return fp;
 }
 FILE* wfopen_( LPCWSTR path, const WCHAR* mode, UINT line )
 {
 	FILE* fp = _wfopen( path, mode );
 	if( !mlog ) mlogopen();
-	if( mlog && fp ) fprintf(mlog,"+%p:L%u:_wfopen(?) (%ukb)\r\n",fp,line,PF());
+	if( mlog && fp ) fprintf(mlog,"+%p:L%u:_wfopen(?) (%lukb)\r\n",fp,line,PF());
 	return fp;
 }
 int fclose_( FILE* fp, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",fp,line,PF());
+	if( mlog ) fprintf(mlog,"-%p:L%u (%lukb)\r\n",fp,line,PF());
 	return fclose( fp );
 }
 HANDLE CreateFileW_( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUTES sec, DWORD disp, DWORD attr, HANDLE templete, UINT line )
@@ -291,13 +291,13 @@ HANDLE CreateFileW_( LPCWSTR path, DWORD access, DWORD mode, LPSECURITY_ATTRIBUT
 	HANDLE handle = CreateFileW( path, access, mode, sec, disp, attr, templete );
 	if( !mlog ) mlogopen();
 	if( mlog && handle!=INVALID_HANDLE_VALUE )
-		fprintf(mlog,"+%p:L%u:CreateFileW(?) (%ukb)\r\n",handle,line,PF());
+		fprintf(mlog,"+%p:L%u:CreateFileW(?) (%lukb)\r\n",handle,line,PF());
 	return handle;
 }
 BOOL CloseHandle_( HANDLE handle, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",handle,line,PF());
+	if( mlog ) fprintf(mlog,"-%p:L%u (%lukb)\r\n",handle,line,PF());
 	return CloseHandle( handle );
 }
 UINT ExtractIconExW_( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT n, UINT line )
@@ -305,8 +305,8 @@ UINT ExtractIconExW_( LPCWSTR path, int index, HICON* iconL, HICON* iconS, UINT 
 	UINT ret = ExtractIconExW( path, index, iconL, iconS, n );
 	if( !mlog ) mlogopen();
 	if( mlog && ret ){
-		if( iconL && *iconL ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%ukb)\r\n",*iconL,line,PF());
-		if( iconS && *iconS ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%ukb)\r\n",*iconS,line,PF());
+		if( iconL && *iconL ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%lukb)\r\n",*iconL,line,PF());
+		if( iconS && *iconS ) fprintf(mlog,"+%p:L%u:ExtractIconExW(?) (%lukb)\r\n",*iconS,line,PF());
 	}
 	return ret;
 }
@@ -314,7 +314,7 @@ HICON ExtractAssociatedIconW_( HINSTANCE hinst, LPWSTR path, LPWORD index, UINT 
 {
 	HICON icon = ExtractAssociatedIconW( hinst, path, index );
 	if( !mlog ) mlogopen();
-	if( mlog && icon ) fprintf(mlog,"+%p:L%u:ExtractAssociatedIconW(?) (%ukb)\r\n",icon,line,PF());
+	if( mlog && icon ) fprintf(mlog,"+%p:L%u:ExtractAssociatedIconW(?) (%lukb)\r\n",icon,line,PF());
 	return icon;
 }
 DWORD_PTR SHGetFileInfoW_( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byte, UINT flag, UINT line )
@@ -322,33 +322,33 @@ DWORD_PTR SHGetFileInfoW_( LPCWSTR path, DWORD attr, SHFILEINFOW* info, UINT byt
 	DWORD_PTR ret = SHGetFileInfoW( path, attr, info, byte, flag );
 	if( !mlog ) mlogopen();
 	if( mlog && ret && info && info->hIcon )
-		fprintf(mlog,"+%p:L%u:SHGetFileInfoW(?) (%ukb)\r\n",info->hIcon,line,PF());
+		fprintf(mlog,"+%p:L%u:SHGetFileInfoW(?) (%lukb)\r\n",info->hIcon,line,PF());
 	return ret;
 }
 BOOL DestroyIcon_( HICON icon, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-%p:L%u (%ukb)\r\n",icon,line,PF());
+	if( mlog ) fprintf(mlog,"-%p:L%u (%lukb)\r\n",icon,line,PF());
 	return DestroyIcon( icon );
 }
 SOCKET WSAAPI socket_( int af, int type, int proto, UINT line )
 {
 	SOCKET sock = socket( af, type, proto );
 	if( !mlog ) mlogopen();
-	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:socket() (%ukb)\r\n",sock,line,PF());
+	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:socket() (%lukb)\r\n",sock,line,PF());
 	return sock;
 }
 SOCKET accept_( SOCKET lsock, struct sockaddr* addr, int* addrlen, UINT line )
 {
 	SOCKET sock = accept( lsock, addr, addrlen );
 	if( !mlog ) mlogopen();
-	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:accept() (%ukb)\r\n",sock,line,PF());
+	if( mlog && sock!=INVALID_SOCKET ) fprintf(mlog,"+SOCK%u:L%u:accept() (%lukb)\r\n",sock,line,PF());
 	return sock;
 }
 int closesocket_( SOCKET sock, UINT line )
 {
 	if( !mlog ) mlogopen();
-	if( mlog ) fprintf(mlog,"-SOCK%u:L%u (%ukb)\r\n",sock,line,PF());
+	if( mlog ) fprintf(mlog,"-SOCK%u:L%u (%lukb)\r\n",sock,line,PF());
 	return closesocket( sock );
 }
 #define malloc(a)						malloc_(a,__LINE__)
@@ -695,7 +695,7 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 					// http://cakephp.org/の<title>にTAB文字(0x09)が含まれており、Chrome/Firefoxで
 					// なぜかJSONパースできず$.ajax()がエラーになるようで、仕方なく \t に変換する。
 					// IE8は動いてくれるのだが。JSONって値にTAB文字ダメな仕様なの？
-					*src++ ,*dst++ ='\\' ,*dst++ ='t';
+					src++ ,*dst++ ='\\' ,*dst++ ='t';
 					continue;
 				}
 				if( *src=='"' || *src=='\\' ) *dst++ = '\\';
@@ -1829,9 +1829,9 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 					// データ取得
 					if( RegQueryValueExW( key, name, NULL, &type, (BYTE*)order, &bytes )==ERROR_SUCCESS ){
 						RegFavoriteOrderItem* item = order->item;
-						DWORD count=0;
 //#define DEBUGLOG
 #ifdef DEBUGLOG
+						DWORD count=0;
 						LogW(L"FavoriteOrder[%s]: %ubytes itemCount=%u %ubytes",wcsrchr(subkey,L'\\'),bytes,order->itemCount,order->bytes);
 #endif
 						while( (BYTE*)item < limit ){
