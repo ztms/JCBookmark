@@ -9413,17 +9413,29 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					,hwnd, 0
 					,((LPCREATESTRUCT)lp)->hInstance, NULL
 		);
-		if( !ListBox ) return -1;
+		if( !ListBox ){
+			ErrorBoxW(L"CreateWindow(ListBox)エラー%u",GetLastError());
+			return -1;
+		}
 		hFont = CreateFontW(15,0,0,0,0,0,0,0,0,0,0,0,0,L"MS Gothic");
-		if( !hFont ) return -1;
+		if( !hFont ){
+			ErrorBoxW(L"CreateFontエラー%u",GetLastError());
+			return -1;
+		}
 		SendMessage( ListBox, WM_SETFONT, (WPARAM)hFont, 0 );
 		// リストボックス横幅計算のためデバイスコンテキスト取得フォント関連付け
 		ListBoxDC = GetDC( ListBox );
-		if( !ListBoxDC ) return -1;
+		if( !ListBoxDC ){
+			ErrorBoxW(L"GetDC(ListBox)エラー%u",GetLastError());
+			return -1;
+		}
 		SelectObject( ListBoxDC, hFont );
 		// プロセスハンドル
 		ThisProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId() );
-		if( !ThisProcess ) return -1;
+		if( !ThisProcess ){
+			ErrorBoxW(L"OpenProcessエラー%u",GetLastError());
+			return -1;
+		}
 		// 二次初期化
 		PostMessage( hwnd, WM_CREATE_AFTER, (WPARAM)(((LPCREATESTRUCT)lp)->hInstance), 0 );
 		break;
