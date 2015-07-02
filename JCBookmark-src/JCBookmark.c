@@ -820,7 +820,8 @@ UCHAR* icondupJSON( UCHAR* s )
 typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
 	WCHAR*		exe;			// exeフルパス
-	WCHAR*		arg;			// 引数
+	WCHAR*		arg;			// オプション引数
+	WCHAR*		page;			// URLページパス
 	BOOL		hide;			// 表示しない
 } BrowserInfo;
 // ブラウザアイコン
@@ -993,10 +994,22 @@ BrowserInfo* BrowserInfoAlloc( void )
 						br[BI_CHROME].arg = MultiByteToWideCharAlloc( buf+10, CP_UTF8 );
 					}
 					else if( strnicmp(buf,"FirefoxArg=",11)==0 && *(buf+11) ){
-						br[BI_FIREFOX].arg = MultiByteToWideCharAlloc( buf+11,CP_UTF8 );
+						br[BI_FIREFOX].arg = MultiByteToWideCharAlloc( buf+11 ,CP_UTF8 );
 					}
 					else if( strnicmp(buf,"OperaArg=",9)==0 && *(buf+9) ){
-						br[BI_OPERA].arg = MultiByteToWideCharAlloc( buf+9,CP_UTF8 );
+						br[BI_OPERA].arg = MultiByteToWideCharAlloc( buf+9 ,CP_UTF8 );
+					}
+					else if( strnicmp(buf,"IEPage=",7)==0 && *(buf+7) ){
+						br[BI_IE].page = MultiByteToWideCharAlloc( buf+7 ,CP_UTF8 );
+					}
+					else if( strnicmp(buf,"ChromePage=",11)==0 && *(buf+11) ){
+						br[BI_CHROME].page = MultiByteToWideCharAlloc( buf+11 ,CP_UTF8 );
+					}
+					else if( strnicmp(buf,"FirefoxPage=",12)==0 && *(buf+12) ){
+						br[BI_FIREFOX].page = MultiByteToWideCharAlloc( buf+12 ,CP_UTF8 );
+					}
+					else if( strnicmp(buf,"OperaPage=",10)==0 && *(buf+10) ){
+						br[BI_OPERA].page = MultiByteToWideCharAlloc( buf+10 ,CP_UTF8 );
 					}
 					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
 						br[BI_IE].hide = atoi(buf+7)?TRUE:FALSE;
@@ -1034,6 +1047,18 @@ BrowserInfo* BrowserInfoAlloc( void )
 					else if( strnicmp(buf,"Arg4=",5)==0 && *(buf+5) ){
 						br[BI_USER4].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
+					else if( strnicmp(buf,"Page1=",6)==0 && *(buf+6) ){
+						br[BI_USER1].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
+					}
+					else if( strnicmp(buf,"Page2=",6)==0 && *(buf+6) ){
+						br[BI_USER2].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
+					}
+					else if( strnicmp(buf,"Page3=",6)==0 && *(buf+6) ){
+						br[BI_USER3].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
+					}
+					else if( strnicmp(buf,"Page4=",6)==0 && *(buf+6) ){
+						br[BI_USER4].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
+					}
 					else if( strnicmp(buf,"Hide1=",6)==0 && *(buf+6) ){
 						br[BI_USER1].hide = atoi(buf+6)?TRUE:FALSE;
 					}
@@ -1065,6 +1090,7 @@ void BrowserInfoFree( BrowserInfo br[BI_COUNT] )
 	for( i=BI_COUNT; i--; ){
 		if( br[i].exe ) free( br[i].exe );
 		if( br[i].arg ) free( br[i].arg );
+		if( br[i].page ) free( br[i].page );
 	}
 	free( br );
 }
@@ -7745,6 +7771,7 @@ typedef struct {
 	UCHAR*	loginPass;
 	WCHAR*	wExe[BI_COUNT];
 	WCHAR*	wArg[BI_COUNT];
+	WCHAR*	wPage[BI_COUNT];
 	BOOL	hide[BI_COUNT];
 } ConfigData;
 
@@ -7763,12 +7790,14 @@ void ConfigSave( const ConfigData* dp )
 			UCHAR*	listenPort = WideCharToUTF8alloc( dp->wListenPort );
 			UCHAR*	exe[BI_COUNT];
 			UCHAR*	arg[BI_COUNT];
+			UCHAR*	page[BI_COUNT];
 			WCHAR	ini[MAX_PATH+1] = L"";
 			UCHAR	b64txt[SHA256_DIGEST_LENGTH*2]="";
 			UINT	i;
 			for( i=BI_COUNT; i--; ){
 				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
 				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
+				page[i] = WideCharToUTF8alloc( dp->wPage[i] );
 			}
 			if( dp->loginPass ){
 				// 新パスワード:SHA256ハッシュ
@@ -7803,22 +7832,28 @@ void ConfigSave( const ConfigData* dp )
 			fprintf(fp,"HttpsLocal=%s\r\n"	,dp->httpsLocal		? "1":"");
 			fprintf(fp,"BootMinimal=%s\r\n"	,dp->bootMinimal	? "1":"");
 			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]				? arg[BI_IE]:"");
+			fprintf(fp,"IEPage=%s\r\n"		,page[BI_IE]			? page[BI_IE]:"");
 			fprintf(fp,"IEHide=%s\r\n"		,dp->hide[BI_IE]		? "1":"");
 			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]			? arg[BI_CHROME]:"");
+			fprintf(fp,"ChromePage=%s\r\n"	,page[BI_CHROME]		? page[BI_CHROME]:"");
 			fprintf(fp,"ChromeHide=%s\r\n"	,dp->hide[BI_CHROME]	? "1":"");
 			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]		? arg[BI_FIREFOX]:"");
+			fprintf(fp,"FirefoxPage=%s\r\n"	,page[BI_FIREFOX]		? page[BI_FIREFOX]:"");
 			fprintf(fp,"FirefoxHide=%s\r\n"	,dp->hide[BI_FIREFOX]	? "1":"");
 			fprintf(fp,"OperaArg=%s\r\n"	,arg[BI_OPERA]			? arg[BI_OPERA]:"");
+			fprintf(fp,"OperaPage=%s\r\n"	,page[BI_OPERA]			? page[BI_OPERA]:"");
 			fprintf(fp,"OperaHide=%s\r\n"	,dp->hide[BI_OPERA]		? "1":"");
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
-				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]		? exe[i]:"");
-				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]		? arg[i]:"");
-				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i]	? "1":"");
+				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]	? exe[i]:"");
+				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]	? arg[i]:"");
+				fprintf(fp,"Page%u=%s\r\n"	,i-BI_USER1+1 ,page[i]	? page[i]:"");
+				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i] ? "1":"");
 			}
 			if( listenPort ) free( listenPort );
 			for( i=BI_COUNT; i--; ){
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
+				if( page[i] ) free( page[i] );
 			}
 			fclose(fp);
 			// my.ini.new -> my.ini
@@ -7876,6 +7911,8 @@ typedef struct {
 	HWND		hHide[BI_COUNT];
 	HWND		hExe[BI_COUNT];
 	HWND		hArg[BI_COUNT];
+	HWND		hPageBasic[BI_COUNT];
+	HWND		hPageFiler[BI_COUNT];
 	HICON		hIcon[BI_COUNT];
 	HFONT		hFontM;
 	HFONT		hFontS;
@@ -8167,9 +8204,21 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 									,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_AUTOHSCROLL
 									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 						);
+						my->hPageBasic[i] = CreateWindowW(
+									L"button",L"基本画面" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
+									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+						);
+						my->hPageFiler[i] = CreateWindowW(
+									L"button",L"整理画面" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
+									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
+						);
 						SendMessage( my->hHide[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
 						SendMessage( my->hExe[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
 						SendMessage( my->hArg[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
+						if( br[i].page && wcscmp(br[i].page,L"filer.html")==0 )
+							SendMessage( my->hPageFiler[i] ,BM_SETCHECK ,BST_CHECKED ,0 );
+						else
+							SendMessage( my->hPageBasic[i] ,BM_SETCHECK ,BST_CHECKED ,0 );
 						if( br[i].hide ) SendMessage( my->hHide[i], BM_SETCHECK, BST_CHECKED, 0 );
 					}
 					// 既定ブラウザEXEパスは編集不可
@@ -8235,14 +8284,18 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hExeTxt			,20  ,rc.top+60+2  ,90  ,22 ,TRUE );
 				MoveWindow( my->hArgTxt			,50  ,rc.top+100+2 ,60  ,22 ,TRUE );
 				for( i=0; i<BI_USER1; i++ ){
-					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,90 ,22 ,TRUE );
-					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
-					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,90 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hPageBasic[i]	,100 ,rc.top+140 ,90 ,22 ,TRUE );
+					MoveWindow( my->hPageFiler[i]	,210 ,rc.top+140 ,90 ,22 ,TRUE );
 				}
 				for( i=BI_USER1; i<BI_COUNT; i++ ){
-					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,120 ,22 ,TRUE );
-					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
-					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
+					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,120 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
+					MoveWindow( my->hPageBasic[i]	,100 ,rc.top+140 ,90 ,22 ,TRUE );
+					MoveWindow( my->hPageFiler[i]	,210 ,rc.top+140 ,90 ,22 ,TRUE );
 				}
 				MoveWindow( my->hFOpen	,LOWORD(lp)-44  ,rc.top+60-1   ,24 ,24 ,TRUE );
 				MoveWindow( my->hOK		,LOWORD(lp)-200 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
@@ -8313,9 +8366,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				ShowWindow( my->hArgTxt			,SW_HIDE );
 				ShowWindow( my->hFOpen			,SW_HIDE );
 				for( i=0; i<BI_COUNT; i++ ){
-					ShowWindow( my->hHide[i]	,SW_HIDE );
-					ShowWindow( my->hExe[i]		,SW_HIDE );
-					ShowWindow( my->hArg[i]		,SW_HIDE );
+					ShowWindow( my->hHide[i]		,SW_HIDE );
+					ShowWindow( my->hExe[i]			,SW_HIDE );
+					ShowWindow( my->hArg[i]			,SW_HIDE );
+					ShowWindow( my->hPageBasic[i]	,SW_HIDE );
+					ShowWindow( my->hPageFiler[i]	,SW_HIDE );
 				}
 				// 該当タブのものだけ表示
 				switch( tabid ){
@@ -8350,6 +8405,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hHide[tabid-1], SW_SHOW );
 					ShowWindow( my->hExe[tabid-1], SW_SHOW );
 					ShowWindow( my->hArg[tabid-1], SW_SHOW );
+					ShowWindow( my->hPageBasic[tabid-1], SW_SHOW );
+					ShowWindow( my->hPageFiler[tabid-1], SW_SHOW );
 					SetFocus( (tabid<=4)? my->hArg[tabid-1] :my->hExe[tabid-1] );
 					break;
 				}
@@ -8403,6 +8460,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					for( i=BI_COUNT; i--; ){
 						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
 						data.wArg[i] = WindowTextAllocW( my->hArg[i] );
+						data.wPage[i] = isChecked( my->hPageFiler[i] ) ? wcsdup(L"filer.html") :NULL;
 						data.hide[i] = isChecked( my->hHide[i] );
 					}
 					ConfigSave( &data );
@@ -8410,6 +8468,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					for( i=BI_COUNT; i--; ){
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
+						if( data.wPage[i] ) free( data.wPage[i] );
 					}
 					if( data.httpsLocal || data.httpsRemote ){
 						WCHAR* sslcrt = AppFilePath( SSL_CRT );
@@ -8768,7 +8827,10 @@ void BrowserIconClick( UINT ix )
 		if( br[ix].exe ){
 			WCHAR* exe = myPathResolve( br[ix].exe );
 			if( exe ){
-				size_t cmdlen = wcslen(exe) + (br[ix].arg?wcslen(br[ix].arg):0) + 32;
+				size_t cmdlen = wcslen(exe)
+							  + (br[ix].arg ? wcslen(br[ix].arg) :0)
+							  + (br[ix].page ? wcslen(br[ix].page) :0)
+							  + 32;
 				WCHAR* cmd = malloc( cmdlen * sizeof(WCHAR) );
 				WCHAR* dir = wcsdup( exe );
 				if( cmd && dir ){
@@ -8782,11 +8844,12 @@ void BrowserIconClick( UINT ix )
 					si.cb = sizeof(si);
 					// コマンドライン全体
 					_snwprintf(cmd,cmdlen
-							,L"\"%s\" %s http%s://localhost:%s/"
+							,L"\"%s\" %s \"http%s://localhost:%s/%s\""
 							,exe
-							,br[ix].arg? br[ix].arg :L""
+							,br[ix].arg ? br[ix].arg :L""
 							,HttpsLocal? L"s" :L""
 							,ListenPort
+							,br[ix].page ? br[ix].page :L""
 					);
 					// EXEフォルダ
 					p = wcsrchr( dir, L'\\' );
@@ -8810,10 +8873,11 @@ void BrowserIconClick( UINT ix )
 						if( !p || wcsicmp(p,L".lnk") ) LogW(L"CreateProcess(%s)エラー%u",exe,err);
 						// 引数
 						_snwprintf(cmd,cmdlen
-								,L"%s http%s://localhost:%s/"
-								,br[ix].arg? br[ix].arg :L""
-								,HttpsLocal? L"s" :L""
+								,L"%s \"http%s://localhost:%s/%s\""
+								,br[ix].arg ? br[ix].arg :L""
+								,HttpsLocal ? L"s" :L""
 								,ListenPort
+								,br[ix].page ? br[ix].page :L""
 						);
 						err = (DWORD)ShellExecuteW( NULL,NULL, exe, cmd, dir, SW_SHOWNORMAL );
 						if( err <=32 ){
@@ -9384,6 +9448,7 @@ void SSL_library_fin( void )
 {
 	ENGINE_cleanup();
 	CONF_modules_unload(1);
+	CONF_modules_free();
 	ERR_free_strings();
 	CRYPTO_cleanup_all_ex_data();
 	EVP_cleanup();
