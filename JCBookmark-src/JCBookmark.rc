@@ -1,5 +1,6 @@
 //
 //	リソーススクリプト
 //
-0	ICON	"star48.ico"
-OPEN	ICON	"open16.ico"
+0		ICON	"star48.ico"
+OPEN16		ICON	"open16.ico"
+SETTING32	ICON	"setting32.ico"

@@ -129,6 +129,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
 #define		APPNAME				L"JCBookmark v2.2dev"
+#define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
 HWND		ListBox				= NULL;				// リストボックスハンドル
@@ -146,6 +147,8 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 #define CMD_LOGSAVE		3		// ポップアップメニューログ保存
 #define CMD_LOGCLEAR	4		// ポップアップメニューログ消去
 #define CMD_ABOUT		5		// ポップアップメニューバージョン情報
+#define CMD_OPENBASIC	6		// 基本画面を開くチェック
+#define CMD_OPENFILER	7		// 整理画面を開くチェック
 #define CMD_IE			10		// IEボタン
 #define CMD_CHROME		11		// Chromeボタン
 #define CMD_FIREFOX		12		// Firefoxボタン
@@ -821,7 +824,6 @@ typedef struct {
 	WCHAR*		name;			// 名前("IE","Chrome"など)
 	WCHAR*		exe;			// exeフルパス
 	WCHAR*		arg;			// オプション引数
-	WCHAR*		page;			// URLページパス
 	BOOL		hide;			// 表示しない
 } BrowserInfo;
 // ブラウザアイコン
@@ -978,7 +980,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 		}
 		br[BI_OPERA].exe = exe;
 		// 既定ブラウザ引数とユーザー指定ブラウザ
-		ini = AppFilePath(L"my.ini");
+		ini = AppFilePath( MY_INI );
 		if( ini ){
 			FILE* fp = _wfopen(ini,L"rb");
 			if( fp ){
@@ -998,18 +1000,6 @@ BrowserInfo* BrowserInfoAlloc( void )
 					}
 					else if( strnicmp(buf,"OperaArg=",9)==0 && *(buf+9) ){
 						br[BI_OPERA].arg = MultiByteToWideCharAlloc( buf+9 ,CP_UTF8 );
-					}
-					else if( strnicmp(buf,"IEPage=",7)==0 && *(buf+7) ){
-						br[BI_IE].page = MultiByteToWideCharAlloc( buf+7 ,CP_UTF8 );
-					}
-					else if( strnicmp(buf,"ChromePage=",11)==0 && *(buf+11) ){
-						br[BI_CHROME].page = MultiByteToWideCharAlloc( buf+11 ,CP_UTF8 );
-					}
-					else if( strnicmp(buf,"FirefoxPage=",12)==0 && *(buf+12) ){
-						br[BI_FIREFOX].page = MultiByteToWideCharAlloc( buf+12 ,CP_UTF8 );
-					}
-					else if( strnicmp(buf,"OperaPage=",10)==0 && *(buf+10) ){
-						br[BI_OPERA].page = MultiByteToWideCharAlloc( buf+10 ,CP_UTF8 );
 					}
 					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
 						br[BI_IE].hide = atoi(buf+7)?TRUE:FALSE;
@@ -1047,18 +1037,6 @@ BrowserInfo* BrowserInfoAlloc( void )
 					else if( strnicmp(buf,"Arg4=",5)==0 && *(buf+5) ){
 						br[BI_USER4].arg = MultiByteToWideCharAlloc( buf+5, CP_UTF8 );
 					}
-					else if( strnicmp(buf,"Page1=",6)==0 && *(buf+6) ){
-						br[BI_USER1].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
-					}
-					else if( strnicmp(buf,"Page2=",6)==0 && *(buf+6) ){
-						br[BI_USER2].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
-					}
-					else if( strnicmp(buf,"Page3=",6)==0 && *(buf+6) ){
-						br[BI_USER3].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
-					}
-					else if( strnicmp(buf,"Page4=",6)==0 && *(buf+6) ){
-						br[BI_USER4].page = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
-					}
 					else if( strnicmp(buf,"Hide1=",6)==0 && *(buf+6) ){
 						br[BI_USER1].hide = atoi(buf+6)?TRUE:FALSE;
 					}
@@ -1090,7 +1068,6 @@ void BrowserInfoFree( BrowserInfo br[BI_COUNT] )
 	for( i=BI_COUNT; i--; ){
 		if( br[i].exe ) free( br[i].exe );
 		if( br[i].arg ) free( br[i].arg );
-		if( br[i].page ) free( br[i].page );
 	}
 	free( br );
 }
@@ -5354,7 +5331,7 @@ BOOL	BootMinimal		= FALSE;			// 起動時から最小化
 // 設定ファイルからグローバル変数に読込
 void ServerParamGet( void )
 {
-	WCHAR* ini = AppFilePath(L"my.ini");
+	WCHAR* ini = AppFilePath( MY_INI );
 	// 初期値
 	wcscpy( ListenPort ,L"10080" );
 	BindLocal = LoginRemote = LoginLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
@@ -5453,7 +5430,7 @@ BOOL base64decode( UCHAR* b64txt ,size_t len ,UCHAR* data )
 BOOL LoginPass( UCHAR* digest ,size_t bytes )
 {
 	BOOL found = FALSE;
-	WCHAR* ini = AppFilePath(L"my.ini");
+	WCHAR* ini = AppFilePath( MY_INI );
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
@@ -7759,7 +7736,73 @@ void SSL_CertLoad( void )
 	}
 }
 
-// 設定ファイル保存
+// 現在の設定が整理画面を開くになってるかどうか
+BOOL OpenFiler( void )
+{
+	BOOL yes = FALSE;
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"OpenFiler=",10)==0 ){
+					yes = atoi(buf+10) ? TRUE : FALSE;
+					break;
+				}
+			}
+			fclose(fp);
+		}
+		else LogW(L"fopen(%s)エラー",ini);
+		free( ini );
+	}
+	return yes;
+}
+// 基本画面を開くか整理画面を開くか設定保存
+void SetOpenFiler( BOOL yes )
+{
+	WCHAR* new = AppFilePath( MY_INI L".new" );
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( new && ini ){
+		// 新しい一時ファイル my.ini.new 作成
+		FILE* newfp = _wfopen( new ,L"wb" );
+		FILE* inifp = _wfopen( ini ,L"rb" );
+		if( newfp && inifp ){
+			BOOL found = FALSE;
+			UCHAR buf[1024];
+			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+			fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
+			// OpenFiler=の行だけ変更して他はいじらない
+			while( fgets(buf,sizeof(buf),inifp) ){
+				chomp(buf);
+				if( strnicmp(buf,"OpenFiler=",9)==0 ){
+					fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
+					found = TRUE;
+				}
+				else fprintf(newfp,"%s\r\n",buf);
+			}
+			// OpenFiler=存在しなかったら最後に追加
+			if( !found ) fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
+		}
+		else{
+			if( !newfp ) LogW(L"fopen(%s)エラー",new);
+			if( !inifp ) LogW(L"fopen(%s)エラー",ini);
+		}
+		if( newfp ) fclose(newfp);
+		if( inifp ) fclose(inifp);
+		// 正ファイルにリネーム(my.ini.new -> my.ini)
+		if( newfp && inifp ){
+			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
+				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
+		}
+	}
+	if( new ) free( new );
+	if( ini ) free( ini );
+}
+// 設定ダイアログデータ
 typedef struct {
 	WCHAR	wListenPort[8];
 	BOOL	bindLocal;
@@ -7771,33 +7814,25 @@ typedef struct {
 	UCHAR*	loginPass;
 	WCHAR*	wExe[BI_COUNT];
 	WCHAR*	wArg[BI_COUNT];
-	WCHAR*	wPage[BI_COUNT];
 	BOOL	hide[BI_COUNT];
 } ConfigData;
-
+// 設定ダイアログデータmy.ini保存
 void ConfigSave( const ConfigData* dp )
 {
-	WCHAR new[MAX_PATH+1]=L"";
-	WCHAR* p;
-	GetModuleFileNameW( NULL ,new ,sizeof(new)/sizeof(WCHAR) );
-	p = wcsrchr( new ,L'\\' );
-	if( p ){
-		// my.ini.new 作成
-		FILE* fp;
-		wcscpy( p+1 ,L"my.ini.new" );
-		fp = _wfopen( new ,L"wb" );
+	WCHAR* new = AppFilePath( MY_INI L".new" );
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( new && ini ){
+		// 新しい一時ファイル my.ini.new 作成
+		FILE* fp = _wfopen( new ,L"wb" );
 		if( fp ){
 			UCHAR*	listenPort = WideCharToUTF8alloc( dp->wListenPort );
 			UCHAR*	exe[BI_COUNT];
 			UCHAR*	arg[BI_COUNT];
-			UCHAR*	page[BI_COUNT];
-			WCHAR	ini[MAX_PATH+1] = L"";
 			UCHAR	b64txt[SHA256_DIGEST_LENGTH*2]="";
 			UINT	i;
 			for( i=BI_COUNT; i--; ){
 				exe[i] = WideCharToUTF8alloc( dp->wExe[i] );
 				arg[i] = WideCharToUTF8alloc( dp->wArg[i] );
-				page[i] = WideCharToUTF8alloc( dp->wPage[i] );
 			}
 			if( dp->loginPass ){
 				// 新パスワード:SHA256ハッシュ
@@ -7832,38 +7867,33 @@ void ConfigSave( const ConfigData* dp )
 			fprintf(fp,"HttpsLocal=%s\r\n"	,dp->httpsLocal		? "1":"");
 			fprintf(fp,"BootMinimal=%s\r\n"	,dp->bootMinimal	? "1":"");
 			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]				? arg[BI_IE]:"");
-			fprintf(fp,"IEPage=%s\r\n"		,page[BI_IE]			? page[BI_IE]:"");
 			fprintf(fp,"IEHide=%s\r\n"		,dp->hide[BI_IE]		? "1":"");
 			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]			? arg[BI_CHROME]:"");
-			fprintf(fp,"ChromePage=%s\r\n"	,page[BI_CHROME]		? page[BI_CHROME]:"");
 			fprintf(fp,"ChromeHide=%s\r\n"	,dp->hide[BI_CHROME]	? "1":"");
 			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]		? arg[BI_FIREFOX]:"");
-			fprintf(fp,"FirefoxPage=%s\r\n"	,page[BI_FIREFOX]		? page[BI_FIREFOX]:"");
 			fprintf(fp,"FirefoxHide=%s\r\n"	,dp->hide[BI_FIREFOX]	? "1":"");
 			fprintf(fp,"OperaArg=%s\r\n"	,arg[BI_OPERA]			? arg[BI_OPERA]:"");
-			fprintf(fp,"OperaPage=%s\r\n"	,page[BI_OPERA]			? page[BI_OPERA]:"");
 			fprintf(fp,"OperaHide=%s\r\n"	,dp->hide[BI_OPERA]		? "1":"");
 			for( i=BI_USER1; i<BI_COUNT; i++ ){
 				fprintf(fp,"Exe%u=%s\r\n"	,i-BI_USER1+1 ,exe[i]	? exe[i]:"");
 				fprintf(fp,"Arg%u=%s\r\n"	,i-BI_USER1+1 ,arg[i]	? arg[i]:"");
-				fprintf(fp,"Page%u=%s\r\n"	,i-BI_USER1+1 ,page[i]	? page[i]:"");
 				fprintf(fp,"Hide%u=%s\r\n"	,i-BI_USER1+1 ,dp->hide[i] ? "1":"");
 			}
 			if( listenPort ) free( listenPort );
 			for( i=BI_COUNT; i--; ){
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
-				if( page[i] ) free( page[i] );
 			}
+			fprintf(fp,"OpenFiler=%s\r\n"	,OpenFiler() ? "1":"");
 			fclose(fp);
-			// my.ini.new -> my.ini
-			wcscpy( ini, new );
-			ini[wcslen(ini)-4] = L'\0';
+			// 正ファイルにリネーム(my.ini.new -> my.ini)
 			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
 				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
 		}
 		else LogW(L"fopen(%s)エラー",new);
 	}
+	if( new ) free( new );
+	if( ini ) free( ini );
 }
 // リソースを使わないモーダルダイアログ
 // http://www.sm.rim.or.jp/~shishido/mdialog.html
@@ -7911,10 +7941,8 @@ typedef struct {
 	HWND		hHide[BI_COUNT];
 	HWND		hExe[BI_COUNT];
 	HWND		hArg[BI_COUNT];
-	HWND		hPageBasic[BI_COUNT];
-	HWND		hPageFiler[BI_COUNT];
 	HICON		hIcon[BI_COUNT];
-	HFONT		hFontM;
+	HFONT		hFontL;
 	HFONT		hFontS;
 	HIMAGELIST	hImage;
 	DWORD		result;
@@ -8013,7 +8041,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				WCHAR* sslkey = AppFilePath( SSL_KEY );
 				RECT rc;
 				// フォント
-				my->hFontM = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
+				my->hFontL = CreateFontA(17,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 				my->hFontS = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 				// タブコントロール
 				// タブの数と内容は環境(ブラウザインストール状態)により変わるため、タブのインデックス値で
@@ -8024,7 +8052,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							,WS_CHILD |WS_VISIBLE |TCS_RIGHTJUSTIFY |TCS_MULTILINE
 							,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 				);
-				SendMessage( my->hTabc, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+				SendMessage( my->hTabc, WM_SETFONT, (WPARAM)my->hFontL, 0 );
 				my->hImage = ImageList_Create( 16, 16, ILC_COLOR32 |ILC_MASK, 1, 5 );
 				// アイコンイメージリスト背景色を描画先背景色と同じにする。しないと表示がギザギザ汚い。
 				ImageList_SetBkColor( my->hImage, GetSysColor(COLOR_BTNFACE) );
@@ -8142,24 +8170,24 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					EnableWindow( my->hSSLMakeCrt ,FALSE );
 				}
 				if( BootMinimal ) SendMessage( my->hBootMinimal ,BM_SETCHECK ,BST_CHECKED ,0 );
-				SendMessage( my->hListenPortTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hListenPort		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindAddrTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindAny			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hBindLocal			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hLoginPassTxt		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hLoginPass			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hLoginPassState	,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hLoginLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hLoginRemote		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsTxt			,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsLocal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
-				SendMessage( my->hHttpsRemote		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hListenPortTxt		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hListenPort		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hBindAddrTxt		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hBindAny			,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hBindLocal			,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hLoginPassTxt		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hLoginPass			,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hLoginPassState	,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hLoginLocal		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hLoginRemote		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hHttpsTxt			,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hHttpsLocal		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
+				SendMessage( my->hHttpsRemote		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
 				SendMessage( my->hSSLCrt			,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
 				SendMessage( my->hSSLKey			,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
 				SendMessage( my->hSSLViewCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
 				SendMessage( my->hSSLMakeCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
-				SendMessage( my->hBootMinimal		,WM_SETFONT ,(WPARAM)my->hFontM ,0 );
+				SendMessage( my->hBootMinimal		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
 				// ブラウザタブ(ID=1～8、Browserインデックス＋1)
 				br = BrowserInfoAlloc();
 				if( br ){
@@ -8186,9 +8214,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 								L"button",L"" /* L"参照"*/ ,WS_CHILD |WS_TABSTOP |BS_ICON
 								,0,0,0,0 ,hwnd,(HMENU)ID_DLG_FOPEN ,hinst,NULL
 					);
-					SendMessage( my->hBtnWoTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
-					SendMessage( my->hExeTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
-					SendMessage( my->hArgTxt, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+					SendMessage( my->hBtnWoTxt, WM_SETFONT, (WPARAM)my->hFontL, 0 );
+					SendMessage( my->hExeTxt, WM_SETFONT, (WPARAM)my->hFontL, 0 );
+					SendMessage( my->hArgTxt, WM_SETFONT, (WPARAM)my->hFontL, 0 );
 					for( i=0; i<BI_COUNT; i++ ){
 						my->hHide[i] = CreateWindowW(
 									L"button",L"表示しない" ,WS_CHILD |WS_TABSTOP |BS_AUTOCHECKBOX
@@ -8204,21 +8232,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 									,WS_CHILD |WS_BORDER |WS_TABSTOP |ES_LEFT |ES_AUTOHSCROLL
 									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
 						);
-						my->hPageBasic[i] = CreateWindowW(
-									L"button",L"基本画面" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
-									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-						);
-						my->hPageFiler[i] = CreateWindowW(
-									L"button",L"整理画面" ,WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
-									,0,0,0,0 ,hwnd,NULL ,hinst,NULL
-						);
-						SendMessage( my->hHide[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
-						SendMessage( my->hExe[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
-						SendMessage( my->hArg[i], WM_SETFONT, (WPARAM)my->hFontM, 0 );
-						if( br[i].page && wcscmp(br[i].page,L"filer.html")==0 )
-							SendMessage( my->hPageFiler[i] ,BM_SETCHECK ,BST_CHECKED ,0 );
-						else
-							SendMessage( my->hPageBasic[i] ,BM_SETCHECK ,BST_CHECKED ,0 );
+						SendMessage( my->hHide[i], WM_SETFONT, (WPARAM)my->hFontL, 0 );
+						SendMessage( my->hExe[i], WM_SETFONT, (WPARAM)my->hFontL, 0 );
+						SendMessage( my->hArg[i], WM_SETFONT, (WPARAM)my->hFontL, 0 );
 						if( br[i].hide ) SendMessage( my->hHide[i], BM_SETCHECK, BST_CHECKED, 0 );
 					}
 					// 既定ブラウザEXEパスは編集不可
@@ -8229,7 +8245,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					// 参照ボタンアイコン
 					SendMessage(
 							my->hFOpen ,BM_SETIMAGE ,IMAGE_ICON
-							,(LPARAM)LoadImageA(hinst,"OPEN",IMAGE_ICON,16,16,0)
+							,(LPARAM)LoadImageA(hinst,"OPEN16",IMAGE_ICON,16,16,0)
 					);
 					BrowserInfoFree(br), br=NULL;
 				}
@@ -8243,8 +8259,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 							L"button",L"ｷｬﾝｾﾙ" ,WS_CHILD |WS_VISIBLE |WS_TABSTOP
 							,0,0,0,0 ,hwnd,(HMENU)ID_DLG_CANCEL ,hinst,NULL
 				);
-				SendMessage( my->hOK, WM_SETFONT, (WPARAM)my->hFontM, 0 );
-				SendMessage( my->hCancel, WM_SETFONT, (WPARAM)my->hFontM, 0 );
+				SendMessage( my->hOK, WM_SETFONT, (WPARAM)my->hFontL, 0 );
+				SendMessage( my->hCancel, WM_SETFONT, (WPARAM)my->hFontL, 0 );
 				DragAcceptFiles( hwnd, TRUE ); // ドラッグ＆ドロップ可
 				// 配置のためWM_SIZE強制発行
 				GetClientRect( hwnd ,&rc );
@@ -8287,15 +8303,11 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,90 ,22 ,TRUE );
 					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
 					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
-					MoveWindow( my->hPageBasic[i]	,100 ,rc.top+140 ,90 ,22 ,TRUE );
-					MoveWindow( my->hPageFiler[i]	,210 ,rc.top+140 ,90 ,22 ,TRUE );
 				}
 				for( i=BI_USER1; i<BI_COUNT; i++ ){
 					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,120 ,22 ,TRUE );
 					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
 					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
-					MoveWindow( my->hPageBasic[i]	,100 ,rc.top+140 ,90 ,22 ,TRUE );
-					MoveWindow( my->hPageFiler[i]	,210 ,rc.top+140 ,90 ,22 ,TRUE );
 				}
 				MoveWindow( my->hFOpen	,LOWORD(lp)-44  ,rc.top+60-1   ,24 ,24 ,TRUE );
 				MoveWindow( my->hOK		,LOWORD(lp)-200 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
@@ -8369,8 +8381,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hHide[i]		,SW_HIDE );
 					ShowWindow( my->hExe[i]			,SW_HIDE );
 					ShowWindow( my->hArg[i]			,SW_HIDE );
-					ShowWindow( my->hPageBasic[i]	,SW_HIDE );
-					ShowWindow( my->hPageFiler[i]	,SW_HIDE );
 				}
 				// 該当タブのものだけ表示
 				switch( tabid ){
@@ -8405,8 +8415,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hHide[tabid-1], SW_SHOW );
 					ShowWindow( my->hExe[tabid-1], SW_SHOW );
 					ShowWindow( my->hArg[tabid-1], SW_SHOW );
-					ShowWindow( my->hPageBasic[tabid-1], SW_SHOW );
-					ShowWindow( my->hPageFiler[tabid-1], SW_SHOW );
 					SetFocus( (tabid<=4)? my->hArg[tabid-1] :my->hExe[tabid-1] );
 					break;
 				}
@@ -8460,7 +8468,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					for( i=BI_COUNT; i--; ){
 						data.wExe[i] = WindowTextAllocW( my->hExe[i] );
 						data.wArg[i] = WindowTextAllocW( my->hArg[i] );
-						data.wPage[i] = isChecked( my->hPageFiler[i] ) ? wcsdup(L"filer.html") :NULL;
 						data.hide[i] = isChecked( my->hHide[i] );
 					}
 					ConfigSave( &data );
@@ -8468,7 +8475,6 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					for( i=BI_COUNT; i--; ){
 						if( data.wExe[i] ) free( data.wExe[i] );
 						if( data.wArg[i] ) free( data.wArg[i] );
-						if( data.wPage[i] ) free( data.wPage[i] );
 					}
 					if( data.httpsLocal || data.httpsRemote ){
 						WCHAR* sslcrt = AppFilePath( SSL_CRT );
@@ -8670,7 +8676,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case WM_DESTROY:
 			{ UINT i; for(i=BI_COUNT;i--;) DestroyIcon( my->hIcon[i] ); }
 			ImageList_Destroy( my->hImage );
-			DeleteObject( my->hFontM );
+			DeleteObject( my->hFontL );
 			DeleteObject( my->hFontS );
 			SetWindowLong( hwnd ,GWL_USERDATA ,0 );
 			if( my->result==ID_DLG_NULL ) my->result=ID_DLG_DESTROY;
@@ -8819,6 +8825,8 @@ BrowserIcon* BrowserIconCreate( void )
 	return ico;
 }
 // ブラウザボタンクリック
+#define PAGE_BASIC  L""
+#define PAGE_FILER  L"filer.html"
 void BrowserIconClick( UINT ix )
 {
 	BOOL empty=FALSE, invalid=FALSE;
@@ -8827,9 +8835,10 @@ void BrowserIconClick( UINT ix )
 		if( br[ix].exe ){
 			WCHAR* exe = myPathResolve( br[ix].exe );
 			if( exe ){
+				WCHAR* openPage = OpenFiler() ? PAGE_FILER : PAGE_BASIC;
 				size_t cmdlen = wcslen(exe)
 							  + (br[ix].arg ? wcslen(br[ix].arg) :0)
-							  + (br[ix].page ? wcslen(br[ix].page) :0)
+							  + wcslen(openPage)
 							  + 32;
 				WCHAR* cmd = malloc( cmdlen * sizeof(WCHAR) );
 				WCHAR* dir = wcsdup( exe );
@@ -8849,7 +8858,7 @@ void BrowserIconClick( UINT ix )
 							,br[ix].arg ? br[ix].arg :L""
 							,HttpsLocal? L"s" :L""
 							,ListenPort
-							,br[ix].page ? br[ix].page :L""
+							,openPage
 					);
 					// EXEフォルダ
 					p = wcsrchr( dir, L'\\' );
@@ -8877,7 +8886,7 @@ void BrowserIconClick( UINT ix )
 								,br[ix].arg ? br[ix].arg :L""
 								,HttpsLocal ? L"s" :L""
 								,ListenPort
-								,br[ix].page ? br[ix].page :L""
+								,openPage
 						);
 						err = (DWORD)ShellExecuteW( NULL,NULL, exe, cmd, dir, SW_SHOWNORMAL );
 						if( err <=32 ){
@@ -9171,16 +9180,13 @@ void DocumentRootSelect( void )
 // アプリ起動時の(致命的ではない)初期化処理。ウィンドウ表示されているのでウイルス対策ソフトで
 // Listenを止められてもアプリ起動したことがわかる(わざわざ独自メッセージにした理由はそれくらい)。
 // スタック1KB以上使うので関数化。
-void MainFormCreateAfter( HINSTANCE hinst, BrowserIcon** browser, HWND* hToolTip )
+void MainFormCreateAfter( void )
 {
 	UCHAR path[MAX_PATH+1];
 	// 親プロセス(デバッガ)から送られてきた異常終了ログを出力
 	{ UCHAR msg[LOGMAX]; while( fgets(msg,sizeof(msg),stdin) ) _LogA(chomp(msg)); }
 	// タイマー起動
 	SetTimer( MainForm, TIMER1000, 1000, NULL );
-	// ブラウザ起動ボタン
-	*browser = BrowserIconCreate();
-	*hToolTip = BrowserIconTipCreate( *browser );
 	// mlang.dll
 	// DLL読み込み脆弱性対策フルパスで指定する。
 	// http://www.ipa.go.jp/about/press/20101111.html
@@ -9461,7 +9467,11 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	static BrowserIcon*	browser			=NULL;
 	static UINT			taskbarRestart	=0;
 	static HWND			hToolTip		=NULL;
-	static HFONT		hFont			=NULL;
+	static HFONT		hFontM			=NULL;
+	static HFONT		hFontP			=NULL;
+	static HWND			hOpenBasic		=NULL;
+	static HWND			hOpenFiler		=NULL;
+	static HWND			hSetting		=NULL;
 
 	switch( msg ){
 	case WM_CREATE:
@@ -9469,32 +9479,50 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		MainForm = hwnd;
 		// タスクトレイアイコン消える対策
 		taskbarRestart = RegisterWindowMessageW(L"TaskbarCreated");
-		// リストボックス
+		// 動作ログ用リストボックス
 		ListBox = CreateWindowExW(
-					WS_EX_CLIENTEDGE
-					,L"listbox", L""
-					,WS_CHILD |WS_VISIBLE |WS_VSCROLL |WS_HSCROLL
-					,0,0,0,0
-					,hwnd, 0
-					,((LPCREATESTRUCT)lp)->hInstance, NULL
+					WS_EX_CLIENTEDGE ,L"listbox", L""
+					,WS_CHILD |WS_VISIBLE |WS_VSCROLL |WS_HSCROLL |WS_TABSTOP
+					,0,0,0,0 ,hwnd, 0 ,((LPCREATESTRUCT)lp)->hInstance, NULL
 		);
 		if( !ListBox ){
 			ErrorBoxW(L"CreateWindow(ListBox)エラー%u",GetLastError());
 			return -1;
 		}
-		hFont = CreateFontW(15,0,0,0,0,0,0,0,0,0,0,0,0,L"MS Gothic");
-		if( !hFont ){
+		hFontM = CreateFontA(15,0,0,0,0,0,0,0,0,0,0,0,0,"MS Gothic");
+		hFontP = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
+		if( !hFontM || !hFontP ){
 			ErrorBoxW(L"CreateFontエラー%u",GetLastError());
 			return -1;
 		}
-		SendMessage( ListBox, WM_SETFONT, (WPARAM)hFont, 0 );
+		SendMessage( ListBox, WM_SETFONT, (WPARAM)hFontM, 0 );
 		// リストボックス横幅計算のためデバイスコンテキスト取得フォント関連付け
 		ListBoxDC = GetDC( ListBox );
 		if( !ListBoxDC ){
 			ErrorBoxW(L"GetDC(ListBox)エラー%u",GetLastError());
 			return -1;
 		}
-		SelectObject( ListBoxDC, hFont );
+		SelectObject( ListBoxDC, hFontM );
+		// 設定系コントロール
+		hOpenBasic = CreateWindowW(
+					L"button",L"基本画面を開く" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
+					,0,0,0,0 ,hwnd ,(HMENU)CMD_OPENBASIC ,(HINSTANCE)wp ,NULL
+		);
+		hOpenFiler = CreateWindowW(
+					L"button",L"整理画面を開く" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
+					,0,0,0,0 ,hwnd ,(HMENU)CMD_OPENFILER ,(HINSTANCE)wp ,NULL
+		);
+		hSetting = CreateWindowW(
+					L"button",L"" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_ICON |BS_FLAT
+					,0,0,0,0 ,hwnd ,(HMENU)CMD_SETTING ,((LPCREATESTRUCT)lp)->hInstance ,NULL
+		);
+		SendMessage( hOpenBasic ,WM_SETFONT ,(WPARAM)hFontP ,0 );
+		SendMessage( hOpenFiler ,WM_SETFONT ,(WPARAM)hFontP ,0 );
+		SendMessage( OpenFiler() ? hOpenFiler : hOpenBasic ,BM_SETCHECK ,BST_CHECKED ,0 );
+		SendMessage(
+				hSetting ,BM_SETIMAGE ,IMAGE_ICON
+				,(LPARAM)LoadImageA(((LPCREATESTRUCT)lp)->hInstance,"SETTING32",IMAGE_ICON,32,32,0)
+		);
 		// プロセスハンドル
 		ThisProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId() );
 		if( !ThisProcess ){
@@ -9506,7 +9534,11 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		break;
 
 	case WM_CREATE_AFTER:
-		MainFormCreateAfter( (HINSTANCE)wp, &browser, &hToolTip );
+		// ブラウザ起動ボタン
+		browser = BrowserIconCreate();
+		hToolTip = BrowserIconTipCreate( browser );
+		// その他
+		MainFormCreateAfter();
 		return 0;
 
 	case WM_TRAYICON_ADD:
@@ -9521,6 +9553,9 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_SIZE:
+		MoveWindow( hOpenBasic ,LOWORD(lp)-282 ,8 ,115 ,22 ,TRUE );
+		MoveWindow( hOpenFiler ,LOWORD(lp)-160 ,8 ,115 ,22 ,TRUE );
+		MoveWindow( hSetting ,LOWORD(lp)-36 ,0 ,36 ,36 ,TRUE );
 		// なぜか下に隙間ができる。Listboxの縦方向が1行単位でしか大きさが変わらないようだ。
 		MoveWindow( ListBox, 0, BUTTON_WIDTH, LOWORD(lp), HIWORD(lp)-BUTTON_WIDTH, TRUE );
 		break;
@@ -9590,14 +9625,20 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		case CMD_ABOUT:		// バージョン情報
 			AboutBox();
 			break;
+		case CMD_OPENBASIC:	// 基本画面を開く
+			if( OpenFiler() ) SetOpenFiler(FALSE);
+			break;
+		case CMD_OPENFILER:	// 整理画面を開く
+			if( !OpenFiler() ) SetOpenFiler(TRUE);
+			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
 		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
 		case CMD_FIREFOX: BrowserIconClick( BI_FIREFOX );break;
 		case CMD_OPERA  : BrowserIconClick( BI_OPERA );  break;
-		case CMD_USER1	: BrowserIconClick( BI_USER1 ); break;
-		case CMD_USER2	: BrowserIconClick( BI_USER2 ); break;
-		case CMD_USER3	: BrowserIconClick( BI_USER3 ); break;
-		case CMD_USER4	: BrowserIconClick( BI_USER4 ); break;
+		case CMD_USER1	: BrowserIconClick( BI_USER1 );  break;
+		case CMD_USER2	: BrowserIconClick( BI_USER2 );  break;
+		case CMD_USER3	: BrowserIconClick( BI_USER3 );  break;
+		case CMD_USER4	: BrowserIconClick( BI_USER4 );  break;
 		}
 		return 0;
 
@@ -9689,7 +9730,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		if( mlang.dll ) FreeLibrary( mlang.dll ), memset(&mlang,0,sizeof(mlang));
 		ReleaseDC( ListBox, ListBoxDC ), ListBoxDC=NULL;
 		CloseHandle( ThisProcess ), ThisProcess=NULL;
-		DeleteObject( hFont );
+		DeleteObject( hFontP );
+		DeleteObject( hFontM );
 		MainForm = NULL;
 		PostQuitMessage(0);
 		return 0;
