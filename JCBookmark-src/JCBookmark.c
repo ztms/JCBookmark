@@ -8688,7 +8688,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
 DWORD ConfigDialog( UINT tabid )
 {
-	#define				CONFIGDLGCLASS L"JCBookmarkConfigDialog"
+	#define				CONFIGDIALOG_CLASS L"JCBookmarkConfigDialog"
 	HINSTANCE			hinst = GetModuleHandle(NULL);
 	WNDCLASSEXW			wc;
 	ConfigDialogData	data;
@@ -8704,11 +8704,11 @@ DWORD ConfigDialog( UINT tabid )
 	wc.hIcon		 = LoadIconA( hinst ,"0" );
 	wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
-	wc.lpszClassName = CONFIGDLGCLASS;
+	wc.lpszClassName = CONFIGDIALOG_CLASS;
 
 	if( RegisterClassExW(&wc) ){
 		HWND hwnd = CreateWindowW(
-						CONFIGDLGCLASS
+						CONFIGDIALOG_CLASS
 						,APPNAME L" 設定"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
 						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 530/2
@@ -8742,12 +8742,170 @@ DWORD ConfigDialog( UINT tabid )
 			SetActiveWindow( MainForm );
 			SetFocus( MainForm );
 		}
-		else LogW(L"CreateWindowエラー");
-		UnregisterClassW( CONFIGDLGCLASS, hinst );
+		else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+		UnregisterClassW( CONFIGDIALOG_CLASS, hinst );
 	}
-	else LogW(L"RegisterClassエラー");
+	else LogW(L"L%u:RegisterClassエラー%u",__LINE__,GetLastError());
 
 	return data.result;
+}
+
+
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------
+// フラットアイコンボタン
+#define FLATICONBUTTON_CLASS	L"JCBookmarkFlatIconButton"
+#define	FIB_HOVER				0x0001		// hover中(WM_MOUSELEAVEトラック済かどうか)
+#define	FIB_PUSHED				0x0002		// 押下中
+#define	FIB_FOCUS				0x0004		// フォーカス中
+#define FIB_ICON_WIDTH			32			// アイコン縦横ピクセル
+#define FIB_BUTTON_WIDTH		37			// ボタン縦横ピクセル
+// 拡張ウィンドウメモリに保持するデータ
+typedef struct {
+	HICON icon;		// アイコンハンドル
+	ULONG is;		// カーソル状態保持
+} FIB_Extra;
+// フラットボタン描画
+void FlatIconButtonPaint( HWND hwnd ,ULONG is ,HICON icon )
+{
+	PAINTSTRUCT	ps;
+	HDC dc = BeginPaint( hwnd, &ps );
+	RECT rc;
+
+	GetClientRect( hwnd, &rc );
+
+	if( is & FIB_PUSHED ){
+		// 押されたら凹む…がフォーカスも当たって外枠が塗りつぶされるので陰影は描画しない
+		FillRect( dc ,&rc ,GetSysColorBrush(COLOR_BTNHILIGHT) );
+		if( icon ) DrawIconEx( dc ,3,3 ,icon ,FIB_ICON_WIDTH ,FIB_ICON_WIDTH ,0,0 ,DI_NORMAL );
+	}
+	else if( is & FIB_HOVER ){
+		// ホバー時凸陰影
+		FillRect( dc ,&rc ,GetSysColorBrush(COLOR_BTNHILIGHT) );
+		FrameRect( dc ,&rc ,GetSysColorBrush(COLOR_BTNSHADOW) );
+		SelectObject( dc, GetStockObject(WHITE_PEN) );
+		MoveToEx( dc ,0 ,rc.bottom -1 ,NULL );
+		LineTo( dc ,0, 0 );
+		LineTo( dc ,rc.right -1, 0 );
+		if( icon ) DrawIconEx( dc ,2,2 ,icon ,FIB_ICON_WIDTH ,FIB_ICON_WIDTH ,0,0 ,DI_NORMAL );
+	}
+	else{
+		// フラット
+		FillRect( dc ,&rc ,GetSysColorBrush(COLOR_BTNFACE) );
+		if( icon ) DrawIconEx( dc ,2,2 ,icon ,FIB_ICON_WIDTH ,FIB_ICON_WIDTH ,0,0 ,DI_NORMAL );
+		else FrameRect( dc ,&rc ,GetSysColorBrush(COLOR_BTNHILIGHT) );
+	}
+	if( is & FIB_FOCUS ){
+		// フォーカス外枠黒
+		FrameRect( dc ,&rc ,GetStockObject(BLACK_BRUSH) );
+		InflateRect( &rc ,-4 ,-4 );
+		DrawFocusRect( dc ,&rc );
+	}
+	EndPaint( hwnd, &ps );
+}
+// フラットボタンウィンドウプロシージャ
+LRESULT CALLBACK FlatIconButtonProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+{
+	// 拡張ウィンドウメモリ
+	ULONG is = (ULONG)GetWindowLong( hwnd, offsetof(FIB_Extra,is) );
+
+	switch( msg ){
+	case WM_ERASEBKGND: return -1; // 背景描画止
+	case WM_PAINT:
+		FlatIconButtonPaint( hwnd ,is ,(HICON)GetWindowLong( hwnd, offsetof(FIB_Extra,icon) ) );
+		return 0;
+
+	case WM_LBUTTONDOWN:
+	case WM_LBUTTONDBLCLK:// ダブルクリック＝連続クリックのマウスダウンはここ
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is | FIB_PUSHED) );
+		SetFocus( hwnd );
+		InvalidateRect( hwnd, NULL, FALSE );
+		break;
+
+	case WM_LBUTTONUP:
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is & ~FIB_PUSHED) );
+		InvalidateRect( hwnd, NULL, FALSE );
+		// 親ウィンドウにクリックメッセージ
+		PostMessage(
+				(HWND)GetWindowLong(hwnd,GWL_HWNDPARENT)	// GetParent()/GetAncestor()もあるらしい
+				,WM_COMMAND ,MAKEWPARAM(GetWindowLong(hwnd,GWL_ID),0) ,0
+		);
+		break;
+
+	case WM_SETFOCUS:
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is | FIB_FOCUS) );
+		InvalidateRect( hwnd, NULL, FALSE );
+		break;
+
+	case WM_KILLFOCUS:
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is & ~FIB_FOCUS) );
+		InvalidateRect( hwnd, NULL, FALSE );
+		break;
+
+	case WM_MOUSEMOVE:
+		// WM_MOUSELEAVEを発生させるためTrackMouseEvent実行
+		if( !(is & FIB_HOVER) ){
+			TRACKMOUSEEVENT tme;
+			tme.cbSize = sizeof(tme);
+			tme.dwFlags = TME_LEAVE;
+			tme.hwndTrack = hwnd;
+			if( _TrackMouseEvent( &tme ) ){
+				SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is | FIB_HOVER) );
+			}
+			InvalidateRect( hwnd, NULL, FALSE );
+		}
+		break;
+
+	case WM_MOUSELEAVE:
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)(is & ~(FIB_HOVER |FIB_PUSHED)) );
+		InvalidateRect( hwnd, NULL, FALSE );
+		return 0;
+	}
+	return DefWindowProc( hwnd, msg, wp, lp );
+}
+// フラットボタン初期化
+BOOL FlatIconButtonInitialize( void )
+{
+	WNDCLASSEXW wc;
+
+	memset( &wc, 0, sizeof(wc) );
+	wc.cbSize        = sizeof(wc);
+	wc.cbWndExtra	 = sizeof(FIB_Extra);	// 拡張ウィンドウメモリ
+	wc.lpfnWndProc   = FlatIconButtonProc;
+	wc.hInstance     = GetModuleHandle(NULL);
+	wc.hCursor	     = LoadCursor(NULL,IDC_ARROW);
+	wc.lpszClassName = FLATICONBUTTON_CLASS;
+
+	if( !RegisterClassExW( &wc ) ){
+		ErrorBoxW(L"L%u:RegisterClassエラー%u",__LINE__,GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+// フラットボタン生成
+HWND FlatIconButtonCreate( HICON icon ,int X ,int Y ,int W ,int H ,HWND hParent ,HMENU menu ,HINSTANCE hinst )
+{
+	HWND hwnd = CreateWindowW(
+				FLATICONBUTTON_CLASS ,NULL
+				,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+				,X, Y, W, H ,hParent ,menu ,hinst ,NULL
+	);
+	if( hwnd ){
+		// 拡張ウィンドウメモリ初期化
+		SetWindowLong( hwnd, offsetof(FIB_Extra,icon), (LONG)icon );
+		SetWindowLong( hwnd, offsetof(FIB_Extra,is), (LONG)0 );
+	}
+	else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+
+	return hwnd;
 }
 
 
@@ -8777,7 +8935,6 @@ void BrowserIconDestroy( BrowserIcon br[BI_COUNT] )
 // ブラウザアイコンボタン作成
 // ボタンにアイコンを表示する
 // http://keicode.com/windows/ui03.php
-#define BUTTON_WIDTH	36		// ボタン縦横ピクセル
 BrowserIcon* BrowserIconCreate( void )
 {
 	BrowserIcon* ico = malloc( sizeof(BrowserIcon)*BI_COUNT );
@@ -8797,26 +8954,16 @@ BrowserIcon* BrowserIconCreate( void )
 					// ツールチップ用文字列
 					ico[i].text = wcsdup( br[i].name );
 					// ボタン
-					ico[i].hwnd = CreateWindowW(
-									L"button", L""
-									,WS_CHILD |WS_VISIBLE |BS_ICON |BS_FLAT |WS_TABSTOP
-									,left, 0, BUTTON_WIDTH, BUTTON_WIDTH
+					ico[i].hwnd = FlatIconButtonCreate(
+									ico[i].icon ? ico[i].icon : br[i].exe ? LoadIcon(NULL,IDI_ERROR) : NULL
+									,left, 0, FIB_BUTTON_WIDTH, FIB_BUTTON_WIDTH
 									,MainForm
 									,(HMENU)BrowserCommand(i)	// WM_COMMANDのLOWORD(wp)に入る数値
-									,hinst, NULL
+									,hinst
 					);
-					if( ico[i].hwnd ){
-						if( ico[i].icon ){
-							SendMessage( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)ico[i].icon );
-						}
-						else if( br[i].exe ){
-							// エラーアイコン
-							SendMessage( ico[i].hwnd, BM_SETIMAGE, IMAGE_ICON, (LPARAM)LoadIcon(NULL,IDI_ERROR) );
-						}
-					}
-					else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+					if( !ico[i].hwnd ) LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
 					// 次
-					left += BUTTON_WIDTH;
+					left += FIB_BUTTON_WIDTH;
 				}
 			}
 			BrowserInfoFree(br), br=NULL;
@@ -8920,26 +9067,27 @@ void BrowserIconClick( UINT ix )
 // TOOLINFOW構造体サイズ(がcomctl32.dllバージョンによって変わるので変数保持)
 size_t sizeofTOOLINFOW = sizeof(TOOLINFOW);
 
-HWND BrowserIconTipCreate( const BrowserIcon* browser )
+HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting )
 {
 	HWND hToolTip = NULL;
-	if( browser ){
-		HINSTANCE hinst = GetModuleHandle(NULL);
-		hToolTip = CreateWindowW(
-						TOOLTIPS_CLASSW, NULL
-						,TTS_ALWAYSTIP |TTS_NOPREFIX |TTS_BALLOON
-						,CW_USEDEFAULT, CW_USEDEFAULT
-						,CW_USEDEFAULT, CW_USEDEFAULT
-						,MainForm, 0, hinst, NULL
-		);
-		if( hToolTip ){
-			TOOLINFOW ti;
-			UINT i;
-			SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
-			memset( &ti, 0, sizeofTOOLINFOW );
-			ti.cbSize = sizeofTOOLINFOW;
-			ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
-			ti.hinst = hinst;
+	HINSTANCE hinst = GetModuleHandle(NULL);
+	hToolTip = CreateWindowW(
+					TOOLTIPS_CLASSW, NULL
+					,TTS_ALWAYSTIP |TTS_NOPREFIX |TTS_BALLOON
+					,CW_USEDEFAULT, CW_USEDEFAULT
+					,CW_USEDEFAULT, CW_USEDEFAULT
+					,MainForm, 0, hinst, NULL
+	);
+	if( hToolTip ){
+		TOOLINFOW ti;
+		UINT i;
+		SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
+		memset( &ti, 0, sizeofTOOLINFOW );
+		ti.cbSize = sizeofTOOLINFOW;
+		ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
+		ti.hinst = hinst;
+		// ブラウザボタン
+		if( browser ){
 			for( i=0; i<BI_COUNT; i++ ){
 				if( browser[i].hwnd ){
 					ti.lpszText = browser[i].text;
@@ -8950,7 +9098,15 @@ HWND BrowserIconTipCreate( const BrowserIcon* browser )
 				}
 			}
 		}
+		// 設定ボタン
+		ti.lpszText = L"設定";
+		ti.hwnd = hSetting;
+		ti.uId = i++;
+		GetClientRect( hSetting, &ti.rect );
+		SendMessage( hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti );
 	}
+	else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+
 	return hToolTip;
 }
 
@@ -9094,7 +9250,7 @@ void MainFormTimer1000( void )
 	}
 }
 // 同じドキュメントルートで動いてるJCBookmark探す
-#define MAINFORMCLASS L"JCBookmarkMainForm"
+#define MAINFORM_CLASS L"JCBookmarkMainForm"
 HWND FindConflictWindow( void )
 {
 	// ウィンドウ列挙してJCBookmark探す
@@ -9103,7 +9259,7 @@ HWND FindConflictWindow( void )
 		WCHAR class[256];
 		if( hwnd==MainForm ) continue;
 		GetClassNameW( hwnd ,class ,sizeof(class)/sizeof(WCHAR) );
-		if( wcscmp(class,MAINFORMCLASS)==0 ){
+		if( wcscmp(class,MAINFORM_CLASS)==0 ){
 			// JCBookmarkメインフォーム発見
 			COPYDATASTRUCT cd;
 			cd.dwData = 0;
@@ -9350,9 +9506,8 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// アイコン
 			SendMessage(
 				CreateWindowW(
-					L"static", L""
-					,WS_CHILD |WS_VISIBLE |SS_ICON
-					,10,10,32,32, hwnd,NULL, hinst,NULL
+						L"static" ,NULL ,WS_CHILD |WS_VISIBLE |SS_ICON
+						,10,10,32,32, hwnd,NULL, hinst,NULL
 				)
 				,STM_SETICON, (WPARAM)LoadIconA(hinst,"0"), 0
 			);
@@ -9367,11 +9522,8 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			// ボタン
 			SendMessage(
 				CreateWindowW(
-					L"button", L"閉じる"
-					,WS_CHILD |WS_VISIBLE |WS_TABSTOP
-					,100,140,100,36
-					,hwnd, (HMENU)ID_DLG_CLOSE
-					,hinst, NULL
+						L"button", L"閉じる" ,WS_CHILD |WS_VISIBLE |WS_TABSTOP
+						,100,140,100,36 ,hwnd, (HMENU)ID_DLG_CLOSE ,hinst, NULL
 				)
 				,WM_SETFONT, (WPARAM)hFont, 0
 			);
@@ -9397,7 +9549,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 }
 void AboutBox( void )
 {
-	#define ABOUTBOXCLASS L"JCBookmarkAboutBox"
+	#define ABOUTBOX_CLASS L"JCBookmarkAboutBox"
 	HINSTANCE hinst = GetModuleHandle(NULL);
 	WNDCLASSEXW	wc;
 
@@ -9409,11 +9561,11 @@ void AboutBox( void )
 	wc.hIcon		 = LoadIconA( hinst, "0" );
 	wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
-	wc.lpszClassName = ABOUTBOXCLASS;
+	wc.lpszClassName = ABOUTBOX_CLASS;
 
 	if( RegisterClassExW(&wc) ){
 		HWND hwnd = CreateWindowW(
-						ABOUTBOXCLASS
+						ABOUTBOX_CLASS
 						,L"バージョン情報"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
 						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 300/2
@@ -9442,10 +9594,10 @@ void AboutBox( void )
 			SetActiveWindow( MainForm );
 			SetFocus( MainForm );
 		}
-		else LogW(L"CreateWindowエラー");
-		UnregisterClassW( ABOUTBOXCLASS, hinst );
+		else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+		UnregisterClassW( ABOUTBOX_CLASS, hinst );
 	}
-	else LogW(L"RegisterClassエラー");
+	else LogW(L"L%u:RegisterClassエラー%u",__LINE__,GetLastError());
 }
 // SSL_library_initに対応する終了関数
 #include "openssl/conf.h"
@@ -9486,24 +9638,32 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					,0,0,0,0 ,hwnd, 0 ,((LPCREATESTRUCT)lp)->hInstance, NULL
 		);
 		if( !ListBox ){
-			ErrorBoxW(L"CreateWindow(ListBox)エラー%u",GetLastError());
+			ErrorBoxW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
 			return -1;
 		}
 		hFontM = CreateFontA(15,0,0,0,0,0,0,0,0,0,0,0,0,"MS Gothic");
 		hFontP = CreateFontA(16,0,0,0,0,0,0,0,0,0,0,0,0,"MS P Gothic");
 		if( !hFontM || !hFontP ){
-			ErrorBoxW(L"CreateFontエラー%u",GetLastError());
+			ErrorBoxW(L"L%u:CreateFontエラー%u",__LINE__,GetLastError());
 			return -1;
 		}
 		SendMessage( ListBox, WM_SETFONT, (WPARAM)hFontM, 0 );
 		// リストボックス横幅計算のためデバイスコンテキスト取得フォント関連付け
 		ListBoxDC = GetDC( ListBox );
 		if( !ListBoxDC ){
-			ErrorBoxW(L"GetDC(ListBox)エラー%u",GetLastError());
+			ErrorBoxW(L"L%u:GetDC(ListBox)エラー%u",__LINE__,GetLastError());
 			return -1;
 		}
 		SelectObject( ListBoxDC, hFontM );
 		// 設定系コントロール
+		if( !FlatIconButtonInitialize() ) return -1;
+		hSetting = FlatIconButtonCreate(
+					LoadImageA(
+						((LPCREATESTRUCT)lp)->hInstance
+						,"SETTING32" ,IMAGE_ICON ,FIB_ICON_WIDTH ,FIB_ICON_WIDTH,0
+					)
+					,0,0,0,0 ,hwnd ,(HMENU)CMD_SETTING ,((LPCREATESTRUCT)lp)->hInstance
+		);
 		hOpenBasic = CreateWindowW(
 					L"button",L"基本画面を開く" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
 					,0,0,0,0 ,hwnd ,(HMENU)CMD_OPENBASIC ,(HINSTANCE)wp ,NULL
@@ -9512,21 +9672,17 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					L"button",L"整理画面を開く" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_AUTORADIOBUTTON
 					,0,0,0,0 ,hwnd ,(HMENU)CMD_OPENFILER ,(HINSTANCE)wp ,NULL
 		);
-		hSetting = CreateWindowW(
-					L"button",L"" ,WS_VISIBLE |WS_CHILD |WS_TABSTOP |BS_ICON |BS_FLAT
-					,0,0,0,0 ,hwnd ,(HMENU)CMD_SETTING ,((LPCREATESTRUCT)lp)->hInstance ,NULL
-		);
+		if( !hOpenBasic || !hOpenFiler ){
+			ErrorBoxW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
+			return -1;
+		}
 		SendMessage( hOpenBasic ,WM_SETFONT ,(WPARAM)hFontP ,0 );
 		SendMessage( hOpenFiler ,WM_SETFONT ,(WPARAM)hFontP ,0 );
 		SendMessage( OpenFiler() ? hOpenFiler : hOpenBasic ,BM_SETCHECK ,BST_CHECKED ,0 );
-		SendMessage(
-				hSetting ,BM_SETIMAGE ,IMAGE_ICON
-				,(LPARAM)LoadImageA(((LPCREATESTRUCT)lp)->hInstance,"SETTING32",IMAGE_ICON,32,32,0)
-		);
 		// プロセスハンドル
 		ThisProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId() );
 		if( !ThisProcess ){
-			ErrorBoxW(L"OpenProcessエラー%u",GetLastError());
+			ErrorBoxW(L"L%u:OpenProcessエラー%u",__LINE__,GetLastError());
 			return -1;
 		}
 		// 二次初期化
@@ -9536,7 +9692,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_CREATE_AFTER:
 		// ブラウザ起動ボタン
 		browser = BrowserIconCreate();
-		hToolTip = BrowserIconTipCreate( browser );
+		hToolTip = ToolTipCreate( browser ,hSetting );
 		// その他
 		MainFormCreateAfter();
 		return 0;
@@ -9553,11 +9709,13 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_SIZE:
-		MoveWindow( hOpenBasic ,LOWORD(lp)-282 ,8 ,115 ,22 ,TRUE );
-		MoveWindow( hOpenFiler ,LOWORD(lp)-160 ,8 ,115 ,22 ,TRUE );
-		MoveWindow( hSetting ,LOWORD(lp)-36 ,0 ,36 ,36 ,TRUE );
-		// なぜか下に隙間ができる。Listboxの縦方向が1行単位でしか大きさが変わらないようだ。
-		MoveWindow( ListBox, 0, BUTTON_WIDTH, LOWORD(lp), HIWORD(lp)-BUTTON_WIDTH, TRUE );
+		// 設定ボタン右端
+		MoveWindow( hSetting ,LOWORD(lp)-FIB_BUTTON_WIDTH ,0 ,FIB_BUTTON_WIDTH ,FIB_BUTTON_WIDTH ,TRUE );
+		// 基本画面・整理画面チェックボックス
+		MoveWindow( hOpenBasic ,LOWORD(lp)-281 ,8 ,115 ,22 ,TRUE );
+		MoveWindow( hOpenFiler ,LOWORD(lp)-159 ,8 ,115 ,22 ,TRUE );
+		// ListBoxは縦方向が1行単位でしか大きさが変わらないためか、ウィンドウ下端に隙間ができる
+		MoveWindow( ListBox, 0, FIB_BUTTON_WIDTH, LOWORD(lp), HIWORD(lp)-FIB_BUTTON_WIDTH, TRUE );
 		break;
 
 	case WM_SYSCOMMAND:
@@ -9665,7 +9823,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				DestroyWindow( hToolTip );
 				BrowserIconDestroy( browser );
 				browser = BrowserIconCreate();
-				hToolTip = BrowserIconTipCreate( browser );
+				hToolTip = ToolTipCreate( browser ,hSetting );
 			}
 			else SSL_CertLoad();
 		}
@@ -9852,11 +10010,11 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 		wc.hIcon		 = LoadIconA( hinst, "0" );
 		wc.hCursor		 = LoadCursor(NULL,IDC_ARROW);
 		wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1);
-		wc.lpszClassName = MAINFORMCLASS;
+		wc.lpszClassName = MAINFORM_CLASS;
 
 		if( RegisterClassExW(&wc) ){
 			HWND hwnd = CreateWindowW(
-							MAINFORMCLASS
+							MAINFORM_CLASS
 							,APPNAME
 							,WS_OVERLAPPEDWINDOW |WS_CLIPCHILDREN
 							,CW_USEDEFAULT, CW_USEDEFAULT, 600, 400
@@ -9874,9 +10032,9 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 				}
 				return hwnd;
 			}
-			else ErrorBoxW(L"L%u:CreateWindowエラー",__LINE__);
+			else ErrorBoxW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
 		}
-		else ErrorBoxW(L"L%u:RegisterClassエラー",__LINE__);
+		else ErrorBoxW(L"L%u:RegisterClassエラー%u",__LINE__,GetLastError());
 	}
 	return NULL;
 }
