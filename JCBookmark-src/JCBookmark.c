@@ -9067,7 +9067,7 @@ void BrowserIconClick( UINT ix )
 // TOOLINFOW構造体サイズ(がcomctl32.dllバージョンによって変わるので変数保持)
 size_t sizeofTOOLINFOW = sizeof(TOOLINFOW);
 
-HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting )
+HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting ,HFONT hFont )
 {
 	HWND hToolTip = NULL;
 	HINSTANCE hinst = GetModuleHandle(NULL);
@@ -9081,7 +9081,6 @@ HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting )
 	if( hToolTip ){
 		TOOLINFOW ti;
 		UINT i;
-		SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
 		memset( &ti, 0, sizeofTOOLINFOW );
 		ti.cbSize = sizeofTOOLINFOW;
 		ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
@@ -9104,6 +9103,9 @@ HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting )
 		ti.uId = i++;
 		GetClientRect( hSetting, &ti.rect );
 		SendMessage( hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti );
+		// 0.1秒で表示・描画フォント
+		SendMessage( hToolTip, TTM_SETDELAYTIME, TTDT_INITIAL, 100 );
+		SendMessage( hToolTip ,WM_SETFONT ,(WPARAM)hFont ,0 );
 	}
 	else LogW(L"L%u:CreateWindowエラー%u",__LINE__,GetLastError());
 
@@ -9692,7 +9694,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	case WM_CREATE_AFTER:
 		// ブラウザ起動ボタン
 		browser = BrowserIconCreate();
-		hToolTip = ToolTipCreate( browser ,hSetting );
+		hToolTip = ToolTipCreate( browser ,hSetting ,hFontP );
 		// その他
 		MainFormCreateAfter();
 		return 0;
@@ -9823,7 +9825,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				DestroyWindow( hToolTip );
 				BrowserIconDestroy( browser );
 				browser = BrowserIconCreate();
-				hToolTip = ToolTipCreate( browser ,hSetting );
+				hToolTip = ToolTipCreate( browser ,hSetting ,hFontP );
 			}
 			else SSL_CertLoad();
 		}
