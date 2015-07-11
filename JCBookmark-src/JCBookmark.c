@@ -1756,7 +1756,7 @@ NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
 										}
 										fclose( fp );
 									}
-									else LogW(L"fopen(%s)エラー",wpath);
+									else LogW(L"L%u:fopen(%s)エラー",__LINE__,wpath);
 									// URLノード生成
 									node = NodeCreate( wfd.cFileName, url, icon );
 									if( url ) free( url );
@@ -7756,7 +7756,6 @@ BOOL OpenFiler( void )
 			}
 			fclose(fp);
 		}
-		else LogW(L"fopen(%s)エラー",ini);
 		free( ini );
 	}
 	return yes;
@@ -7769,35 +7768,33 @@ void SetOpenFiler( BOOL yes )
 	if( new && ini ){
 		// 新しい一時ファイル my.ini.new 作成
 		FILE* newfp = _wfopen( new ,L"wb" );
-		FILE* inifp = _wfopen( ini ,L"rb" );
-		if( newfp && inifp ){
-			BOOL found = FALSE;
-			UCHAR buf[1024];
-			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-			fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
-			// OpenFiler=の行だけ変更して他はいじらない
-			while( fgets(buf,sizeof(buf),inifp) ){
-				chomp(buf);
-				if( strnicmp(buf,"OpenFiler=",9)==0 ){
-					fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
-					found = TRUE;
+		if( newfp ){
+			BOOL ok = FALSE;
+			// 現在の my.ini を読み込んで
+			FILE* inifp = _wfopen( ini ,L"rb" );
+			if( inifp ){
+				UCHAR buf[1024];
+				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+				fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
+				// OpenFiler=の行だけ変更して他はいじらない
+				while( fgets(buf,sizeof(buf),inifp) ){
+					chomp(buf);
+					if( strnicmp(buf,"OpenFiler=",10)==0 ){
+						fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
+						ok = TRUE;
+					}
+					else fprintf(newfp,"%s\r\n",buf);
 				}
-				else fprintf(newfp,"%s\r\n",buf);
+				fclose(inifp);
 			}
-			// OpenFiler=存在しなかったら最後に追加
-			if( !found ) fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
-		}
-		else{
-			if( !newfp ) LogW(L"fopen(%s)エラー",new);
-			if( !inifp ) LogW(L"fopen(%s)エラー",ini);
-		}
-		if( newfp ) fclose(newfp);
-		if( inifp ) fclose(inifp);
-		// 正ファイルにリネーム(my.ini.new -> my.ini)
-		if( newfp && inifp ){
+			// my.ini がない、またはOpenFiler=存在しなかったら追加
+			if( !ok ) fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
+			fclose(newfp);
+			// 正ファイルにリネーム(my.ini.new -> my.ini)
 			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
 				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
 		}
+		else LogW(L"L%u:fopen(%s)エラー",__LINE__,new);
 	}
 	if( new ) free( new );
 	if( ini ) free( ini );
@@ -7890,7 +7887,7 @@ void ConfigSave( const ConfigData* dp )
 			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
 				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
 		}
-		else LogW(L"fopen(%s)エラー",new);
+		else LogW(L"L%u:fopen(%s)エラー",__LINE__,new);
 	}
 	if( new ) free( new );
 	if( ini ) free( ini );
