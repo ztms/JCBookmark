@@ -3492,15 +3492,6 @@ function edit( element, opt ){
 										folderTree({ selectID:selectFolder.id.slice(6) ,inactive:true });
 									}
 								}
-								else if( $item.hasClass('folder') ){
-									// フォルダツリーで
-									var pnode = tree.nodeParent(nid);
-									if( itemList('?')=='child' && selectFolder.id.slice(6)==pnode.id ){
-										// アイテム欄が親フォルダを表示していた場合アイテム欄を更新
-										//itemList( pnode );
-										alert('TODO:これはどんな操作で発生するんだったか…？発生しないような…？');
-									}
-								}
 								break;
 							case 'url':
 								if( value.length ){
