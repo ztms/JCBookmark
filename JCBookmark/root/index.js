@@ -2016,7 +2016,12 @@ function setEvents(){
 		return function(){
 			var $box = $('#findbox');
 			var $tab = $('#findtab');
-			if( $tab.css('display')!='none' ){ $('#findhide').click(); return; } // 既に表示→隠す
+			if( $tab.css('display')!='none' ){
+				// 表示されていたら隠す
+				$('#findhide').click();
+				$('#findico').blur();
+				return;
+			}
 			var $found = $('#foundbox');
 			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
