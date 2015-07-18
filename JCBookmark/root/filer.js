@@ -1632,7 +1632,7 @@ $('#newfolder').click(function(){
 	// フォルダツリー生成
 	var opt = {
 		 clickID:nid
-		,done   :function(){ $('#item'+ node.id ).trigger('selfclick'); }
+		,done:function(){ $('#item'+ node.id ).trigger('selfclick'); }
 	};
 	if( !name.length ){
 		opt.eachChild = function(){
@@ -2105,12 +2105,16 @@ $('#itembox').on({
 					,itemOption:{
 						 scrollTop:itembox.scrollTop
 						,eachChild:function(){
+							// アイテム欄内でDOM作成ループがおわるたびに
 							if( !$item.length ){
 								$item = $('#item'+ node.id ).trigger('selfclick');
 							}
 							if( $item.length ){
 								// 名前変更・テキスト選択
-								edit( $item.children('.title')[0] ,{ select:true });
+								// スクロール時の$editbox.blur()で編集ボックス消えないよう後まわし
+								setTimeout(function(){
+									edit( $item.children('.title')[0] ,{ select:true });
+								},0);
 							}
 						}
 					}
@@ -3163,7 +3167,10 @@ function itemContextMenu(ev){
 						}
 						if( $item.length && !name.length ){
 							// 名前変更・テキスト選択
-							edit( $item.children('.title')[0] ,{ select:true });
+							// スクロール時$editbox.blur()で編集ボックス消えないよう後まわし
+							setTimeout(function(){
+								edit( $item.children('.title')[0] ,{ select:true });
+							},0);
 						}
 					}
 				}
