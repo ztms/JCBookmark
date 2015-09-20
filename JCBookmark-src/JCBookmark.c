@@ -9286,12 +9286,21 @@ void MainFormTimer1000( void )
 		}
 	}
 }
-// 同じドキュメントルートで動いてるJCBookmark探す
+// 同じドキュメントルートまたは同じEXEで動いてるJCBookmark探す
 #define MAINFORM_CLASS L"JCBookmarkMainForm"
 HWND FindConflictWindow( void )
 {
+	size_t DocumentRootBytes = (DocumentRootLen + 1) * sizeof(WCHAR);
+	WCHAR exe[MAX_PATH+1];
+	size_t exebytes;
+	HWND hwnd;
+
+	GetModuleFileNameW( NULL ,exe ,MAX_PATH );
+	exe[MAX_PATH] = L'\0';
+	exebytes = (wcslen(exe) + 1) * sizeof(WCHAR);
+
 	// ウィンドウ列挙してJCBookmark探す
-	HWND hwnd = GetTopWindow( NULL );
+	hwnd = GetTopWindow( NULL );
 	do {
 		WCHAR class[256];
 		if( hwnd==MainForm ) continue;
@@ -9300,16 +9309,23 @@ HWND FindConflictWindow( void )
 			// JCBookmarkメインフォーム発見
 			COPYDATASTRUCT cd;
 			cd.dwData = 0;
-			cd.cbData = (wcslen(DocumentRoot) + 1) * sizeof(WCHAR);
+			cd.cbData = DocumentRootBytes;
 			cd.lpData = DocumentRoot;
 			if( SendMessage( hwnd ,WM_COPYDATA ,0 ,(LPARAM)&cd ) ){
 				// 自身と同じドキュメントルート確定
-				return hwnd;
+				break;
+			}
+			cd.dwData = 0;
+			cd.cbData = exebytes;
+			cd.lpData = exe;
+			if( SendMessage( hwnd ,WM_COPYDATA ,1 ,(LPARAM)&cd ) ){
+				// 自身と同じEXE確定
+				break;
 			}
 		}
 	}
 	while( (hwnd = GetNextWindow( hwnd, GW_HWNDNEXT)) );
-	return NULL;
+	return hwnd;
 }
 // フォルダ選択ダイアログ
 // http://win32lab.com/tips/tips5.html
@@ -9443,19 +9459,20 @@ void MainFormCreateAfter( void )
 		DeleteFileW(wpath);
 	}
 	else DocumentRootSelect();
-	// 待受開始
-	if( !ListenStart() ){
-		// Listenエラー
+	// 同じexeまたは同じドキュメントルートでの多重起動防止
+	{
 		HWND hwnd = FindConflictWindow();
 		if( hwnd ){
-			// 同じドキュメントルートで別のexeが先に動作しており、その事に気づかず起動させた可能性が高く
-			// また多重起動の意味も無いので、そっちのメインフォームを最前面に出して、自身は終了する。
+			// 実行中のメインフォームを最前面に出して自身は終了する
 			ShowWindow( MainForm ,SW_HIDE );
 			SendMessage( hwnd ,WM_TRAYICON ,0 ,WM_LBUTTONUP );
 			SetForegroundWindow( hwnd );
 			DestroyWindow( MainForm );
 			return;
 		}
+	}
+	// 待受開始
+	if( !ListenStart() ){
 		ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
 		PostMessage( MainForm ,WM_COMMAND ,MAKEWPARAM(CMD_SETTING,0) ,0 );
 	}
@@ -9655,6 +9672,14 @@ void SSL_library_fin( void )
 	EVP_cleanup();
 	ERR_remove_state(0);
 	sk_SSL_COMP_free(SSL_COMP_get_compression_methods());
+}
+// 引数パスが自身のEXEパスと同じならTRUE
+BOOL isMyModuleFileName( WCHAR* path )
+{
+	WCHAR exe[MAX_PATH+1];
+	GetModuleFileNameW( NULL ,exe ,MAX_PATH );
+	exe[MAX_PATH] = L'\0';
+	return ( wcsicmp( exe ,path )==0 ) ? TRUE : FALSE;
 }
 // メインフォームWindowProc
 LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
@@ -9918,8 +9943,13 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_COPYDATA:
-		// 受け取ったパスが自身のドキュメントルートと同じかどうかを返却(同じは1)
-		return ( wcsicmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot )==0 )? 1 : 0;
+		// 受け取ったパスが
+		switch( wp ){
+		// 自身のドキュメントルートと一致
+		case 0: return ( wcsicmp( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ,DocumentRoot )==0 )? 1 : 0;
+		// 自身のEXEと一致
+		case 1: return isMyModuleFileName( (WCHAR*)((COPYDATASTRUCT*)lp)->lpData ) ? 1 : 0;
+		}
 
 	case WM_DESTROY:
 		SocketShutdown();
