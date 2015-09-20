@@ -128,7 +128,8 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
-#define		APPNAME				L"JCBookmark v2.2"
+#define		APPNAME				L"JCBookmark"
+#define		APPVER				L"2.3dev"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -2273,6 +2274,79 @@ UINT64 UINT64InetTime( const UCHAR* intime )
 	return *(UINT64*)&ft;
 }
 
+// 指定IPアドレスをこのマシンが持ってるかどうか。
+// IPを列挙するには、GetAdaptersAddresses()とWSAIoctl(SIO_GET_INTERFACE_LIST)とgethostname()と3方式くらい
+// あるもよう。ipconfigに一番近そうなGetAdaptersAddresses()を使う。
+// http://members.jcom.home.ne.jp/toya.hiroshi/get_my_ipaddress.html
+// http://msdn.microsoft.com/en-us/library/aa365915(VS.85).aspx
+// http://dev.ariel-networks.com/column/tech/windows-ipconfig/
+// http://frog.raindrop.jp/knowledge/archives/002204.html
+// http://atamoco.boy.jp/cpp/windows/network/get-adapters-addresses.php
+BOOL AdapterHas( const WCHAR* text )
+{
+	IP_ADAPTER_ADDRESSES*	adps;
+	ULONG					bytes = 1024; // 1024適当
+	BOOL					found = FALSE;
+	for( ;; ){
+		adps = malloc( bytes );
+		if( adps ){
+			ULONG ret = GetAdaptersAddresses(
+							AF_UNSPEC
+							,GAA_FLAG_SKIP_ANYCAST |GAA_FLAG_SKIP_MULTICAST
+							|GAA_FLAG_SKIP_DNS_SERVER |GAA_FLAG_SKIP_FRIENDLY_NAME
+							,0
+							,adps
+							,&bytes
+			);
+			if( ret==NO_ERROR ){
+				IP_ADAPTER_ADDRESSES* adp;
+				for( adp=adps; adp; adp=adp->Next ){
+					IP_ADAPTER_UNICAST_ADDRESS* uni;
+					for( uni=adp->FirstUnicastAddress; uni; uni=uni->Next ){
+						WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
+						GetNameInfoW(
+								uni->Address.lpSockaddr
+								,uni->Address.iSockaddrLength
+								,ip
+								,sizeof(ip)/sizeof(WCHAR)
+								,NULL
+								,0
+								,NI_NUMERICHOST
+						);
+						if( wcscmp( ip ,text )==0 ){ found=TRUE; break; } // 発見
+					}
+				}
+				break; // おわり
+			}
+			else if( ret==ERROR_BUFFER_OVERFLOW ){
+				free( adps );
+				adps = NULL;
+				// リトライ
+			}
+			else{ LogW(L"GetAdaptersAddresses不明なエラー%u",ret); break; }
+		}
+		else{ LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes); break; }
+	}
+	if( adps ) free( adps );
+	return found;
+}
+// ソケットの接続相手がローカルである
+BOOL PeerIsLocal( SOCKET sock )
+{
+	SOCKADDR_STORAGE addr;
+	int		addrlen = sizeof(addr);
+	WCHAR	ip[INET6_ADDRSTRLEN+1]=L""; // クライアントIP
+
+	getpeername( sock ,(SOCKADDR*)&addr ,&addrlen );
+	GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
+
+	if( wcscmp(ip,L"::1")==0 ) return TRUE;
+	if( wcscmp(ip,L"127.0.0.1")==0 ) return TRUE;
+	if( wcsicmp(ip,L"::ffff:127.0.0.1")==0 ) return TRUE;
+	if( AdapterHas(ip) ) return TRUE;
+	return FALSE;
+}
+
 // 外部URL GET結果
 typedef struct {
 	size_t		bufsize;		// 受信バッファサイズ
@@ -3760,6 +3834,46 @@ fin:
 	}
 	else if( newurl ) free( newurl );
 	return rsp;
+}
+// my.ini設定項目１つ保存
+void INISave( UCHAR* name ,UCHAR* value )
+{
+	WCHAR* new = AppFilePath( MY_INI L".new" );
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( new && ini ){
+		// 新しい一時ファイル my.ini.new 作成
+		FILE* newfp = _wfopen( new ,L"wb" );
+		if( newfp ){
+			BOOL ok = FALSE;
+			// 現在の my.ini を読み込んで
+			FILE* inifp = _wfopen( ini ,L"rb" );
+			if( inifp ){
+				size_t namelen = strlen(name);
+				UCHAR buf[1024];
+				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
+				fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
+				// name=の行だけ変更して他はいじらない
+				while( fgets(buf,sizeof(buf),inifp) ){
+					chomp(buf);
+					if( strnicmp(buf,name,namelen)==0 && buf[namelen]=='=' ){
+						fprintf(newfp,"%s=%s\r\n",name,value);
+						ok = TRUE;
+					}
+					else fprintf(newfp,"%s\r\n",buf);
+				}
+				fclose(inifp);
+			}
+			// my.ini がない、またはname=存在しなかったら追加
+			if( !ok ) fprintf(newfp,"%s=%s\r\n",name,value);
+			fclose(newfp);
+			// 正ファイルにリネーム(my.ini.new -> my.ini)
+			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
+				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
+		}
+		else LogW(L"L%u:fopen(%s)エラー",__LINE__,new);
+	}
+	if( new ) free( new );
+	if( ini ) free( ini );
 }
 // 指定URL死活確認
 // クライアントからの要求 POST /:poke HTTP/1.x で開始され、
@@ -6139,80 +6253,6 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 	else ResponseError(cp,"400 Bad Request");
 }
 
-// 指定IPアドレスをこのマシンが持ってるかどうか。
-// IPを列挙するには、GetAdaptersAddresses()とWSAIoctl(SIO_GET_INTERFACE_LIST)とgethostname()と3方式くらい
-// あるもよう。ipconfigに一番近そうなGetAdaptersAddresses()を使う。
-// http://members.jcom.home.ne.jp/toya.hiroshi/get_my_ipaddress.html
-// http://msdn.microsoft.com/en-us/library/aa365915(VS.85).aspx
-// http://dev.ariel-networks.com/column/tech/windows-ipconfig/
-// http://frog.raindrop.jp/knowledge/archives/002204.html
-// http://atamoco.boy.jp/cpp/windows/network/get-adapters-addresses.php
-BOOL AdapterHas( const WCHAR* text )
-{
-	IP_ADAPTER_ADDRESSES*	adps;
-	ULONG					bytes = 1024; // 1024適当
-	BOOL					found = FALSE;
-	for( ;; ){
-		adps = malloc( bytes );
-		if( adps ){
-			ULONG ret = GetAdaptersAddresses(
-							AF_UNSPEC
-							,GAA_FLAG_SKIP_ANYCAST |GAA_FLAG_SKIP_MULTICAST
-							|GAA_FLAG_SKIP_DNS_SERVER |GAA_FLAG_SKIP_FRIENDLY_NAME
-							,0
-							,adps
-							,&bytes
-			);
-			if( ret==NO_ERROR ){
-				IP_ADAPTER_ADDRESSES* adp;
-				for( adp=adps; adp; adp=adp->Next ){
-					IP_ADAPTER_UNICAST_ADDRESS* uni;
-					for( uni=adp->FirstUnicastAddress; uni; uni=uni->Next ){
-						WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
-						GetNameInfoW(
-								uni->Address.lpSockaddr
-								,uni->Address.iSockaddrLength
-								,ip
-								,sizeof(ip)/sizeof(WCHAR)
-								,NULL
-								,0
-								,NI_NUMERICHOST
-						);
-						if( wcscmp( ip ,text )==0 ){ found=TRUE; break; } // 発見
-					}
-				}
-				break; // おわり
-			}
-			else if( ret==ERROR_BUFFER_OVERFLOW ){
-				free( adps );
-				adps = NULL;
-				// リトライ
-			}
-			else{ LogW(L"GetAdaptersAddresses不明なエラー%u",ret); break; }
-		}
-		else{ LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes); break; }
-	}
-	if( adps ) free( adps );
-	return found;
-}
-// クライアントがローカルで動作している
-BOOL ClientIsLocal( TClient* cp )
-{
-	SOCKADDR_STORAGE addr;
-	int		addrlen = sizeof(addr);
-	WCHAR	ip[INET6_ADDRSTRLEN+1]=L""; // クライアントIP
-
-	getpeername( cp->sock ,(SOCKADDR*)&addr ,&addrlen );
-	GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
-
-	//LogW(L"[%u]peer=%s",Num(cp),ip);
-	if( wcscmp(ip,L"::1")==0 ) return TRUE;
-	if( wcscmp(ip,L"127.0.0.1")==0 ) return TRUE;
-	if( wcsicmp(ip,L"::ffff:127.0.0.1")==0 ) return TRUE;
-	if( AdapterHas(ip) ) return TRUE;
-	return FALSE;
-}
-
 // 待受ソケット作成
 // IPv6対応は結局、待受ソケットを２つ作成するようにした。
 // ・きっかけは、Win7+Opera12で「接続できません」エラーになるという問い合わせで、
@@ -6717,7 +6757,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						else if( stricmp(file,":clipboard.txt")==0 ){
 							// クリップボードテキスト取得
-							if( ClientIsLocal( cp ) ){
+							if( PeerIsLocal( cp->sock ) ){
 								WCHAR* u16 = NULL;
 								if( OpenClipboard(MainForm) ){
 									HGLOBAL cb = GetClipboardData( CF_UNICODETEXT );
@@ -7797,45 +7837,6 @@ BOOL OpenFiler( void )
 		free( ini );
 	}
 	return yes;
-}
-// 基本画面を開くか整理画面を開くか設定保存
-void SetOpenFiler( BOOL yes )
-{
-	WCHAR* new = AppFilePath( MY_INI L".new" );
-	WCHAR* ini = AppFilePath( MY_INI );
-	if( new && ini ){
-		// 新しい一時ファイル my.ini.new 作成
-		FILE* newfp = _wfopen( new ,L"wb" );
-		if( newfp ){
-			BOOL ok = FALSE;
-			// 現在の my.ini を読み込んで
-			FILE* inifp = _wfopen( ini ,L"rb" );
-			if( inifp ){
-				UCHAR buf[1024];
-				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-				fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
-				// OpenFiler=の行だけ変更して他はいじらない
-				while( fgets(buf,sizeof(buf),inifp) ){
-					chomp(buf);
-					if( strnicmp(buf,"OpenFiler=",10)==0 ){
-						fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
-						ok = TRUE;
-					}
-					else fprintf(newfp,"%s\r\n",buf);
-				}
-				fclose(inifp);
-			}
-			// my.ini がない、またはOpenFiler=存在しなかったら追加
-			if( !ok ) fprintf(newfp,"OpenFiler=%s\r\n",yes ? "1":"");
-			fclose(newfp);
-			// 正ファイルにリネーム(my.ini.new -> my.ini)
-			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
-				LogW(L"MoveFileEx(%s)エラー%u",new,GetLastError());
-		}
-		else LogW(L"L%u:fopen(%s)エラー",__LINE__,new);
-	}
-	if( new ) free( new );
-	if( ini ) free( ini );
 }
 // 設定ダイアログデータ
 typedef struct {
@@ -9555,7 +9556,7 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				GetVersionExA( &os );
 				_snwprintf(wtxt,sizeof(wtxt)/sizeof(WCHAR),
 						L"%s\r\n\r\n" L"%s\r\n\r\n" L"Windows%s %u.%u"
-						,APPNAME, wlibs
+						,APPNAME L" v" APPVER, wlibs
 						// Windowsバージョン情報の取得
 						// http://www.westbrook.jp/Tips/Win/OSVersion.html
 						,(os.dwPlatformId==VER_PLATFORM_WIN32_NT)?L"NT":L""
@@ -9852,10 +9853,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			AboutBox();
 			break;
 		case CMD_OPENBASIC:	// 基本画面を開く
-			if( OpenFiler() ) SetOpenFiler(FALSE);
+			if( OpenFiler() ) INISave("OpenFiler","");
 			break;
 		case CMD_OPENFILER:	// 整理画面を開く
-			if( !OpenFiler() ) SetOpenFiler(TRUE);
+			if( !OpenFiler() ) INISave("OpenFiler","1");
 			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
 		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
