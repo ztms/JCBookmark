@@ -716,7 +716,7 @@ UCHAR* stristr( const UCHAR* buf, const UCHAR* word )
 {
 	if( buf && word ){
 		size_t len = strlen( word );
-		for( ; *buf; buf++ ) if( strnicmp( buf, word, len )==0 ) return buf;
+		for( ; *buf; buf++ ) if( strnicmp( buf, word, len )==0 ) return (UCHAR*)buf;
 	}
 	return NULL;
 }
@@ -725,7 +725,7 @@ UCHAR* stristrL( const UCHAR* buf, const UCHAR* word, const UCHAR* limit )
 	if( buf && word ){
 		size_t len = strlen( word );
 		while( buf < limit && *buf ){
-			if( strnicmp( buf, word, len )==0 ) return buf;
+			if( strnicmp( buf, word, len )==0 ) return (UCHAR*)buf;
 			buf++;
 		}
 	}
@@ -739,11 +739,11 @@ WCHAR* wcschrN( const WCHAR* s, WCHAR c, int N )
 		int n=0;
 		if( N >0 ){
 			// 先頭から
-			for( ; *s; s++ ) if( *s==c && ++n==N ) return s;
+			for( ; *s; s++ ) if( *s==c && ++n==N ) return (WCHAR*)s;
 		}
 		else if( N <0 ){
 			// 末尾から
-			WCHAR* p = s +wcslen(s) -1;
+			WCHAR* p = (WCHAR*)s + wcslen(s) -1;
 			for( N=-N; s<=p && *p; p-- ) if( *p==c && ++n==N ) return p;
 		}
 	}
@@ -1532,7 +1532,7 @@ void ResponseEmpty( TClient* cp )
 UCHAR* strHeaderValue( const UCHAR* buf, const UCHAR* name )
 {
 	if( buf && name ){
-		UCHAR* value = buf;
+		UCHAR* value = (UCHAR*)buf;
 		size_t len = strlen( name );
 		for( ; *value; value++ ){
 			if( strnicmp( value, name, len )==0 ){
