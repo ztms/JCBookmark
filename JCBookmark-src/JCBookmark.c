@@ -127,7 +127,7 @@
 #define		WM_CREATE_AFTER		(WM_APP+3)		// WM_CREATE後に1回実行するメッセージ
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
-#define		WM_THREADFIN		(WM_APP+6)		// スレッド終了メッセージ
+#define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark v2.2"
 #define		MY_INI				L"my.ini"
 
@@ -1329,7 +1329,6 @@ typedef struct TClient {
 	#define		CLIENT_KEEP_ALIVE	6	// KeepAlive待機中
 	Request		req;
 	Response	rsp;
-	HANDLE		thread;
 	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
@@ -1388,7 +1387,6 @@ void ClientShutdown( TClient* cp )
 {
 	if( cp ){
 		WCHAR wpath[MAX_PATH+1]=L"";
-		CloseHandle( cp->thread );
 		CloseHandle( cp->req.writefh );
 		CloseHandle( cp->rsp.readfh );
 		DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
@@ -3946,13 +3944,13 @@ PokeCTX* PokeCTXalloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
 		ctx->repo.time		= 0;
-		ctx->thread			= NULL;
+		ctx->thread			= 0;
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(PokeCTX));
 	return ctx;
 }
 // 複数URL用スレッド関数
-unsigned __stdcall poker( void* tp )
+void poker( void* tp )
 {
 	TClient*	cp		= tp;
 	UCHAR*		url		= cp->req.body;
@@ -4026,11 +4024,10 @@ unsigned __stdcall poker( void* tp )
 	for( ctx=ctx0; ctx; ctxN=ctx->next ,free(ctx) ,ctx=ctxN ){
 		if( ctx->repo.newurl ) free( ctx->repo.newurl );
 	}
-	// 終了
-	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	// 終了通知
+	PostMessage( MainForm ,WM_WORKERFIN ,(WPARAM)cp->sock ,0 );
 	ERR_remove_state(0);
-	_endthreadex(0);
-	return 0;
+	_endthread();
 }
 // 指定URLのタイトルとかfavicon解析
 // クライアントからの要求 POST /:analyze HTTP/1.x で開始され、
@@ -4263,13 +4260,13 @@ AnalyCTX* AnalyCTXalloc( UCHAR* url ,UCHAR* userAgent ,UCHAR* pAbort )
 		strcpy(ctx->repo.msg,"不明な処理結果です");
 		ctx->repo.newurl	= NULL;
 		ctx->repo.time		= 0;
-		ctx->thread			= NULL;
+		ctx->thread			= 0;
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(AnalyCTX));
 	return ctx;
 }
 // 複数URL用スレッド関数
-unsigned __stdcall analyzer( void* tp )
+void analyzer( void* tp )
 {
 	TClient*	cp		= tp;
 	UCHAR*		url		= cp->req.body;
@@ -4311,7 +4308,7 @@ unsigned __stdcall analyzer( void* tp )
 		if( ctx->thread ){
 			WaitForSingleObject( ctx->thread ,INFINITE );
 			CloseHandle( ctx->thread );
-			ctx->thread = NULL;
+			ctx->thread = 0;
 		}
 	}
 	// 直接処理したエントリをリスト先頭に追加
@@ -4349,11 +4346,10 @@ unsigned __stdcall analyzer( void* tp )
 		if( ctx->favicon ) free( ctx->favicon );
 		if( ctx->repo.newurl ) free( ctx->repo.newurl );
 	}
-	// 終了
-	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	// 終了通知
+	PostMessage( MainForm ,WM_WORKERFIN ,(WPARAM)cp->sock ,0 );
 	ERR_remove_state(0);
-	_endthreadex(0);
-	return 0;
+	_endthread();
 }
 // ファイルを全部メモリに読み込む。CreateFileMappingのがはやい…？
 typedef struct {
@@ -4390,7 +4386,7 @@ Memory* file2memory( const WCHAR* path )
 	return memory;
 }
 // gzip圧縮ファイル生成
-unsigned __stdcall gzipcreater( void* tp )
+void gzipcreater( void* tp )
 {
 	WCHAR* path = tp; // 圧縮対象ファイルパス(このスレッドで解放するmalloc領域)
 	if( path ){
@@ -4429,8 +4425,7 @@ unsigned __stdcall gzipcreater( void* tp )
 		free( path );
 	}
 	ERR_remove_state(0);
-	_endthreadex(0);
-	return 0;
+	_endthread();
 }
 
 
@@ -5672,13 +5667,13 @@ Session* SessionFind( UCHAR* cookie )
 	}
 	return found;
 }
-// パスワード認証
+// パスワード認証スレッド関数
 // GET /:login HTTP/1.x
 // この関数から戻った後は送信処理に行くので送信準備を必ず行って終了する。
 // ブルートフォースアタック対策のため(?)パスワードが違った場合は少し待ってから応答を返す。
 // その少し待ってる間メインスレッドを止めないよう一応スレッドで実行する。
 #define LOGINPASS_MAX 64
-unsigned __stdcall authenticate( void* tp )
+void authenticate( void* tp )
 {
 	TClient* cp = tp;
 	// リクエストメッセージ本文に p=パスワード(URLエンコード)
@@ -5742,11 +5737,10 @@ unsigned __stdcall authenticate( void* tp )
 		else ResponseError(cp,"500 Internal Server Error");
 	}
 	else ResponseError(cp,"400 Bad Request");
-	// 終了
-	PostMessage( MainForm ,WM_THREADFIN ,(WPARAM)cp->sock ,0 );
+	// 終了通知
+	PostMessage( MainForm ,WM_WORKERFIN ,(WPARAM)cp->sock ,0 );
 	ERR_remove_state(0);
-	_endthreadex(0);
-	return 0;
+	_endthread();
 }
 
 
@@ -6701,7 +6695,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									if( BODYBYTES(req) >= req->ContentLength ){
 										// 本文受信完了
 										cp->status = CLIENT_THREADING;
-										cp->thread = (HANDLE)_beginthreadex( NULL,0 ,authenticate ,(void*)cp ,0,NULL );
+										_beginthread( authenticate ,0 ,(void*)cp );
 									}
 									else{
 									recv_more: // 引き続き受信
@@ -7198,7 +7192,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								if( BODYBYTES(req) >= req->ContentLength ){
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
-									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,analyzer ,(void*)cp ,0,NULL );
+									_beginthread( analyzer ,0 ,(void*)cp );
 								}
 								else goto recv_more;
 							}
@@ -7206,7 +7200,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								if( BODYBYTES(req) >= req->ContentLength ){
 									// 本文受信完了(1行1URL)
 									cp->status = CLIENT_THREADING;
-									cp->thread = (HANDLE)_beginthreadex( NULL,0 ,poker ,(void*)cp ,0,NULL );
+									_beginthread( poker ,0 ,(void*)cp );
 								}
 								else goto recv_more;
 							}
@@ -7320,7 +7314,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											ResponseError(cp,"200 OK");
 											// tree.jsonはgzipファイル作成
 											if( stricmp(file,"tree.json")==0 ){
-												_beginthreadex( NULL,0 ,gzipcreater ,(void*)wcsdup(realpath) ,0,NULL );
+												_beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
 											}
 										}
 										else{
@@ -7463,7 +7457,6 @@ void ClientWrite( TClient* cp )
 				size_t	rspHeadSize	= cp->rsp.head.size;
 				size_t	rspBodySize	= cp->rsp.body.size;
 				WCHAR	wpath[MAX_PATH+1]=L"";
-				CloseHandle( cp->thread );
 				CloseHandle( cp->req.writefh );
 				CloseHandle( cp->rsp.readfh );
 				DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
@@ -9923,11 +9916,10 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0;
 
-	case WM_THREADFIN: // スレッド終了
+	case WM_WORKERFIN: // HTTPサーバーワーカースレッド終了
 		{
 			TClient* cp = ClientOfSocket( (SOCKET)wp );
 			if( cp ){
-				CloseHandle( cp->thread ), cp->thread=NULL;
 				if( cp->abort ){
 					LogW(L"[%u]中断します...",Num(cp));
 					cp->status = 0;
@@ -9977,7 +9969,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	if( msg==taskbarRestart && !IsWindowVisible(hwnd) ) PostMessage( hwnd, WM_TRAYICON_ADD, 0,0 );
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
-//
+// ドキュメントルート取得用
 WCHAR* ModuleFileNameAllocW( void )
 {
 	size_t length = 32;
@@ -10377,6 +10369,7 @@ retry:
 	ex = 0;
 	thread = (HANDLE)_beginthreadex( NULL,0 ,SelfDebugThread ,(void*)&ex ,0,NULL );
 	WaitForSingleObject( thread ,INFINITE );
+	CloseHandle( thread );
 	// 子プロセス異常終了したら勝手に再起動
 	if( ex ){
 		// もし起動するだけで異常終了するような状況だと無限ループしてしまうので10回くらいまでにしておく
