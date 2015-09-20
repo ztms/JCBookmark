@@ -182,6 +182,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\junzip.c"
+				>
+			</File>
+			<File
 				RelativePath=".\sqlite3.c"
 				>
 			</File>

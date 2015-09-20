@@ -112,6 +112,7 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <shlobj.h>
 #include <psapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,6 +129,7 @@
 #define		WM_CONFIG_DIALOG	(WM_APP+4)		// 設定ダイアログ後処理
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
+#define		WM_VUPREADY			(WM_APP+7)		// 自動バージョンアップ準備完了
 #define		APPNAME				L"JCBookmark"
 #define		APPVER				L"2.3dev"
 #define		MY_INI				L"my.ini"
@@ -442,6 +444,12 @@ UCHAR* chomp( UCHAR* s )
 UCHAR* BStoSL( UCHAR* s )
 {
 	if( s ){ UCHAR* p=s; for( ; *p; p++ ) if( *p=='\\' ) *p='/'; }
+	return s;
+}
+// Slash -> BackSlash
+WCHAR* SLtoBS( WCHAR* s )
+{
+	if( s ){ WCHAR* p=s; for( ; *p; p++ ) if( *p==L'/' ) *p=L'\\'; }
 	return s;
 }
 
@@ -2370,6 +2378,7 @@ typedef struct {
 	#define		ENC_OTHER		0xff
 	UCHAR		TransferEncoding;// Transfer-Encoding
 	#define		CHUNKED			0x01
+	UCHAR		remoteCommunicate;// 外部通信できたかどうか
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
@@ -2795,6 +2804,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								}
 							}
 							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
+							if( !PeerIsLocal(sock) ) rsp->remoteCommunicate = 1;
 						}
 						else{
 							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
@@ -3875,6 +3885,406 @@ void INISave( UCHAR* name ,UCHAR* value )
 	if( new ) free( new );
 	if( ini ) free( ini );
 }
+// 自動バージョンアップ
+#define		DISTRIBUTE_URL		"http://ztmsdf.appspot.com/jcbookmark/"
+#define		UPDATE_AGENT		"JCBookmark Update Agent"
+#define		AUP_IS_UNKNOWN		(1<<0)	// 不明（古いバージョン）
+#define		AUP_IS_DISABLE		(1<<1)	// 無効
+#define		AUP_IS_ENABLE		(1<<2)	// 有効
+#define		AUP_IS_THREADING	(1<<3)	// 最新版取得スレッド実行中
+UINT		AutoUpdateIs		= AUP_IS_UNKNOWN;	// 状態管理フラグ変数
+UCHAR		ThreadAbort			= 0;				// スレッド中断
+UINT64		VupNextTime			= 0;				// 次回の実行時刻
+// URL取得して成功の時だけ応答内容を返却
+HTTPGet* LatestHttpGet( const UCHAR* url )
+{
+	PokeReport repo = { '?',"",NULL,0 };
+	HTTPGet* rsp = httpGETs( url ,UPDATE_AGENT ,&ThreadAbort ,&repo );
+	if( repo.newurl ) free( repo.newurl );
+
+	if( repo.kind=='O' ) return rsp;
+	free( rsp );
+	return NULL;
+}
+// バージョン文字列比較
+// 数字以外の文字を無視して数値変換して大小比較
+int VerStrCmp( const WCHAR* appver ,const UCHAR* latest )
+{
+	UINT appverN = 0;
+	UINT latestN = 0;
+
+	for( ; *appver; appver++ ){
+		if( iswdigit(*appver) ){
+			appverN = appverN * 10 + (UINT)(*appver - L'0');
+		}
+	}
+	for( ; *latest; latest++ ){
+		if( isdigit(*latest) ){
+			latestN = latestN * 10 + (UINT)(*latest - '0');
+		}
+	}
+	if( appverN < latestN ) return 1;
+	if( appverN > latestN ) return -1;
+	return 0;
+}
+// 最新版が見つかったらJCbookmark-vN.N.zipのURLを返却
+UCHAR* LatestFound( void )
+{
+	UCHAR* newUrl = NULL;
+	HTTPGet* rsp = LatestHttpGet( DISTRIBUTE_URL );
+	if( rsp ){
+		if( ThreadAbort ) goto fin;
+		if( rsp->ContentType==TYPE_HTML ){
+			// 最新版リンクタグをさがしてバージョン文字列取得
+			// <a id=download href="JCBookmark-vN.N.zip">
+			#define LATEST_TAG "<a id=download href=\"JCBookmark-v"
+			UCHAR* ver = stristr( rsp->body ,LATEST_TAG );
+			if( ver ){
+				// N.N 文字列取得
+				UCHAR latestVer[16] = "";
+				size_t bytes = 0;
+				ver += strlen( LATEST_TAG );
+				while( isdigit(ver[bytes]) || ver[bytes]=='.' ) bytes++;
+				if( ver[bytes-1]=='.' ) bytes--;
+				if( bytes < sizeof(latestVer) ){
+					strncpy( latestVer ,ver ,bytes );
+					latestVer[bytes] = '\0';
+					//switch( VerStrCmp(APPVER ,latestVer) ){ // 本番
+					switch( VerStrCmp(L"2.1" ,latestVer) ){ // TEST
+					case 1:
+						LogW(L"新しいバージョンが見つかりました");
+						// http://ztmsdf.appspot.com/jcbookmark/JCBookmark-vN.N.zip
+						newUrl = strjoin( DISTRIBUTE_URL ,"JCBookmark-v" ,latestVer ,".zip" ,0 );
+						break;
+					case 0:
+						LogW(L"最新版を使用中です");
+						break;
+					case -1:
+						LogW(L"最新版より新しいバージョンを使用中です");
+						break;
+					default:
+						LogW(L"最新版かどうか不明です");
+						break;
+					}
+				}
+				else LogW(L"最新バージョン番号が長すぎます");
+			}
+			else LogW(L"最新バージョン番号を取得できません");
+		}
+		else LogW(L"最新バージョン情報を取得できません");
+	}
+fin:
+	if( rsp ) free( rsp );
+	return newUrl;
+}
+// フォルダ中身ごと削除
+BOOL RRemoveDirectoryW( WCHAR* path )
+{
+	WCHAR* wfindir = wcsjoin( path ,L"\\*" ,0,0,0 );
+	if( wfindir ){
+		WIN32_FIND_DATAW wfd;
+		HANDLE hFind = FindFirstFileW( wfindir, &wfd );
+		free( wfindir );
+
+		if( hFind !=INVALID_HANDLE_VALUE ){
+			do{
+				if( wcscmp(wfd.cFileName,L"..") && wcscmp(wfd.cFileName,L".") ){
+					WCHAR* wfound = wcsjoin( path ,L"\\" ,wfd.cFileName ,0,0 );
+					if( wfound ){
+						if( FILE_ATTRIBUTE_DIRECTORY & wfd.dwFileAttributes ){
+							RRemoveDirectoryW( wfound );
+						}
+						else{
+							DeleteFileW( wfound );
+						}
+						free( wfound );
+					}
+				}
+			}
+			while( FindNextFileW( hFind, &wfd ) );
+			FindClose( hFind );
+		}
+	}
+	return RemoveDirectoryW( path );
+}
+// URLのファイル名(最後のスラッシュより後ろ)
+UCHAR* URLfilename( const UCHAR* url )
+{
+	UCHAR* slash = strrchr(url,'/');
+	if( slash ) return slash + 1;
+	return (UCHAR*)url;
+}
+// ファイル保存
+BOOL memory2file( const UCHAR* memory ,size_t bytes ,WCHAR* path )
+{
+	BOOL ok = FALSE;
+	HANDLE hFile;
+retry:
+	hFile = CreateFileW( path
+						,GENERIC_WRITE
+						,0, NULL
+						,CREATE_ALWAYS
+						,FILE_ATTRIBUTE_NORMAL
+						,NULL
+	);
+	if( hFile !=INVALID_HANDLE_VALUE ){
+		DWORD written;
+		// 断片化抑制
+		SetFilePointer( hFile, bytes, NULL, FILE_BEGIN );
+		SetEndOfFile( hFile );
+		SetFilePointer( hFile, 0, NULL, FILE_BEGIN );
+		if( WriteFile( hFile ,memory ,bytes ,&written ,NULL ) ){
+			ok = TRUE;
+		}
+		else LogW(L"L%u:WriteFileエラー%u",__LINE__,GetLastError());
+
+		CloseHandle( hFile );
+	}
+	else{
+		DWORD err = GetLastError();
+		if( err==ERROR_PATH_NOT_FOUND ){
+			WCHAR* bs = wcsrchr( path, L'\\' );
+			if( bs ){
+				*bs = L'\0';
+				SHCreateDirectory( NULL, path );
+				*bs = L'\\';
+			}
+			goto retry;
+		}
+		LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,path,err);
+	}
+	return ok;
+}
+// そのURLの物件はダウンロード済み(未適用)
+BOOL AlreadyDownloaded( const UCHAR* url ,WCHAR* folder )
+{
+	BOOL ready = FALSE;
+	WCHAR* fileName = MultiByteToWideCharAlloc( URLfilename(url), CP_UTF8 );
+	if( fileName ){
+		WCHAR* path = wcsjoin( folder ,L"\\" ,fileName ,0,0 );
+		if( path ){
+			if( PathFileExistsW( path ) ) ready = TRUE;
+			free( path );
+		}
+		free( fileName );
+	}
+	return ready;
+}
+// zipファイル展開
+#include "junzip.h"
+int unzipEachRecord( JZIP* jz, int idx, JZFileHeader* global, char* filename )
+{
+	int ok = 0;
+	if( !ThreadAbort ){
+		long offset = ftell(jz->fp); // store current position
+		int err = fseek( jz->fp, global->offset, SEEK_SET );
+		if( !err ){
+			JZFileHeader local;
+			char filename[1024];
+			UCHAR* data;
+
+			jzReadLocalFileHeader( jz, &local, filename, sizeof(filename) );
+
+			data = malloc( local.unpackBytes );
+			if( data ){
+				int Z = jzReadData( jz, &local, data );
+				if( Z==Z_OK ){
+					WCHAR* wfname = MultiByteToWideCharAlloc( filename ,CP_UTF8 );
+					//LogA("%s (%u/%ubytes) data ok!",filename,local.packedBytes,local.unpackBytes);
+					if( wfname ){
+						WCHAR* folder = jz->exdata;
+						WCHAR* path = wcsjoin( folder ,L"\\" ,SLtoBS(wfname) ,0,0 );
+						if( path ){
+							if( memory2file( data ,local.unpackBytes ,path ) ){
+								LogW(L"%s (%ubytes) extracted",path,local.unpackBytes);
+								ok = 1;
+							}
+							free( path );
+						}
+						free( wfname );
+					}
+				}
+				else LogW(L"jzReadDataエラー%d",Z);
+
+				free( data );
+			}
+			else LogW(L"L%u:mallocエラー",__LINE__);
+
+			fseek(jz->fp, offset, SEEK_SET); // return to position
+		}
+		else LogW(L"L%u:fseekエラー",__LINE__);
+	}
+	return ok; // 1=continue, 0=abort
+}
+BOOL unzip( const WCHAR* path ,const WCHAR* folder )
+{
+	BOOL ok = FALSE;
+	FILE* fp = _wfopen( path ,L"rb" );
+	if( fp ){
+		JZIP* jz = JZipOpen( fp ,(void*)folder ,LogA );
+		if( jz ){
+			JZEndRecord rec;
+			int err = jzReadEndRecord( jz, &rec );
+			if( !err ){
+				err = jzReadCentralDirectory( jz, &rec, unzipEachRecord );
+				if( !err ){
+					ok = TRUE;
+				}
+				else LogW(L"jzReadCentralDirectoryエラー%d",err);
+			}
+			else LogW(L"jzReadEndRecordエラー%d",err);
+			JZipClose( jz );
+		}
+		else fclose( fp );
+	}
+	else LogW(L"L%u:fopen(%s)エラー",__LINE__,path);
+
+	return ok;
+}
+// 自動バージョンアップファイル1つダウンロード展開
+BOOL DownloadExtract( const UCHAR* url ,WCHAR* folder )
+{
+	BOOL ok = FALSE;
+	// ダウンロード
+	HTTPGet* rsp = LatestHttpGet( url );
+	if( rsp ){
+		if( !ThreadAbort ){
+			// ファイル保存
+			WCHAR* fileName = MultiByteToWideCharAlloc( URLfilename(url), CP_UTF8 );
+			if( fileName ){
+				WCHAR* path = wcsjoin( folder ,L"\\" ,fileName ,0,0 );
+				if( path ){
+					if( memory2file( rsp->body ,rsp->bytes ,path ) ){
+						// zip展開
+						if( !ThreadAbort ){
+							if( unzip( path ,folder ) ){
+								ok = TRUE;
+							}
+						}
+					}
+					free( path );
+				}
+				free( fileName );
+			}
+		}
+		free( rsp );
+	}
+	return ok;
+}
+// 自動バージョンアップ物件ダウンロード
+BOOL LatestDownloads( const UCHAR* url ,WCHAR* folder )
+{
+	BOOL ok = FALSE;
+	// 既存フォルダ中身削除
+	RRemoveDirectoryW( folder );
+	CreateDirectoryW( folder ,NULL );
+	// JCBookmark-vN.N.zip ダウンロード展開
+	if( DownloadExtract( url ,folder ) ){
+		if( !ThreadAbort ){
+			// vup.exe.zip ダウンロード展開
+			UCHAR* vupurl = strjoin( DISTRIBUTE_URL ,"vup.exe.zip" ,0,0,0 );
+			if( vupurl ){
+				if( DownloadExtract( vupurl ,folder ) ){
+					ok = TRUE;
+				}
+				free( vupurl );
+			}
+		}
+	}
+	if( !ok ) RRemoveDirectoryW( folder );
+	return ok;
+}
+// 最新バージョン取得スレッド関数
+void LatestGetter( void* tp )
+{
+	UCHAR* url;
+	WCHAR* newFolder;
+	WCHAR* oldFolder;
+	WCHAR* vupFolder;
+	BOOL complete = FALSE;
+
+	AutoUpdateIs |= AUP_IS_THREADING;
+
+	url = LatestFound();
+
+	if( url ){
+		if( AutoUpdateIs & AUP_IS_UNKNOWN ){
+			// TODO:確認ダイアログ
+			// JCBookmarkの新しいバージョン◯.◯が見つかりました。
+			// バージョンアップしますか？
+			//
+			// →はい（自動バージョンアップを有効にします）
+			// →いいえ（自動バージョンアップを無効にします）
+			//
+			// ※自動バージョンアップの有効・無効は設定画面でいつでも変更できます。
+		}
+		newFolder = AppFilePath(L"autovup.new");
+		oldFolder = AppFilePath(L"autovup.old");
+		vupFolder = AppFilePath(L"autovup");
+
+		if( newFolder && oldFolder && vupFolder ){
+			// まだダウンロードされてなければ
+			if( !AlreadyDownloaded( url ,vupFolder ) ){
+				// 一時フォルダに新バージョンダウンロード展開
+				if( LatestDownloads( url ,newFolder ) ){
+					// 古いダウンロード物件あったら差し替え
+					#define MFX_PARAM ( MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )
+					// autovup -> autovup.old
+					MoveFileExW( vupFolder ,oldFolder ,MFX_PARAM );
+					// autovup.new -> autovup
+					if( MoveFileExW( newFolder ,vupFolder ,MFX_PARAM )){
+						// 差し替え完了
+						RRemoveDirectoryW( oldFolder );
+						complete = TRUE;
+					}
+					else{
+						// 差し替え失敗ロールバック
+						LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,newFolder,GetLastError());
+						// autovup.old -> autovup
+						MoveFileExW( oldFolder ,vupFolder ,MFX_PARAM );
+					}
+				}
+			}
+		}
+	}
+	if( complete || !ThreadAbort ){
+		// 次回実行時刻(100ナノ秒単位)
+		FILETIME now;
+		UCHAR ts[32];
+		#define VUP_INTERVAL ((UINT64)60 * 1000 * 1000 * 10)			// 1分後
+		//#define VUP_INTERVAL ((UINT64)8 * 60 * 60 * 1000 * 1000 * 10)	// 8時間後
+		GetSystemTimeAsFileTime( &now );
+		VupNextTime = *(UINT64*)&now + VUP_INTERVAL;
+		_snprintf(ts,sizeof(ts),"%I64u",VupNextTime);
+		INISave("VupNextTime",ts);
+		PostMessage( MainForm ,WM_VUPREADY ,0 ,0 );
+	}
+	if( newFolder ) free( newFolder );
+	if( oldFolder ) free( oldFolder );
+	if( vupFolder ) free( vupFolder );
+	if( url ) free( url );
+
+	AutoUpdateIs &= ~AUP_IS_THREADING;
+
+	ERR_remove_state(0);
+	_endthread();
+}
+// 最新バージョン取得
+void LatestGet( void )
+{
+	// 自動バージョンアップ不明・有効
+	if( AutoUpdateIs & (AUP_IS_UNKNOWN |AUP_IS_ENABLE) ){
+		// すでに実行中でない
+		if( !(AutoUpdateIs & AUP_IS_THREADING) ){
+			FILETIME now;
+			GetSystemTimeAsFileTime( &now );
+			// 次回実行時刻を過ぎた
+			if( *(UINT64*)&now > VupNextTime ){
+				_beginthread( LatestGetter ,0 ,NULL );
+			}
+		}
+	}
+}
 // 指定URL死活確認
 // クライアントからの要求 POST /:poke HTTP/1.x で開始され、
 // 本文の1行1URLの
@@ -3950,7 +4360,11 @@ void Poke( PokeCTX* ctx )
 			}
 		}
 	}
-	if( rsp ) free( rsp );
+	if( rsp ){
+		// 自動バージョンアップ 外部と通信できた場合のみ起動
+		if( rsp->remoteCommunicate ) LatestGet();
+		free( rsp );
+	}
 	/*
 	// TODO:死亡(404等)で転送URLもなかった場合の上位パス確認
 	// http://www.hirosawatadashi.com/index.html が 404 Not Found だが 200 とおなじ正しいHTML
@@ -4318,7 +4732,10 @@ void Analyze( AnalyCTX* ctx )
 		}
 		ctx->pageTitle = title;
 		ctx->favicon = icon;
-	fin:free( rsp );
+	fin:
+		// 自動バージョンアップ 外部と通信できた場合のみ起動
+		if( rsp->remoteCommunicate ) LatestGet();
+		free( rsp );
 	}
 }
 // URL1つ用スレッド関数
@@ -4957,7 +5374,6 @@ UINT ChromeFaviconJSON( sqlite3* db, FILE* fp, BYTE view )
 // http://eternalwindows.jp/installer/cabinet/cabinet00.html
 // http://msdn.microsoft.com/en-us/library/bb432265%28v=vs.85%29.aspx
 #pragma comment(lib,"cabinet.lib")
-#include <shlobj.h>
 #include <fci.h>
 #include <fdi.h>
 #include <io.h>
@@ -5518,6 +5934,9 @@ void ServerParamGet( void )
 				}
 				else if( strnicmp(buf,"BootMinimal=",12)==0 && *(buf+12) ){
 					BootMinimal = TRUE;
+				}
+				else if( strnicmp(buf,"VupNextTime=",12)==0 && *(buf+12) ){
+					VupNextTime = _strtoui64(buf+12,NULL,10);
 				}
 			}
 			fclose(fp);
@@ -7578,7 +7997,29 @@ retry:
 		}
 		else ClientShutdown( &(Client[i]) );
 	}
-	if( retry /*&& count++ <10*/ ){
+	if( retry ){
+		// スレッド実行中はこの関数から戻らないすなわちメインフォームは固まる。
+		// 数秒以内にスレッドは終了するはずだが・・・
+		Sleep(500);
+		goto retry;
+	}
+}
+
+void ThreadShutdownStart( void )
+{
+	ThreadAbort = 1;
+}
+
+void ThreadShutdownFinish( void )
+{
+	BOOL retry;
+retry:
+	retry = FALSE;
+	if( AutoUpdateIs & AUP_IS_THREADING ){
+		LogW(L"最新バージョン取得スレッド実行中...");
+		retry = TRUE;
+	}
+	if( retry ){
 		// スレッド実行中はこの関数から戻らないすなわちメインフォームは固まる。
 		// 数秒以内にスレッドは終了するはずだが・・・
 		Sleep(500);
@@ -9503,6 +9944,15 @@ void MainFormCreateAfter( void )
 	}
 	// タイマー処理
 	MainFormTimer1000();
+	// 自動バージョンアップ不明または無効の時
+	if( AutoUpdateIs & (AUP_IS_UNKNOWN |AUP_IS_DISABLE) ){
+		// autovupフォルダ削除
+		WCHAR* autovup = AppFilePath(L"autovup");
+		if( autovup ){
+			RRemoveDirectoryW( autovup );
+			free( autovup );
+		}
+	}
 }
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
@@ -9956,6 +10406,11 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0;
 
+	case WM_VUPREADY: // 自動バージョンアップ準備完了
+		// TODO:動作ログ欄の下に広告みたいなメッセージと再起動ボタンでいいかな
+		// 再起動ボタンは実際はvup.exeの起動でよいか。
+		return 0;
+
 	case WM_TIMER:
 		switch( wp ){
 		case TIMER1000:
@@ -9979,7 +10434,9 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 	case WM_DESTROY:
 		SocketShutdownStart();
+		ThreadShutdownStart();
 		SocketShutdownFinish();
+		ThreadShutdownFinish();
 		BrowserIconDestroy( browser );
 		TrayIconNotify( hwnd, NIM_DELETE );
 		if( ssl_ctx ) SSL_CTX_free( ssl_ctx );
@@ -10413,6 +10870,42 @@ retry:
 #endif
 	return 0;
 }
+//---------------------------------------------------------------------------------------------------------------
+// 自動バージョンアップ
+BOOL AutoUpdate( void )
+{
+	BOOL ok = FALSE;
+	if( AutoUpdateIs & AUP_IS_ENABLE ){
+		// autovup/vup.exe が存在したら起動してTRUEを返却
+		// autovup/JCBookmark-vN.N.zipのバージョン番号が自身より新しいことを確認する？
+		// でもvup.exeの方でもファイル更新日付が新しい場合だけ上書きとかになるだろうからここでは不要かな・・
+		// vup.exeは別ソースコードにするか、JCBookmark.exeをコピー名前変更して動作できるようにするか・・
+		WCHAR* vupexe = AppFilePath(L"autovup\\vup.exe");
+		if( vupexe ){
+			if( PathFileExistsW( vupexe ) ){
+				STARTUPINFOW si;
+				PROCESS_INFORMATION pi;
+				DWORD err = 0;
+
+				memset( &si, 0, sizeof(si) );
+				memset( &pi, 0, sizeof(pi) );
+				si.cb = sizeof(si);
+
+				if( CreateProcessW( vupexe ,NULL,NULL,NULL ,FALSE ,0,NULL,NULL ,&si, &pi ) ){
+					// CreateProcess成功しても子プロセスがいない特殊なパターンとか
+					// あったりするか？念のためOpenProcess()が成功するか確認する？
+					ok = TRUE;
+				}
+				else ErrorBoxW(L"自動バージョンアップに失敗しました(%u)",GetLastError());
+
+				CloseHandle( pi.hThread );
+				CloseHandle( pi.hProcess );
+			}
+			free( vupexe );
+		}
+	}
+	return ok;
+}
 
 int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int nCmdShow )
 {
@@ -10423,6 +10916,8 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
+	if( AutoUpdate() ) return 0;
+
 //#define SELF_DEBUG
 #ifdef SELF_DEBUG
 	if( IsDebuggerPresent() ){
