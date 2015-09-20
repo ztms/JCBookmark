@@ -190,7 +190,8 @@ void _mlogopen( BOOL delete )
 {
 	WCHAR log[MAX_PATH+1]=L"";
 	WCHAR* p;
-	GetModuleFileNameW( NULL, log, sizeof(log)/sizeof(WCHAR) );
+	GetModuleFileNameW( NULL, log, MAX_PATH );
+	log[MAX_PATH] = L'\0';
 	p = wcsrchr(log,L'\\');
 	if( p ){
 		wcscpy( p+1, L"memory.log" );
@@ -896,18 +897,16 @@ WCHAR* RegAppPathAlloc( HKEY topkey, const WCHAR* subkey )
 // JCBookmark.exeと同階層のファイルパス取得
 WCHAR* AppFilePath( const WCHAR* fname )
 {
-	WCHAR* path = malloc( (MAX_PATH+1)*sizeof(WCHAR) );
-	if( path ){
-		WCHAR* p;
+	WCHAR path[MAX_PATH+1];
+	WCHAR* bs;
+
 		GetModuleFileNameW( NULL, path, MAX_PATH );
 		path[MAX_PATH] = L'\0';
-		p = wcsrchr(path,L'\\');
-		if( p ){
-			wcscpy( p+1, fname );
-			return path;
-		}
+	bs = wcsrchr(path,L'\\');
+	if( bs ){
+		bs[1] = L'\0';
+		return wcsjoin( path ,fname ,0,0,0 );
 	}
-	if( path ) free( path );
 	return NULL;
 }
 // ブラウザ情報をレジストリや設定ファイルからまとめて取得
@@ -1077,7 +1076,8 @@ BOOL SetCurrentDirectorySelf( void )
 	WCHAR dir[MAX_PATH+1]=L"";
 	WCHAR* bs;
 	BOOL ok;
-	GetModuleFileNameW( NULL, dir, sizeof(dir)/sizeof(WCHAR) );
+	GetModuleFileNameW( NULL, dir, MAX_PATH );
+	dir[MAX_PATH] = L'\0';
 	bs = wcsrchr( dir, L'\\' );
 	if( bs ) *bs = L'\0';
 	ok = SetCurrentDirectoryW( dir );
@@ -2826,12 +2826,12 @@ fin:
 #include "zlib.h"
 size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
 {
-	#define WBITS_AUTO (32+MAX_WBITS)	// 47 zlib|gzip自動ヘッダ判定
+	#define WBITS_AUTO (MAX_WBITS|32)	// 47 zlib|gzip自動ヘッダ判定
 	#define WBITS_RAW  -MAX_WBITS		// -15 ヘッダ無し圧縮データ用
 	int status ,wbits = WBITS_AUTO;
 	z_stream z;
 
-retry_raw:
+retry:
 	// メモリ管理をライブラリに任せる
 	z.zalloc = Z_NULL;
 	z.zfree  = Z_NULL;
@@ -2855,7 +2855,7 @@ retry_raw:
 		// その場合はinflateInit2のwindowBitsを-15にして実行すると成功する事があるらしい。
 		if( status==Z_DATA_ERROR && wbits==WBITS_AUTO ){
 			wbits = WBITS_RAW;
-			goto retry_raw;
+			goto retry;
 		}
 		return 0;
 	}
@@ -9364,11 +9364,12 @@ int CALLBACK SHBrowseForFolderProc( HWND hwnd ,UINT msg ,LPARAM param ,LPARAM da
 void DocumentRootSelect( void )
 {
 	BOOL		ok = FALSE;
-	WCHAR		folder[MAX_PATH];
+	WCHAR		folder[MAX_PATH+1];
 	BROWSEINFOW	binfo;
 	ITEMIDLIST*	idlist;
 
 	GetModuleFileNameW( NULL ,folder ,MAX_PATH );
+	folder[MAX_PATH] = L'\0';
 	PathRemoveFileSpec( folder );
 
 	binfo.hwndOwner		= MainForm;
