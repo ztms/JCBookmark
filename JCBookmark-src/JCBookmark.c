@@ -7528,10 +7528,11 @@ void SocketClose( SOCKET sock )
 	}
 }
 
-void SocketShutdown( void )
+void SocketShutdownStart( void )
 {
-	BOOL retry;
-	UINT i; //,count=0;
+	UINT i;
+
+	for( i=0; i<CLIENT_MAX; i++ ) Client[i].abort = 1;
 
 	if( ListenSock1 !=INVALID_SOCKET ){
 		LogW(L"[%u]待機終了",ListenSock1);
@@ -7545,10 +7546,15 @@ void SocketShutdown( void )
 		closesocket( ListenSock2 );
 		ListenSock2 = INVALID_SOCKET;
 	}
+}
+
+void SocketShutdownFinish( void )
+{
+	BOOL retry;
+	UINT i;
 retry:
 	for( retry=FALSE, i=0; i<CLIENT_MAX; i++ ){
 		if( Client[i].status==CLIENT_THREADING ){
-			Client[i].abort = 1;
 			LogW(L"[%u]スレッド実行中...",i);
 			retry = TRUE;
 		}
@@ -9880,7 +9886,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				if( oldBindLocal!=BindLocal || wcscmp(oldPort,ListenPort) ){
 					// bind設定orポート番号変わった
 					BOOL success;
-					SocketShutdown();					// コネクション切断
+					SocketShutdownStart();				// コネクション切断
+					SocketShutdownFinish();
 					success = ListenStart();			// 待ち受け開始
 					MainFormTimer1000();				// タイトルバー
 					// Listen失敗時は再び設定ダイアログ
@@ -9953,7 +9960,8 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 
 	case WM_DESTROY:
-		SocketShutdown();
+		SocketShutdownStart();
+		SocketShutdownFinish();
 		BrowserIconDestroy( browser );
 		TrayIconNotify( hwnd, NIM_DELETE );
 		if( ssl_ctx ) SSL_CTX_free( ssl_ctx );
