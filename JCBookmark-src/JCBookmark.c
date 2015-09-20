@@ -2327,6 +2327,8 @@ typedef struct {
 	#define		ENC_GZIP		0x01
 	#define		ENC_DEFLATE		0x02
 	#define		ENC_OTHER		0xff
+	UCHAR		TransferEncoding;// Transfer-Encoding
+	#define		CHUNKED			0x01
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
@@ -2663,6 +2665,15 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											}
 											//else LogW(L"Content-Encodingなし");
 										}
+										if( !rsp->TransferEncoding ){
+											UCHAR* p = strHeaderValue(rsp->head,"Transfer-Encoding");
+											if( p ){
+												if( strnicmp(p,"chunked",7)==0 ){
+													rsp->TransferEncoding = CHUNKED;
+												}
+											}
+											//else LogW(L"Transfer-Encodingなし");
+										}
 										if( !rsp->ContentType ){
 											UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
 											if( p ){
@@ -2859,10 +2870,78 @@ retry_raw:
 	return outbytes;
 }
 
+// 16進数ASCII一文字を数値に変換
+size_t char16decimal( UCHAR c )
+{
+	if( isdigit(c) ) return c - '0';
+
+	c = tolower(c);
+	if( 'a' <= c && c <= 'f' ) return c - 'a' + 10;
+
+	return 0;
+}
+
+// 改行一つスキップ
+UCHAR* skipCRLF1( UCHAR* p )
+{
+	if( p[0]=='\r' ){
+		if( p[1]=='\n' ) return p + 2;
+		return p + 1;
+	}
+	else if( p[0]=='\n' ) return p + 1;
+
+	return p;
+}
+
 // HTTP圧縮コンテンツ伸長
 HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 {
 	if( rsp ){
+		// chunked解除
+		if( rsp->TransferEncoding==CHUNKED ){
+			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
+			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
+			UCHAR* newbody = malloc( bodybytes );
+			if( newbody ){
+				size_t newbytes = 0; // chunk解除後本文バイト数
+				UCHAR* bp = rsp->body;
+				while( bp ){
+					// チャンク１つ取得
+					size_t chunkBytes = 0;
+					// データバイト数：16進文字列
+					for( ; isxdigit(*bp); bp++ ){
+						chunkBytes = chunkBytes * 16 + char16decimal(*bp);
+					}
+					// セミコロンと無視していい文字列が存在する場合あり
+					while( !isCRLF(*bp) && *bp ) bp++;
+					// 改行１つの後にデータ
+					if( isCRLF(*bp) ){
+						bp = skipCRLF1( bp );
+						if( chunkBytes ){
+							LogW(L"チャンク%uバイト",chunkBytes);
+							memcpy( newbody + newbytes ,bp ,chunkBytes );
+							newbytes += chunkBytes;
+							bp += chunkBytes;
+							// データの後も改行１つ
+							if( isCRLF(*bp) ){
+								bp = skipCRLF1( bp ); // 次のチャンク
+							}
+							else LogW(L"不正なチャンクデータ:改行がありません"), bp = NULL;
+						}
+						else bp = NULL; // バイト数０正常終了
+					}
+					else LogW(L"不正なチャンクデータ:改行がありません"), bp = NULL;
+				}
+				if( newbytes ){
+					memcpy( rsp->body ,newbody ,newbytes );
+					rsp->bytes = headbytes + newbytes;
+					rsp->TransferEncoding = 0; // chunked解除(注:受信ヘッダ文字列は書き換えない)
+				}
+				else LogW(L"不正なチャンクデータ:データサイズが不明です");
+
+				free( newbody );
+			}
+		}
 		// gzip,deflate伸長
 		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
 			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
