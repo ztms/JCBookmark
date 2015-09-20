@@ -17,7 +17,7 @@
   <img id=findhide src=delete.png title="閉じる">
 </div>
 <div id=progress><img src=progress.gif></div>
-<div id=modified>★ 変更を保存するにはここをクリックしてください ★<input type=checkbox id=autoshot><label for=autoshot><img src=camera.png>スナップショットも作成</label></div>
+<div id=modified>★ 変更を保存するにはここをクリックしてください ★<label><input type=checkbox id=autoshot><img src=camera.png>スナップショットも作成</label></div>
 <div id=sidebar style="clear:both;">
   <img class=barico id=optionico src=option.png title="パネル設定" tabindex=0>
   <img class=barico id=filerico src=filer.png title="ブックマークの整理" tabindex=0>
@@ -38,15 +38,15 @@
   <tr>
     <th>色テーマ</th>
     <td>
-      <input type=radio name=colorcss value=white.css id=white><label for=white>&nbsp;白&nbsp;</label>&nbsp;&nbsp;
-      <input type=radio name=colorcss value=black.css id=black><label for=black>&nbsp;黒&nbsp;</label>
+      <label><input type=radio name=colorcss value=white.css id=white>&nbsp;白&nbsp;</label>&nbsp;&nbsp;
+      <label><input type=radio name=colorcss value=black.css id=black>&nbsp;黒&nbsp;</label>
     </td>
   </tr>
   <tr>
     <th>全体</th>
     <td>
-      <input type=radio name=wallMargin value="0 0 0 10px" id=wallLeft><label for=wallLeft>&nbsp;左寄せ&nbsp;</label>&nbsp;&nbsp;
-      <input type=radio name=wallMargin value="auto" id=wallAuto><label for=wallAuto>&nbsp;中央寄せ&nbsp;</label>
+      <label><input type=radio name=wallMargin value="0 0 0 10px" id=wallLeft>&nbsp;左寄せ&nbsp;</label>&nbsp;&nbsp;
+      <label><input type=radio name=wallMargin value="auto" id=wallAuto>&nbsp;中央寄せ&nbsp;</label>
     </td>
   </tr>
   <tr>
@@ -75,8 +75,8 @@
   <tr>
     <th>フォント</th>
     <td>
-      <input type=radio name=fontcss value=gothic.css id=gothic><label for=gothic>&nbsp;MS Pゴシック&nbsp;</label>&nbsp;&nbsp;
-      <input type=radio name=fontcss value=meiryo.css id=meiryo><label for=meiryo>&nbsp;メイリオ&nbsp;</label>
+      <label><input type=radio name=fontcss value=gothic.css id=gothic>&nbsp;MS Pゴシック&nbsp;</label>&nbsp;&nbsp;
+      <label><input type=radio name=fontcss value=meiryo.css id=meiryo>&nbsp;メイリオ&nbsp;</label>
     </td>
   </tr>
   </table>
