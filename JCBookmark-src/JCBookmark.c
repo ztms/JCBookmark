@@ -183,7 +183,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 // memory.log がクリアされず既存の memory.log が存在したら追記されていってしまうので注意。
 // 回避が面倒なのでとりあえず手動で memory.log を消す運用で対処。
 //
-//#define MEMLOG
+#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void _mlogopen( BOOL delete )
@@ -2141,37 +2141,6 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 
 
 
-
-
-
-
-
-
-
-
-//#define HEAPCHECK
-#ifdef HEAPCHECK
-// http://www.kaimei.org/read/internal/safety
-#include <malloc.h>
-void heapWalk( void )
-{
-    _HEAPINFO info;
-    int status;
-    info._pentry = NULL;  // 最初のヒープエントリを指すために NULL をセット
-    while( (status=_heapwalk(&info))==_HEAPOK ){  // エントリが正常な場合
-        //printf("%6s メモリブロック位置 %Fp 大きさ %4.4X\n",
-            //(info._useflag == _USEDENTRY ? "使用中" : "未使用"), info._pentry, info._size);
-    }
-    switch( status ){
-    case _HEAPEMPTY   : ErrorBoxW(L"ヒープが初期化されていません\n"); break;
-    case _HEAPEND     : /*printf("ヒープの終端まで正常に達しました\n");*/ break;
-    case _HEAPBADPTR  : ErrorBoxW(L"_HEAPINFO._pentry にヒープへの有効なポインタがありません\n"); break;
-    case _HEAPBADBEGIN: ErrorBoxW(L"初期ヘッダ情報を検出できないか無効です\n"); break;
-    case _HEAPBADNODE : ErrorBoxW(L"不正なノードが検出されたかヒープが壊れています\n"); break;
-    default           : ErrorBoxW(L"未知のエラーです\n");
-    }
-}
-#endif
 
 
 
@@ -4313,9 +4282,6 @@ void analyzer( void* tp )
 	}
 	// 直接処理したエントリをリスト先頭に追加
 	if( ctxZ ) ctxZ->next = ctx0 ,ctx0 = ctxZ;
-#ifdef HEAPCHECK
-	heapWalk();
-#endif
 	// レスポンス作成
 	if( !cp->abort ){
 		BufferSend( &(cp->rsp.body) ,"[" ,1 );
@@ -9429,6 +9395,11 @@ void MainFormCreateAfter( void )
 	}
 	// OpenSSL
 	SSL_library_init();
+	// ネットde顧問 www1.shalom-house.jp がなぜかTLSv1を明示しないとエラーになる？
+	// openssl s_client -tls1 -connect ... としないと(-tls1つけないと)handshake failureに
+	// なってしまう。SSLv23_method()は TLSv1も使うんじゃないのか？？？
+	//ssl_ctx = SSL_CTX_new( TLSv1_method() );	// SSLv2,SSLv3,TLSv1すべて利用
+	// と思ったらいつの間にか減少が消えた・・・
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
 	if( ssl_ctx ){
 		// PFS(Perfect Forword Security)
@@ -10153,6 +10124,7 @@ void Cleanup( void )
 // 親プロセス(デバッガ)はウィンドウを持たず自分自身をデバッグ実行して例外検知する。
 // 異常終了の検知情報は、再起動後の子プロセス(通常ウィンドウ)側で表示する。
 // 勝手に再起動は、OS標準の例外処理ダイアログも止めて、なにも確認せずに再起動する。
+// TODO:起動してから少しの間カーソルが砂時計になるイヤな感じ…
 // TODO:ログインセッションは再起動と共に消えてしまう。引き継げるとよいが…
 //
 // 異常終了ログエントリ(単方向リスト)
@@ -10394,7 +10366,10 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
+//#define SELF_DEBUG
+#ifdef SELF_DEBUG
 	if( IsDebuggerPresent() ){
+#endif
 		if( Startup( hinst, nCmdShow ) ){
 			while( GetMessage( &msg, NULL, 0,0 ) >0 ){
 				if( !IsDialogMessage( MainForm, &msg ) ){
@@ -10405,6 +10380,8 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 		}
 		Cleanup();
 		return (int)msg.wParam;
+#ifdef SELF_DEBUG
 	}
 	return SelfDebugger();
+#endif
 }
