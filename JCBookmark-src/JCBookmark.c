@@ -2364,7 +2364,8 @@ typedef struct {
 	UINT		ContentLength;	// Content-Length値
 	UCHAR		ContentType;	// Content-Type識別
 	#define		TYPE_HTML		0x01
-	#define		TYPE_IMAGE		0x02
+	#define		TYPE_XML		0x02
+	#define		TYPE_IMAGE		0x03
 	#define		TYPE_OTHER		0xff
 	UCHAR		charset;		// 文字コード識別
 	#define		CS_UTF8			0x01
@@ -2704,13 +2705,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
 											if( p ){
 												if( strnicmp(p,"deflate",7)==0 ){
-													rsp->ContentEncoding = ENC_DEFLATE; //LogW(L"Deflateです");
+													rsp->ContentEncoding = ENC_DEFLATE;
 												}
 												else if( strnicmp(p,"gzip",4)==0 ){
-													rsp->ContentEncoding = ENC_GZIP; //LogW(L"GZIPです");
+													rsp->ContentEncoding = ENC_GZIP;
 												}
 												else{
-													rsp->ContentEncoding = ENC_OTHER; //LogW(L"その他圧縮");
+													rsp->ContentEncoding = ENC_OTHER;
 												}
 											}
 											//else LogW(L"Content-Encodingなし");
@@ -2728,32 +2729,35 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
 											if( p ){
 												if( strnicmp(p,"text/html",9)==0 ){
-													rsp->ContentType = TYPE_HTML; //LogW(L"HTMLです");
+													rsp->ContentType = TYPE_HTML;
+												}
+												else if( strnicmp(p,"application/xml",15)==0 ){
+													rsp->ContentType = TYPE_XML;
 												}
 												else if( strnicmp(p,"image/",6)==0 ){
-													rsp->ContentType = TYPE_IMAGE; //LogW(L"画像");
+													rsp->ContentType = TYPE_IMAGE;
 												}
 												else{
-													rsp->ContentType = TYPE_OTHER; //LogW(L"その他形式");
+													rsp->ContentType = TYPE_OTHER;
 												}
 												p = stristr(p,"charset=");
 												if( p ){
 													p += 8;
 													if( *p=='"') p++;
 													if( strnicmp(p,"utf-8",5)==0 ){
-														rsp->charset = CS_UTF8; //LogW(L"UTF-8です");
+														rsp->charset = CS_UTF8;
 													}
 													else if( strnicmp(p,"shift_jis",9)==0 ){
-														rsp->charset = CS_SJIS; //LogW(L"シフトJISです");
+														rsp->charset = CS_SJIS;
 													}
 													else if( strnicmp(p,"euc-jp",6)==0 ){
-														rsp->charset = CS_EUC; //LogW(L"EUC-JPです");
+														rsp->charset = CS_EUC;
 													}
 													else if( strnicmp(p,"iso-2022-jp",11)==0 ){
-														rsp->charset = CS_JIS; //LogW(L"ISO-2022-JPです");
+														rsp->charset = CS_JIS;
 													}
 													else{
-														rsp->charset = CS_OTHER; //LogW(L"その他文字コード");
+														rsp->charset = CS_OTHER;
 													}
 												}
 											}
@@ -3127,7 +3131,9 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
 	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
 	// とりあえずConvertINetString()で変換しておく。
-	if( rsp && rsp->ContentType==TYPE_HTML && mlang.Convert ){
+	if( rsp && (rsp->ContentType==TYPE_HTML || rsp->ContentType==TYPE_XML) && mlang.Convert ){
+		size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
+		size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
 		DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
 		switch( rsp->charset ){
 		case CS_UTF8: CP = 65001; break;
@@ -3156,9 +3162,9 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 							,(void**)&mlang2
 				);
 				if( SUCCEEDED(res) ){
-					int dataLen = rsp->bytes - (rsp->body - rsp->buf);	// 判定データバイト
-					int count = 1;										// 判定結果の候補数
-					DetectEncodingInfo info;							// 判定結果
+					int dataLen = bodybytes;	// 判定データバイト
+					int count = 1;				// 判定結果の候補数
+					DetectEncodingInfo info;	// 判定結果
 					res = mlang2->lpVtbl->DetectInputCodepage( mlang2
 								,MLDETECTCP_HTML
 								,0
@@ -3174,41 +3180,56 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 						// 少なくてSJISかEUC-JPか判別不能」なことを確認して、charset=euc-jpの
 						// 場合は932→euc-jp(51932)に変更すると良い？そこまでしなくていいか…
 						CP = info.nCodePage;
-						// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
-						// <meta charset=utf-8>なのに文字コード1252と誤判定しているもよう。
-						// 仕方ないので1252だった場合は<meta charset=を検索して修正。
-						if( CP==1252 ){
-							UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
-							UCHAR* meta ,*endtag ,*charset;
-							while(( meta = stristr(body ,"<meta ") )){
-								body = meta = meta + 6;
-								endtag = strchr(meta ,'>');
-								if( endtag ){
-									body = endtag + 1;
-									charset = stristr(meta ,"charset");
-									if( charset && charset < endtag ){
-										charset += 7;
-										while( *charset==' ' ) charset++;
-										if( *charset=='=' ){
-											charset++;
-											while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
-											if( strnicmp(charset,"utf-8",5)==0 ) charset += 5;
-											else if( strnicmp(charset,"utf8",4)==0 ) charset += 4;
-											switch( *charset ){ case '"':case '\'':case ' ':case '>':
-												LogW(L"DetectInputCodePage say 1252, but <meta charset=UTF-8>");
-												CP = 65001;
-											}
-										}
-									}
-								}
-							}
-						}
 					}
 					mlang2->lpVtbl->Release( mlang2 );
 				}
 				CoUninitialize();
 			}
 		}
+		// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
+		// <meta charset=utf-8>なのにDetectInputCodepageは文字コード1252と誤判定しているもよう。
+		// 仕方ないので1252だった場合は<meta charset=を検索して修正。
+		if( CP==1252 ){
+			UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
+			UCHAR* meta ,*endtag ,*charset;
+			while(( meta = stristr(body ,"<meta ") )){
+				body = meta = meta + 6;
+				endtag = strchr(meta ,'>');
+				if( endtag ){
+					body = endtag + 1;
+					charset = stristr(meta ,"charset");
+					if( charset && charset < endtag ){
+						charset += 7;
+						while( *charset==' ' ) charset++;
+						if( *charset=='=' ){
+							charset++;
+							while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
+							if( strnicmp(charset,"utf-8",5)==0 ) charset += 5;
+							else if( strnicmp(charset,"utf8",4)==0 ) charset += 4;
+							switch( *charset ){ case '"':case '\'':case ' ':case '>':
+								LogW(L"DetectInputCodePage say 1252, but <meta charset=UTF-8>");
+								CP = 65001;
+							}
+						}
+					}
+				}
+			}
+		}
+		// ConvertINetStringは1201(UTF16BE)→65001(UTF8)変換できないもよう。
+		// 1201は1200(UTF16LE)とエンディアンが違うのみらしく、1200はWCHAR型のことらしいので自力変換。
+		// http://stackoverflow.com/questions/29054217/multibytetowidechar-for-unicode-code-pages-1200-1201-12000-12001
+		else if( CP==1201 ){
+			// UTF16BE(1201) -> UTF16LE(1200)==WCHAR
+			int count = bodybytes / 2;	// UTF-16文字数
+			WCHAR* wbody = (WCHAR*)rsp->body;
+			int i;
+			for( i=0; i<count; i++ ){
+				wbody[i] = ((wbody[i] << 8) & 0xFF00) | ((wbody[i] >> 8) & 0x00FF);
+			}
+			CP = 1200;
+			LogW(L"文字コード1201->1200変換");
+		}
+		// mlang.ConvertINetString
 		if( CP !=65001 && CP !=20127 ){	// UTF-8,US-ASCIIは変換なし
 			BYTE* tmp;
 			int tmpbytes;
@@ -3254,6 +3275,7 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 						if( res==S_OK ){
 						ok:
 							rsp->body[tmpbytes]='\0';
+							rsp->bytes = headbytes + tmpbytes;
 							rsp->charset = CS_UTF8; // 管理情報のみ文字コード変更(ヘッダ文字列は無変更)
 							LogW(L"文字コード%u->65001変換",CP);
 						}
@@ -3674,7 +3696,7 @@ HTTPGet* httpGETs( const UCHAR* url0 ,const UCHAR* ua ,const UCHAR* abort ,PokeR
 	retry:
 		if( *abort ) goto fin;
 		rsp = HTTPContentDecode( rsp ,newurl? newurl :url0 );
-		if( rsp->ContentType==TYPE_HTML ){
+		if( rsp->ContentType==TYPE_HTML || rsp->ContentType==TYPE_XML ){
 			rsp = HTTPContentToUTF8( rsp ,newurl? newurl :url0 );
 		}
 		if( hop++ >9 ){
@@ -4542,9 +4564,6 @@ void poker( void* tp )
 // ・JCBookmarkの<img>タグでは、Chromeだと64x64画像、Firefoxだと16x16画像になる。
 // ・リクエストによって返ってくる画像が異なるのか？
 // ・User-Agentの違いなのか何なのか不明で、SSLなのでキャプチャできない。
-// TODO:.xmlページのタイトルが取得できない。
-// view-source:http://www.usamimi.info/~hellfather/game/hash.xml
-// <desc title="文字列からハッシュを生成">
 // TODO:URLがamazonアダルトコンテンツだと「警告：」というページタイトルになる。
 // 「18歳以上」をクリックするとクッキーが発行されて、そのクッキーを送信すれば
 // 目的のタイトルを取得できる仕組み？JavaScriptでは他ドメインのクッキーは取得
@@ -4727,6 +4746,24 @@ void Analyze( AnalyCTX* ctx )
 						}
 					}
 					if( slash ) *slash = '/';
+				}
+			}
+		}
+		else if( rsp->ContentType==TYPE_XML ){
+			// XMLページのタイトル取得
+			// http://www.usamimi.info/~hellfather/game/hash.xml
+			// <desc title="文字列からハッシュを生成">
+			UCHAR* begin = stristr(rsp->body,"<desc title=\"");
+			UCHAR* end;
+			if( begin ){
+				begin += 13;
+				end = strchr(begin,'\"');
+				if( end ){
+					end--;
+					while( isspace(*begin) ) begin++;
+					while( isspace(*end) ) end--;
+					title = strndupJSON( begin, end - begin + 1 );
+					CRLFtoSPACE( title );
 				}
 			}
 		}
