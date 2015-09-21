@@ -170,19 +170,27 @@ var tree = {
 	}
 	// ノードツリー保存
 	,save:function( arg ){
-		$.ajax({
-			type	:'put'
-			,url	:'tree.json'
-			,data	:JSON.stringify( tree.root )
-			,error	:function(xhr){
-				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
-				if( arg.error ) arg.error();
-			}
-			,success:function(){
-				tree.modified(false);
-				if( arg.success ) arg.success();
-			}
-		});
+		function save(){
+			$.ajax({
+				type:'put'
+				,url:'tree.json'
+				,data:JSON.stringify( tree.root )
+				,error:function(xhr){
+					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:giveup });
+					else giveup();
+
+					function giveup(){
+						Alert('保存できません:'+xhr.status+' '+xhr.statusText);
+						if( arg.error ) arg.error();
+					}
+				}
+				,success:function(){
+					tree.modified(false);
+					if( arg.success ) arg.success();
+				}
+			});
+		}
+		save();
 	}
 	// 移動・消去してよいノードかどうか
 	// id:ノードID
@@ -622,19 +630,27 @@ var option = {
 	}
 	// オプション保存
 	,save:function( arg ){
-		$.ajax({
-			type	:'put'
-			,url	:'index.json'
-			,data	:JSON.stringify( option.data )
-			,error	:function(xhr){
-				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
-				if( arg.error ) arg.error();
-			}
-			,success:function(){
-				option.modified(false);
-				if( arg.success ) arg.success();
-			}
-		});
+		function save(){
+			$.ajax({
+				type:'put'
+				,url:'index.json'
+				,data:JSON.stringify( option.data )
+				,error:function(xhr){
+					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:giveup });
+					else giveup();
+
+					function giveup(){
+						Alert('保存できません:'+xhr.status+' '+xhr.statusText);
+						if( arg.error ) arg.error();
+					}
+				}
+				,success:function(){
+					option.modified(false);
+					if( arg.success ) arg.success();
+				}
+			});
+		}
+		save();
 		return option;
 	}
 };
@@ -820,14 +836,22 @@ var paneler = function(){
 				.on({
 					// 新規登録
 					commit:function(){
-						var node = tree.newURL( tree.top(), this.value, this.value.noProto() );
+						var url = this.value;
+						var node = tree.newURL( tree.top(), url, url.noProto() );
 						if( node ){
-							// URLタイトル/favicon取得
+							analyze();
+							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
+							$('#commit').remove();
+							this.value = '';
+						}
+						// URLタイトル/favicon取得
+						function analyze(){
 							tree.modifing(true);
 							$.ajax({
 								type:'post'
 								,url:':analyze'
-								,data:this.value+'\r\n'
+								,data:url +'\r\n'
+								,error:function(xhr){ if( xhr.status===401 ) LoginDialog({ ok:analyze }); }
 								,success:function(data){
 									data = data[0];
 									if( data.title.length ){
@@ -842,10 +866,6 @@ var paneler = function(){
 								}
 								,complete:function(){ tree.modifing(false); } // 編集完了
 							});
-							// DOM
-							$newItem(node).prependTo( $(this.parentNode).find('.itembox') );
-							$('#commit').remove();
-							this.value = '';
 						}
 					}
 					// Enterで反映
@@ -950,23 +970,31 @@ function setEvents(){
 						Confirm({
 							msg:'Chromeブックマークデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,ok:function(){
-								MsgBox('処理中です...');
-								var time = (new Date()).getTime();
-								$.ajax({
-									url:':chrome.json?'+ time
-									,error:function(xhr){
-										$('#dialog').dialog('destroy');
-										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
-									}
-									,success:function( data ){
-										bookmarks = data;
-										$.ajax({
-											url:':chrome.icon.json?'+ time
-											,success:function(data){ favicons = data; }
-											,complete:doImport
-										});
-									}
-								});
+								function ajax(){
+									MsgBox('処理中です...');
+									var time = (new Date()).getTime();
+									$.ajax({
+										url:':chrome.json?'+ time
+										,error:function(xhr){
+											$('#dialog').dialog('destroy');
+											if( xhr.status===401 ) LoginDialog({ ok:ajax ,cancel:giveup });
+											else giveup();
+
+											function giveup(){
+												Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+											}
+										}
+										,success:function( data ){
+											bookmarks = data;
+											$.ajax({
+												url:':chrome.icon.json?'+ time
+												,success:function(data){ favicons = data; }
+												,complete:doImport
+											});
+										}
+									});
+								}
+								ajax();
 							}
 						});
 						function doImport(){
@@ -1050,17 +1078,25 @@ function setEvents(){
 							msg:'Internet Explorer お気に入りデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,width:390
 							,ok:function(){
-								MsgBox('処理中です...');
-								$.ajax({
-									url:':favorites.json?'+ (new Date()).getTime()
-									,error:function(xhr){
-										$('#dialog').dialog('destroy');
-										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
-									}
-									,success:function(data){
-										$('#dialog').dialog('destroy'); analyzer( data );
-									}
-								});
+								function ajax(){
+									MsgBox('処理中です...');
+									$.ajax({
+										url:':favorites.json?'+ (new Date()).getTime()
+										,error:function(xhr){
+											$('#dialog').dialog('destroy');
+											if( xhr.status===401 ) LoginDialog({ ok:ajax ,cancel:giveup });
+											else giveup();
+
+											function giveup(){
+												Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+											}
+										}
+										,success:function(data){
+											$('#dialog').dialog('destroy'); analyzer( data );
+										}
+									});
+								}
+								ajax();
 							}
 						});
 					});
@@ -1073,17 +1109,25 @@ function setEvents(){
 						Confirm({
 							msg:'Firefoxブックマークデータを取り込みます。#BR#データ量が多いと時間がかかります。'
 							,ok:function(){
-								MsgBox('処理中です...');
-								$.ajax({
-									url:':firefox.json?'+ (new Date()).getTime()
-									,error:function(xhr){
-										$('#dialog').dialog('destroy');
-										Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
-									}
-									,success:function(data){
-										$('#dialog').dialog('destroy'); analyzer( data );
-									}
-								});
+								function ajax(){
+									MsgBox('処理中です...');
+									$.ajax({
+										url:':firefox.json?'+ (new Date()).getTime()
+										,error:function(xhr){
+											$('#dialog').dialog('destroy');
+											if( xhr.status===401 ) LoginDialog({ ok:ajax ,cancel:giveup });
+											else giveup();
+
+											function giveup(){
+												Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+											}
+										}
+										,success:function(data){
+											$('#dialog').dialog('destroy'); analyzer( data );
+										}
+									});
+								}
+								ajax();
 							}
 						});
 					});
@@ -1194,7 +1238,7 @@ function setEvents(){
 	});
 	// パネル右クリックメニュー
 	var isLocalServer = true;
-	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; } });
+	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status===403 ) isLocalServer=false; } });
 	$doc.on('contextmenu','.title',function(ev){
 		// ev.targetはクリックした場所にあるDOMエレメント
 		var panel = ev.target;
@@ -1207,7 +1251,15 @@ function setEvents(){
 		if( isLocalServer ){
 			$box.append($('<a><img src=item.png>クリップボードのURLを新規登録</a>').click(function(){
 				$menu.hide();
-				$.get(':clipboard.txt',function(data){
+				var start = function(){
+					$.ajax({
+						type:'get'
+						,url:':clipboard.txt'
+						,error:function(xhr){ if( xhr.status===401 ) LoginDialog({ ok:start }); }
+						,success:success
+					});
+				};
+				var success = function(data){
 					var pnode = tree.node( panel.id );
 					var $itembox = $(panel).find('.itembox');
 					var lines = data.split(/[\r\n]+/);							// 行分割
@@ -1215,30 +1267,7 @@ function setEvents(){
 					var url = '';
 					var ajaxs = [];												// ajax配列
 					var complete = 0;											// 完了数カウント
-					tree.modifing(true);										// 編集中表示
-					(function callee(){
-						var count = 10;											// 10行ずつ
-						while( index >=0 && count>0 ){
-							var str = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
-							if( /^[A-Za-z]+:\/\/.+/.test(str) ){				// URL発見
-								if( url ) itemAdd( url );
-								url = str;
-							}
-							else if( url ) itemAdd( url ,str ) ,url='';			// タイトル付URL発見
-							index--; count--;
-						}
-						// 次
-						if( index >=0 ) setTimeout(callee,0);
-						else{
-							if( url ) itemAdd( url );
-							// ajax完了待ち
-							(function completed(){
-								if( complete < ajaxs.length ) setTimeout(completed,250);
-								else tree.modifing(false);						// 編集完了
-							})();
-						}
-					})();
-					function itemAdd( url ,title ){
+					var itemAdd = function( url ,title ){
 						// ノード作成
 						var node = tree.newURL( pnode, url, title || url.noProto() );
 						if( node ){
@@ -1264,8 +1293,32 @@ function setEvents(){
 							// DOM増加
 							$newItem(node).prependTo( $itembox );
 						}
-					}
-				});
+					};
+					tree.modifing(true);										// 編集中表示
+					(function callee(){
+						var count = 10;											// 10行ずつ
+						while( index >=0 && count>0 ){
+							var str = lines[index].replace(/^\s+|\s+$/g,'');	// 前後の空白削除(trim()はIE8ダメ)
+							if( /^[A-Za-z]+:\/\/.+/.test(str) ){				// URL発見
+								if( url ) itemAdd( url );
+								url = str;
+							}
+							else if( url ) itemAdd( url ,str ) ,url='';			// タイトル付URL発見
+							index--; count--;
+						}
+						// 次
+						if( index >=0 ) setTimeout(callee,0);
+						else{
+							if( url ) itemAdd( url );
+							// ajax完了待ち
+							(function completed(){
+								if( complete < ajaxs.length ) setTimeout(completed,250);
+								else tree.modifing(false);						// 編集完了
+							})();
+						}
+					})();
+				};
+				start();
 			}));
 		}
 		$box.append($('<a><img src=pen.png>パネル編集（パネル名・アイテム編集）</a>').click(function(){
@@ -1730,23 +1783,43 @@ function setEvents(){
 		}( tree.top().child, 1 ));
 		html += '</DL><p>\n';
 		// アップロード＆ダウンロード
-		$.ajax({
-			type:'put'
-			,url:'export.html'
-			,data:html
-			,error:function(xhr){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
-			,success:function(){ location.href = 'export.html'; }
-		});
+		var start = function(){
+			$.ajax({
+				type:'put'
+				,url:'export.html'
+				,data:html
+				,error:function(xhr){
+					if( xhr.status===401 ) LoginDialog({ ok:start ,cancel:giveup });
+					else giveup();
+
+					function giveup(){ Alert('データ保存できません:'+xhr.status+' '+xhr.statusText); }
+				}
+				,success:function(){ location.href = 'export.html'; }
+			});
+		};
+		start();
 	});
 	// スナップショット
 	$('#snapico').click(function(){
 		// 一覧取得表示
-		var $shots = $('#shots').text('...取得中...');
-		$.ajax({
-			url:':shotlist'
-			,error:function(xhr){ $shots.empty(); Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText); }
-			,success:function(data){ shotlist( data ); }
-		});
+		var $shots = $('#shots');
+		var start = function(){
+			$shots.text('...取得中...');
+			$.ajax({
+				url:':shotlist'
+				,error:function(xhr){
+					$shots.empty();
+					if( xhr.status===401 ) LoginDialog({ ok:start ,cancel:giveup });
+					else giveup();
+
+					function giveup(){
+						Alert('作成済みスナップショット一覧を取得できません:'+xhr.status+' '+xhr.statusText);
+					}
+				}
+				,success:function(data){ shotlist( data ); }
+			});
+		};
+		start();
 		// ダイアログ表示
 		$('#snap').dialog({
 			title	:'スナップショット'
@@ -1773,19 +1846,27 @@ function setEvents(){
 		// 保存されているが、問題だ。どうしよう…setTimeoutでいいかな？サーバ側での実行順序
 		// を保証できるわけではないが、とりあえず…。
 		setTimeout(function(){
-			$.ajax({
-				url:':snapshot'
-				,error:function(xhr){
-					Alert('作成できません:'+xhr.status+' '+xhr.statusText);
-					$btn.next().hide();
-					$btn.show();
-				}
-				,success:function(data){
-					shotlist( data );
-					$btn.next().hide();
-					$btn.show();
-				}
-			});
+			function snapshot(){
+				$.ajax({
+					url:':snapshot'
+					,error:function(xhr){
+						if( xhr.status===401 ) LoginDialog({ ok:snapshot ,cancel:giveup });
+						else giveup();
+
+						function giveup(){
+							Alert('作成できません:'+xhr.status+' '+xhr.statusText);
+							$btn.next().hide();
+							$btn.show();
+						}
+					}
+					,success:function(data){
+						shotlist( data );
+						$btn.next().hide();
+						$btn.show();
+					}
+				});
+			}
+			snapshot();
 		},100);
 	});
 	// スナップショット復元
@@ -1808,21 +1889,29 @@ function setEvents(){
 		}
 		function shotView(){
 			$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
-			$.ajax({
-				url:':shotget?'+item.id
-				,error:function(xhr){
-					Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
-					$btn.next().hide();
-					$btn.show();
-				}
-				,success:function(data){
-					if( 'index.json' in data ) option.merge( data['index.json'] );
-					else option.clear();
-					panelReady(); paneler( tree.replace(data['tree.json']).top() );
-					$btn.next().hide();
-					$btn.show();
-				}
-			});
+			function shotget(){
+				$.ajax({
+					url:':shotget?'+item.id
+					,error:function(xhr){
+						if( xhr.status===401 ) LoginDialog({ ok:shotget ,cancel:giveup });
+						else giveup();
+
+						function giveup(){
+							Alert('データ取得できません:'+xhr.status+' '+xhr.statusText);
+							$btn.next().hide();
+							$btn.show();
+						}
+					}
+					,success:function(data){
+						if( 'index.json' in data ) option.merge( data['index.json'] );
+						else option.clear();
+						panelReady(); paneler( tree.replace(data['tree.json']).top() );
+						$btn.next().hide();
+						$btn.show();
+					}
+				});
+			}
+			shotget();
 		}
 	});
 	// スナップショット消去
@@ -1838,21 +1927,29 @@ function setEvents(){
 				msg:$(item).find('.date').text()+'　のスナップショットを#BR#ディスクから完全に消去します。'
 				,ok:function(){
 					$btn.hide().next().show();	// ボタン隠して処理中画像(wait.gif)表示
-					$.ajax({
-						url:':shotdel?'+item.id
-						,error:function(xhr){
-							Alert('消去できません:'+xhr.status+' '+xhr.statusText);
-							$btn.next().hide();
-							$btn.show();
-						}
-						,success:function(data){
-							// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
-							// 成功しても毎回一覧を更新することで削除できなかったことを判断
-							shotlist( data );
-							$btn.next().hide();
-							$btn.show();
-						}
-					});
+					function shotdel(){
+						$.ajax({
+							url:':shotdel?'+item.id
+							,error:function(xhr){
+								if( xhr.status===401 ) LoginDialog({ ok:shotdel ,cancel:giveup });
+								else giveup();
+
+								function giveup(){
+									Alert('消去できません:'+xhr.status+' '+xhr.statusText);
+									$btn.next().hide();
+									$btn.show();
+								}
+							}
+							,success:function(data){
+								// 削除できなくてもサーバからエラー応答は返らず一覧が返却されるので
+								// 成功しても毎回一覧を更新することで削除できなかったことを判断
+								shotlist( data );
+								$btn.next().hide();
+								$btn.show();
+							}
+						});
+					}
+					shotdel();
 				}
 			});
 		}
@@ -1894,11 +1991,19 @@ function setEvents(){
 						var opt = {
 							type:text.length? 'put':'del'
 							,url:'snap/'+id.replace(/cab$/,'txt')
-							,error:function(xhr){ Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText); }
+							,error:function(xhr){
+								if( xhr.status===401 ) LoginDialog({ ok:update ,cancel:giveup });
+								else giveup();
+
+								function giveup(){
+									Alert('メモを保存できません:'+xhr.status+' '+xhr.statusText);
+								}
+							}
 							,success:function(){ item.memo=text; widthAdjust(); }
 						};
 						if( text.length ) opt.data = text;
-						$.ajax(opt);
+						var update = function(){ $.ajax(opt); };
+						update();
 					}
 				}
 				// メモ欄Enterで次アイテム選択
@@ -2386,17 +2491,26 @@ function panelEdit( pid ){
 	var $newurl = $('<input class=newurl title="新規ブックマークURL" placeholder="新規ブックマークURL">')
 				.on('commit',function(){
 					if( this.value.length ){
-						var $item = $('<a class=edit></a>').attr('title',this.value);
+						var url = this.value;
+						var $item = $('<a class=edit></a>').attr('title',url);
 						var $icon = $('<img class=icon src=item.png>');
-						var $edit = $('<input>').width( $itembox.width() -64 ).val( this.value.noProto() );
+						var $edit = $('<input>').width( $itembox.width() -64 ).val( url.noProto() );
 						var $idel = $('<img class=idel src=delete.png title="削除">');
 						// URLタイトル、favicon取得
-						// TODO:ajax完了したかどうか不明(通知がない)
-						$.post(':analyze',this.value+'\r\n',function(data){
-							data = data[0];
-							if( data.title.length ) $edit.val( HTMLdec( data.title ) );
-							if( data.icon.length ) $icon.attr('src',data.icon);
-						});
+						var analyze = function(){
+							$.ajax({
+								type:'post'
+								,url:':analyze'
+								,data:url +'\r\n'
+								,error:function(xhr){ if( xhr.status==401 ) LoginDialog({ ok:analyze }); }
+								,success:function(data){
+									data = data[0];
+									if( data.title.length ) $edit.val( HTMLdec( data.title ) );
+									if( data.icon.length ) $icon.attr('src',data.icon);
+								}
+							});
+						};
+						analyze();
 						// 新規登録ボタンの次に挿入
 						$commit.after( $item.append($idel).append($icon).append($edit) ).hide();
 						this.value = '';
@@ -2623,14 +2737,19 @@ function modifySave( arg ){
 	function suc(){
 		$('#progress').hide();
 		$wall.css('padding-top',0);
-		if( option.autoshot() ){
+
+		if( option.autoshot() ) snapshot();
+		else if( arg && arg.success ) arg.success();
+
+		function snapshot(){
 			$.ajax({
 				url:':snapshot'
-				,error:function(xhr){ Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText); }
+				,error:function(xhr){
+					Alert('スナップショット作成できませんでした:'+xhr.status+' '+xhr.statusText);
+				}
 				,complete:function(){ if( arg && arg.success ) arg.success(); }
 			});
 		}
-		else if( arg && arg.success ) arg.success();
 	}
 	function err(){
 		$('#progress').hide();
@@ -3353,6 +3472,50 @@ function InputDialog( arg ){
 	if( arg.val ) $input.val( arg.val ).select();
 	function ok(){ arg.ok( $input.val() ); close(); }
 	function close(){ $input.remove(); $('#dialog').dialog('destroy'); }
+}
+// ログインダイアログ
+function LoginDialog( arg ){
+	var $input = $('<input type=password>').width(250)
+		.css({
+			padding:'0 0 0 2px'
+			,margin:'0 0 0 9px'
+		})
+		.keypress(function(ev){
+			switch( ev.which || ev.keyCode || ev.charCode ){
+			case 13: ok(); return false; // Enterで反映
+			}
+		});
+
+	$('#dialog')
+		.html('JCBookmarkのパスワードを入力してログインしてください。<br><br>　パスワード')
+		.append( $input )
+		.dialog({
+			 title	:'ログインセッションがありません'
+			,modal	:true
+			,width	:440
+			,height	:210
+			,close	:close
+			,buttons:{ '　ログイン　':ok ,'キャンセル':close }
+		});
+
+	function ok(){
+		$.ajax({
+			type:'post'
+			,url:':login'
+			,data:{ p:$input.val() }
+			,success:function(data){ document.cookie = 'session='+data +'; path=/;'; }
+			,complete:function(){
+				$input.remove();
+				$('#dialog').dialog('destroy');
+				if( arg && arg.ok ) arg.ok();
+			}
+		});
+	}
+	function close(){
+		$input.remove();
+		$('#dialog').dialog('destroy');
+		if( arg && arg.cancel ) arg.cancel();
+	}
 }
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という

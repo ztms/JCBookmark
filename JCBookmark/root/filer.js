@@ -235,19 +235,27 @@ var tree = {
 	}
 	// ノードツリー保存
 	,save:function( arg ){
-		$.ajax({
-			type	:'put'
-			,url	:'tree.json'
-			,data	:JSON.stringify( tree.root )
-			,error	:function(xhr){
-				Alert('保存できません:'+xhr.status+' '+xhr.statusText);
-				if( arg.error ) arg.error();
-			}
-			,success:function(){
-				tree.modified(false);
-				if( arg.success ) arg.success();
-			}
-		});
+		function save(){
+			$.ajax({
+				type:'put'
+				,url:'tree.json'
+				,data:JSON.stringify( tree.root )
+				,error:function(xhr){
+					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:giveup });
+					else giveup();
+
+					function giveup(){
+						Alert('保存できません:'+xhr.status+' '+xhr.statusText);
+						if( arg.error ) arg.error();
+					}
+				}
+				,success:function(){
+					tree.modified(false);
+					if( arg.success ) arg.success();
+				}
+			});
+		}
+		save();
 	}
 	// 移動・消去してよいノードかどうか
 	// id:ノードID
@@ -465,7 +473,7 @@ var option = {
 	});
 	$.ajax({
 		url:':clipboard.txt'
-		,error:function(xhr){ if( xhr.status==403 ) isLocalServer=false; }
+		,error:function(xhr){ if( xhr.status===403 ) isLocalServer=false; }
 	});
 	function _folderTree(){
 		// フォルダツリーやアイテム欄生成などで、反応速度が遅れない程度にDOM生成ビジーループの実行回数を
@@ -1668,12 +1676,13 @@ $('#newitem').on({
 		var url = $('#newurl').val();
 		// 選択フォルダID=folderXXならノードID=XX
 		var node = tree.newURL( tree.node( selectFolder.id.slice(6) ), url );
-		if( url.length ){
+		var analyze = function(){
 			tree.modifing(true);
 			$.ajax({
-				 type:'post'
+				type:'post'
 				,url:':analyze'
 				,data:url+'\r\n'
+				,error:function(xhr){ if( xhr.status===401 ) LoginDialog({ ok:analyze }); }
 				,success:function(data){
 					data = data[0];
 					if( data.title.length ){
@@ -1691,7 +1700,8 @@ $('#newitem').on({
 				}
 				,complete:function(){ tree.modifing(false); }
 			});
-		}
+		};
+		if( url.length ) analyze();
 		// DOM再構築
 		var $item = [];
 		itemList( tree.node( selectFolder.id.slice(6) ) ,{
@@ -2914,67 +2924,77 @@ function itemContextMenu(ev){
 					var $title = $('<input id=antitle>');
 					var $icon = $('<img src=wait.gif class=icon>');
 					var $iconurl = $('<input id=anicon readonly>');
-					$('#dialog').empty().append(
-						$('<table id=analybox></table>').append(
-							$('<tr><th>タイトル</th></tr>').append(
-								$('<td></td>').append( $title )
-							).append(
-								$('<th></th>').append(
-									$('<a>反映</a>').button().click(function(){
-										if( tree.nodeAttr( nid,'title',$title.val() ) >1 )
-											$(item).children('.title').text( $title.val() );
-									})
-								)
-							)
-						).append(
-							$('<tr><th>アイコン</th></tr>').append(
-								$('<td></td>').append( $icon ).append( $iconurl )
-							).append(
-								$('<th></th>').append(
-									$('<a>反映</a>').button().click(function(){
-										if( tree.nodeAttr( nid,'icon',$iconurl.val() ) >1 )
-											$(item)
-											.children('.icon').attr('src',$icon.attr('src')).end()
-											.children('.iconurl').text( $iconurl.val() );
-									})
-								)
-							)
-						).append(
-							$('<tr></tr>').append(
-								$('<td id=anmove colspan=3></td>').append(
-									$('<a title="前のアイテム">&nbsp;&nbsp;▲&nbsp;&nbsp;</a>').button().click(function(){
-										var $prev = $(item).prev();
-										while( $prev.hasClass('folder') ) $prev = $prev.prev();
-										if( $prev.hasClass('item') ) shiftTo( item=$prev[0] );
-									})
+					function start(){
+						$('#dialog').empty().append(
+							$('<table id=analybox></table>').append(
+								$('<tr><th>タイトル</th></tr>').append(
+									$('<td></td>').append( $title )
 								).append(
-									$('<a title="次のアイテム">&nbsp;&nbsp;▼&nbsp;&nbsp;</a>').button().click(function(){
-										var $next = $(item).next();
-										while( $next.hasClass('folder') ) $next = $next.next();
-										if( $next.hasClass('item') ) shiftTo( item=$next[0] );
-									})
+									$('<th></th>').append(
+										$('<a>反映</a>').button().click(function(){
+											if( tree.nodeAttr( nid,'title',$title.val() ) >1 )
+												$(item).children('.title').text( $title.val() );
+										})
+									)
+								)
+							).append(
+								$('<tr><th>アイコン</th></tr>').append(
+									$('<td></td>').append( $icon ).append( $iconurl )
+								).append(
+									$('<th></th>').append(
+										$('<a>反映</a>').button().click(function(){
+											if( tree.nodeAttr( nid,'icon',$iconurl.val() ) >1 )
+												$(item)
+												.children('.icon').attr('src',$icon.attr('src')).end()
+												.children('.iconurl').text( $iconurl.val() );
+										})
+									)
+								)
+							).append(
+								$('<tr></tr>').append(
+									$('<td id=anmove colspan=3></td>').append(
+										$('<a title="前のアイテム">&nbsp;&nbsp;▲&nbsp;&nbsp;</a>').button()
+										.click(function(){
+											var $prev = $(item).prev();
+											while( $prev.hasClass('folder') ) $prev = $prev.prev();
+											if( $prev.hasClass('item') ) shiftTo( item=$prev[0] );
+										})
+									).append(
+										$('<a title="次のアイテム">&nbsp;&nbsp;▼&nbsp;&nbsp;</a>').button()
+										.click(function(){
+											var $next = $(item).next();
+											while( $next.hasClass('folder') ) $next = $next.next();
+											if( $next.hasClass('item') ) shiftTo( item=$next[0] );
+										})
+									)
 								)
 							)
-						)
-					).dialog({
-						title	:'タイトル/アイコンを取得'
-						,modal	:true
-						,width	:560
-						,height	:217
-						,close	:function(){ $(this).dialog('destroy'); }
-					});
-					analyze();
+						).dialog({
+							title	:'タイトル/アイコンを取得'
+							,modal	:true
+							,width	:560
+							,height	:217
+							,close	:function(){ $(this).dialog('destroy'); }
+						});
+						analyze();
+					}
 					function analyze(){
 						var url = $(item).children('.url').text();
 						$.ajax({
 							type:'post'
 							,url:':analyze'
-							,data:url+'\r\n'
-							,error:function(){
-								if( url==$(item).children('.url').text() ){
-									$title.val('');
-									$icon.attr('src','item.png');
-									$iconurl.val('');
+							,data:url +'\r\n'
+							,error:function(xhr){
+								$('#dialog').dialog('destroy');
+								if( xhr.status===401 ) LoginDialog({ ok:start ,cancel:giveup });
+								else giveup();
+
+								function giveup(){
+									if( url==$(item).children('.url').text() ){
+										$title.val('');
+										$icon.attr('src','item.png');
+										$iconurl.val('');
+									}
 								}
 							}
 							,success:function(data){
@@ -2995,9 +3015,10 @@ function itemContextMenu(ev){
 							$title.val('');
 							$icon.attr('src','wait.gif');
 							$iconurl.val('');
-							analyze(item);
+							analyze();
 						},1);
 					}
+					start();
 				}));
 			}
 		}
@@ -3503,13 +3524,15 @@ function edit( element, opt ){
 							case 'url':
 								if( value.length ){
 									// 新品アイテムはURL取得解析する
-									var node = tree.node( nid );
-									if( node.title=='新規ブックマーク' ){
+									var analyze = function(){
 										tree.modifing(true);
 										$.ajax({
 											type:'post'
 											,url:':analyze'
 											,data:value+'\r\n'
+											,error:function(xhr){
+												if( xhr.status===401 ) LoginDialog({ ok:analyze });
+											}
 											,success:function(data){
 												data = data[0];
 												if( data.title.length && node.title=='新規ブックマーク' ){
@@ -3527,7 +3550,9 @@ function edit( element, opt ){
 											}
 											,complete:function(){ tree.modifing(false); }
 										});
-									}
+									};
+									var node = tree.node( nid );
+									if( node.title=='新規ブックマーク' ) analyze();
 								}
 								break;
 							case 'icon':
@@ -3630,71 +3655,122 @@ function viewScroll( element ){
 // index: 登録位置インデックス
 // after: 処理完了後コールバック
 function clipboardTo( pnode ,index ,after ){
-	$('#dialog').empty().text('処理中です...').dialog({
-		title	:'情報'
-		,width	:300
-		,height	:100
-	});
-	$.ajax({
-		url:':clipboard.txt'
-		,error:function(){ $('#dialog').dialog('destroy'); }
-		,success:function(data){
-			$('#dialog').dialog('destroy');
-			var lines = data.split(/[\r\n]+/);				// 行分割
-			var regTrim = /^\s+|\s+$/g;
-			var regUrl = /^[A-Za-z]+:.+/;
-			var url = '';
-			var ajaxs = [];									// ajax配列
-			var nodes = [];									// 作成したノード配列
-			var complete = 0;								// 完了数カウント
-			tree.modifing(true);							// 編集中表示
-			var itemAdd = function( url ,title ){
-				// ノード作成
-				var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
-				if( node ){
-					nodes.push( node );
-					// タイトル/favicon取得
-					ajaxs.push($.ajax({
-						type:'post'
-						,url:':analyze'
-						,data:url+'\r\n'
-						,success:function(data){
-							data = data[0];
-							if( !title && data.title.length ){
-								data.title = HTMLdec( data.title );
-								if( tree.nodeAttr( node.id,'title',data.title ) >1 )
-									$('#item'+node.id).find('.title').text( data.title ).attr('title',data.title);
-							}
-							if( data.icon.length ){
-								if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
-									$('#item'+node.id)
-									.children('.icon').attr('src',data.icon).end()
-									.find('.iconurl').text( data.icon );
-								}
+	function start(){
+		$('#dialog').empty().text('処理中です...').dialog({
+			title	:'情報'
+			,width	:300
+			,height	:100
+		});
+		$.ajax({
+			url:':clipboard.txt'
+			,error:function(xhr){
+				$('#dialog').dialog('destroy');
+				if( xhr.status===401 ) LoginDialog({ ok:start });
+			}
+			,success:success
+		});
+	}
+	function success(data){
+		$('#dialog').dialog('destroy');
+		var lines = data.split(/[\r\n]+/);				// 行分割
+		var regTrim = /^\s+|\s+$/g;
+		var regUrl = /^[A-Za-z]+:.+/;
+		var url = '';
+		var ajaxs = [];									// ajax配列
+		var nodes = [];									// 作成したノード配列
+		var complete = 0;								// 完了数カウント
+		tree.modifing(true);							// 編集中表示
+		var itemAdd = function( url ,title ){
+			// ノード作成
+			var node = tree.newURL( pnode, url, title || url.noProto(), '', index );
+			if( node ){
+				nodes.push( node );
+				// タイトル/favicon取得
+				ajaxs.push($.ajax({
+					type:'post'
+					,url:':analyze'
+					,data:url+'\r\n'
+					,success:function(data){
+						data = data[0];
+						if( !title && data.title.length ){
+							data.title = HTMLdec( data.title );
+							if( tree.nodeAttr( node.id,'title',data.title ) >1 )
+								$('#item'+node.id).find('.title').text( data.title ).attr('title',data.title);
+						}
+						if( data.icon.length ){
+							if( tree.nodeAttr( node.id,'icon',data.icon ) >1 ){
+								$('#item'+node.id)
+								.children('.icon').attr('src',data.icon).end()
+								.find('.iconurl').text( data.icon );
 							}
 						}
-						,complete:function(){ complete++; }
-					}));
-				}
-			};
-			for( var i=lines.length; i--; ){				// 最後の行から
-				var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
-				if( regUrl.test(str) ){						// URL発見
-					if( url ) itemAdd( url );
-					url = str;
-				}
-				else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
+					}
+					,complete:function(){ complete++; }
+				}));
 			}
-			if( url ) itemAdd( url );
-			// ajax完了待ち
-			var completed = function(){
-				if( complete < ajaxs.length ) setTimeout(completed,250);
-				else tree.modifing(false);					// 編集完了
-			};
-			completed();
-			if( after ) after( nodes.reverse() );
+		};
+		for( var i=lines.length; i--; ){				// 最後の行から
+			var str = lines[i].replace(regTrim,'');		// 前後の空白削除(trim()はIE8ダメ)
+			if( regUrl.test(str) ){						// URL発見
+				if( url ) itemAdd( url );
+				url = str;
+			}
+			else if( url ) itemAdd( url ,str ) ,url='';	// タイトル付URL発見
 		}
-	});
+		if( url ) itemAdd( url );
+		// ajax完了待ち
+		var completed = function(){
+			if( complete < ajaxs.length ) setTimeout(completed,250);
+			else tree.modifing(false);					// 編集完了
+		};
+		completed();
+		if( after ) after( nodes.reverse() );
+	}
+	start();
+}
+// ログインダイアログ
+function LoginDialog( arg ){
+	var $input = $('<input type=password>').width(250)
+		.css({
+			padding:'0 0 0 2px'
+			,margin:'0 0 0 9px'
+		})
+		.keypress(function(ev){
+			switch( ev.which || ev.keyCode || ev.charCode ){
+			case 13: ok(); return false; // Enterで反映
+			}
+		});
+
+	$('#dialog')
+		.html('JCBookmarkのパスワードを入力してログインしてください。<br><br>　パスワード')
+		.append( $input )
+		.dialog({
+			 title	:'ログインセッションがありません'
+			,modal	:true
+			,width	:440
+			,height	:210
+			,close	:close
+			,buttons:{ '　ログイン　':ok ,'キャンセル':close }
+		});
+
+	function ok(){
+		$.ajax({
+			type:'post'
+			,url:':login'
+			,data:{ p:$input.val() }
+			,success:function(data){ document.cookie = 'session='+data +'; path=/;'; }
+			,complete:function(){
+				$input.remove();
+				$('#dialog').dialog('destroy');
+				if( arg && arg.ok ) arg.ok();
+			}
+		});
+	}
+	function close(){
+		$input.remove();
+		$('#dialog').dialog('destroy');
+		if( arg && arg.cancel ) arg.cancel();
+	}
 }
 // 確認ダイアログ
 // IE8でなぜか改行コード(\n)の<br>置換(replace)が効かないので、しょうがなく #BR# という

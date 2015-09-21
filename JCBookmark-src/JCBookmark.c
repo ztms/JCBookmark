@@ -6691,7 +6691,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									}
 									else ResponseError(cp,"404 Not Found");
 								}
-								else ResponseError(cp,"403 Forbidden");
+								else ResponseError(cp,"401 Unauthorized");
 								goto send_ready;
 							}
 							else if( stricmp(req->method,"POST")==0 ){
@@ -6713,7 +6713,25 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									}
 									break;
 								}
-								else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
+								else{
+									// リクエストデータを受信してからエラー応答返す。
+									// こうしないとデータが大きい場合にブラウザに応答コードが伝わらない事がある。
+									if( BODYBYTES(req) >= req->ContentLength ){
+										ResponseError(cp,"401 Unauthorized"); goto send_ready;
+									}
+									else goto recv_more;
+								}
+							}
+							else if( stricmp(req->method,"PUT")==0 ){
+								// リクエストデータを受信してからエラー応答返す。
+								// こうしないとデータが大きい場合にブラウザに応答コードが伝わらない事がある。
+								if( BODYBYTES(req) >= req->ContentLength ){
+									ResponseError(cp,"401 Unauthorized"); goto send_ready;
+								}
+								else goto recv_more;
+							}
+							else if( stricmp(req->method,"DEL")==0 ){
+								ResponseError(cp,"401 Unauthorized"); goto send_ready;
 							}
 							else{ ResponseError(cp,"400 Bad Request"); goto send_ready; }
 						}
