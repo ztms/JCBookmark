@@ -3216,7 +3216,8 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 			}
 		}
 		// ConvertINetStringは1201(UTF16BE)→65001(UTF8)変換できないもよう。
-		// 1201は1200(UTF16LE)とエンディアンが違うのみらしく、1200はWCHAR型のことらしいので自力変換。
+		// 1201は1200(UTF16LE)とエンディアンが違うのみらしく、1200はWCHAR型のことらしい。
+		// 1201→1200に自力エンディアン変換後、ConvertINetStringで65001に変換でいけた。
 		// http://stackoverflow.com/questions/29054217/multibytetowidechar-for-unicode-code-pages-1200-1201-12000-12001
 		else if( CP==1201 ){
 			// UTF16BE(1201) -> UTF16LE(1200)==WCHAR
