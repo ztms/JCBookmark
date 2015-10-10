@@ -4504,6 +4504,12 @@ Memory* file2memory( const WCHAR* path )
 	return memory;
 }
 // gzip圧縮ファイル生成
+#ifdef _DEBUG
+#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
+#else
+#pragma comment(lib,"jansson.lib")		// Jansson Releaseビルド版
+#endif
+#include "jansson.h"
 void gzipcreater( void* tp )
 {
 	WCHAR* path = tp; // 圧縮対象ファイルパス(このスレッドで解放するmalloc領域)
@@ -4533,6 +4539,15 @@ void gzipcreater( void* tp )
 						}
 					}
 					free( gziptmp );
+				}
+				{
+					json_error_t error;
+					json_t* root = json_loads(mem->data,0,&error);
+					if( root ){
+						LogW(L"jansson load success");
+						json_decref(root);
+					}
+					else LogA("jansson load error: on line %d: %s",error.line,error.text);
 				}
 				free( mem );
 			}
