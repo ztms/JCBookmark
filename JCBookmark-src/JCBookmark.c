@@ -4540,11 +4540,20 @@ void gzipcreater( void* tp )
 					}
 					free( gziptmp );
 				}
+				// Janssonロードテスト
 				{
 					json_error_t error;
-					json_t* root = json_loads(mem->data,0,&error);
+					json_t* root = json_loads( mem->data ,0 ,&error );
 					if( root ){
-						LogW(L"jansson load success");
+						if( json_is_object(root) ){
+							json_t* nextid = json_object_get(root,"nextid");
+							if( json_is_integer(nextid) ){
+								LogW(L"tree.json updated. nextid = %u",json_integer_value(nextid));
+							}
+							else LogW(L"tree.json key 'nextid' is not integer");
+						}
+						else LogW(L"tree.json root is not object");
+
 						json_decref(root);
 					}
 					else LogA("jansson load error: on line %d: %s",error.line,error.text);
@@ -9622,8 +9631,9 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			WCHAR* wlibs;
 
 			_snprintf(libs,sizeof(libs),
-					"zlib %s\r\n" "SQLite %s\r\n" "%s"
+					"zlib %s\r\n" "Jansson %s\r\n" "SQLite %s\r\n" "%s"
 					,ZLIB_VERSION
+					,JANSSON_VERSION
 					,SQLITE_VERSION
 					,SSLeay_version(SSLEAY_VERSION)
 			);
