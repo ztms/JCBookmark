@@ -4165,6 +4165,11 @@ void poker( void* tp )
 // でも既定のitem.pngを決めてるのはJS側なので、サーバーからはContentTypeを返却して、
 // 画像ファイル種別に対応づけるのはJS側でいいかな。どちらにせよ今ContentTypeは
 // text/htmlだけ識別してあとは気にしてないので、そこを改造しなければならぬ・・
+// TODO:mainichi.jpの記事が<title>なく取得できない。クッキーなし初回アクセス時は、
+// 302でphpに飛ばされた後、200と共に<form>だけのHTMLが返却され、<body onload=
+// document.forms[0].submit()で、元の記事URLにPOSTする流れ。<form action=>解析と
+// <body onload=のJavaScript解析して動かないとタイトル取得できない。
+// http://mainichi.jp/shimen/news/20151122ddm002070066000c.html
 typedef struct AnalyCTX {
 	struct AnalyCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
