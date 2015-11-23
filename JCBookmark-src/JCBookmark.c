@@ -4579,6 +4579,11 @@ void poker( void* tp )
 // でも既定のitem.pngを決めてるのはJS側なので、サーバーからはContentTypeを返却して、
 // 画像ファイル種別に対応づけるのはJS側でいいかな。どちらにせよ今ContentTypeは
 // text/htmlだけ識別してあとは気にしてないので、そこを改造しなければならぬ・・
+// TODO:mainichi.jpの記事が<title>なく取得できない。クッキーなし初回アクセス時は、
+// 302でphpに飛ばされた後、200と共に<form>だけのHTMLが返却され、<body onload=
+// document.forms[0].submit()で、元の記事URLにPOSTする流れ。<form action=>解析と
+// <body onload=のJavaScript解析して動かないとタイトル取得できない。
+// http://mainichi.jp/shimen/news/20151122ddm002070066000c.html
 typedef struct AnalyCTX {
 	struct AnalyCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
@@ -4927,9 +4932,7 @@ void gzipcreater( void* tp )
 	if( path ){
 		WCHAR* gzip = wcsjoin( path ,L".gz" ,0,0,0 );
 		if( gzip ){
-			Memory* mem;
-			DeleteFileW( gzip ); // この関数に来る直前に圧縮対象ファイルは更新されているので今のgzip古い削除
-			mem = file2memory( path );
+			Memory* mem = file2memory( path );
 			if( mem ){
 				WCHAR* gziptmp = wcsjoin( path ,L".gz.tmp" ,0,0,0 );
 				if( gziptmp ){
@@ -7789,14 +7792,18 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									CloseHandle( req->writefh );
 									req->writefh = INVALID_HANDLE_VALUE;
 									if( FileBackup( realpath ) ){
+										// tree.jsonはgzipファイル消してから本体更新
+										BOOL is_tree_json = stricmp(file,"tree.json")==0;
+										if( is_tree_json ){
+											WCHAR* gzip = wcsjoin( realpath ,L".gz" ,0,0,0 );
+											if( gzip ) DeleteFileW( gzip ) ,free( gzip );
+										}
 										if( MoveFileExW( tmppath, realpath
 												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
 										)){
 											ResponseError(cp,"200 OK");
 											// tree.jsonはgzipファイル作成
-											if( stricmp(file,"tree.json")==0 ){
-												_beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
-											}
+											if( is_tree_json ) _beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
 										}
 										else{
 											LogW(L"[%u]MoveFileEx(%s)エラー%u",Num(cp),tmppath,GetLastError());
