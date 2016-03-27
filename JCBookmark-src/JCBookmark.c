@@ -9193,7 +9193,7 @@ HWND ToolTipCreate( const BrowserIcon* browser ,HWND hSetting ,HFONT hFont )
 	);
 	if( hToolTip ){
 		TOOLINFOW ti;
-		UINT i;
+		UINT i=0;
 		memset( &ti, 0, sizeofTOOLINFOW );
 		ti.cbSize = sizeofTOOLINFOW;
 		ti.uFlags = TTF_SUBCLASS |TTF_CENTERTIP;
