@@ -151,13 +151,14 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 #define CMD_OPENBASIC	6		// 基本画面を開くチェック
 #define CMD_OPENFILER	7		// 整理画面を開くチェック
 #define CMD_IE			10		// IEボタン
-#define CMD_CHROME		11		// Chromeボタン
-#define CMD_FIREFOX		12		// Firefoxボタン
-#define CMD_OPERA		13		// Operaボタン
-#define CMD_USER1		14		// ユーザー指定ブラウザ1
-#define CMD_USER2		15		// ユーザー指定ブラウザ2
-#define CMD_USER3		16		// ユーザー指定ブラウザ3
-#define CMD_USER4		17		// ユーザー指定ブラウザ4
+#define CMD_EDGE		11		// IEボタン
+#define CMD_CHROME		12		// Chromeボタン
+#define CMD_FIREFOX		13		// Firefoxボタン
+#define CMD_OPERA		14		// Operaボタン
+#define CMD_USER1		15		// ユーザー指定ブラウザ1
+#define CMD_USER2		16		// ユーザー指定ブラウザ2
+#define CMD_USER3		17		// ユーザー指定ブラウザ3
+#define CMD_USER4		18		// ユーザー指定ブラウザ4
 
 
 
@@ -817,14 +818,15 @@ UCHAR* icondupJSON( UCHAR* s )
 // ブラウザ管理
 // ブラウザ情報インデックス
 #define BI_IE			0		// IE
-#define BI_CHROME		1		// Chrome
-#define BI_FIREFOX		2		// Firefox
-#define BI_OPERA		3		// Opera
-#define BI_USER1		4		// ユーザー指定ブラウザ1
-#define BI_USER2		5		// ユーザー指定ブラウザ2
-#define BI_USER3		6		// ユーザー指定ブラウザ3
-#define BI_USER4		7		// ユーザー指定ブラウザ4
-#define BI_COUNT		8
+#define BI_EDGE			1		// Edge
+#define BI_CHROME		2		// Chrome
+#define BI_FIREFOX		3		// Firefox
+#define BI_OPERA		4		// Opera
+#define BI_USER1		5		// ユーザー指定ブラウザ1
+#define BI_USER2		6		// ユーザー指定ブラウザ2
+#define BI_USER3		7		// ユーザー指定ブラウザ3
+#define BI_USER4		8		// ユーザー指定ブラウザ4
+#define BI_COUNT		9
 // ブラウザ情報インデックスからブラウザボタンコマンドIDに変換
 #define BrowserCommand(i)	((i)+CMD_IE)
 // ブラウザボタンコマンドIDからブラウザ情報インデックスに変換
@@ -927,6 +929,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 		memset( br, 0, sizeof(BrowserInfo)*BI_COUNT );
 		// 既定ブラウザ名
 		br[BI_IE].name		= L"IE";
+		br[BI_EDGE].name	= L"Edge";
 		br[BI_CHROME].name	= L"Chrome";
 		br[BI_FIREFOX].name = L"Firefox";
 		br[BI_OPERA].name	= L"Opera";
@@ -941,6 +944,12 @@ BrowserInfo* BrowserInfoAlloc( void )
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ie8
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
+		);
+		// EdgeはUWPアプリ(Windows8アプリ,ストアアプリ)なので面倒くさいらしい
+		// レジストリからフルパスを取るのもイマイチ良いキーが見当たらないのでとりあえず決め打ち
+		//   C:\Windows\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\MicrosoftEdge.exe
+		br[BI_EDGE].exe = wcsdup(
+			L"%SystemRoot%\\SystemApps\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\MicrosoftEdge.exe"
 		);
 		br[BI_CHROME].exe = RegAppPathAlloc(
 			// TODO:Win7でChromeインストールされてるのに検出できない環境があった。詳細不明。
@@ -1000,6 +1009,9 @@ BrowserInfo* BrowserInfoAlloc( void )
 					if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
 						br[BI_IE].arg = MultiByteToWideCharAlloc( buf+6, CP_UTF8 );
 					}
+					else if( strnicmp(buf,"EdgeArg=",8)==0 && *(buf+8) ){
+						br[BI_EDGE].arg = MultiByteToWideCharAlloc( buf+8, CP_UTF8 );
+					}
 					else if( strnicmp(buf,"ChromeArg=",10)==0 && *(buf+10) ){
 						br[BI_CHROME].arg = MultiByteToWideCharAlloc( buf+10, CP_UTF8 );
 					}
@@ -1011,6 +1023,9 @@ BrowserInfo* BrowserInfoAlloc( void )
 					}
 					else if( strnicmp(buf,"IEHide=",7)==0 && *(buf+7) ){
 						br[BI_IE].hide = atoi(buf+7)?TRUE:FALSE;
+					}
+					else if( strnicmp(buf,"EdgeHide=",9)==0 && *(buf+9) ){
+						br[BI_EDGE].hide = atoi(buf+9)?TRUE:FALSE;
 					}
 					else if( strnicmp(buf,"ChromeHide=",11)==0 && *(buf+11) ){
 						br[BI_CHROME].hide = atoi(buf+11)?TRUE:FALSE;
@@ -7981,6 +7996,8 @@ void ConfigSave( const ConfigData* dp )
 			fprintf(fp,"BootMinimal=%s\r\n"	,dp->bootMinimal	? "1":"");
 			fprintf(fp,"IEArg=%s\r\n"		,arg[BI_IE]				? arg[BI_IE]:"");
 			fprintf(fp,"IEHide=%s\r\n"		,dp->hide[BI_IE]		? "1":"");
+			fprintf(fp,"EdgeArg=%s\r\n"		,arg[BI_EDGE]			? arg[BI_EDGE]:"");
+			fprintf(fp,"EdgeHide=%s\r\n"	,dp->hide[BI_EDGE]		? "1":"");
 			fprintf(fp,"ChromeArg=%s\r\n"	,arg[BI_CHROME]			? arg[BI_CHROME]:"");
 			fprintf(fp,"ChromeHide=%s\r\n"	,dp->hide[BI_CHROME]	? "1":"");
 			fprintf(fp,"FirefoxArg=%s\r\n"	,arg[BI_FIREFOX]		? arg[BI_FIREFOX]:"");
@@ -8352,9 +8369,12 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					}
 					// 既定ブラウザEXEパスは編集不可
 					SendMessage( my->hExe[BI_IE], EM_SETREADONLY, TRUE, 0 );
+					SendMessage( my->hExe[BI_EDGE], EM_SETREADONLY, TRUE, 0 );
 					SendMessage( my->hExe[BI_CHROME], EM_SETREADONLY, TRUE, 0 );
 					SendMessage( my->hExe[BI_FIREFOX], EM_SETREADONLY, TRUE, 0 );
 					SendMessage( my->hExe[BI_OPERA], EM_SETREADONLY, TRUE, 0 );
+					// Edgeは引数も編集不可
+					SendMessage( my->hArg[BI_EDGE], EM_SETREADONLY, TRUE, 0 );
 					// 参照ボタンアイコン
 					SendMessage(
 							my->hFOpen ,BM_SETIMAGE ,IMAGE_ICON
@@ -8801,7 +8821,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
 DWORD ConfigDialog( UINT tabid )
 {
-	#define				CONFIGDIALOG_CLASS L"JCBookmarkConfigDialog"
+	#define				CONFIGDIALOG_CLASS  L"JCBookmarkConfigDialog"
+	#define				CONFIGDIALOG_WIDTH  550
+	#define				CONFIGDIALOG_HEIGHT 410
 	HINSTANCE			hinst = GetModuleHandle(NULL);
 	WNDCLASSEXW			wc;
 	ConfigDialogData	data;
@@ -8824,9 +8846,9 @@ DWORD ConfigDialog( UINT tabid )
 						CONFIGDIALOG_CLASS
 						,APPNAME L" 設定"
 						,WS_OVERLAPPED |WS_CAPTION |WS_THICKFRAME |WS_VISIBLE
-						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - 530/2
-						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - 390/2
-						,530, 390
+						,GetSystemMetrics(SM_CXFULLSCREEN)/2 - CONFIGDIALOG_WIDTH/2
+						,GetSystemMetrics(SM_CYFULLSCREEN)/2 - CONFIGDIALOG_HEIGHT/2
+						,CONFIGDIALOG_WIDTH, CONFIGDIALOG_HEIGHT
 						,MainForm,NULL
 						,GetModuleHandle(NULL),NULL
 		);
@@ -9172,6 +9194,36 @@ void BrowserIconClick( UINT ix )
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
 	if( empty || invalid ) PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(ix+1) ,0 ); 
+}
+// MicrosoftEdgeの起動
+// [ファイル名を指定して実行]から、
+// ①"shell:AppsFolder\Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge" URL
+// ②microsoft-edge:URL
+// とからしい。②で動いたけどダメな環境もあるもよう…
+// http://answers.microsoft.com/ja-jp/windows/forum/apps_windows_10-msedge/microsoft-edge/949dfc15-b41e-498b-a998-16f765de8c96?page=1&auth=1
+// http://www.ka-net.org/blog/?p=6098
+// https://hebikuzure.wordpress.com/2015/08/22/startedgebycommand/
+// http://stackoverflow.com/questions/33400708/how-to-start-microsoft-edge-with-specific-url-from-c-code
+// https://social.msdn.microsoft.com/Forums/en-US/a8047080-62d2-41c8-a22c-cdc8d0db0956/shellexecute-cannot-open-microsoft-edge-in-windows-server-2016-tp3?forum=windowsgeneraldevelopmentissues
+void BrowserIconClickEdge()
+{
+	WCHAR* name = L"microsoft-edge";
+	WCHAR* openPage = OpenFiler() ? PAGE_FILER : PAGE_BASIC;
+	WCHAR cmd[128];
+	DWORD err;
+	// microsoft-edge:https://localhost:10080/filer.html
+	_snwprintf(cmd,sizeof(cmd)
+			,L"%s:http%s://localhost:%s/%s"
+			,name ,HttpsLocal? L"s" :L"" ,ListenPort ,openPage
+	);
+	err = (DWORD)ShellExecuteW( NULL,NULL, cmd, NULL,NULL, SW_SHOWNORMAL );
+	if( err <=32 ){
+		LogW(L"ShellExecute(%s)エラー%u",cmd,err);
+		ErrorBoxW(L"%s\r\nを実行できません",name);
+		// エラーの場合は設定画面を出す。
+		// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
+		PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(BI_EDGE+1) ,0 ); 
+	}
 }
 // ツールチップ
 // http://wisdom.sakura.ne.jp/system/winapi/common/common10.html
@@ -9936,6 +9988,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( !OpenFiler() ) INISave("OpenFiler","1");
 			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
+		case CMD_EDGE   : BrowserIconClickEdge();        break;
 		case CMD_CHROME : BrowserIconClick( BI_CHROME ); break;
 		case CMD_FIREFOX: BrowserIconClick( BI_FIREFOX );break;
 		case CMD_OPERA  : BrowserIconClick( BI_OPERA );  break;
@@ -10169,7 +10222,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 							MAINFORM_CLASS
 							,APPNAME
 							,WS_OVERLAPPEDWINDOW |WS_CLIPCHILDREN
-							,CW_USEDEFAULT, CW_USEDEFAULT, 600, 400
+							,CW_USEDEFAULT, CW_USEDEFAULT, 620, 400
 							,NULL, NULL, hinst, NULL
 			);
 			if( hwnd ){
