@@ -685,7 +685,7 @@ WCHAR* wcsndup( const WCHAR* src, int n )
 	}
 	return NULL;
 }
-// " と \ をエスケープしてstrndup
+// JSON用エスケープしてstrndup
 // srcがnより短い場合は実行してはいけない。
 // UTF-8なら2バイト目以降にASCII文字は出てこない(らしい)ので多バイト文字識別不要。
 UCHAR* strndupJSON( const UCHAR* src, int n )
@@ -696,14 +696,22 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 			UCHAR* dst = dup;
 			int i;
 			for( i=n; i--; ){
-				if( *src=='\t' ){
-					// http://cakephp.org/の<title>にTAB文字(0x09)が含まれており、Chrome/Firefoxで
-					// なぜかJSONパースできず$.ajax()がエラーになるようで、仕方なく \t に変換する。
-					// IE8は動いてくれるのだが。JSONって値にTAB文字ダメな仕様なの？
-					src++ ,*dst++ ='\\' ,*dst++ ='t';
-					continue;
+				switch( *src ){
+				// 制御文字変換
+				// http://cakephp.org/の<title>にTAB文字(0x09)が含まれておりブラウザJSON.parseエラー。
+				// http://qiita.com/tawago/items/c977c79b76c5979874e8 こちらはBS文字(0x08)が含まれており同様。
+				case '\0': src++ ,*dst++ ='\\' ,*dst++ ='0'; continue;
+				case '\a': src++ ,*dst++ ='\\' ,*dst++ ='a'; continue;
+				case '\b': src++ ,*dst++ ='\\' ,*dst++ ='b'; continue;
+				case '\f': src++ ,*dst++ ='\\' ,*dst++ ='f'; continue;
+				case '\n': src++ ,*dst++ ='\\' ,*dst++ ='n'; continue;
+				case '\r': src++ ,*dst++ ='\\' ,*dst++ ='r'; continue;
+				case '\t': src++ ,*dst++ ='\\' ,*dst++ ='t'; continue;
+				case '\v': src++ ,*dst++ ='\\' ,*dst++ ='v'; continue;
+				// " と \ はエスケープ
+				case '\\': *dst++ ='\\'; break;
+				case '"': *dst++ ='\\'; break;
 				}
-				if( *src=='"' || *src=='\\' ) *dst++ = '\\';
 				*dst++ = *src++;
 			}
 			*dst = '\0';
