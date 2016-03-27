@@ -905,6 +905,23 @@ WCHAR* RegAppPathAlloc( HKEY topkey, const WCHAR* subkey )
 	}
 	return exe;
 }
+// MicrosoftEdge.exeフルパス
+// レジストリから取るのもイマイチ良いキーが見当たらないのでとりあえず決め打ち
+//   C:\Windows\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\MicrosoftEdge.exe
+// UWPアプリ(Windows8アプリ,ストアアプリ)なので面倒くさいらしい…
+WCHAR* EdgePathAlloc( void )
+{
+	WCHAR* path = ExpandEnvironmentStringsAllocW(
+		L"%SystemRoot%\\SystemApps\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\MicrosoftEdge.exe"
+	);
+	if( path ){
+		if( !PathFileExistsW(path) ){
+			free(path);
+			path = NULL;
+		}
+	}
+	return path;
+}
 // JCBookmark.exeと同階層のファイルパス取得
 WCHAR* AppFilePath( const WCHAR* fname )
 {
@@ -945,12 +962,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			HKEY_LOCAL_MACHINE
 			,L"SOFTWARE\\Clients\\StartMenuInternet\\IEXPLORE.EXE\\DefaultIcon" // C:\Program Files\Internet Explorer\iexplore.exe,-7
 		);
-		// EdgeはUWPアプリ(Windows8アプリ,ストアアプリ)なので面倒くさいらしい
-		// レジストリからフルパスを取るのもイマイチ良いキーが見当たらないのでとりあえず決め打ち
-		//   C:\Windows\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\MicrosoftEdge.exe
-		br[BI_EDGE].exe = wcsdup(
-			L"%SystemRoot%\\SystemApps\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\MicrosoftEdge.exe"
-		);
+		br[BI_EDGE].exe = EdgePathAlloc();
 		br[BI_CHROME].exe = RegAppPathAlloc(
 			// TODO:Win7でChromeインストールされてるのに検出できない環境があった。詳細不明。
 			// TODO:chrome.exeパス取得のためのレジストリはどれが適切？
@@ -10222,7 +10234,7 @@ HWND Startup( HINSTANCE hinst, int nCmdShow )
 							MAINFORM_CLASS
 							,APPNAME
 							,WS_OVERLAPPEDWINDOW |WS_CLIPCHILDREN
-							,CW_USEDEFAULT, CW_USEDEFAULT, 620, 400
+							,CW_USEDEFAULT, CW_USEDEFAULT, 640, 400
 							,NULL, NULL, hinst, NULL
 			);
 			if( hwnd ){
