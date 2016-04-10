@@ -2567,6 +2567,9 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								unsigned short rand_ret = rand() % 65536;
 								RAND_seed(&rand_ret, sizeof(rand_ret));
 							}
+							// Server Name Indication (SNI) extension from RFC 3546
+							// >openssl s_client -connect xxx:443 -servername xxx
+							SSL_set_tlsext_host_name( sslp, host );
 						retry:
 							ret = SSL_connect( sslp );		// SSLハンドシェイク
 							if( ret==1 ) LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
