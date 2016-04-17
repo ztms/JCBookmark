@@ -1368,6 +1368,7 @@ typedef struct TClient {
 	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
+	UCHAR		close_pend_count;	// 受信データなし切断待機回数
 } TClient;
 
 //	Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
@@ -7609,7 +7610,25 @@ void SocketClose( SOCKET sock )
 {
 	TClient* cp = ClientOfSocket( sock );
 	if( cp ){
-		if( cp->status==CLIENT_THREADING ){
+		switch( cp->status ){
+		case CLIENT_ACCEPT_OK:
+			//ブラウザリロードで画面真っ白になる対策。XPではたまに発生する程度だったが、
+			//Win10で必ず発生するようになった。Chromeではnet::ERR_CONNECTION_RESETと出る。
+			//なぜかデータ受信せずにここが実行されて、ブラウザ的にはサーバーが切断した感じ？
+			//原因不明だが、まだデータ受信してない場合は切断せずに待つことにする。
+			//本当にデータ送信せず切断したクライアントが残ってしまうので回数上限を設ける。
+			//そしたらこんどはnet::ERR_CONTENT_LENGTH_MISMATCHが発生するようになった・・
+			//あとIE11で変なエラーが頻発したり・・これが発生したあとの送信データが不正に
+			//なってるような？でも前よりはマシな気がするからとりあえず採用しておこう・・
+			//OS側(特にWin10)がちゃんと動いてくれてないような・・
+			if( cp->close_pend_count < 3 ){
+				cp->close_pend_count++;
+				LogW(L"[%u]受信なし切断待機...",Num(cp));
+				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+				return;
+			}
+			break;
+		case CLIENT_THREADING:
 			// スレッド終了待たないとアクセス違反で落ちる
 			cp->abort = 1;
 			LogW(L"[%u]スレッド実行中待機...",Num(cp));
