@@ -78,6 +78,7 @@
 #pragma comment(lib,"wininet.lib")
 #pragma comment(lib,"shlwapi.lib")
 #pragma comment(lib,"psapi.lib")
+#pragma comment(lib,"esent.lib")
 #pragma comment(lib,"iphlpapi.lib")
 #pragma comment(lib,"libeay32.lib")
 #pragma comment(lib,"ssleay32.lib")
@@ -2187,6 +2188,72 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 
 
 
+//---------------------------------------------------------------------------------------------------------------
+// Edgeお気に入りJSONイメージ作成
+// ▼データの保存場所
+// http://solomon-review.net/microsoft-edge-favorites-folder-on-build10586/
+// http://d.hatena.ne.jp/Tatsu_syo/20151220/1450605030
+// http://d.hatena.ne.jp/Tatsu_syo/20160303/1457002009
+// %LOCALAPPDATA%\Packages\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\AC\MicrosoftEdge\User\Default\DataStore\Data\nouser1\120712-0049\DBStore\spartan.edb
+// 「8wekyb3d8bbwe」や「120712-0049」が環境によって変化するのかしないのか？不明・・
+// ▼データ形式
+// Extensive Storage Engine
+// https://blogs.msdn.microsoft.com/windowssdk/2008/10/22/esent-extensible-storage-engine-api-in-the-windows-sdk/
+#define JET_VERSION 0x0600
+#define JET_UNICODE
+#include <esent.h>
+NodeList* EdgeFavoriteListCreate( void )
+{
+	NodeList* list = NULL;
+	WCHAR* path = ExpandEnvironmentStringsAllocW(
+		L"%LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\DataStore\\Data\\nouser1\\120712-0049\\DBStore\\spartan.edb"
+	);
+	if( path ){
+		if( PathFileExistsW(path) ){
+			/*
+			JET_ERR err;
+			ULONG pageSize;
+			err = JetGetDatabaseFileInfoW( path ,&pageSize ,sizeof(ULONG) ,JET_DbInfoPageSize );
+			if( err >= JET_errSuccess ){
+				JET_INSTANCE jet;
+				JetSetSystemParameterW( NULL ,JET_sesidNil ,JET_paramDatabasePageSize, pageSize, NULL );
+				LogW(L"ページサイズ%u",pageSize);
+				err = JetCreateInstanceW( &jet, L"instance" );
+				if( err >= JET_errSuccess ){
+					JetSetSystemParameterW( &jet ,JET_sesidNil ,JET_paramRecovery ,0,L"Off" );
+					err = JetInit( &jet );
+					if( err >= JET_errSuccess ){
+						JET_SESID sesid;
+						err = JetBeginSession( jet ,&sesid ,0,0 );
+						if( err >= JET_errSuccess ){
+							err = JetAttachDatabaseW( sesid ,path ,JET_bitDbReadOnly );
+							if( err >= JET_errSuccess ){
+								JET_DBID dbid;
+								err = JetOpenDatabaseW( sesid ,path ,NULL ,&dbid ,JET_bitDbReadOnly );
+								if( err >= JET_errSuccess ){
+									LogW(L"spartan.edbを開きました");
+									JetCloseDatabase( sesid ,dbid ,0 );
+								}
+								else LogW(L"JetOpenDatabaseWエラー:%d",err);
+								JetDetachDatabaseW( sesid ,NULL );
+							}
+							else LogW(L"JetAttachDatabaseWエラー:%d",err);
+							JetEndSession( sesid ,0 );
+						}
+						else LogW(L"JetBeginSessionエラー:%d",err);
+					}
+					else LogW(L"JetInitエラー:%d",err);
+					JetTerm( jet );
+				}
+				else LogW(L"JetCreateInstanceエラー:%d",err);
+			}
+			else LogW(L"JetGetDatabaseFileInfoエラー:%d",err);
+			*/
+		}
+		free( path );
+	}
+	return list;
+}
 //---------------------------------------------------------------------------------------------------------------
 // 外部接続・HTTPクライアント関連
 //
@@ -7175,6 +7242,29 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 								else LogW(L"[%u]sqlite3_open16(%s)エラー%s",Num(cp),favicons,sqlite3_errmsg16(db));
 								free( favicons );
+							}
+						}
+						else if( stricmp(file,":edge-favorites.json")==0 ){
+							// Edgeお気に入りインポート
+							NodeList* list = EdgeFavoriteListCreate();
+							if( list ){
+								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
+								if( fp ){
+									UINT nextid=1;	// ノードID
+									UINT depth=0;	// 階層深さ
+									//NodeListJSON( list, fp, &nextid, depth, 1 );
+									NodeListJSON( list, fp, &nextid, depth, 0 );
+									fclose( fp );
+									if( nextid >1 ){
+										cp->rsp.readfh = CreateFileW( tmppath
+												,GENERIC_READ ,FILE_SHARE_READ
+												,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+										);
+									}
+									else LogW(L"[%u]Edgeお気に入りデータありません",Num(cp));
+								}
+								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
+								NodeListDestroy( list );
 							}
 						}
 						else{
