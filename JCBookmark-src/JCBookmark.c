@@ -4219,6 +4219,79 @@ typedef struct AnalyCTX {
 	UCHAR*		favicon;	// out ページファビコン
 	PokeReport	repo;		// out 死活結果
 } AnalyCTX;
+// URL直列化（パスのドット除去）
+UCHAR* URLserialize( UCHAR* url )
+{
+	UCHAR* scheme = strstr(url,"://");
+	if( scheme ){
+		UCHAR* root = strchr(scheme+3,'/');
+		if( root ){
+			UCHAR* hash = strchr(root,'#');
+			UCHAR* query = strchr(root,'?');
+			UCHAR* end;
+			if( hash ) *hash = '\0';
+			if( query ) *query = '\0';
+			end = strchr(root,'\0');
+			// 連続スラッシュ消去
+			for( ;; ){
+				UCHAR* ss1 = strstr(root,"//");
+				if( ss1 ){
+					UCHAR* ssN = ss1 + 2;
+					while( *ssN == '/' ) ssN++;
+					memmove( ss1 + 1 ,ssN ,(end - ssN) + 1 );
+					end -= ssN - (ss1 + 1);
+				}
+				else break;
+			}
+			// ドット1つ消去 /./ => /
+			for( ;; ){
+				UCHAR* dot1 = strstr(root,"/./");
+				if( dot1 ){
+					memmove( dot1 ,dot1 + 2 ,end - dot1 - 1 );
+					end -= 2;
+				}
+				else break;
+			}
+			// ドット2つ xxx/../ => /
+			for( ;; ){
+				UCHAR* dot2 = strstr(root,"/../");
+				if( dot2 ){
+					if( dot2 == root ){
+						memmove( root ,root + 3 ,end - root - 2 );
+						end -= 3;
+					}
+					else{
+						UCHAR* dst = dot2 - 1;
+						while( *dst != '/' ) dst--;
+						memmove( dst ,dot2 + 3 ,end - dot2 - 2 );
+						end -= dot2 + 3 - dst;
+					}
+				}
+				else break;
+			}
+			// ハッシュとクエリ以降を元に戻す
+			if( hash && query ){
+				if( hash < query ){
+					*query = '?';
+					query = NULL;
+				}
+				else{
+					*hash = '#';
+					hash = NULL;
+				}
+			}
+			if( hash ){
+				*hash = '#';
+				memmove( end ,hash ,strlen(hash) + 1 );
+			}
+			else if( query ){
+				*query = '?';
+				memmove( end ,query ,strlen(query) + 1 );
+			}
+		}
+	}
+	return url;
+}
 // URL1つ用
 void Analyze( AnalyCTX* ctx )
 {
@@ -4336,7 +4409,7 @@ void Analyze( AnalyCTX* ctx )
 						}
 					}
 				}
-				if( url ) free(icon), icon=url;
+				if( url ) free(icon), icon = URLserialize(url);
 			}
 			// URL取得確認
 			if( icon ){
