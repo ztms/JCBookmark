@@ -2986,6 +2986,8 @@ function itemContextMenu(ev){
 							,data:url +'\r\n'
 							,error:function(xhr){
 								$('#dialog').dialog('destroy');
+								// TODO:LoginDialogでキャンセルしても#dialog消えてるからgiveup処理無意味？
+								// そもそも #dialog を共同利用してるのはやめるべきか・・
 								if( xhr.status===401 ) LoginDialog({ ok:start ,cancel:giveup });
 								else giveup();
 
