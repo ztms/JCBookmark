@@ -2986,6 +2986,8 @@ function itemContextMenu(ev){
 							,data:url +'\r\n'
 							,error:function(xhr){
 								$('#dialog').dialog('destroy');
+								// TODO:LoginDialogã§ã‚­ãƒ£ãƒ³ã‚»ãƒ«ã—ã¦ã‚‚#dialogæ¶ˆãˆã¦ã‚‹ã‹ã‚‰giveupå‡¦ç†ç„¡æ„å‘³ï¼Ÿ
+								// ãã‚‚ãã‚‚ #dialog ã‚’å…±åŒåˆ©ç”¨ã—ã¦ã‚‹ã®ã¯ã‚„ã‚ã‚‹ã¹ãã‹ãƒ»ãƒ»
 								if( xhr.status===401 ) LoginDialog({ ok:start ,cancel:giveup });
 								else giveup();
 
