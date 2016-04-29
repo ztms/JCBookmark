@@ -6543,11 +6543,7 @@ void SocketAccept( SOCKET sock )
 				success = FALSE;
 				// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら
 				// メッセージが来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
-				// TODO:Win10でブラウザリロード時にFD_CLOSEが不安定に発生してちゃんとレスポンスを返せない
-				// 現象が頻発。FD_CLOSEを無効にしたら安定した。が、クライアントから切断した事を検知できなく
-				// なった(SSLならなぜか大丈夫)。無通信監視3分で切断されるが、telnetで簡単に発生させることが
-				// できる。通常使用なら問題ないだろうけど、嫌がらせに弱い仕様になったような・・。
-				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE /*|FD_CLOSE*/ )==0 ){
+				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
 					#define REQUEST_BUFSIZE		1024
 					#define RESPONSE_HEADSIZE	512
 					#define RESPONSE_BODYSIZE	512
@@ -7698,7 +7694,6 @@ void SocketClose( SOCKET sock )
 			//あとIE11で変なエラーが頻発したり・・これが発生したあとの送信データが不正に
 			//なってるような？でも前よりはマシな気がするからとりあえず採用しておこう・・
 			//OS側(特にWin10)がちゃんと動いてくれてないような・・
-			//TODO:FD_CLOSEを来ないようにしたからここは不要かな？
 			if( cp->close_pend_count < 3 ){
 				cp->close_pend_count++;
 				LogW(L"[%u]受信なし切断待機...",Num(cp));
