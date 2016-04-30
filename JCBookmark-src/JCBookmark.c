@@ -6871,10 +6871,11 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 		if( bind( sock, adr->ai_addr, (int)adr->ai_addrlen )!=SOCKET_ERROR ){
 			#define BACKLOG 128
 			if( listen( sock, BACKLOG )!=SOCKET_ERROR ){
-				// 待ち受け開始後、ソケットに接続要求が届いた(FD_ACCEPT)ら、メッセージが来るようにする。
-				// その時 lParam に FD_ACCEPT が格納されている。
+				// 待ち受け開始後、ソケットに接続要求が届いた(FD_ACCEPT)らメッセージが来るようにする。
+				// その時 lParam に FD_ACCEPT が格納されている。ついでにacceptして新しくできるソケット用に
+				// データが届いた(FD_READ)り相手が切断した(FD_CLOSE)らメッセージが来るようにしておく。
 				// TODO:CreateIoCompletionPortの方が高負荷耐性なようだが使い方が難しそう…
-				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT )==0 ){
+				if( WSAAsyncSelect( sock, MainForm, WM_SOCKET, FD_ACCEPT |FD_READ |FD_WRITE |FD_CLOSE )==0 ){
 					WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
 					GetNameInfoW( adr->ai_addr ,adr->ai_addrlen ,ip ,sizeof(ip)/sizeof(WCHAR) ,NULL,0,NI_NUMERICHOST );
 					LogW(L"[%u]ポート%sで待機します - http%s://%s:%s/"
@@ -6898,6 +6899,7 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 	}
 	return sock;
 }
+
 BOOL ListenStart( void )
 {
 	ADDRINFOW*	adr		= NULL;
@@ -6922,20 +6924,19 @@ BOOL ListenStart( void )
 
 void SocketAccept( SOCKET sock )
 {
-	// クライアントと接続されたソケットを取得
-	SOCKADDR_STORAGE	addr;
-	int					addrlen = sizeof(addr);
-	SOCKET				sock_new = accept( sock, (SOCKADDR*)&addr, &addrlen );
-	if( sock_new !=INVALID_SOCKET ){
-		// クライアントと接続確立
-		TClient*	cp = ClientOfSocket(INVALID_SOCKET);
-		WCHAR		ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
-		BOOL		success = FALSE;
-		SSL*		sslp = NULL;
-		GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
-		if( cp ){
+	TClient* cp = ClientOfSocket(INVALID_SOCKET);
+	if( cp ){
+		// クライアントと接続されたソケットを取得
+		SOCKADDR_STORAGE addr;
+		int addrlen = sizeof(addr);
+		SOCKET sock_new = accept( sock, (SOCKADDR*)&addr, &addrlen );
+		if( sock_new !=INVALID_SOCKET ){
+			WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
+			SSL* sslp = NULL;
 			BOOL isSSL = FALSE;
 			UCHAR loopback = 0;
+			BOOL success = FALSE;
+			GetNameInfoW( (SOCKADDR*)&addr, addrlen, ip, sizeof(ip)/sizeof(WCHAR), NULL, 0, NI_NUMERICHOST );
 			if( wcscmp(ip,L"::1")==0 || wcscmp(ip,L"127.0.0.1")==0 || wcsicmp(ip,L"::ffff:127.0.0.1")==0 ){
 				// localhost(loopback)から接続
 				if( HttpsLocal ) isSSL = TRUE;
@@ -6960,66 +6961,220 @@ void SocketAccept( SOCKET sock )
 			}
 			if( success ){
 				success = FALSE;
-				// ソケットにデータが届いた(FD_READ)または相手が切断した(FD_CLOSE)ら
-				// メッセージが来るようにする。その時lParamにFD_READまたはFD_CLOSEが格納されている。
-				if( WSAAsyncSelect( sock_new, MainForm, WM_SOCKET, FD_READ |FD_WRITE |FD_CLOSE )==0 ){
-					#define REQUEST_BUFSIZE		1024
-					#define RESPONSE_HEADSIZE	512
-					#define RESPONSE_BODYSIZE	512
-					cp->req.buf = malloc( REQUEST_BUFSIZE );
-					cp->rsp.head.top = malloc( RESPONSE_HEADSIZE );
-					cp->rsp.body.top = malloc( RESPONSE_BODYSIZE );
-					if( cp->req.buf && cp->rsp.head.top && cp->rsp.body.top ){
-						memset( cp->req.buf, 0, REQUEST_BUFSIZE );
-						memset( cp->rsp.head.top, 0, RESPONSE_HEADSIZE );
-						memset( cp->rsp.body.top, 0, RESPONSE_BODYSIZE );
-						cp->req.bufsize		= REQUEST_BUFSIZE;
-						cp->rsp.head.size	= RESPONSE_HEADSIZE;
-						cp->rsp.body.size	= RESPONSE_BODYSIZE;
-						cp->loopback= loopback;
-						cp->sock	= sock_new;
-						cp->sslp	= sslp;
-						cp->status	= CLIENT_ACCEPT_OK;
-						success		= TRUE;
-					}
-					else{
-						LogW(L"L%u:mallocエラー",__LINE__);
-						if( cp->req.buf ) free(cp->req.buf), cp->req.buf=NULL;
-						if( cp->rsp.head.top ) free(cp->rsp.head.top), cp->rsp.head.top=NULL;
-						if( cp->rsp.body.top ) free(cp->rsp.body.top), cp->rsp.body.top=NULL;
-					}
+				#define REQUEST_BUFSIZE		1024
+				#define RESPONSE_HEADSIZE	512
+				#define RESPONSE_BODYSIZE	512
+				cp->req.buf = malloc( REQUEST_BUFSIZE );
+				cp->rsp.head.top = malloc( RESPONSE_HEADSIZE );
+				cp->rsp.body.top = malloc( RESPONSE_BODYSIZE );
+				if( cp->req.buf && cp->rsp.head.top && cp->rsp.body.top ){
+					memset( cp->req.buf, 0, REQUEST_BUFSIZE );
+					memset( cp->rsp.head.top, 0, RESPONSE_HEADSIZE );
+					memset( cp->rsp.body.top, 0, RESPONSE_BODYSIZE );
+					cp->req.bufsize		= REQUEST_BUFSIZE;
+					cp->rsp.head.size	= RESPONSE_HEADSIZE;
+					cp->rsp.body.size	= RESPONSE_BODYSIZE;
+					cp->loopback= loopback;
+					cp->sock	= sock_new;
+					cp->sslp	= sslp;
+					cp->status	= CLIENT_ACCEPT_OK;
+					success		= TRUE;
 				}
-				else LogW(L"[%u:%u]WSAAsyncSelectエラー%u:%s",Num(cp),sock_new,WSAGetLastError(),ip);
+				else{
+					LogW(L"L%u:mallocエラー",__LINE__);
+					if( cp->req.buf ) free(cp->req.buf), cp->req.buf=NULL;
+					if( cp->rsp.head.top ) free(cp->rsp.head.top), cp->rsp.head.top=NULL;
+					if( cp->rsp.body.top ) free(cp->rsp.body.top), cp->rsp.body.top=NULL;
+				}
+			}
+			if( success ){
+#ifdef HTTP_KEEPALIVE
+				// TODO:ブラウザでリロードを繰り返すとしばしば表示まで待たされる事があり、JCBookmarkのログ
+				// 出力タイミングと見比べると、どうもKeepAlive切断ログと同時にブラウザ側も表示されるような。
+				// ひょっとしてJCBookmarkは送信したつもりでもデータがブラウザに届いておらず、KeepAlive切断
+				// のタイミングでブラウザにデータが届いているのか？バッファリングされている？
+				// http://support.microsoft.com/kb/214397/ja
+				// TCP_NODELAYというsetsockoptオプションでNagleバッファリングを無効にできるらしい。
+				// またSO_SNDBUFを0に設定してWinsockバッファリングを無効にすることも可能と書いてある。
+				// が、どっちもやってみたが特に効果はなく、やはりしばしばブラウザが待たされる現象は発生する。
+				// うーむわからない回避できない…とりあえずKeepAlive機能を殺した。うむ問題解消した。
+				int on=1 ,zero=0;
+				LogW(L"setsockopt(TCP_NODELAY,SO_SNDBUF=0)");
+				if( setsockopt( sock_new ,IPPROTO_TCP ,TCP_NODELAY ,(char*)&on ,sizeof(on) )==SOCKET_ERROR )
+					LogW(L"setsockopt(TCP_NODELAY)エラー%u",WSAGetLastError());
+				if( setsockopt( sock_new ,SOL_SOCKET ,SO_SNDBUF ,(char*)&zero ,sizeof(zero) )==SOCKET_ERROR )
+					LogW(L"setsockopt(SO_SNDBUF)エラー%u",WSAGetLastError());
+#endif
+			}
+			else{
+				if( sslp ) SSL_free( sslp );
+				shutdown( sock_new, SD_BOTH );
+				closesocket( sock_new );
 			}
 		}
-		else LogW(L"[%u]同時接続数オーバー切断:%s",sock_new,ip);
+		else LogW(L"acceptエラー%u",WSAGetLastError());
+	}
+	else{
+		LogW(L"同時接続数オーバー待機");
+		PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_ACCEPT );
+	}
+}
 
-		if( success ){
+void ClientClose( TClient* cp )
+{
+	switch( cp->status ){
+	case CLIENT_ACCEPT_OK:
+		//ブラウザリロード時の通信不安定を調べていた名残。発生しなくなったもよう。
+		LogW(L"[%u]受信なし切断...",Num(cp));
+		break;
+	case CLIENT_THREADING:
+		// スレッド終了待たないとアクセス違反で落ちる
+		cp->abort = 1;
+		LogW(L"[%u]スレッド実行中待機...",Num(cp));
+		Sleep(300);
+		PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_CLOSE );
+		return;
+	}
+	LogW(L"[%u]切断",Num(cp));
+	ClientShutdown( cp );
+}
+
+void ClientWrite( TClient* cp )
+{
+	Response* rsp = &(cp->rsp);
+	switch( cp->status ){
+	case CLIENT_SEND_READY:
+		// 共通レスポンスヘッダ
+		BufferSendf( &(rsp->head)
+				,"Connection: %s\r\n"
+				"\r\n"
 #ifdef HTTP_KEEPALIVE
-			// TODO:ブラウザでリロードを繰り返すとしばしば表示まで待たされる事があり、JCBookmarkのログ
-			// 出力タイミングと見比べると、どうもKeepAlive切断ログと同時にブラウザ側も表示されるような。
-			// ひょっとしてJCBookmarkは送信したつもりでもデータがブラウザに届いておらず、KeepAlive切断
-			// のタイミングでブラウザにデータが届いているのか？バッファリングされている？
-			// http://support.microsoft.com/kb/214397/ja
-			// TCP_NODELAYというsetsockoptオプションでNagleバッファリングを無効にできるらしい。
-			// またSO_SNDBUFを0に設定してWinsockバッファリングを無効にすることも可能と書いてある。
-			// が、どっちもやってみたが特に効果はなく、やはりしばしばブラウザが待たされる現象は発生する。
-			// うーむわからない回避できない…とりあえずKeepAlive機能を殺した。うむ問題解消した。
-			int on=1 ,zero=0;
-			LogW(L"setsockopt(TCP_NODELAY,SO_SNDBUF=0)");
-			if( setsockopt( sock_new ,IPPROTO_TCP ,TCP_NODELAY ,(char*)&on ,sizeof(on) )==SOCKET_ERROR )
-				LogW(L"setsockopt(TCP_NODELAY)エラー%u",WSAGetLastError());
-			if( setsockopt( sock_new ,SOL_SOCKET ,SO_SNDBUF ,(char*)&zero ,sizeof(zero) )==SOCKET_ERROR )
-				LogW(L"setsockopt(SO_SNDBUF)エラー%u",WSAGetLastError());
+				,cp->req.KeepAlive? "keep-alive" :"close"
+#else
+				,"close"
 #endif
+		);
+		// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
+		LogA("[%u]送信:%s",Num(cp),rsp->head.top);
+		rsp->sended = rsp->readed = 0;
+		cp->status = CLIENT_SENDING;
+
+	case CLIENT_SENDING:
+		if( rsp->sended < rsp->head.bytes + rsp->body.bytes ){
+			// まず送信バッファ(ヘッダ＋ボディ)を送る
+			Buffer* bp;
+			UINT sended;
+			int ret;
+			if( rsp->sended < rsp->head.bytes ){
+				bp = &(rsp->head);
+				sended = rsp->sended;
+			}
+			else{
+				bp = &(rsp->body);
+				sended = rsp->sended - rsp->head.bytes;
+			}
+			if( cp->sslp ){
+				ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
+				if( ret <=0 ){
+					int err = SSL_get_error( cp->sslp, ret );
+					switch( err ){
+					case SSL_ERROR_WANT_READ:
+					case SSL_ERROR_WANT_WRITE:
+						// SSL_writeリトライ再度FD_WRITEが来る(？)のを待つ
+						break;
+					default:
+						LogW(L"[%u]SSL_write不明なエラー%d",Num(cp),err);
+						ClientClose(cp);
+					}
+					break;
+				}
+			}
+			else{
+				ret = send( cp->sock, bp->top + sended, bp->bytes - sended, 0 );
+				if( ret==SOCKET_ERROR ){
+					ret = WSAGetLastError();
+					if( ret !=WSAEWOULDBLOCK ) // 頻発するので記録しない
+						LogW(L"[%u]sendエラー%u",Num(cp),ret);
+					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
+					break;
+				}
+			}
+			rsp->sended += ret;
+			// 送信継続
+			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
+		}
+		else if( rsp->readfh != INVALID_HANDLE_VALUE ){
+			// 送信バッファ送ったらファイルを…
+			if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
+				// 送信バッファに読み込んで(上書き)
+				DWORD bRead=0;
+				if( ReadFile( rsp->readfh, rsp->body.top, rsp->body.size, &bRead, NULL )==0 )
+					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+				rsp->readed += bRead;
+				rsp->body.bytes = bRead;
+				rsp->sended = rsp->head.bytes;
+			}
+			else{
+				// ファイルデータ全部送った
+				CloseHandle( rsp->readfh );
+				rsp->readfh = INVALID_HANDLE_VALUE;
+			}
+			// 送信継続
+			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
 		}
 		else{
-			if( sslp ) SSL_free( sslp );
-			shutdown( sock_new, SD_BOTH );
-			closesocket( sock_new );
+			// ぜんぶ送信した
+#ifdef HTTP_KEEPALIVE
+			if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
+				SOCKET	sock		= cp->sock;
+				SSL*	sslp		= cp->sslp;
+				UCHAR	loopback	= cp->loopback;
+				UCHAR*	reqBuf		= cp->req.buf;
+				UCHAR*	rspHead		= cp->rsp.head.top;
+				UCHAR*	rspBody		= cp->rsp.body.top;
+				size_t	reqBufSize	= cp->req.bufsize;
+				size_t	rspHeadSize	= cp->rsp.head.size;
+				size_t	rspBodySize	= cp->rsp.body.size;
+				WCHAR	wpath[MAX_PATH+1]=L"";
+				CloseHandle( cp->req.writefh );
+				CloseHandle( cp->rsp.readfh );
+				DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
+				memset( cp->req.buf ,0 ,cp->req.bufsize );
+				memset( cp->rsp.head.top ,0 ,cp->rsp.head.size );
+				memset( cp->rsp.body.top ,0 ,cp->rsp.body.size );
+				memset( cp ,0 ,sizeof(TClient) );
+				cp->sock			= sock;
+				cp->sslp			= sslp;
+				cp->loopback		= loopback;
+				cp->req.buf			= reqBuf;
+				cp->req.bufsize		= reqBufSize;
+				cp->rsp.head.top	= rspHead;
+				cp->rsp.body.top	= rspBody;
+				cp->rsp.head.size	= rspHeadSize;
+				cp->rsp.body.size	= rspBodySize;
+				cp->rsp.readfh		= INVALID_HANDLE_VALUE;
+				cp->req.writefh		= INVALID_HANDLE_VALUE;
+				cp->status			= CLIENT_KEEP_ALIVE;
+				//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
+			}
+			else{ // 切断
+#endif
+				cp->status = 0;
+				ClientClose(cp);
+#ifdef HTTP_KEEPALIVE
+			}
+#endif
 		}
+		break;
+	//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
 	}
-	else LogW(L"acceptエラー%u",WSAGetLastError());
+	cp->silent = 0;
+}
+void SocketWrite( SOCKET sock )
+{
+	TClient* cp = ClientOfSocket( sock );
+	if( cp ) ClientWrite( cp );
+	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
 }
 
 void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
@@ -7048,13 +7203,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						break;
 					default:
 						LogW(L"[%u]SSL_accept不明なエラー%d",Num(cp),err);
-						PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+						ClientClose(cp);
 					}
 					break;
 				}
 				else{
 					LogW(L"[%u]SSL_accept致命的エラー%d",Num(cp),r);
-					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+					ClientClose(cp);
 					break;
 				}
 			}
@@ -7092,7 +7247,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					ResponseError(cp,"400 Bad Request");
 				send_ready:
 					cp->status = CLIENT_SEND_READY;
-					PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
+					//PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
+					ClientWrite(cp);
 					break;
 				}
 			}
@@ -7100,7 +7256,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 			if( cp->sslp ){
 				bytes = SSL_read( cp->sslp, req->buf + req->bytes, bytes );
 				if( bytes==0 ){
-					// コネクション切断
+					//LogW(L"[%u]切断されました(SSL)",Num(cp));
+					ClientClose(cp);
 					break;
 				}
 				else if( bytes <0 ){
@@ -7112,12 +7269,19 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						break;
 					default:
 						LogW(L"[%u]SSL_read不明なエラー%d",Num(cp),err);
-						PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
+						ClientClose(cp);
 					}
 					break;
 				}
 			}
-			else bytes = recv( sock, req->buf + req->bytes, bytes, 0 );
+			else{
+				bytes = recv( sock, req->buf + req->bytes, bytes, 0 );
+				if( bytes==0 ){
+					//LogW(L"[%u]切断されました",Num(cp));
+					ClientClose(cp);
+					break;
+				}
+			}
 			req->bytes += bytes;
 			req->buf[req->bytes] = '\0';
 			// リクエスト解析
@@ -7958,186 +8122,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 		cp->silent = 0;
 	}
 	//else LogW(L"[:%u](FD_READ)",sock);	// SSLで多発うざい
-}
-
-void ClientWrite( TClient* cp )
-{
-	Response* rsp = &(cp->rsp);
-	switch( cp->status ){
-	case CLIENT_SEND_READY:
-		// 共通レスポンスヘッダ
-		BufferSendf( &(rsp->head)
-				,"Connection: %s\r\n"
-				"\r\n"
-#ifdef HTTP_KEEPALIVE
-				,cp->req.KeepAlive? "keep-alive" :"close"
-#else
-				,"close"
-#endif
-		);
-		// 送信準備完了,この時点で送信バッファはテキスト情報のみ(後になるとバイナリも入る)
-		LogA("[%u]送信:%s",Num(cp),rsp->head.top);
-		rsp->sended = rsp->readed = 0;
-		cp->status = CLIENT_SENDING;
-
-	case CLIENT_SENDING:
-		if( rsp->sended < rsp->head.bytes + rsp->body.bytes ){
-			// まず送信バッファ(ヘッダ＋ボディ)を送る
-			Buffer* bp;
-			UINT sended;
-			int ret;
-			if( rsp->sended < rsp->head.bytes ){
-				bp = &(rsp->head);
-				sended = rsp->sended;
-			}
-			else{
-				bp = &(rsp->body);
-				sended = rsp->sended - rsp->head.bytes;
-			}
-			if( cp->sslp ){
-				ret = SSL_write( cp->sslp, bp->top + sended, bp->bytes - sended );
-				if( ret <=0 ){
-					int err = SSL_get_error( cp->sslp, ret );
-					switch( err ){
-					case SSL_ERROR_WANT_READ:
-					case SSL_ERROR_WANT_WRITE:
-						// SSL_writeリトライ再度FD_WRITEが来る(？)のを待つ
-						break;
-					default:
-						LogW(L"[%u]SSL_write不明なエラー%d",Num(cp),err);
-						PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_CLOSE );
-					}
-					break;
-				}
-			}
-			else{
-				ret = send( cp->sock, bp->top + sended, bp->bytes - sended, 0 );
-				if( ret==SOCKET_ERROR ){
-					ret = WSAGetLastError();
-					if( ret !=WSAEWOULDBLOCK ) // 頻発するので記録しない
-						LogW(L"[%u]sendエラー%u",Num(cp),ret);
-					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
-					break;
-				}
-			}
-			rsp->sended += ret;
-			// 送信継続
-			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
-		}
-		else if( rsp->readfh != INVALID_HANDLE_VALUE ){
-			// 送信バッファ送ったらファイルを…
-			if( rsp->readed < GetFileSize(rsp->readfh,NULL) ){
-				// 送信バッファに読み込んで(上書き)
-				DWORD bRead=0;
-				if( ReadFile( rsp->readfh, rsp->body.top, rsp->body.size, &bRead, NULL )==0 )
-					LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-				rsp->readed += bRead;
-				rsp->body.bytes = bRead;
-				rsp->sended = rsp->head.bytes;
-			}
-			else{
-				// ファイルデータ全部送った
-				CloseHandle( rsp->readfh );
-				rsp->readfh = INVALID_HANDLE_VALUE;
-			}
-			// 送信継続
-			PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_WRITE );
-		}
-		else{
-			// ぜんぶ送信した
-#ifdef HTTP_KEEPALIVE
-			if( cp->req.KeepAlive ){ // HTTP1.0持続的接続
-				SOCKET	sock		= cp->sock;
-				SSL*	sslp		= cp->sslp;
-				UCHAR	loopback	= cp->loopback;
-				UCHAR*	reqBuf		= cp->req.buf;
-				UCHAR*	rspHead		= cp->rsp.head.top;
-				UCHAR*	rspBody		= cp->rsp.body.top;
-				size_t	reqBufSize	= cp->req.bufsize;
-				size_t	rspHeadSize	= cp->rsp.head.size;
-				size_t	rspBodySize	= cp->rsp.body.size;
-				WCHAR	wpath[MAX_PATH+1]=L"";
-				CloseHandle( cp->req.writefh );
-				CloseHandle( cp->rsp.readfh );
-				DeleteFileW( ClientTempPath(cp,wpath,sizeof(wpath)/sizeof(WCHAR)) );
-				memset( cp->req.buf ,0 ,cp->req.bufsize );
-				memset( cp->rsp.head.top ,0 ,cp->rsp.head.size );
-				memset( cp->rsp.body.top ,0 ,cp->rsp.body.size );
-				memset( cp ,0 ,sizeof(TClient) );
-				cp->sock			= sock;
-				cp->sslp			= sslp;
-				cp->loopback		= loopback;
-				cp->req.buf			= reqBuf;
-				cp->req.bufsize		= reqBufSize;
-				cp->rsp.head.top	= rspHead;
-				cp->rsp.body.top	= rspBody;
-				cp->rsp.head.size	= rspHeadSize;
-				cp->rsp.body.size	= rspBodySize;
-				cp->rsp.readfh		= INVALID_HANDLE_VALUE;
-				cp->req.writefh		= INVALID_HANDLE_VALUE;
-				cp->status			= CLIENT_KEEP_ALIVE;
-				//LogW(L"[%u]再度クライアント要求を待ちます",Num(cp));
-			}
-			else{ // 切断
-#endif
-				cp->status = 0;
-				PostMessage( MainForm, WM_SOCKET, (WPARAM)cp->sock, (LPARAM)FD_CLOSE );
-#ifdef HTTP_KEEPALIVE
-			}
-#endif
-		}
-		break;
-	//default: if( !cp->sslp ) LogW(L"[%u](FD_WRITE)",Num(cp));
-	}
-	cp->silent = 0;
-}
-void SocketWrite( SOCKET sock )
-{
-	TClient* cp = ClientOfSocket( sock );
-	if( cp ) ClientWrite( cp );
-	//else LogW(L"[:%u](FD_WRITE)",sock);	// SSLで多発うざい
-}
-
-void SocketClose( SOCKET sock )
-{
-	TClient* cp = ClientOfSocket( sock );
-	if( cp ){
-		switch( cp->status ){
-		case CLIENT_ACCEPT_OK:
-			//ブラウザリロードで画面真っ白になる対策。XPではたまに発生する程度だったが、
-			//Win10で必ず発生するようになった。Chromeではnet::ERR_CONNECTION_RESETと出る。
-			//なぜかデータ受信せずにここが実行されて、ブラウザ的にはサーバーが切断した感じ？
-			//原因不明だが、まだデータ受信してない場合は切断せずに待つことにする。
-			//本当にデータ送信せず切断したクライアントが残ってしまうので回数上限を設ける。
-			//そしたらこんどはnet::ERR_CONTENT_LENGTH_MISMATCHが発生するようになった・・
-			//あとIE11で変なエラーが頻発したり・・これが発生したあとの送信データが不正に
-			//なってるような？でも前よりはマシな気がするからとりあえず採用しておこう・・
-			//OS側(特にWin10)がちゃんと動いてくれてないような・・
-			if( cp->close_pend_count < 3 ){
-				cp->close_pend_count++;
-				LogW(L"[%u]受信なし切断待機...",Num(cp));
-				PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-				return;
-			}
-			break;
-		case CLIENT_THREADING:
-			// スレッド終了待たないとアクセス違反で落ちる
-			cp->abort = 1;
-			LogW(L"[%u]スレッド実行中待機...",Num(cp));
-			Sleep(300);
-			// もう一回おなじメッセージでこの関数を実行
-			PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_CLOSE );
-			return;
-		}
-		LogW(L"[%u]切断",Num(cp));
-		ClientShutdown( cp );
-	}
-	else{
-		LogW(L"[:%u]切断(FD_CLOSE)",sock);
-		SocketBlocking( sock );
-		shutdown( sock, SD_BOTH );
-		closesocket( sock );
-	}
 }
 
 void SocketShutdownStart( void )
@@ -10587,17 +10571,22 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0;
 
 	case WM_SOCKET: // ソケットイベント
+		// http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html
 		// wp = イベントが発生したソケット(SOCKET)
 		// WSAGETSELECTEVENT(lp) = ソケットイベント番号(WORD)
 		// WSAGETSELECTERROR(lp) = エラー番号(WORD)
 		if( WSAGETSELECTERROR(lp) ) LogW(L"[:%u]ソケットイベントエラー%u",(SOCKET)wp,WSAGETSELECTERROR(lp));
+		// Win10でブラウザリロード時に通信不安定になる現象が頻発し、FD_CLOSEの発生が早すぎる感じに
+		// 見えたが、FD_CLOSEですぐに切断処理するのではなく、recv()==0 を切断判定として、それから
+		// 切断処理に入るようにしたら解決した。なのでFD_CLOSEとFD_READはおなじ処理に流れていく。
+		// http://sleepwomcpp3.googlecode.com/svn/othersrc/study/vc/NetWork/Windows%E7%BD%91%E7%BB%9C%E7%BC%96%E7%A8%8B%E8%A1%A5%E5%85%85%E6%9D%90%E6%96%99/Samples/chapter05/WSAAsyncSelect/server/asyncserver.cpp
+		// XPの頃は発生しなかったがWin10で顕著に現れた現象。詳細不明。
 		switch( WSAGETSELECTEVENT(lp) ){
-		//	http://members.jcom.home.ne.jp/toya.hiroshi/winsock2/index.html?wsaasyncselect_2.html
 		//case FD_CONNECT: break; // connect成功した
-		case FD_ACCEPT: SocketAccept( (SOCKET)wp );			break; // acceptできる
-		case FD_READ  : SocketRead( (SOCKET)wp, browser );	break; // recvできる
-		case FD_WRITE : SocketWrite( (SOCKET)wp );			break; // sendできる
-		case FD_CLOSE : SocketClose( (SOCKET)wp );			break; // 接続は閉じられた
+		case FD_ACCEPT: SocketAccept( (SOCKET)wp );			break;	// acceptできる
+		case FD_CLOSE :												// 接続は閉じられた
+		case FD_READ  : SocketRead( (SOCKET)wp, browser );	break;	// recvできる
+		case FD_WRITE : SocketWrite( (SOCKET)wp );			break;	// sendできる
 		default: LogW(L"[:%u]不明なソケットイベント(%u)",(SOCKET)wp,WSAGETSELECTEVENT(lp));
 		}
 		return 0;
