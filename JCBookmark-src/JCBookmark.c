@@ -1368,7 +1368,6 @@ typedef struct TClient {
 	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
-	UCHAR		close_pend_count;	// 受信データなし切断待機回数
 } TClient;
 
 //	Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
