@@ -1369,7 +1369,6 @@ typedef struct TClient {
 	UINT		silent;				// 無通信監視カウンタ
 	UCHAR		abort;				// 中断フラグ
 	UCHAR		loopback;			// loopbackからの接続フラグ
-	UCHAR		close_pend_count;	// 受信データなし切断待機回数
 } TClient;
 
 //	Connection:keep-aliveを導入したところFirefoxで「同時接続数オーバー」がたくさん出るようになった。
@@ -9819,23 +9818,28 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 			// 数秒でバルーン消す
 			// timeSetEvent(TIME_ONESHOT)で指定時間後に一発だけ実行できるようだが、まあいいか…。
 			// Win7でメッセージ読めないのでVista以降はちょい長めに表示する。
+			// TODO:Win10でバルーン消えない
+			// トースト通知(?)と共通になったらしいけど関係ある・・？
+			// https://blogs.msdn.microsoft.com/japan_platform_sdkwindows_sdk_support_team_blog/2015/11/16/windows-10-310/
 			UINT msec = 1000;
 			OSVERSIONINFOA os;
 			memset( &os, 0, sizeof(os) );
 			os.dwOSVersionInfoSize = sizeof(os);
 			GetVersionExA( &os );
-			if( os.dwMajorVersion>=6 ) msec = 1500; // Vista以降
+			if( os.dwMajorVersion>=6 ) msec = 2000; // Vista以降
 			SetTimer( hwnd, TIMER_BALOON, msec, NULL );
 			return TRUE;
 		}
-		return FALSE;
+		else LogW(L"Shell_NotifyIconエラー");
+	break;
 
 	case NIM_MODIFY:
 		ni.uFlags = NIF_TIP |NIF_INFO;
 		wcscpy( ni.szTip, APPNAME );
 
 	case NIM_DELETE:
-		return Shell_NotifyIconW( msg, &ni );
+		if( Shell_NotifyIconW( msg, &ni ) ) return TRUE;
+		else LogW(L"Shell_NotifyIconエラー");
 	}
 	return FALSE;
 }
