@@ -2198,9 +2198,68 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 // ▼データ形式
 // Extensive Storage Engine
 // https://blogs.msdn.microsoft.com/windowssdk/2008/10/22/esent-extensible-storage-engine-api-in-the-windows-sdk/
-#define JET_VERSION 0x0600
-#define JET_UNICODE
+//#define JET_VERSION 0x0600
+//#define JET_UNICODE
 #include <esent.h>
+typedef JET_ERR (JET_API *JETOPENDATABASEW)( JET_SESID ,JET_PCWSTR ,JET_PCWSTR ,JET_DBID* ,JET_GRBIT );
+typedef JET_ERR (JET_API *JETSETSYSTEMPARAMETERW)( JET_INSTANCE* ,JET_SESID ,unsigned long ,JET_API_PTR ,JET_PCWSTR );
+typedef JET_ERR (JET_API *JETGETDATABASEFILEINFOW)( JET_PCWSTR ,void* ,unsigned long ,unsigned long );
+typedef JET_ERR (JET_API *JETBEGINSESSIONW)( JET_INSTANCE ,JET_SESID* ,JET_PCWSTR ,JET_PCWSTR );
+typedef JET_ERR (JET_API *JETCREATEINSTANCEW)( JET_INSTANCE* ,JET_PCWSTR );
+typedef JET_ERR (JET_API *JETDETACHDATABASEW)( JET_SESID ,JET_PCWSTR );
+typedef JET_ERR (JET_API *JETATTACHDATABASEW)( JET_SESID ,JET_PCWSTR ,JET_GRBIT );
+struct {
+	HMODULE					dll;
+	JETOPENDATABASEW		OpenDatabaseW;
+	JETSETSYSTEMPARAMETERW	SetSystemParameterW;
+	JETGETDATABASEFILEINFOW	GetDatabaseFileInfoW;
+	JETBEGINSESSIONW		BeginSessionW;
+	JETCREATEINSTANCEW		CreateInstanceW;
+	JETDETACHDATABASEW		DetachDatabaseW;
+	JETATTACHDATABASEW		AttachDatabaseW;
+} Jet = { NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+
+void JetFree( void )
+{
+	if( Jet.dll ) FreeLibrary( Jet.dll );
+	memset( &Jet ,0 ,sizeof(Jet) );
+}
+
+BOOL JetAlloc( void )
+{
+	UCHAR path[MAX_PATH+1];
+
+	JetFree();
+
+	GetSystemDirectoryA( path, sizeof(path) );
+	_snprintf(path,sizeof(path),"%s\\esent.dll",path);
+
+	Jet.dll = LoadLibraryA( path );
+	if( Jet.dll ){
+		Jet.OpenDatabaseW = (JETOPENDATABASEW)GetProcAddress(Jet.dll,"JetOpenDatabaseW");
+		Jet.SetSystemParameterW = (JETSETSYSTEMPARAMETERW)GetProcAddress(Jet.dll,"JetSetSystemParameterW");
+		Jet.GetDatabaseFileInfoW = (JETGETDATABASEFILEINFOW)GetProcAddress(Jet.dll,"JetGetDatabaseFileInfoW");
+		Jet.BeginSessionW = (JETBEGINSESSIONW)GetProcAddress(Jet.dll,"JetBeginSessionW");
+		Jet.CreateInstanceW = (JETCREATEINSTANCEW)GetProcAddress(Jet.dll,"JetCreateInstanceW");
+		Jet.DetachDatabaseW = (JETDETACHDATABASEW)GetProcAddress(Jet.dll,"JetDetachDatabaseW");
+		Jet.AttachDatabaseW = (JETATTACHDATABASEW)GetProcAddress(Jet.dll,"JetAttachDatabaseW");
+
+		if( Jet.OpenDatabaseW && Jet.SetSystemParameterW && Jet.GetDatabaseFileInfoW && Jet.BeginSessionW
+			&& Jet.CreateInstanceW && Jet.DetachDatabaseW && Jet.AttachDatabaseW )
+			return TRUE;
+
+		if( !Jet.OpenDatabaseW ) LogW(L"JetOpenDatabaseW関数が見つかりません");
+		if( !Jet.SetSystemParameterW ) LogW(L"JetSetSystemParameterW関数が見つかりません");
+		if( !Jet.GetDatabaseFileInfoW ) LogW(L"JetGetDatabaseFileInfoW関数が見つかりません");
+		if( !Jet.BeginSessionW ) LogW(L"JetBeginSessionW関数が見つかりません");
+		if( !Jet.CreateInstanceW ) LogW(L"JetCreateInstanceW関数が見つかりません");
+		if( !Jet.DetachDatabaseW ) LogW(L"JetDetachDatabaseW関数が見つかりません");
+		if( !Jet.AttachDatabaseW ) LogW(L"JetAttachDatabaseW関数が見つかりません");
+	}
+	else LogW(L"esent.dllをロードできません");
+	return FALSE;
+}
+
 NodeList* EdgeFavoriteListCreate( void )
 {
 	NodeList* list = NULL;
@@ -2208,35 +2267,34 @@ NodeList* EdgeFavoriteListCreate( void )
 		L"%LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\DataStore\\Data\\nouser1\\120712-0049\\DBStore\\spartan.edb"
 	);
 	if( path ){
-		if( PathFileExistsW(path) ){
-			/*
+		if( PathFileExistsW(path) && JetAlloc() ){
 			JET_ERR err;
 			ULONG pageSize;
-			err = JetGetDatabaseFileInfoW( path ,&pageSize ,sizeof(ULONG) ,JET_DbInfoPageSize );
+			err = Jet.GetDatabaseFileInfoW( path ,&pageSize ,sizeof(ULONG) ,JET_DbInfoPageSize );
 			if( err >= JET_errSuccess ){
 				JET_INSTANCE jet;
-				JetSetSystemParameterW( NULL ,JET_sesidNil ,JET_paramDatabasePageSize, pageSize, NULL );
+				Jet.SetSystemParameterW( NULL ,JET_sesidNil ,JET_paramDatabasePageSize, pageSize, NULL );
 				LogW(L"ページサイズ%u",pageSize);
-				err = JetCreateInstanceW( &jet, L"instance" );
+				err = Jet.CreateInstanceW( &jet, L"instance" );
 				if( err >= JET_errSuccess ){
-					JetSetSystemParameterW( &jet ,JET_sesidNil ,JET_paramRecovery ,0,L"Off" );
+					Jet.SetSystemParameterW( &jet ,JET_sesidNil ,JET_paramRecovery ,0,L"Off" );
 					err = JetInit( &jet );
 					if( err >= JET_errSuccess ){
 						JET_SESID sesid;
-						err = JetBeginSession( jet ,&sesid ,0,0 );
+						err = Jet.BeginSessionW( jet ,&sesid ,0,0 );
 						if( err >= JET_errSuccess ){
-							err = JetAttachDatabaseW( sesid ,path ,JET_bitDbReadOnly );
+							err = Jet.AttachDatabaseW( sesid ,path ,JET_bitDbReadOnly );
 							if( err >= JET_errSuccess ){
 								JET_DBID dbid;
-								err = JetOpenDatabaseW( sesid ,path ,NULL ,&dbid ,JET_bitDbReadOnly );
+								err = Jet.OpenDatabaseW( sesid ,path ,NULL ,&dbid ,JET_bitDbReadOnly );
 								if( err >= JET_errSuccess ){
 									LogW(L"spartan.edbを開きました");
 									JetCloseDatabase( sesid ,dbid ,0 );
 								}
-								else LogW(L"JetOpenDatabaseWエラー:%d",err);
-								JetDetachDatabaseW( sesid ,NULL );
+								else LogW(L"JetOpenDatabaseエラー:%d",err);
+								Jet.DetachDatabaseW( sesid ,NULL );
 							}
-							else LogW(L"JetAttachDatabaseWエラー:%d",err);
+							else LogW(L"JetAttachDatabaseエラー:%d",err);
 							JetEndSession( sesid ,0 );
 						}
 						else LogW(L"JetBeginSessionエラー:%d",err);
@@ -2247,8 +2305,8 @@ NodeList* EdgeFavoriteListCreate( void )
 				else LogW(L"JetCreateInstanceエラー:%d",err);
 			}
 			else LogW(L"JetGetDatabaseFileInfoエラー:%d",err);
-			*/
 		}
+		JetFree();
 		free( path );
 	}
 	return list;
