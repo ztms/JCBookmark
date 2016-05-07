@@ -2198,9 +2198,25 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 // ▼データ形式
 // Extensive Storage Engine
 // https://blogs.msdn.microsoft.com/windowssdk/2008/10/22/esent-extensible-storage-engine-api-in-the-windows-sdk/
-//#define JET_VERSION 0x0600
+// ▼お気に入りテーブル名：Favorites
+// カラム名      型
+// -----------------------------------------------------
+// IsDeleted     JET_coltypBit       1byte固定
+// IsFolder      JET_coltypBit       1byte固定
+// RoamDisabled
+// DateUpdated   JET_coltypLongLong  8byte符号付き整数  
+// FaviconFile
+// HashedUrl
+// ItemId        JET_coltypGUID      16byteバイナリ
+// ParentId      JET_coltypGUID      16byteバイナリ
+// OrderNumber   JET_coltypLongLong  8byte符号付き整数
+// Title         JET_coltypLongText  可変長文字列
+// URL           JET_coltypLongText  可変長文字列
+// 
+#define JET_VERSION 0x0601
 //#define JET_UNICODE
 #include <esent.h>
+
 typedef JET_ERR (JET_API *JETOPENDATABASEW)( JET_SESID ,JET_PCWSTR ,JET_PCWSTR ,JET_DBID* ,JET_GRBIT );
 typedef JET_ERR (JET_API *JETSETSYSTEMPARAMETERW)( JET_INSTANCE* ,JET_SESID ,unsigned long ,JET_API_PTR ,JET_PCWSTR );
 typedef JET_ERR (JET_API *JETGETDATABASEFILEINFOW)( JET_PCWSTR ,void* ,unsigned long ,unsigned long );
@@ -2208,6 +2224,9 @@ typedef JET_ERR (JET_API *JETBEGINSESSIONW)( JET_INSTANCE ,JET_SESID* ,JET_PCWST
 typedef JET_ERR (JET_API *JETCREATEINSTANCEW)( JET_INSTANCE* ,JET_PCWSTR );
 typedef JET_ERR (JET_API *JETDETACHDATABASEW)( JET_SESID ,JET_PCWSTR );
 typedef JET_ERR (JET_API *JETATTACHDATABASEW)( JET_SESID ,JET_PCWSTR ,JET_GRBIT );
+typedef JET_ERR (JET_API *JETGETTABLECOLUMNINFOW)( JET_SESID ,JET_TABLEID ,JET_PCWSTR ,void* ,unsigned long ,unsigned long );
+typedef JET_ERR (JET_API *JETOPENTABLEW)( JET_SESID ,JET_DBID ,JET_PCWSTR ,const void* ,unsigned long ,JET_GRBIT ,JET_TABLEID* );
+
 struct {
 	HMODULE					dll;
 	JETOPENDATABASEW		OpenDatabaseW;
@@ -2217,7 +2236,10 @@ struct {
 	JETCREATEINSTANCEW		CreateInstanceW;
 	JETDETACHDATABASEW		DetachDatabaseW;
 	JETATTACHDATABASEW		AttachDatabaseW;
-} Jet = { NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+	JETGETTABLECOLUMNINFOW	GetTableColumnInfoW;
+	JETOPENTABLEW			OpenTableW;
+}
+Jet = { NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
 
 void JetFree( void )
 {
@@ -2243,9 +2265,12 @@ BOOL JetAlloc( void )
 		Jet.CreateInstanceW = (JETCREATEINSTANCEW)GetProcAddress(Jet.dll,"JetCreateInstanceW");
 		Jet.DetachDatabaseW = (JETDETACHDATABASEW)GetProcAddress(Jet.dll,"JetDetachDatabaseW");
 		Jet.AttachDatabaseW = (JETATTACHDATABASEW)GetProcAddress(Jet.dll,"JetAttachDatabaseW");
+		Jet.GetTableColumnInfoW = (JETGETTABLECOLUMNINFOW)GetProcAddress(Jet.dll,"JetGetTableColumnInfoW");
+		Jet.OpenTableW = (JETOPENTABLEW)GetProcAddress(Jet.dll,"JetOpenTableW");
 
 		if( Jet.OpenDatabaseW && Jet.SetSystemParameterW && Jet.GetDatabaseFileInfoW && Jet.BeginSessionW
-			&& Jet.CreateInstanceW && Jet.DetachDatabaseW && Jet.AttachDatabaseW )
+			&& Jet.CreateInstanceW && Jet.DetachDatabaseW && Jet.AttachDatabaseW && Jet.GetTableColumnInfoW
+			&& Jet.OpenTableW )
 			return TRUE;
 
 		if( !Jet.OpenDatabaseW ) LogW(L"JetOpenDatabaseW関数が見つかりません");
@@ -2255,9 +2280,175 @@ BOOL JetAlloc( void )
 		if( !Jet.CreateInstanceW ) LogW(L"JetCreateInstanceW関数が見つかりません");
 		if( !Jet.DetachDatabaseW ) LogW(L"JetDetachDatabaseW関数が見つかりません");
 		if( !Jet.AttachDatabaseW ) LogW(L"JetAttachDatabaseW関数が見つかりません");
+		if( !Jet.GetTableColumnInfoW ) LogW(L"JetGetTableColumnInfoW関数が見つかりません");
+		if( !Jet.OpenTableW ) LogW(L"JetOpenTableW関数が見つかりません");
 	}
 	else LogW(L"esent.dllをロードできません");
 	return FALSE;
+}
+
+typedef struct {
+	UCHAR id[16];
+	UCHAR parentid[16];
+	WCHAR title[512];
+	WCHAR url[512];
+	FILETIME updated;
+	UINT64 order;
+	BOOL isfolder;
+} TJetColumns;
+
+NodeList* JetFavoriteListCreate( JET_SESID sesid ,JET_DBID dbid )
+{
+	NodeList* list = NULL;
+	JET_TABLEID tableid;
+	JET_COLUMNDEF isdeleted ,itemid ,parentid ,title ,url ,isfolder ,ordernumber ,dateupdated;
+	JET_ERR err;
+
+	err = Jet.OpenTableW( sesid ,dbid ,L"Favorites" ,0,0 ,JET_bitTableReadOnly ,&tableid );
+	if( err < JET_errSuccess ){
+		LogW(L"JetOpenTable(Favorites)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"IsDeleted" ,&isdeleted ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(IsDeleted)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"ItemId" ,&itemid ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(ItemId)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"ParentId" ,&parentid ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(ParentId)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"Title" ,&title ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(Title)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"URL" ,&url ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(URL)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"IsFolder" ,&isfolder ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(IsFolder)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"OrderNumber" ,&ordernumber ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(OrderNumber)エラー:%d",err);
+		return NULL;
+	}
+	err = Jet.GetTableColumnInfoW( sesid ,tableid ,L"DateUpdated" ,&dateupdated ,sizeof(JET_COLUMNDEF) ,JET_ColInfo );
+	if( err < JET_errSuccess ){
+		LogW(L"JetGetTableColumnInfo(DateUpdated)エラー:%d",err);
+		return NULL;
+	}
+	LogW(L"isdeleted %u %u",isdeleted.columnid,isdeleted.coltyp);
+	LogW(L"itemid %u %u",itemid.columnid,itemid.coltyp);
+	LogW(L"parentid %u %u",parentid.columnid,parentid.coltyp);
+	LogW(L"title %u %u",title.columnid,title.coltyp);
+	LogW(L"url %u %u",url.columnid,url.coltyp);
+	LogW(L"isfolder %u %u",isfolder.columnid,isfolder.coltyp);
+	LogW(L"ordernumber %u %u",ordernumber.columnid,ordernumber.coltyp);
+	LogW(L"dateupdated %u %u",dateupdated.columnid,dateupdated.coltyp);
+
+	err = JetMove( sesid ,tableid ,0 ,JET_MoveFirst );
+	if( err < JET_errSuccess ){
+		LogW(L"JetMove(First)エラー:%d",err);
+		return NULL;
+	}
+
+	for( ;; ){
+		TJetColumns item;
+		char colBit;
+
+		memset( &item ,0 ,sizeof(item) );
+
+		err = JetRetrieveColumn( sesid ,tableid ,isdeleted.columnid ,&colBit ,sizeof(colBit) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(isdeleted)エラー:%d",err);
+			break;
+		}
+		if( (err != JET_wrnColumnNull) && (colBit == -1) ){
+			LogW(L"削除済みエントリスキップ");
+			goto next;
+		}
+
+		err = JetRetrieveColumn( sesid ,tableid ,itemid.columnid ,item.id ,sizeof(item.id) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(itemid)エラー:%d",err);
+			break;
+		}
+		LogA("アイテムID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+				,item.id[0],item.id[1],item.id[2],item.id[3],item.id[4],item.id[5],item.id[6],item.id[7]
+				,item.id[8],item.id[9],item.id[10],item.id[11],item.id[12],item.id[13],item.id[14],item.id[15]);
+
+		err = JetRetrieveColumn( sesid ,tableid ,parentid.columnid ,item.parentid ,sizeof(item.parentid) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(parentid)エラー:%d",err);
+			break;
+		}
+		LogA("親ID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+				,item.parentid[0],item.parentid[1],item.parentid[2],item.parentid[3]
+				,item.parentid[4],item.parentid[5],item.parentid[6],item.parentid[7]
+				,item.parentid[8],item.parentid[9],item.parentid[10],item.parentid[11]
+				,item.parentid[12],item.parentid[13],item.parentid[14],item.parentid[15]);
+
+		err = JetRetrieveColumn( sesid ,tableid ,dateupdated.columnid ,&item.updated ,sizeof(item.updated) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(dateupdated)エラー:%d",err);
+			break;
+		}
+		LogW(L"更新日時:%I64u",item.updated);
+
+		err = JetRetrieveColumn( sesid ,tableid ,ordernumber.columnid ,&item.order ,sizeof(item.order) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(ordernumber)エラー:%d",err);
+			break;
+		}
+		LogW(L"順序:%I64u",item.order);
+
+		// TODO:第6引数 pcbActual で必要なバイト数取得できる
+		err = JetRetrieveColumn( sesid ,tableid ,title.columnid ,item.title ,sizeof(item.title) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(title)エラー:%d",err);
+			break;
+		}
+		LogW(L"タイトル:%s",item.title);
+
+		err = JetRetrieveColumn( sesid ,tableid ,isfolder.columnid ,&colBit ,sizeof(colBit) ,NULL,0,NULL );
+		if( err < JET_errSuccess ){
+			LogW(L"JetRetrieveColumn(isfolder)エラー:%d",err);
+			break;
+		}
+		if( (err != JET_wrnColumnNull) && (colBit == -1) ){
+			LogW(L"フォルダです。");
+			item.isfolder = TRUE;
+		}
+		else{
+			item.isfolder = FALSE;
+			// TODO:第6引数 pcbActual で必要なバイト数取得できる
+			err = JetRetrieveColumn( sesid ,tableid ,url.columnid ,item.url ,sizeof(item.url) ,NULL,0,NULL );
+			if( err < JET_errSuccess ){
+				LogW(L"JetRetrieveColumn(url)エラー:%d",err);
+				break;
+			}
+			LogW(L"URL:%s",item.url);
+		}
+	next:
+		err = JetMove( sesid ,tableid ,JET_MoveNext ,0 );
+		if( err != JET_errSuccess ){
+			if( err != JET_errNoCurrentRecord ) LogW(L"JetMove(Next)エラー:%d",err);
+			break;
+		}
+	}
+	return list;
 }
 
 NodeList* EdgeFavoriteListCreate( void )
@@ -2289,6 +2480,7 @@ NodeList* EdgeFavoriteListCreate( void )
 								err = Jet.OpenDatabaseW( sesid ,path ,NULL ,&dbid ,JET_bitDbReadOnly );
 								if( err >= JET_errSuccess ){
 									LogW(L"spartan.edbを開きました");
+									list = JetFavoriteListCreate( sesid ,dbid );
 									JetCloseDatabase( sesid ,dbid ,0 );
 								}
 								else LogW(L"JetOpenDatabaseエラー:%d",err);
@@ -2311,6 +2503,7 @@ NodeList* EdgeFavoriteListCreate( void )
 	}
 	return list;
 }
+
 //---------------------------------------------------------------------------------------------------------------
 // 外部接続・HTTPクライアント関連
 //
