@@ -9740,7 +9740,7 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 			SetTimer( hwnd, TIMER_BALOON, msec, NULL );
 			return TRUE;
 		}
-		else LogW(L"Shell_NotifyIconエラー");
+		else LogW(L"Shell_NotifyIcon(%u)エラー",msg);
 	break;
 
 	case NIM_MODIFY:
@@ -9748,8 +9748,9 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 		wcscpy( ni.szTip, APPNAME );
 
 	case NIM_DELETE:
+		// TODO:ウィンドウ表示したまま二重起動しようとするとエラーログが出る
 		if( Shell_NotifyIconW( msg, &ni ) ) return TRUE;
-		else LogW(L"Shell_NotifyIconエラー");
+		else LogW(L"Shell_NotifyIcon(%u)エラー",msg);
 	}
 	return FALSE;
 }
