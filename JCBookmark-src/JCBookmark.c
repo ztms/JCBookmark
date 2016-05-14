@@ -7145,7 +7145,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					ResponseError(cp,"400 Bad Request");
 				send_ready:
 					cp->status = CLIENT_SEND_READY;
-					//PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
 					ClientWrite(cp);
 					break;
 				}
@@ -10081,16 +10080,15 @@ BOOL TrayIconNotify( HWND hwnd, UINT msg )
 			SetTimer( hwnd, TIMER_BALOON, msec, NULL );
 			return TRUE;
 		}
-		else LogW(L"Shell_NotifyIconエラー");
-	break;
+		LogW(L"Shell_NotifyIcon(%u)エラー",msg);
+		return FALSE;
 
 	case NIM_MODIFY:
 		ni.uFlags = NIF_TIP |NIF_INFO;
 		wcscpy( ni.szTip, APPNAME );
 
 	case NIM_DELETE:
-		if( Shell_NotifyIconW( msg, &ni ) ) return TRUE;
-		else LogW(L"Shell_NotifyIconエラー");
+		return Shell_NotifyIconW( msg, &ni );
 	}
 	return FALSE;
 }
