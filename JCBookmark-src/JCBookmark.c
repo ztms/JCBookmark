@@ -6827,7 +6827,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 					ResponseError(cp,"400 Bad Request");
 				send_ready:
 					cp->status = CLIENT_SEND_READY;
-					//PostMessage( MainForm, WM_SOCKET, (WPARAM)sock, (LPARAM)FD_WRITE );
 					ClientWrite(cp);
 					break;
 				}
