@@ -1682,125 +1682,102 @@ WCHAR* FavoritesPathAlloc( void )
 	else LogW(L"RegOpenKeyExW(%s)エラー",subkey);
 	return path;
 }
-// Favoritesフォルダ内を検索してノードリスト(単方向チェーン)を生成
-typedef struct NodeList {
-	struct NodeList*	next;		// 次ノード
-	struct NodeList*	child;		// 子ノード
+// Favoritesフォルダ内を検索してノード木(単方向)を生成
+typedef struct TreeNode {
+	struct TreeNode*	next;		// 次ノード
+	struct TreeNode*	child;		// 子ノード
 	BOOL				isFolder;	// フォルダかどうか
-	DWORD				sortIndex;	// ソートインデックス
 	UINT64				dateAdded;	// 作成日
-	WCHAR*				name;		// 名前(ファイル/フォルダ名)
-	//UCHAR*				title;		// タイトル
+	UCHAR*				title;		// タイトル(ファイル/フォルダ名)
 	UCHAR*				url;		// サイトURL
 	UCHAR*				icon;		// favicon URL
-} NodeList;
+	UINT64				sortIndex;	// ソートインデックス
+	UCHAR				id[16];		// ID(Edge用)
+	UCHAR				parent[16];	// 親ID(Edge用)
+} TreeNode;
 // 全ノード破棄
-void NodeListDestroy( NodeList* node )
+void NodeTreeDestroy( TreeNode* node )
 {
 	while( node ){
-		NodeList* next = node->next;
-		if( node->child ) NodeListDestroy( node->child );
+		TreeNode* next = node->next;
+		if( node->child ) NodeTreeDestroy( node->child );
+		if( node->title ) free( node->title );
+		if( node->icon ) free( node->icon );
+		if( node->url ) free( node->url );
 		free( node );
 		node = next;
 	}
 }
-// ノード１つメモリ確保
-NodeList* NodeCreate( const WCHAR* name, const UCHAR* url, const UCHAR* icon )
+// ノード1つメモリ確保
+TreeNode* TreeNodeCreate( void )
 {
-	NodeList* node = NULL;
-	size_t namesize=0, urlsize=0, iconsize=0;
-	size_t bytes = sizeof(NodeList);
-	if( name ){
-		namesize = (wcslen(name) + 1) * sizeof(WCHAR);
-		bytes += namesize;
-		//LogW(L"NodeCreate:%s",name);
-	}
-	else LogW(L"NodeCreate empty name. bug???");
-	if( url ){
-		urlsize = strlen(url) + 1;
-		bytes += urlsize;
-	}
-	if( icon ){
-		iconsize = strlen(icon) + 1;
-		bytes += iconsize;
-	}
-	node = malloc( bytes );
+	size_t bytes = sizeof(TreeNode);
+	TreeNode* node = malloc( bytes );
 	if( node ){
-		BYTE* p = (BYTE*)(node+1);
 		memset( node, 0, bytes );
-		node->sortIndex = UINT_MAX;
-		if( name ){
-			memcpy(p,name,namesize);
-			node->name = (WCHAR*)p;
-			p += namesize;
-		}
-		if( url ){
-			memcpy(p,url,urlsize);
-			node->url = (UCHAR*)p;
-			p += urlsize;
-		}
-		if( icon ){
-			memcpy(p,icon,iconsize);
-			node->icon = (UCHAR*)p;
-			p += iconsize;
-		}
 	}
 	else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
 	return node;
 }
 
-NodeList* FolderFavoriteListCreate( const WCHAR* wdir )
+TreeNode* FolderFavoriteTreeCreate( const WCHAR* wdir )
 {
-	NodeList* folder = NULL;
+	TreeNode* folder = NULL;
 	WCHAR* wfindir = wcsjoin( wdir, L"\\*", 0,0,0 );
 	if( wfindir ){
 		WIN32_FIND_DATAW wfd;
 		HANDLE handle = FindFirstFileW( wfindir, &wfd );
 		if( handle !=INVALID_HANDLE_VALUE ){
 			// フォルダノード
-			folder = NodeCreate( wcsrchr(wdir,L'\\')+1, NULL, NULL );
+			folder = TreeNodeCreate();
 			if( folder ){
-				NodeList* last = NULL;
+				TreeNode* last = NULL;
 				folder->isFolder = TRUE;
+				folder->title = WideCharToUTF8alloc( wcsrchr(wdir,L'\\')+1 );
 				do{
 					if( wcscmp(wfd.cFileName,L"..") && wcscmp(wfd.cFileName,L".") ){
 						WCHAR *wpath = wcsjoin( wdir, L"\\", wfd.cFileName, 0,0 );
 						if( wpath ){
-							NodeList* node = NULL;
+							TreeNode* node = NULL;
 							if( wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ){
 								// ディレクトリ再帰
-								node = FolderFavoriteListCreate( wpath );
+								node = FolderFavoriteTreeCreate( wpath );
 							}
 							else{
 								// ファイル
 								WCHAR* dot = wcsrchr( wfd.cFileName, L'.' );
 								if( dot && wcsicmp(dot+1,L"URL")==0 ){
-									// 拡張子url
-									UCHAR *url=NULL, *icon=NULL;
-									FILE* fp = _wfopen( wpath, L"rb" );
-									if( fp ){
-										UCHAR line[1024];
-										while( fgets( line, sizeof(line), fp ) ){
-											if( strnicmp(line,"URL=",4)==0 ){
-												url = urldupJSON(line+4);
+									// URLノード
+									node = TreeNodeCreate();
+									if( node ){
+										FILE* fp = _wfopen( wpath, L"rb" );
+										if( fp ){
+											UCHAR line[1024];
+											while( fgets( line, sizeof(line), fp ) ){
+												if( strnicmp(line,"URL=",4)==0 ){
+													// TODO:ここでJSONエスケープ？JSON生成時にやるべきでは？
+													node->url = urldupJSON(line+4);
+												}
+												else if( strnicmp(line,"IconFile=",9)==0 ){
+													// TODO:ここでJSONエスケープ？JSON生成時にやるべきでは？
+													node->icon = icondupJSON(line+9);
+												}
+												if( node->url && node->icon ) break;
 											}
-											else if( strnicmp(line,"IconFile=",9)==0 ){
-												icon = icondupJSON(line+9);
-											}
-											if( url && icon ) break;
+											fclose( fp );
 										}
-										fclose( fp );
+										else LogW(L"L%u:fopen(%s)エラー",__LINE__,wpath);
+
+										node->title = WideCharToUTF8alloc( wfd.cFileName );
+										if( node->title ){
+											node->title[strlen(node->title)-4] = '\0';
+										}
 									}
-									else LogW(L"L%u:fopen(%s)エラー",__LINE__,wpath);
-									// URLノード生成
-									node = NodeCreate( wfd.cFileName, url, icon );
-									if( url ) free( url );
-									if( icon ) free( icon );
 								}
 							}
 							// ノードリスト末尾に登録
 							if( node ){
-								node->dateAdded = FileTimeToJSTime(&wfd.ftCreationTime);
+								node->dateAdded = FileTimeToJSTime( &wfd.ftCreationTime );
 								if( last ){
 									last->next = node;
 									last = node;
@@ -1852,7 +1829,7 @@ typedef struct {
 // Win7 Home Premium SP1 日本語版は、謎の20～42バイトが「xx 00 08 00 04」になってるもよう。
 // Vistaではまた違うのか？Vistaが無いのでわからない。これを目印にするのは危険だろうか？
 // とりあえず「xx 00 xx 00 04」を目印にして手元のXP,7はどちらもうまく動いている。。
-void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
+void FavoriteOrder( TreeNode* folder, const WCHAR* subkey, size_t magicBytes )
 {
 	if( folder ){
 		HKEY key;
@@ -1877,7 +1854,8 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 							BOOL isUnicode = (item->key2 & 0x0004) ? TRUE : FALSE; // unicode encoding or codepage encoding
 							BYTE* longname;
 							size_t len;
-							NodeList* node;
+							TreeNode* node;
+							UCHAR* utf8name;
 #ifdef DEBUGLOG
 							WCHAR* shortname;
 #endif
@@ -1949,11 +1927,15 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 							if( shortname ) free(shortname), shortname=NULL;
 #endif
 							// ノードリストの該当ノードにソートインデックスをセット
-							for( node=folder->child; node; node=node->next ){
-								if( wcsicmp(node->name,(WCHAR*)longname)==0 ){
-									node->sortIndex = item->sortIndex;
-									break;
+							utf8name = WideCharToUTF8alloc( (WCHAR*)longname );
+							if( utf8name ){
+								for( node=folder->child; node; node=node->next ){
+									if( stricmp(node->title,utf8name)==0 ){
+										node->sortIndex = item->sortIndex;
+										break;
+									}
 								}
+								free( utf8name );
 							}
 							// フォルダ
 							if( !isURL ){
@@ -1980,26 +1962,26 @@ void FavoriteOrder( NodeList* folder, const WCHAR* subkey, size_t magicBytes )
 }
 // ノードリスト並べ替え
 // アルゴリズム的には単純バブルソートか…？ノード移動は単方向リストのつなぎかえ。
-NodeList* NodeListSort( NodeList* top, int (*isReversed)( const NodeList* ,const NodeList* ) )
+TreeNode* NodeTreeSort( TreeNode* root, int (*isReversed)( const TreeNode* ,const TreeNode* ) )
 {
-	NodeList* this = top;
-	NodeList* prev = NULL;
+	TreeNode* this = root;
+	TreeNode* prev = NULL;
 	while( this ){
-		NodeList* next = this->next;
+		TreeNode* next = this->next;
 		// 子ノード並べ替え
-		if( this->child ) this->child = NodeListSort( this->child, isReversed );
+		if( this->child ) this->child = NodeTreeSort( this->child, isReversed );
 		// このノード並べ替え
 		if( prev && isReversed(prev,this) ){
 			// thisを前方に移動する
-			if( isReversed(top,this) ){
+			if( isReversed(root,this) ){
 				// 先頭に
 				prev->next = next;
-				this->next = top;
-				top = this;
+				this->next = root;
+				root = this;
 			}
 			else{
 				// 途中に
-				NodeList* target = top;
+				TreeNode* target = root;
 				while( target->next ){
 					if( isReversed(target->next,this) ) break;
 					target = target->next;
@@ -2016,50 +1998,51 @@ NodeList* NodeListSort( NodeList* top, int (*isReversed)( const NodeList* ,const
 		}
 		this = next;
 	}
-	return top;
+	return root;
 }
 // ソート用比較関数。p1が前、p2が次のノード。
 // 1を返却した場合、p2がp1より前にあるべきとしてp2が前方に移動する。
-int NodeIndexCompare( const NodeList* p1, const NodeList* p2 )
+int NodeIndexCompare( const TreeNode* p1, const TreeNode* p2 )
 {
 	// ソートインデックスが小さいものを前に
 	if( p1->sortIndex > p2->sortIndex ) return 1;
 	return 0;
 }
-int NodeNameCompare( const NodeList* p1, const NodeList* p2 )
+int NodeTitleCompare( const TreeNode* p1, const TreeNode* p2 )
 {
 	// ソートインデックスが同じ場合の名前の並び順。IE8と同じ並びになるように比較関数を選ぶ。
 	// wcsicmpダメ、CompareStringWダメ、lstrcmpiWで同じになった。
-	//if( p1->sortIndex==p2->sortIndex && wcsicmp(p1->name,p2->name)>0 ) return 1;
+	// 2016.05 Edgeのお気に入り対応のため、lstrcmpiW から lstrcmpiA に仕様変更。
+	//if( p1->sortIndex==p2->sortIndex && wcsicmp(p1->title,p2->title)>0 ) return 1;
 	/*
 	if( p1->sortIndex==p2->sortIndex &&
 		CompareStringW(
 			LOCALE_USER_DEFAULT
 			,NORM_IGNORECASE |NORM_IGNOREKANATYPE |NORM_IGNORENONSPACE |NORM_IGNORESYMBOLS |NORM_IGNOREWIDTH
-			,p1->name, -1
-			,p2->name, -1
+			,p1->title, -1
+			,p2->title, -1
 		)<0
 	) return 1;
 	*/
-	if( p1->sortIndex==p2->sortIndex && lstrcmpiW(p1->name,p2->name)>0 ) return 1;
+	if( p1->sortIndex==p2->sortIndex && lstrcmpiA(p1->title,p2->title)>0 ) return 1;
 	return 0;
 }
-int NodeTypeCompare( const NodeList* p1, const NodeList* p2 )
+int NodeTypeCompare( const TreeNode* p1, const TreeNode* p2 )
 {
 	// ソートインデックスが同じ場合フォルダを前に
 	if( p1->sortIndex==p2->sortIndex && !p1->isFolder && p2->isFolder ) return 1;
 	return 0;
 }
-NodeList* FavoriteListCreate( void )
+TreeNode* FavoriteTreeCreate( void )
 {
-	NodeList* list = NULL;
+	TreeNode* root = NULL;
 	WCHAR* favdir = FavoritesPathAlloc();
 	if( favdir ){
-		// Favoritesフォルダからノードリスト生成
-		list = FolderFavoriteListCreate( favdir );
+		// Favoritesフォルダからノード木生成
+		root = FolderFavoriteTreeCreate( favdir );
 		free( favdir );
 	}
-	if( list ){
+	if( root ){
 		size_t magicBytes=0;	// Windows種類により異なるレジストリOrderバイナリレコード謎の無視バイト数
 		OSVERSIONINFOA os;
 		// [WindowsのOS判定]
@@ -2081,21 +2064,21 @@ NodeList* FavoriteListCreate( void )
 		}
 		// レジストリのソートインデックス取得
 		FavoriteOrder(
-				list
+				root
 				,L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MenuOrder\\Favorites"
 				,magicBytes
 		);
 		// ソートインデックスで並べ替え
-		list = NodeListSort( list, NodeIndexCompare );
+		root = NodeTreeSort( root, NodeIndexCompare );
 		// ソートインデックスが同じ中で名前で並べ替え
-		list = NodeListSort( list, NodeNameCompare );
+		root = NodeTreeSort( root, NodeTitleCompare );
 		// ソートインデックスが同じ中でフォルダを前に集める
-		list = NodeListSort( list, NodeTypeCompare );
+		root = NodeTreeSort( root, NodeTypeCompare );
 	}
-	return list;
+	return root;
 }
-// ノードリストをJSONでファイル出力
-void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view )
+// ノード木をJSONでファイル出力
+void NodeTreeJSON( TreeNode* node, FILE* fp, UINT* nextid, UINT depth, BYTE view )
 {
 	UINT count=0;
 	if( depth==0 ){
@@ -2111,10 +2094,7 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 		if( view ) fputs("\r\n",fp);
 	}
 	while( node ){
-		UCHAR* title = WideCharToUTF8alloc( node->name );
-		UCHAR* dot = strrchr(title,'.');
-		if( dot ) *dot = '\0';
-		//LogW(L"%u:%s%s",node->sortIndex,node->isFolder?L"フォルダ：":L"",node->name);
+		//LogA("%I64u:%s%s",node->sortIndex,node->isFolder?"フォルダ：":"",node->title);
 		if( node->isFolder ){
 			// フォルダ
 			if( view ){ UINT n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
@@ -2126,11 +2106,11 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 				",\"child\":["
 				,(*nextid)++
 				,node->dateAdded
-				,depth?(title?title:""):"お気に入り"	// トップフォルダは「お気に入り」固定
+				,depth ? ( node->title ? node->title :"" ) :"お気に入り"	// トップフォルダ「お気に入り」固定
 			);
 			if( view ) fputs("\r\n",fp);
 			// 再帰
-			NodeListJSON( node->child, fp, nextid, depth+1, view );
+			NodeTreeJSON( node->child, fp, nextid, depth+1, view );
 			if( view ){ UINT n; for( n=depth+1; n; n-- ) fputc('\t',fp); }
 			fputs("]}",fp);
 			count++;
@@ -2148,14 +2128,13 @@ void NodeListJSON( NodeList* node, FILE* fp, UINT* nextid, UINT depth, BYTE view
 				",\"icon\":\"%s\"}"
 				,(*nextid)++
 				,node->dateAdded
-				,title ? title : ""
-				,node->url ? node->url : ""
-				,node->icon ? node->icon : ""
+				,node->title ? node->title :""
+				,node->url ? node->url :""
+				,node->icon ? node->icon :""
 			);
 			count++;
 			if( view ) fputs("\r\n",fp);
 		}
-		if( title ) free( title );
 		node = node->next;
 	}
 	if( depth==0 ){
@@ -2286,23 +2265,142 @@ BOOL JetAlloc( void )
 	else LogW(L"esent.dllをロードできません");
 	return FALSE;
 }
-
-typedef struct {
-	UCHAR id[16];
-	UCHAR parentid[16];
-	WCHAR title[512];
-	WCHAR url[512];
-	FILETIME updated;
-	UINT64 order;
-	BOOL isfolder;
-} TJetColumns;
-
-NodeList* JetFavoriteListCreate( JET_SESID sesid ,JET_DBID dbid )
+// URLアイテムリストから指定の親IDを持つノードリストを単離する
+TreeNode* JetNodeIsolateByParent( UCHAR* pid ,TreeNode** urls )
 {
-	NodeList* list = NULL;
+	TreeNode* isolate = NULL;
+	TreeNode* prev = NULL;
+	TreeNode* node;
+
+	for( node=*urls; node; node=node->next ){
+		if( memcmp( node->parent ,pid ,sizeof(node->parent) )==0 ){
+			// 外して
+			if( prev ) prev->next = node->next;
+			else *urls = node->next;
+			// 先頭に
+			node->next = isolate;
+			isolate = node;
+		}
+		else prev = node;
+	}
+	return isolate;
+}
+// ノード木の中から指定IDのフォルダを探す
+TreeNode* JetFolderFindByID( TreeNode* folders ,UCHAR* id )
+{
+	TreeNode* node;
+
+	for( node=folders; node; node=node->next ){
+		if( node->isFolder ){
+			TreeNode* found;
+			if( memcmp( id ,node->id ,sizeof(node->id) )==0 ){
+				return node;
+			}
+			found = JetFolderFindByID( node->child ,id );
+			if( found ) return found;
+		}
+	}
+	return NULL;
+}
+// フラットに並んだフォルダリストとURLアイテムリストからノード木をつくる
+TreeNode* JetNodeTreeBuild( TreeNode* folders ,TreeNode* urls )
+{
+	TreeNode* root = TreeNodeCreate();
+	if( root ){
+		TreeNode* node;
+		TreeNode* prev;
+
+		root->title = strdup("お気に入り");
+		root->isFolder = TRUE;
+		root->dateAdded = JSTime();
+
+		if( !root->title ) LogW(L"L%u:strdupエラー",__LINE__);
+
+		// フォルダの子URLアイテムを集める
+		for( node=folders; node; node=node->next ){
+			node->child = JetNodeIsolateByParent( node->id ,&urls );
+			// ついでに名前変換
+			if( strcmp(node->title,"_Favorites_Bar_")==0 ){
+				UCHAR* title = strdup("お気に入りバー");
+				if( title ){
+					free( node->title );
+					node->title = title;
+				}
+				else LogW(L"L%u:strdupエラー",__LINE__);
+			}
+		}
+		// フォルダを親子関係にして階層つくる
+		for( node=folders ,prev=NULL; node; ){
+			TreeNode* next = node->next;
+			TreeNode* parent = JetFolderFindByID( folders ,node->parent );
+			if( parent ){
+				// 外して
+				if( prev ) prev->next = next; else folders = next;
+				// 親の子になる
+				node->next = parent->child;
+				parent->child = node;
+			}
+			node = next;
+		}
+		// ルートフォルダの子に格納
+		if( folders ){
+			root->child = folders;
+			for( node=folders; node->next; node=node->next );
+			node->next = urls;
+		}
+		else root->child = urls;
+		// ソート
+		root = NodeTreeSort( root ,NodeIndexCompare );
+	}
+	return root;
+}
+// 文字列型カラム値JSON用UTF-8文字列で取得
+UCHAR* JetRetrieveColumnUTF8JSONalloc( JET_SESID sesid ,JET_TABLEID tableid ,JET_COLUMNID columnid )
+{
+	UCHAR* json = NULL;
+	WCHAR tmp[1];
+	ULONG bytes;
+	JET_ERR err = JetRetrieveColumn( sesid ,tableid ,columnid ,tmp ,sizeof(tmp) ,&bytes ,0,NULL );
+	if( err >= JET_errSuccess ){
+		WCHAR* wc = malloc( bytes + sizeof(WCHAR) );
+		if( wc ){
+			err = JetRetrieveColumn( sesid ,tableid ,columnid ,wc ,bytes ,NULL,0,NULL );
+			if( err >= JET_errSuccess ){
+				UCHAR* utf8;
+				wc[bytes/sizeof(WCHAR)] = L'\0';
+				utf8 = WideCharToUTF8alloc( wc );
+				if( utf8 ){
+					json = strndupJSON( utf8 ,strlen(utf8) );
+					free( utf8 );
+				}
+			}
+			else LogW(L"L%u:JetRetrieveColumn(%u)エラー:%d",__LINE__,columnid,err);
+			free( wc );
+		}
+		else LogW(L"L%u:malloc(%u)エラー",__LINE__,bytes);
+	}
+	else LogW(L"L%u:JetRetrieveColumn(%u)エラー:%d",__LINE__,columnid,err);
+	return json;
+}
+// UINT64カラム値取得
+UINT64 JetRetrieveColumnUINT64( JET_SESID sesid ,JET_TABLEID tableid ,JET_COLUMNID columnid )
+{
+	UINT64 value = 0;
+	JET_ERR err = JetRetrieveColumn( sesid ,tableid ,columnid ,&value ,sizeof(value) ,NULL,0,NULL );
+	if( err >= JET_errSuccess ){
+		if( (INT64)value < 0 ) LogW(L"L%u:JetRetrieveColumn(%u)負数%I64dです",__LINE__,columnid,value);
+	}
+	else LogW(L"L%u:JetRetrieveColumn(%u)エラー:%d",__LINE__,columnid,err);
+	return value;
+}
+// spartan.edbお気に入り取得
+TreeNode* JetFavoriteTreeCreate( JET_SESID sesid ,JET_DBID dbid )
+{
 	JET_TABLEID tableid;
 	JET_COLUMNDEF isdeleted ,itemid ,parentid ,title ,url ,isfolder ,ordernumber ,dateupdated;
 	JET_ERR err;
+	TreeNode* folders = NULL;
+	TreeNode* urls = NULL;
 
 	err = Jet.OpenTableW( sesid ,dbid ,L"Favorites" ,0,0 ,JET_bitTableReadOnly ,&tableid );
 	if( err < JET_errSuccess ){
@@ -2365,10 +2463,8 @@ NodeList* JetFavoriteListCreate( JET_SESID sesid ,JET_DBID dbid )
 	}
 
 	for( ;; ){
-		TJetColumns item;
+		TreeNode* node;
 		char colBit;
-
-		memset( &item ,0 ,sizeof(item) );
 
 		err = JetRetrieveColumn( sesid ,tableid ,isdeleted.columnid ,&colBit ,sizeof(colBit) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
@@ -2380,66 +2476,53 @@ NodeList* JetFavoriteListCreate( JET_SESID sesid ,JET_DBID dbid )
 			goto next;
 		}
 
-		err = JetRetrieveColumn( sesid ,tableid ,itemid.columnid ,item.id ,sizeof(item.id) ,NULL,0,NULL );
+		node = TreeNodeCreate();
+		if( !node ) break;
+
+		node->title = JetRetrieveColumnUTF8JSONalloc( sesid ,tableid ,title.columnid );
+		LogA("タイトル:%s",node->title?node->title:"");
+
+		err = JetRetrieveColumn( sesid ,tableid ,itemid.columnid ,node->id ,sizeof(node->id) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(itemid)エラー:%d",err);
-			break;
 		}
-		LogA("アイテムID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
-				,item.id[0],item.id[1],item.id[2],item.id[3],item.id[4],item.id[5],item.id[6],item.id[7]
-				,item.id[8],item.id[9],item.id[10],item.id[11],item.id[12],item.id[13],item.id[14],item.id[15]);
+		else LogA("アイテムID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+				,node->id[0],node->id[1],node->id[2],node->id[3],node->id[4],node->id[5],node->id[6],node->id[7]
+				,node->id[8],node->id[9],node->id[10],node->id[11],node->id[12],node->id[13],node->id[14],node->id[15]);
 
-		err = JetRetrieveColumn( sesid ,tableid ,parentid.columnid ,item.parentid ,sizeof(item.parentid) ,NULL,0,NULL );
+		err = JetRetrieveColumn( sesid ,tableid ,parentid.columnid ,node->parent ,sizeof(node->parent) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(parentid)エラー:%d",err);
-			break;
 		}
-		LogA("親ID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
-				,item.parentid[0],item.parentid[1],item.parentid[2],item.parentid[3]
-				,item.parentid[4],item.parentid[5],item.parentid[6],item.parentid[7]
-				,item.parentid[8],item.parentid[9],item.parentid[10],item.parentid[11]
-				,item.parentid[12],item.parentid[13],item.parentid[14],item.parentid[15]);
+		else LogA("親ID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+				,node->parent[0],node->parent[1],node->parent[2],node->parent[3]
+				,node->parent[4],node->parent[5],node->parent[6],node->parent[7]
+				,node->parent[8],node->parent[9],node->parent[10],node->parent[11]
+				,node->parent[12],node->parent[13],node->parent[14],node->parent[15]);
 
-		err = JetRetrieveColumn( sesid ,tableid ,dateupdated.columnid ,&item.updated ,sizeof(item.updated) ,NULL,0,NULL );
-		if( err < JET_errSuccess ){
-			LogW(L"JetRetrieveColumn(dateupdated)エラー:%d",err);
-			break;
-		}
-		LogW(L"更新日時:%I64u",item.updated);
+		node->dateAdded = JetRetrieveColumnUINT64( sesid ,tableid ,dateupdated.columnid );
+		node->dateAdded = FileTimeToJSTime( (FILETIME*)&node->dateAdded );
+		LogW(L"更新日時:%I64u",node->dateAdded);
 
-		err = JetRetrieveColumn( sesid ,tableid ,ordernumber.columnid ,&item.order ,sizeof(item.order) ,NULL,0,NULL );
-		if( err < JET_errSuccess ){
-			LogW(L"JetRetrieveColumn(ordernumber)エラー:%d",err);
-			break;
-		}
-		LogW(L"順序:%I64u",item.order);
-
-		// TODO:第6引数 pcbActual で必要なバイト数取得できる
-		err = JetRetrieveColumn( sesid ,tableid ,title.columnid ,item.title ,sizeof(item.title) ,NULL,0,NULL );
-		if( err < JET_errSuccess ){
-			LogW(L"JetRetrieveColumn(title)エラー:%d",err);
-			break;
-		}
-		LogW(L"タイトル:%s",item.title);
+		node->sortIndex = JetRetrieveColumnUINT64( sesid ,tableid ,ordernumber.columnid );
+		LogW(L"順序:%I64u",node->sortIndex);
 
 		err = JetRetrieveColumn( sesid ,tableid ,isfolder.columnid ,&colBit ,sizeof(colBit) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(isfolder)エラー:%d",err);
-			break;
 		}
 		if( (err != JET_wrnColumnNull) && (colBit == -1) ){
 			LogW(L"フォルダです。");
-			item.isfolder = TRUE;
+			node->isFolder = TRUE;
+			node->next = folders;
+			folders = node;
 		}
 		else{
-			item.isfolder = FALSE;
-			// TODO:第6引数 pcbActual で必要なバイト数取得できる
-			err = JetRetrieveColumn( sesid ,tableid ,url.columnid ,item.url ,sizeof(item.url) ,NULL,0,NULL );
-			if( err < JET_errSuccess ){
-				LogW(L"JetRetrieveColumn(url)エラー:%d",err);
-				break;
-			}
-			LogW(L"URL:%s",item.url);
+			node->isFolder = FALSE;
+			node->next = urls;
+			urls = node;
+			node->url = JetRetrieveColumnUTF8JSONalloc( sesid ,tableid ,url.columnid );
+			LogA("URL:%s",node->url?node->url:"");
 		}
 	next:
 		err = JetMove( sesid ,tableid ,JET_MoveNext ,0 );
@@ -2448,12 +2531,12 @@ NodeList* JetFavoriteListCreate( JET_SESID sesid ,JET_DBID dbid )
 			break;
 		}
 	}
-	return list;
+	return JetNodeTreeBuild( folders ,urls );
 }
-
-NodeList* EdgeFavoriteListCreate( void )
+// Edgeお気に入り取得
+TreeNode* EdgeFavoriteTreeCreate( void )
 {
-	NodeList* list = NULL;
+	TreeNode* root = NULL;
 	WCHAR* path = ExpandEnvironmentStringsAllocW(
 		L"%LOCALAPPDATA%\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\DataStore\\Data\\nouser1\\120712-0049\\DBStore\\spartan.edb"
 	);
@@ -2480,7 +2563,7 @@ NodeList* EdgeFavoriteListCreate( void )
 								err = Jet.OpenDatabaseW( sesid ,path ,NULL ,&dbid ,JET_bitDbReadOnly );
 								if( err >= JET_errSuccess ){
 									LogW(L"spartan.edbを開きました");
-									list = JetFavoriteListCreate( sesid ,dbid );
+									root = JetFavoriteTreeCreate( sesid ,dbid );
 									JetCloseDatabase( sesid ,dbid ,0 );
 								}
 								else LogW(L"JetOpenDatabaseエラー:%d",err);
@@ -2501,7 +2584,7 @@ NodeList* EdgeFavoriteListCreate( void )
 		JetFree();
 		free( path );
 	}
-	return list;
+	return root;
 }
 
 //---------------------------------------------------------------------------------------------------------------
@@ -2531,7 +2614,7 @@ UCHAR* FileContentTypeA( const UCHAR* file )
 			if( stricmp(ext,"pdf")==0 )  return "application/pdf";
 			if( stricmp(ext,"exe")==0 )  return "application/x-msdownload";
 			if( stricmp(ext,"dll")==0 )  return "application/x-msdownload";
-			if( stricmp(ext,"json")==0 ) return "application/json";
+			if( stricmp(ext,"json")==0 ) return "application/json; charset=utf-8";
 			if( stricmp(ext,"jsonp")==0 )return "application/javascript";
 			if( stricmp(ext,"mp4")==0 )  return "video/mp4";
 			if( stricmp(ext,"flv")==0 )  return "video/flv";
@@ -2562,7 +2645,7 @@ UCHAR* FileContentTypeW( const WCHAR* file )
 			if( wcsicmp(ext,L"pdf")==0 )  return "application/pdf";
 			if( wcsicmp(ext,L"exe")==0 )  return "application/x-msdownload";
 			if( wcsicmp(ext,L"dll")==0 )  return "application/x-msdownload";
-			if( wcsicmp(ext,L"json")==0 ) return "application/json";
+			if( wcsicmp(ext,L"json")==0 ) return "application/json; charset=utf-8";
 			if( wcsicmp(ext,L"jsonp")==0 )return "application/javascript";
 			if( wcsicmp(ext,L"mp4")==0 )  return "video/mp4";
 			if( wcsicmp(ext,L"flv")==0 )  return "video/flv";
@@ -7384,6 +7467,10 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									count++;
 									BufferSends( bp ,"\"ie\":1" );
 								}
+								if( browser[BI_EDGE].hwnd ){
+									if( count++ ) BufferSend( bp ,"," ,1 );
+									BufferSends( bp ,"\"edge\":1" );
+								}
 								if( browser[BI_CHROME].hwnd ){
 									if( count++ ) BufferSend( bp ,"," ,1 );
 									BufferSends( bp ,"\"chrome\":1" );
@@ -7400,7 +7487,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							BufferSend( bp ,"}" ,1 );
 							BufferSendf( &(cp->rsp.head)
 									,"HTTP/1.0 200 OK\r\n"
-									"Content-Type: application/json\r\n"
+									"Content-Type: application/json; charset=utf-8\r\n"
 									"Content-Length: %u\r\n"
 									,bp->bytes
 							);
@@ -7554,7 +7641,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								BufferSend( bp ,"]" ,1 );
 								BufferSendf( &(cp->rsp.head)
 										,"HTTP/1.0 200 OK\r\n"
-										"Content-Type: application/json\r\n"
+										"Content-Type: application/json; charset=utf-8\r\n"
 										"Content-Length: %u\r\n"
 										,bp->bytes
 								);
@@ -7616,7 +7703,7 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											BufferSend( bp ,"}" ,1 );
 											BufferSendf( &(cp->rsp.head)
 													,"HTTP/1.0 200 OK\r\n"
-													"Content-Type: application/json\r\n"
+													"Content-Type: application/json; charset=utf-8\r\n"
 													"Content-Length: %u\r\n"
 													,bp->bytes
 											);
@@ -7640,14 +7727,14 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 						}
 						else if( stricmp(file,":favorites.json")==0 ){
 							// IEお気に入りインポート
-							NodeList* list = FavoriteListCreate();
-							if( list ){
+							TreeNode* root = FavoriteTreeCreate();
+							if( root ){
 								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
 								if( fp ){
 									UINT nextid=1;	// ノードID
 									UINT depth=0;	// 階層深さ
-									//NodeListJSON( list, fp, &nextid, depth, 1 );
-									NodeListJSON( list, fp, &nextid, depth, 0 );
+									//NodeTreeJSON( root, fp, &nextid, depth, 1 );
+									NodeTreeJSON( root, fp, &nextid, depth, 0 );
 									fclose( fp );
 									if( nextid >1 ){
 										cp->rsp.readfh = CreateFileW( tmppath
@@ -7658,7 +7745,30 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									else LogW(L"[%u]IEお気に入りデータありません",Num(cp));
 								}
 								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
-								NodeListDestroy( list );
+								NodeTreeDestroy( root );
+							}
+						}
+						else if( stricmp(file,":edge-favorites.json")==0 ){
+							// Edgeお気に入りインポート
+							TreeNode* root = EdgeFavoriteTreeCreate();
+							if( root ){
+								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
+								if( fp ){
+									UINT nextid=1;	// ノードID
+									UINT depth=0;	// 階層深さ
+									//NodeTreeJSON( root, fp, &nextid, depth, 1 );
+									NodeTreeJSON( root, fp, &nextid, depth, 0 );
+									fclose( fp );
+									if( nextid >1 ){
+										cp->rsp.readfh = CreateFileW( tmppath
+												,GENERIC_READ ,FILE_SHARE_READ
+												,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
+										);
+									}
+									else LogW(L"[%u]Edgeお気に入りデータありません",Num(cp));
+								}
+								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
+								NodeTreeDestroy( root );
 							}
 						}
 						else if( stricmp(file,":firefox.json")==0 ){
@@ -7728,29 +7838,6 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								}
 								else LogW(L"[%u]sqlite3_open16(%s)エラー%s",Num(cp),favicons,sqlite3_errmsg16(db));
 								free( favicons );
-							}
-						}
-						else if( stricmp(file,":edge-favorites.json")==0 ){
-							// Edgeお気に入りインポート
-							NodeList* list = EdgeFavoriteListCreate();
-							if( list ){
-								FILE* fp = _wfopen(ClientTempPath(cp,tmppath,sizeof(tmppath)/sizeof(WCHAR)),L"wb");
-								if( fp ){
-									UINT nextid=1;	// ノードID
-									UINT depth=0;	// 階層深さ
-									//NodeListJSON( list, fp, &nextid, depth, 1 );
-									NodeListJSON( list, fp, &nextid, depth, 0 );
-									fclose( fp );
-									if( nextid >1 ){
-										cp->rsp.readfh = CreateFileW( tmppath
-												,GENERIC_READ ,FILE_SHARE_READ
-												,NULL ,OPEN_EXISTING ,FILE_ATTRIBUTE_NORMAL ,NULL
-										);
-									}
-									else LogW(L"[%u]Edgeお気に入りデータありません",Num(cp));
-								}
-								else LogW(L"[%u]fopen(%s)エラー",Num(cp),tmppath);
-								NodeListDestroy( list );
 							}
 						}
 						else{
