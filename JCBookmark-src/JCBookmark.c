@@ -1855,7 +1855,7 @@ void FavoriteOrder( TreeNode* folder, const WCHAR* subkey, size_t magicBytes )
 							BYTE* longname;
 							size_t len;
 							TreeNode* node;
-							UCHAR* utf8name;
+							UCHAR* u8name;
 #ifdef DEBUGLOG
 							WCHAR* shortname;
 #endif
@@ -1927,15 +1927,15 @@ void FavoriteOrder( TreeNode* folder, const WCHAR* subkey, size_t magicBytes )
 							if( shortname ) free(shortname), shortname=NULL;
 #endif
 							// ノードリストの該当ノードにソートインデックスをセット
-							utf8name = WideCharToUTF8alloc( (WCHAR*)longname );
-							if( utf8name ){
+							u8name = WideCharToUTF8alloc( (WCHAR*)longname );
+							if( u8name ){
 								for( node=folder->child; node; node=node->next ){
-									if( stricmp(node->title,utf8name)==0 ){
+									if( stricmp(node->title,u8name)==0 ){
 										node->sortIndex = item->sortIndex;
 										break;
 									}
 								}
-								free( utf8name );
+								free( u8name );
 							}
 							// フォルダ
 							if( !isURL ){
@@ -2266,31 +2266,33 @@ BOOL JetAlloc( void )
 	return FALSE;
 }
 // URLアイテムリストから指定の親IDを持つノードリストを単離する
-TreeNode* JetNodeIsolateByParent( UCHAR* pid ,TreeNode** urls )
+TreeNode* JetNodeIsolateByParent( TreeNode** urls ,UCHAR* pid )
 {
 	TreeNode* isolate = NULL;
 	TreeNode* prev = NULL;
-	TreeNode* node;
+	TreeNode* node = *urls;
 
-	for( node=*urls; node; node=node->next ){
+	while( node ){
+		TreeNode* next = node->next;
 		if( memcmp( node->parent ,pid ,sizeof(node->parent) )==0 ){
 			// 外して
-			if( prev ) prev->next = node->next;
-			else *urls = node->next;
+			if( prev ) prev->next = next; else *urls = next;
 			// 先頭に
 			node->next = isolate;
 			isolate = node;
 		}
 		else prev = node;
+		// 次
+		node = next;
 	}
 	return isolate;
 }
 // ノード木の中から指定IDのフォルダを探す
-TreeNode* JetFolderFindByID( TreeNode* folders ,UCHAR* id )
+TreeNode* JetFolderFindByID( TreeNode* root ,UCHAR* id )
 {
 	TreeNode* node;
 
-	for( node=folders; node; node=node->next ){
+	for( node=root; node; node=node->next ){
 		if( node->isFolder ){
 			TreeNode* found;
 			if( memcmp( id ,node->id ,sizeof(node->id) )==0 ){
@@ -2318,9 +2320,9 @@ TreeNode* JetNodeTreeBuild( TreeNode* folders ,TreeNode* urls )
 
 		// フォルダの子URLアイテムを集める
 		for( node=folders; node; node=node->next ){
-			node->child = JetNodeIsolateByParent( node->id ,&urls );
+			node->child = JetNodeIsolateByParent( &urls ,node->id );
 			// ついでに名前変換
-			if( strcmp(node->title,"_Favorites_Bar_")==0 ){
+			if( node->title && strcmp(node->title,"_Favorites_Bar_")==0 ){
 				UCHAR* title = strdup("お気に入りバー");
 				if( title ){
 					free( node->title );
@@ -2330,7 +2332,9 @@ TreeNode* JetNodeTreeBuild( TreeNode* folders ,TreeNode* urls )
 			}
 		}
 		// フォルダを親子関係にして階層つくる
-		for( node=folders ,prev=NULL; node; ){
+		prev = NULL;
+		node = folders;
+		while( node ){
 			TreeNode* next = node->next;
 			TreeNode* parent = JetFolderFindByID( folders ,node->parent );
 			if( parent ){
@@ -2340,6 +2344,8 @@ TreeNode* JetNodeTreeBuild( TreeNode* folders ,TreeNode* urls )
 				node->next = parent->child;
 				parent->child = node;
 			}
+			else prev = node;
+			// 次
 			node = next;
 		}
 		// ルートフォルダの子に格納
@@ -2447,14 +2453,14 @@ TreeNode* JetFavoriteTreeCreate( JET_SESID sesid ,JET_DBID dbid )
 		LogW(L"JetGetTableColumnInfo(DateUpdated)エラー:%d",err);
 		return NULL;
 	}
-	LogW(L"isdeleted %u %u",isdeleted.columnid,isdeleted.coltyp);
-	LogW(L"itemid %u %u",itemid.columnid,itemid.coltyp);
-	LogW(L"parentid %u %u",parentid.columnid,parentid.coltyp);
-	LogW(L"title %u %u",title.columnid,title.coltyp);
-	LogW(L"url %u %u",url.columnid,url.coltyp);
-	LogW(L"isfolder %u %u",isfolder.columnid,isfolder.coltyp);
-	LogW(L"ordernumber %u %u",ordernumber.columnid,ordernumber.coltyp);
-	LogW(L"dateupdated %u %u",dateupdated.columnid,dateupdated.coltyp);
+	//LogW(L"isdeleted %u %u",isdeleted.columnid,isdeleted.coltyp);
+	//LogW(L"itemid %u %u",itemid.columnid,itemid.coltyp);
+	//LogW(L"parentid %u %u",parentid.columnid,parentid.coltyp);
+	//LogW(L"title %u %u",title.columnid,title.coltyp);
+	//LogW(L"url %u %u",url.columnid,url.coltyp);
+	//LogW(L"isfolder %u %u",isfolder.columnid,isfolder.coltyp);
+	//LogW(L"ordernumber %u %u",ordernumber.columnid,ordernumber.coltyp);
+	//LogW(L"dateupdated %u %u",dateupdated.columnid,dateupdated.coltyp);
 
 	err = JetMove( sesid ,tableid ,0 ,JET_MoveFirst );
 	if( err < JET_errSuccess ){
@@ -2472,7 +2478,7 @@ TreeNode* JetFavoriteTreeCreate( JET_SESID sesid ,JET_DBID dbid )
 			break;
 		}
 		if( (err != JET_wrnColumnNull) && (colBit == -1) ){
-			LogW(L"削除済みエントリスキップ");
+			//LogW(L"削除済みエントリスキップ");
 			goto next;
 		}
 
@@ -2480,39 +2486,39 @@ TreeNode* JetFavoriteTreeCreate( JET_SESID sesid ,JET_DBID dbid )
 		if( !node ) break;
 
 		node->title = JetRetrieveColumnUTF8JSONalloc( sesid ,tableid ,title.columnid );
-		LogA("タイトル:%s",node->title?node->title:"");
+		//LogA("タイトル:%s",node->title?node->title:"");
 
 		err = JetRetrieveColumn( sesid ,tableid ,itemid.columnid ,node->id ,sizeof(node->id) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(itemid)エラー:%d",err);
 		}
-		else LogA("アイテムID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
-				,node->id[0],node->id[1],node->id[2],node->id[3],node->id[4],node->id[5],node->id[6],node->id[7]
-				,node->id[8],node->id[9],node->id[10],node->id[11],node->id[12],node->id[13],node->id[14],node->id[15]);
+		//else LogA("アイテムID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+		//		,node->id[0],node->id[1],node->id[2],node->id[3],node->id[4],node->id[5],node->id[6],node->id[7]
+		//		,node->id[8],node->id[9],node->id[10],node->id[11],node->id[12],node->id[13],node->id[14],node->id[15]);
 
 		err = JetRetrieveColumn( sesid ,tableid ,parentid.columnid ,node->parent ,sizeof(node->parent) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(parentid)エラー:%d",err);
 		}
-		else LogA("親ID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
-				,node->parent[0],node->parent[1],node->parent[2],node->parent[3]
-				,node->parent[4],node->parent[5],node->parent[6],node->parent[7]
-				,node->parent[8],node->parent[9],node->parent[10],node->parent[11]
-				,node->parent[12],node->parent[13],node->parent[14],node->parent[15]);
+		//else LogA("親ID:%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X"
+		//		,node->parent[0],node->parent[1],node->parent[2],node->parent[3]
+		//		,node->parent[4],node->parent[5],node->parent[6],node->parent[7]
+		//		,node->parent[8],node->parent[9],node->parent[10],node->parent[11]
+		//		,node->parent[12],node->parent[13],node->parent[14],node->parent[15]);
 
 		node->dateAdded = JetRetrieveColumnUINT64( sesid ,tableid ,dateupdated.columnid );
 		node->dateAdded = FileTimeToJSTime( (FILETIME*)&node->dateAdded );
-		LogW(L"更新日時:%I64u",node->dateAdded);
+		//LogW(L"更新日時:%I64u",node->dateAdded);
 
 		node->sortIndex = JetRetrieveColumnUINT64( sesid ,tableid ,ordernumber.columnid );
-		LogW(L"順序:%I64u",node->sortIndex);
+		//LogW(L"順序:%I64u",node->sortIndex);
 
 		err = JetRetrieveColumn( sesid ,tableid ,isfolder.columnid ,&colBit ,sizeof(colBit) ,NULL,0,NULL );
 		if( err < JET_errSuccess ){
 			LogW(L"JetRetrieveColumn(isfolder)エラー:%d",err);
 		}
 		if( (err != JET_wrnColumnNull) && (colBit == -1) ){
-			LogW(L"フォルダです。");
+			//LogW(L"フォルダです。");
 			node->isFolder = TRUE;
 			node->next = folders;
 			folders = node;
@@ -2522,7 +2528,7 @@ TreeNode* JetFavoriteTreeCreate( JET_SESID sesid ,JET_DBID dbid )
 			node->next = urls;
 			urls = node;
 			node->url = JetRetrieveColumnUTF8JSONalloc( sesid ,tableid ,url.columnid );
-			LogA("URL:%s",node->url?node->url:"");
+			//LogA("URL:%s",node->url?node->url:"");
 		}
 	next:
 		err = JetMove( sesid ,tableid ,JET_MoveNext ,0 );
