@@ -10230,7 +10230,12 @@ WCHAR* ModuleFileNameAllocW( void )
 HWND Startup( HINSTANCE hinst, int nCmdShow )
 {
 	WSADATA	wsaData;
-
+//#define SELF_DEBUG
+#ifndef SELF_DEBUG
+  #ifdef MEMLOG
+	mlogclear();
+  #endif
+#endif
 	WSAStartup( MAKEWORD(2,2), &wsaData );
 	InitializeCriticalSection( &LogCacheCS );
 	InitializeCriticalSection( &SessionCS );
@@ -10627,7 +10632,6 @@ int WINAPI wWinMain( HINSTANCE hinst, HINSTANCE hinstPrev, LPWSTR lpCmdLine, int
 	// IDEでデバッグ実行・終了後「Detected memory leaks!」出力があったら、{数字} の番号を
 	// _CrtSetBreakAlloc(数字) と書いて再実行すると未解放メモリ確保した所でブレークしてくれる。
 #endif
-//#define SELF_DEBUG
 #ifdef SELF_DEBUG
 	if( IsDebuggerPresent() ){
 #endif
