@@ -1107,8 +1107,9 @@ function setEvents(){
 					// Edgeお気に入りインポート
 					$('#edgeico').click(function(){
 						Confirm({
-							msg:'Microsoft Edge お気に入りデータを取り込みます。#BR#データ量が多いと時間がかかります。'
+							msg:'Microsoft Edge お気に入りデータを取り込みます。#BR#データ量が多いと時間がかかります。#BR##BR#Edge起動中でお気に入り編集した場合はエラーが発生する事があります。Edgeを終了してから実行してください。'
 							,width:390
+							,height:260
 							,ok:function(){
 								function ajax(){
 									MsgBox('処理中です...');
