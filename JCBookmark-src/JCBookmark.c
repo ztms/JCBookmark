@@ -7107,9 +7107,18 @@ void ClientWrite( TClient* cp )
 			else{
 				ret = send( cp->sock, bp->top + sended, bp->bytes - sended, 0 );
 				if( ret==SOCKET_ERROR ){
-					ret = WSAGetLastError();
-					if( ret !=WSAEWOULDBLOCK ) // 頻発するので記録しない
-						LogW(L"[%u]sendエラー%u",Num(cp),ret);
+					int err = WSAGetLastError();
+					switch( err ){
+					case WSAENETRESET:
+					case WSAECONNABORTED:
+					case WSAECONNRESET:
+						LogW(L"[%u]sendエラー%u(切断されました)",Num(cp),err);
+						ClientClose(cp);
+						break;
+					case WSAEWOULDBLOCK: break; // 頻発するので記録しない
+					default:
+						LogW(L"[%u]sendエラー%u",Num(cp),err);
+					}
 					// 送信中止、再度FD_WRITEが来る(はず？)のを待つ
 					break;
 				}
@@ -7174,7 +7183,6 @@ void ClientWrite( TClient* cp )
 			}
 			else{ // 切断
 #endif
-				cp->status = 0;
 				ClientClose(cp);
 #ifdef HTTP_KEEPALIVE
 			}
