@@ -921,7 +921,7 @@ function columnHeightAdjust(){
 function setEvents(){
 	// ブラウザ情報＋インポートイベント
 	(function(){
-		var browser = { ie:1, chrome:1, firefox:1 };
+		var browser = { ie:1, edge:1, chrome:1, firefox:1 };
 		$.ajax({
 			url:':browser.json'
 			,success:function(data){ browser = data; }
@@ -1102,6 +1102,39 @@ function setEvents(){
 					});
 				}
 				else{ $('#ieico').hide(); sidebarHeight -=34; }
+
+				if( 'edge' in browser ){
+					// Edgeお気に入りインポート
+					$('#edgeico').click(function(){
+						Confirm({
+							msg:'Microsoft Edge お気に入りデータを取り込みます。#BR#データ量が多いと時間がかかります。#BR##BR#Edge起動中でお気に入り編集した場合はエラーが発生する事があります。Edgeを終了してから実行してください。'
+							,width:390
+							,height:260
+							,ok:function(){
+								function ajax(){
+									MsgBox('処理中です...');
+									$.ajax({
+										url:':edge-favorites.json?'+ (new Date()).getTime()
+										,error:function(xhr){
+											$('#dialog').dialog('destroy');
+											if( xhr.status===401 ) LoginDialog({ ok:ajax ,cancel:giveup });
+											else giveup();
+
+											function giveup(){
+												Alert('データ取得エラー:'+xhr.status+' '+xhr.statusText);
+											}
+										}
+										,success:function(data){
+											$('#dialog').dialog('destroy'); analyzer( data );
+										}
+									});
+								}
+								ajax();
+							}
+						});
+					});
+				}
+				else{ $('#edgeico').hide(); sidebarHeight -=34; }
 
 				if( 'firefox' in browser ){
 					// Firefoxブックマークインポート
