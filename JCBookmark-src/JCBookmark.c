@@ -130,7 +130,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"2.3dev"
+#define		APPVER				L"2.3"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -186,7 +186,7 @@ SSL_CTX*	ssl_ctx				= NULL;				// SSLコンテキスト
 // memory.log がクリアされず既存の memory.log が存在したら追記されていってしまうので注意。
 // 回避が面倒なのでとりあえず手動で memory.log を消す運用で対処。
 //
-#define MEMLOG
+//#define MEMLOG
 #ifdef MEMLOG
 FILE* mlog=NULL;
 void _mlogopen( BOOL delete )
