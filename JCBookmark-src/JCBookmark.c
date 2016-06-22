@@ -130,7 +130,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"2.3"
+#define		APPVER				L"2.4dev"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -2056,13 +2056,13 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 				// http://cakephp.org/の<title>にTAB文字(0x09)が含まれておりブラウザJSON.parseエラー。
 				// http://qiita.com/tawago/items/c977c79b76c5979874e8 こちらはBS文字(0x08)が含まれており同様。
 				case '\0': src++ ,*dst++ ='\\' ,*dst++ ='0'; continue;
-				case '\a': src++ ,*dst++ ='\\' ,*dst++ ='a'; continue;
+				case '\a': src++ /*,*dst++ ='\\' ,*dst++ ='a'*/; continue;
 				case '\b': src++ ,*dst++ ='\\' ,*dst++ ='b'; continue;
 				case '\f': src++ ,*dst++ ='\\' ,*dst++ ='f'; continue;
 				case '\n': src++ ,*dst++ ='\\' ,*dst++ ='n'; continue;
 				case '\r': src++ ,*dst++ ='\\' ,*dst++ ='r'; continue;
 				case '\t': src++ ,*dst++ ='\\' ,*dst++ ='t'; continue;
-				case '\v': src++ ,*dst++ ='\\' ,*dst++ ='v'; continue;
+				case '\v': src++ /*,*dst++ ='\\' ,*dst++ ='v'*/; continue;
 				// " と \ はエスケープ
 				case '\\': *dst++ ='\\'; break;
 				case '"': *dst++ ='\\'; break;
