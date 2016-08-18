@@ -1171,7 +1171,7 @@ function setEvents(){
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	var sidebarHeight = 340;
+	var sidebarHeight = 370;
 	$doc.on('mousemove',function(){
 		var animate = null;
 		return function(ev){
