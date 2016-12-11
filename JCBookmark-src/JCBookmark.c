@@ -8983,8 +8983,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hHttpsTxt		,36  ,rc.top+150+2 ,110 ,22 ,TRUE );
 				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,21 ,TRUE );
 				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,21 ,TRUE );
-				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
-				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,150 ,26 ,TRUE );
+				MoveWindow( my->hSSLKey			,295 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
 				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+200   ,220 ,26 ,TRUE );
 				MoveWindow( my->hBootMinimal	,35  ,rc.top+245   ,240 ,22 ,TRUE );
