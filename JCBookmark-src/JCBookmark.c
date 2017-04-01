@@ -6808,13 +6808,17 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
 									; // Mozilla仮URL無視
 								else{
-									// TODO:Windowsローカルファイルパスはfile:///～に変換
+									// Windowsローカルファイルパスはfile:///～に変換
 									// 例) %ProgramFiles%\Internet Explorer\Images\bing.ico
 									// IEお気に入りエクスポートに含まれる場合がありIE/Edgeで問題症状が出る
-									UCHAR* strJSON = strndupJSON( iconTop, iconEnd - iconTop );
-									if( strJSON ){
-										fputs( strJSON, fp );
-										free( strJSON );
+									UCHAR* iconUrl = icondup( iconTop );
+									if( iconUrl ){
+										UCHAR* strJSON = strdupJSON( iconUrl );
+										if( strJSON ){
+											fputs( strJSON, fp );
+											free( strJSON );
+										}
+										free( iconUrl );
 									}
 								}
 								*iconEnd = '"';
