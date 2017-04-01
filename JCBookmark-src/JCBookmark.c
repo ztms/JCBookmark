@@ -3652,6 +3652,7 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 		// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
 		// <meta charset=utf-8>なのにDetectInputCodepageは文字コード1252と誤判定しているもよう。
 		// 仕方ないので1252だった場合は<meta charset=を検索して修正。
+		// http://www.google-mapi.com/googlemaps/geocoding-address.htmlは1252になるが<meta charset=shift_jis>。
 		if( CP==1252 ){
 			UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
 			UCHAR* meta ,*endtag ,*charset;
@@ -3665,13 +3666,29 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 						charset += 7;
 						while( *charset==' ' ) charset++;
 						if( *charset=='=' ){
+							DWORD fixCP = 0;
 							charset++;
 							while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
-							if( strnicmp(charset,"utf-8",5)==0 ) charset += 5;
-							else if( strnicmp(charset,"utf8",4)==0 ) charset += 4;
-							switch( *charset ){ case '"':case '\'':case ' ':case '>':
-								LogW(L"DetectInputCodePage say 1252, but <meta charset=UTF-8>");
-								CP = 65001;
+							if( strnicmp(charset,"utf-8",5)==0 ){
+								charset += 5;
+								fixCP = 65001;
+							}
+							else if( strnicmp(charset,"utf8",4)==0 ){
+								charset += 4;
+								fixCP = 65001;
+							}
+							else if( strnicmp(charset,"shift_jis",9)==0 ){
+								charset += 9;
+								fixCP = 932;
+							}
+							else if( strnicmp(charset,"x-sjis",6)==0 ){
+								charset += 6;
+								fixCP = 932;
+							}
+							if( fixCP ) switch( *charset ){
+								case '"':case '\'':case ' ':case '>':
+								LogW(L"文字コード判定修正1252->%u",fixCP);
+								CP = fixCP;
 							}
 						}
 					}
@@ -6791,6 +6808,9 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
 									; // Mozilla仮URL無視
 								else{
+									// TODO:Windowsローカルファイルパスはfile:///～に変換
+									// 例) %ProgramFiles%\Internet Explorer\Images\bing.ico
+									// IEお気に入りエクスポートに含まれる場合がありIE/Edgeで問題症状が出る
 									UCHAR* strJSON = strndupJSON( iconTop, iconEnd - iconTop );
 									if( strJSON ){
 										fputs( strJSON, fp );
