@@ -2916,9 +2916,14 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 	if( *url ){
 		UCHAR* host;
 		UCHAR* path = strchr(url,'/');
+		UCHAR* query = strchr(url,'?');
+		if( query ){
+			// ホスト名の次が ? の場合
+			if( !path || query < path ) path = query;
+		}
 		if( path ){
 			host = strndup( url, path - url );
-			path++;
+			if( *path=='/' ) path++;
 		}
 		else{
 			host = strdup( url );
