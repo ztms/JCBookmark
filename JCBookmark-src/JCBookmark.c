@@ -7796,6 +7796,29 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							}
 							goto send_ready;
 						}
+						else if( stricmp(file,":server.log")==0 ){
+							// サーバーログをブラウザで見る(とりあえず自分用)
+							Buffer* bp = &(cp->rsp.body);
+							LONG count = SendMessage( ListBox, LB_GETCOUNT, 0,0 );
+							if( count !=LB_ERR && count>0 ){
+								LONG i;
+								for( i=0; i<count; i++ ){
+									WCHAR wstr[ LOGMAX +1 ]=L"";
+									UCHAR utf8[ LOGMAX *2 +1 ]="";
+									SendMessageW( ListBox, LB_GETTEXT, i, (LPARAM)wstr );
+									WideCharToMultiByte(CP_UTF8,0, wstr,-1, utf8,LOGMAX *2 +1, NULL,NULL);
+									BufferSends( bp ,utf8 );
+									BufferSend( bp ,"\r\n" ,2 );
+								}
+							}
+							BufferSendf( &(cp->rsp.head)
+									,"HTTP/1.0 200 OK\r\n"
+									"Content-Type: text/plain; charset=utf-8\r\n"
+									"Content-Length: %u\r\n"
+									,bp->bytes
+							);
+							goto send_ready;
+						}
 						else if( stricmp(file,":favorites.json")==0 ){
 							// IEお気に入りインポート
 							TreeNode* root = FavoriteTreeCreate();
