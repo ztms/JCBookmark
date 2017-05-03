@@ -3048,6 +3048,15 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 					}
 					else LogA("[%u]外部接続:%s:%s",sock,host,port);
 					// リクエスト送信
+					// TODO:楽天がなぜか応答をすぐ返してくれなくなったもよう。
+					// http://item.rakuten.co.jp/bestclick/dp-hdmi_1_8m_bk/
+					// 普通にChromeで見るとすぐ応答返ってくる。
+					// User-Agentが"curl/7.29.0"だと3秒くらい待って応答返ってくる。
+					// タイムアウト9秒くらいにするとやっと応答取れる。
+					// Connection: keep-aliveにするとすぐ応答取れる。
+					// リクエスト内容を分析してレスポンスすぐ返さない仕組みでも動いてるのか？？？
+					// keep-alive のクライアント動作には対応してないので、行儀が悪いクライアントになってしまう・・
+					// TODO:なんかここらへん自力でやるの大変なので、GoogleにタイトルやファビコンURL教えてもらえないのかな？API的に。
 					if( ssl_ok && !*abort ){
 						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 						if( rsp ){
@@ -3056,7 +3065,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 							rsp->bufsize = HTTPGET_BUFSIZE;
 							len = _snprintf(rsp->buf,rsp->bufsize,
-								"GET /%s HTTP/1.0\r\n"
+								"GET /%s HTTP/1.1\r\n"
 								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
 								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
 								"%s"									// Cookie:ヘッダ
@@ -3064,7 +3073,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮
 								"Accept-Language: ja,en\r\n"			// nginxの204対策
 								"Accept: */*\r\n"						// nginxの204対策
-								"Connection: close\r\n"
+								"Connection: keep-alive\r\n"
 								"\r\n"
 								,path ,host
 								,(ua && *ua)? ua :"Mozilla/4.0"
