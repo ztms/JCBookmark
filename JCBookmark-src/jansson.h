@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2014 Petri Lehtinen <petri@digip.org>
+ * Copyright (c) 2009-2016 Petri Lehtinen <petri@digip.org>
  *
  * Jansson is free software; you can redistribute it and/or modify
  * it under the terms of the MIT license. See LICENSE for details.
@@ -12,7 +12,7 @@
 #include <stdlib.h>  /* for size_t */
 #include <stdarg.h>
 
-#include <jansson_config.h>
+#include "jansson_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,11 +21,11 @@ extern "C" {
 /* version */
 
 #define JANSSON_MAJOR_VERSION  2
-#define JANSSON_MINOR_VERSION  7
+#define JANSSON_MINOR_VERSION  10
 #define JANSSON_MICRO_VERSION  0
 
 /* Micro version is omitted if it's 0 */
-#define JANSSON_VERSION  "2.7"
+#define JANSSON_VERSION  "2.10"
 
 /* Version as a 3-byte hex number, e.g. 0x010201 == 1.2.1. Use this
    for numeric comparisons, e.g. #if JANSSON_VERSION_HEX >= ... */
@@ -112,6 +112,19 @@ void json_decref(json_t *json)
         json_delete(json);
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+static JSON_INLINE
+void json_decrefp(json_t **json)
+{
+    if(json) {
+        json_decref(*json);
+	*json = NULL;
+    }
+}
+
+#define json_auto_t json_t __attribute__((cleanup(json_decrefp)))
+#endif
+
 
 /* error reporting */
 
@@ -151,6 +164,13 @@ int json_object_iter_set_new(json_t *object, void *iter, json_t *value);
     for(key = json_object_iter_key(json_object_iter(object)); \
         key && (value = json_object_iter_value(json_object_key_to_iter(key))); \
         key = json_object_iter_key(json_object_iter_next(object, json_object_key_to_iter(key))))
+
+#define json_object_foreach_safe(object, n, key, value)     \
+    for(key = json_object_iter_key(json_object_iter(object)), \
+            n = json_object_iter_next(object, json_object_key_to_iter(key)); \
+        key && (value = json_object_iter_value(json_object_key_to_iter(key))); \
+        key = json_object_iter_key(n), \
+            n = json_object_iter_next(object, json_object_key_to_iter(key)))
 
 #define json_array_foreach(array, index, value) \
 	for(index = 0; \
@@ -253,6 +273,7 @@ typedef size_t (*json_load_callback_t)(void *buffer, size_t buflen, void *data);
 json_t *json_loads(const char *input, size_t flags, json_error_t *error);
 json_t *json_loadb(const char *buffer, size_t buflen, size_t flags, json_error_t *error);
 json_t *json_loadf(FILE *input, size_t flags, json_error_t *error);
+json_t *json_loadfd(int input, size_t flags, json_error_t *error);
 json_t *json_load_file(const char *path, size_t flags, json_error_t *error);
 json_t *json_load_callback(json_load_callback_t callback, void *data, size_t flags, json_error_t *error);
 
@@ -268,11 +289,14 @@ json_t *json_load_callback(json_load_callback_t callback, void *data, size_t fla
 #define JSON_ENCODE_ANY         0x200
 #define JSON_ESCAPE_SLASH       0x400
 #define JSON_REAL_PRECISION(n)  (((n) & 0x1F) << 11)
+#define JSON_EMBED              0x10000
 
 typedef int (*json_dump_callback_t)(const char *buffer, size_t size, void *data);
 
 char *json_dumps(const json_t *json, size_t flags);
+size_t json_dumpb(const json_t *json, char *buffer, size_t size, size_t flags);
 int json_dumpf(const json_t *json, FILE *output, size_t flags);
+int json_dumpfd(const json_t *json, int output, size_t flags);
 int json_dump_file(const json_t *json, const char *path, size_t flags);
 int json_dump_callback(const json_t *json, json_dump_callback_t callback, void *data, size_t flags);
 
@@ -282,6 +306,7 @@ typedef void *(*json_malloc_t)(size_t);
 typedef void (*json_free_t)(void *);
 
 void json_set_alloc_funcs(json_malloc_t malloc_fn, json_free_t free_fn);
+void json_get_alloc_funcs(json_malloc_t *malloc_fn, json_free_t *free_fn);
 
 #ifdef __cplusplus
 }

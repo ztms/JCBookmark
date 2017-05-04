@@ -10309,10 +10309,10 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			WCHAR* wlibs;
 
 			_snprintf(libs,sizeof(libs),
-					"zlib %s\r\n" "Jansson %s\r\n" "SQLite %s\r\n" "%s"
+					"zlib %s\r\n" "SQLite %s\r\n" "Jansson %s\r\n" "%s"
 					,ZLIB_VERSION
-					,JANSSON_VERSION
 					,SQLITE_VERSION
+					,JANSSON_VERSION
 					,SSLeay_version(SSLEAY_VERSION)
 			);
 			wlibs = MultiByteToWideCharAlloc( libs, CP_UTF8 );
