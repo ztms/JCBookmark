@@ -2925,9 +2925,14 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 	if( *url ){
 		UCHAR* host;
 		UCHAR* path = strchr(url,'/');
+		UCHAR* query = strchr(url,'?');
+		if( query ){
+			// ホスト名の次が ? の場合
+			if( !path || query < path ) path = query;
+		}
 		if( path ){
 			host = strndup( url, path - url );
-			path++;
+			if( *path=='/' ) path++;
 		}
 		else{
 			host = strdup( url );
@@ -3060,15 +3065,13 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 							rsp->bufsize = HTTPGET_BUFSIZE;
 							len = _snprintf(rsp->buf,rsp->bufsize,
-								"GET /%s HTTP/1.0\r\n"
+								"GET /%s HTTP/1.1\r\n"					// 1.0だとrakuten応答遅延
 								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
 								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
 								"%s"									// Cookie:ヘッダ
-								//"Accept-Encoding: identity\r\n"			// 無圧縮
-								"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮
+								"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮(identity:無圧縮)
 								"Accept-Language: ja,en\r\n"			// nginxの204対策
 								"Accept: */*\r\n"						// nginxの204対策
-								"Connection: close\r\n"
 								"\r\n"
 								,path ,host
 								,(ua && *ua)? ua :"Mozilla/4.0"
@@ -3469,6 +3472,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 
 				free( newbody );
 			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,bodybytes);
 		}
 		// gzip,deflate伸長
 		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
@@ -3662,6 +3666,7 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 		// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
 		// <meta charset=utf-8>なのにDetectInputCodepageは文字コード1252と誤判定しているもよう。
 		// 仕方ないので1252だった場合は<meta charset=を検索して修正。
+		// http://www.google-mapi.com/googlemaps/geocoding-address.htmlは1252になるが<meta charset=shift_jis>。
 		if( CP==1252 ){
 			UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
 			UCHAR* meta ,*endtag ,*charset;
@@ -3675,13 +3680,29 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 						charset += 7;
 						while( *charset==' ' ) charset++;
 						if( *charset=='=' ){
+							DWORD fixCP = 0;
 							charset++;
 							while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
-							if( strnicmp(charset,"utf-8",5)==0 ) charset += 5;
-							else if( strnicmp(charset,"utf8",4)==0 ) charset += 4;
-							switch( *charset ){ case '"':case '\'':case ' ':case '>':
-								LogW(L"DetectInputCodePage say 1252, but <meta charset=UTF-8>");
-								CP = 65001;
+							if( strnicmp(charset,"utf-8",5)==0 ){
+								charset += 5;
+								fixCP = 65001;
+							}
+							else if( strnicmp(charset,"utf8",4)==0 ){
+								charset += 4;
+								fixCP = 65001;
+							}
+							else if( strnicmp(charset,"shift_jis",9)==0 ){
+								charset += 9;
+								fixCP = 932;
+							}
+							else if( strnicmp(charset,"x-sjis",6)==0 ){
+								charset += 6;
+								fixCP = 932;
+							}
+							if( fixCP ) switch( *charset ){
+								case '"':case '\'':case ' ':case '>':
+								LogW(L"文字コード判定修正1252->%u",fixCP);
+								CP = fixCP;
 							}
 						}
 					}
@@ -7210,10 +7231,17 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								if( stristr(iconTop,"://www.mozilla.org/") && stristr(iconTop,"/made-up-favicon/") )
 									; // Mozilla仮URL無視
 								else{
-									UCHAR* strJSON = strndupJSON( iconTop, iconEnd - iconTop );
-									if( strJSON ){
-										fputs( strJSON, fp );
-										free( strJSON );
+									// Windowsローカルファイルパスはfile:///～に変換
+									// 例) %ProgramFiles%\Internet Explorer\Images\bing.ico
+									// IEお気に入りエクスポートに含まれる場合がありIE/Edgeで問題症状が出る
+									UCHAR* iconUrl = icondup( iconTop );
+									if( iconUrl ){
+										UCHAR* strJSON = strdupJSON( iconUrl );
+										if( strJSON ){
+											fputs( strJSON, fp );
+											free( strJSON );
+										}
+										free( iconUrl );
 									}
 								}
 								*iconEnd = '"';
@@ -8184,6 +8212,29 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 								ResponseEmpty(cp);
 								ResponseError(cp,"500 Internal Server Error");
 							}
+							goto send_ready;
+						}
+						else if( stricmp(file,":server.log")==0 ){
+							// サーバーログをブラウザで見る(とりあえず自分用)
+							Buffer* bp = &(cp->rsp.body);
+							LONG count = SendMessage( ListBox, LB_GETCOUNT, 0,0 );
+							if( count !=LB_ERR && count>0 ){
+								LONG i;
+								for( i=0; i<count; i++ ){
+									WCHAR wstr[ LOGMAX +1 ]=L"";
+									UCHAR utf8[ LOGMAX *2 +1 ]="";
+									SendMessageW( ListBox, LB_GETTEXT, i, (LPARAM)wstr );
+									WideCharToMultiByte(CP_UTF8,0, wstr,-1, utf8,LOGMAX *2 +1, NULL,NULL);
+									BufferSends( bp ,utf8 );
+									BufferSend( bp ,"\r\n" ,2 );
+								}
+							}
+							BufferSendf( &(cp->rsp.head)
+									,"HTTP/1.0 200 OK\r\n"
+									"Content-Type: text/plain; charset=utf-8\r\n"
+									"Content-Length: %u\r\n"
+									,bp->bytes
+							);
 							goto send_ready;
 						}
 						else if( stricmp(file,":favorites.json")==0 ){
@@ -9424,8 +9475,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hHttpsTxt		,36  ,rc.top+150+2 ,110 ,22 ,TRUE );
 				MoveWindow( my->hHttpsRemote	,135 ,rc.top+150   ,110 ,21 ,TRUE );
 				MoveWindow( my->hHttpsLocal		,255 ,rc.top+150   ,85  ,21 ,TRUE );
-				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,130 ,26 ,TRUE );
-				MoveWindow( my->hSSLKey			,275 ,rc.top+180   ,130 ,26 ,TRUE );
+				MoveWindow( my->hSSLCrt			,135 ,rc.top+180   ,150 ,26 ,TRUE );
+				MoveWindow( my->hSSLKey			,295 ,rc.top+180   ,130 ,26 ,TRUE );
 				MoveWindow( my->hSSLViewCrt		,135 ,rc.top+200   ,100 ,26 ,TRUE );
 				MoveWindow( my->hSSLMakeCrt		,235 ,rc.top+200   ,220 ,26 ,TRUE );
 				MoveWindow( my->hBootMinimal	,35  ,rc.top+245   ,240 ,22 ,TRUE );

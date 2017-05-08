@@ -1166,21 +1166,33 @@ function setEvents(){
 					});
 				}
 				else{ $('#firefoxico').hide(); sidebarHeight -=34; }
+
+				// サイドバーちょっと動かす
+				$doc.trigger('mousemove.sidebar',['show']);
+				setTimeout(function(){ $doc.trigger('mousemove.sidebar',['hide']); },250);
 			}
 		});
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	var sidebarHeight = 340;
-	$doc.on('mousemove',function(){
+	var sidebarHeight = 370;
+	$doc.on('mousemove.sidebar',function(){
 		var animate = null;
-		return function(ev){
-			if( ev.clientX <37 && ev.clientY <sidebarHeight ){	// サイドバー周辺にある程度近づいた
-				if( !animate ) animate = $sidebar.animate({width:65},'fast');
+		return function(ev, trigger){
+			// trigger
+			switch( trigger ){
+			case 'show': ev = { clientX:0, clientY:0 }; break;
+			case 'hide': ev = { clientX:99 }; break;
 			}
-			else if( animate ){							// サイドバーから離れてるとき隠す
-				$sidebar.stop(true).width(34);
-				animate = null;
+			// 近づいたら出す
+			if( ev.clientX <37 && ev.clientY <sidebarHeight ){
+				if( !$sidebar.hasClass('show') ){
+					animate = $sidebar.addClass('show').stop().animate({width:65},'fast');
+				}
+			}
+			// 離れたら収納
+			else if( $sidebar.hasClass('show') ){
+				animate = $sidebar.removeClass('show').stop().animate({width:34},'fast');
 			}
 		};
 	}())
@@ -2322,15 +2334,13 @@ function setEvents(){
 		// TODO:TABでサイドバー出した後マウスでボタンクリックすると引っ込んでしまう。
 		// TABだけで操作あるいはマウスだけで操作なら問題ないが…
 		,focus:function(){
-			// フォーカス来た時に
-			if( $sidebar.width()<=34 ){
-				// サイドバーが引っ込んでいたら出して
-				$sidebar.width(65);
-				// フォーカス消えた時に引っ込める
-				$(this).one('blur',function(){ $sidebar.width(34); });
+			// フォーカス来たらサイドバー出す
+			if( !$sidebar.hasClass('show') ){
+				$doc.trigger('mousemove.sidebar',['show']);
+				// フォーカス消えたら収納
+				$(this).one('blur',function(){ $doc.trigger('mousemove.sidebar',['hide']); });
 			}
 		}
-		//,blur:function(){ $sidebar.width(34); }
 	});
 	// テキスト選択キャンセル
 	$doc.on('selectstart',function(ev){
