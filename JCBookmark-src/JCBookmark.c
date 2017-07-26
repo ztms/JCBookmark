@@ -3462,6 +3462,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 
 				free( newbody );
 			}
+			else LogW(L"L%u:malloc(%u)エラー",__LINE__,bodybytes);
 		}
 		// gzip,deflate伸長
 		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
