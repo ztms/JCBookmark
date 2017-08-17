@@ -39,6 +39,11 @@
 　何も保証しません。また本ソフトウェアに起因・関連して発生する損害、請求、
 　その他の義務について、作者および著作権者は何の責任も負いません。
 
+　Copyright (c) 2009-2016 Petri Lehtinen <petri@digip.org>.
+　本ソフトウェアに組み込まれたJanssonライブラリ(http://www.digip.org/jansson/)の
+　著作権は Petri Lehtinen が所持します。JanssonはMITライセンスで配布されています。
+ MITライセンス：http://www.opensource.org/licenses/mit-license.php
+
 ■謝辞
 　本ソフトウェアには、OpenSSL Toolkit で使用するために OpenSSL Project によっ
 　て開発されたソフトウェアが組み込まれています。(http://www.openssl.org)

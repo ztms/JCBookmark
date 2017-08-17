@@ -423,6 +423,7 @@ var tree = {
 	}
 };
 // index.json読取のみ最小限
+// TODO:filer.jsonに変更、フォント指定はindex.jsonと同じになるようサーバー側で勝手に書き換わる
 var option = {
 	data:{
 		font:{ css:'' }
@@ -619,6 +620,7 @@ var folderTree = function(){
 				.on('mouseleave',itemMouseLeave);
 			// 現在のサブツリー開閉状態を取得
 			var subs = $folders.find('.sub'); //$folders[0].querySelectorAll('.sub');
+			// TODO:filer.jsonに移行
 			var isClose = {};
 			for( var i=subs.length; i--; ){
 				isClose[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
@@ -731,7 +733,7 @@ var itemList = function(){
 	var parallel = 2;						// 調節並列数(クライアント側ajax数×サーバー側並列数)
 	var capacity = 50;						// 全体並列数上限(約)
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
-	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持
+	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持 TODO:filer.jsonに移行
 	$('#finding').offset($('#keyword').offset()).progressbar();
 	// 中断終了処理
 	function finalize( arg0 ,arg1 ){

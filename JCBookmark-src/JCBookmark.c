@@ -5075,13 +5075,97 @@ Memory* file2memory( const WCHAR* path )
 	}
 	return memory;
 }
+// メモリをファイル書き出し
+BOOL memory2file( const WCHAR* path, const UCHAR* mem, size_t bytes )
+{
+	BOOL success = FALSE;
+	WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
+	if( tmp ){
+		HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
+							,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+		);
+		if( wFile !=INVALID_HANDLE_VALUE ){
+			DWORD written = 0;
+			// 連続領域確保（断片化抑制）
+			SetFilePointer( wFile, bytes, NULL, FILE_BEGIN );
+			SetEndOfFile( wFile );
+			SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
+			if( WriteFile( wFile, mem, bytes, &written, NULL ) && bytes==written )
+				;
+			else LogW(L"L%u:WiteFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+
+			SetEndOfFile( wFile );
+			CloseHandle( wFile );
+
+			if( MoveFileExW( tmp, path ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
+				success = TRUE;
+			}
+			else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
+		}
+		else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+
+		free( tmp );
+	}
+	return success;
+}
+// ファイルがあったらバックアップファイル作成
+// TODO:複数世代つくる？
+BOOL FileBackup( const WCHAR* path )
+{
+	if( path && *path ){
+		HANDLE rFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
+							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+		);
+		if( rFile !=INVALID_HANDLE_VALUE ){
+			BOOL success = FALSE;
+			WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
+			WCHAR* bak = wcsjoin( path, L".bak", 0,0,0 );
+			if( tmp && bak ){
+				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
+									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+				);
+				if( wFile !=INVALID_HANDLE_VALUE ){
+					// 連続領域確保（断片化抑制）
+					SetFilePointer( wFile, GetFileSize(rFile,NULL), NULL, FILE_BEGIN );
+					SetEndOfFile( wFile );
+					SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
+					for( ;; ){
+						BYTE buf[1024];
+						DWORD bRead=0;
+						if( ReadFile( rFile, buf, sizeof(buf), &bRead, NULL ) ){
+							if( bRead ){
+								DWORD bWrite=0;
+								if( WriteFile( wFile, buf, bRead, &bWrite, NULL ) && bRead==bWrite )
+									;
+								else
+									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
+							}
+							else break;
+						}
+						else{
+							LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+							break;
+						}
+					}
+					SetEndOfFile( wFile );
+					CloseHandle( wFile );
+					if( MoveFileExW( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
+						LogW(L"バックアップ作成:%s",bak);
+						success = TRUE;
+					}
+					else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
+				}
+				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+			}
+			if( tmp ) free( tmp );
+			if( bak ) free( bak );
+			CloseHandle( rFile );
+			return success;
+		}
+	}
+	return TRUE;
+}
 // gzip圧縮ファイル生成
-#ifdef _DEBUG
-#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
-#else
-#pragma comment(lib,"jansson.lib")		// Jansson Releaseビルド版
-#endif
-#include "jansson.h"
 void gzipcreater( void* tp )
 {
 	WCHAR* path = tp; // 圧縮対象ファイルパス(このスレッドで解放するmalloc領域)
@@ -5112,24 +5196,6 @@ void gzipcreater( void* tp )
 					}
 					free( gziptmp );
 				}
-				// Janssonロードテスト
-				{
-					json_error_t error;
-					json_t* root = json_loads( mem->data ,0 ,&error );
-					if( root ){
-						if( json_is_object(root) ){
-							json_t* nextid = json_object_get(root,"nextid");
-							if( json_is_integer(nextid) ){
-								LogW(L"tree.json updated. nextid = %u",json_integer_value(nextid));
-							}
-							else LogW(L"tree.json key 'nextid' is not integer");
-						}
-						else LogW(L"tree.json root is not object");
-
-						json_decref(root);
-					}
-					else LogA("jansson load error: on line %d: %s",error.line,error.text);
-				}
 				free( mem );
 			}
 			free( gzip );
@@ -5138,6 +5204,125 @@ void gzipcreater( void* tp )
 	}
 	ERR_remove_state(0);
 	_endthread();
+}
+// index.json パスから filer.json パスを生成する専用処理
+WCHAR* wcsdup_index_to_filer( const WCHAR* index )
+{
+	WCHAR* filer = wcsdup(index);
+	if( filer ){
+		// index.json を filer.json に書き換えるだけ
+		size_t len = wcslen(filer);
+		if( len > 10 ){
+			wcscpy( filer + len - 10, L"filer.json" );
+		}
+	}
+	else LogW(L"L%u:wcsdupエラー",__LINE__);
+
+	return filer;
+}
+// index.jsonのフォント指定をfiler.jsonにマージ
+// { "font":{ "css":"meiryo.css" } }
+#ifdef _DEBUG
+#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
+#else
+#pragma comment(lib,"jansson.lib")		// Jansson Releaseビルド版
+#endif
+#include "jansson.h"
+void FilerJsonMerge( const WCHAR* index_json )
+{
+	UCHAR* font_css_value = NULL;
+	// index.json取得
+	if( index_json ){
+		Memory* mem = file2memory( index_json );
+		if( mem ){
+			json_error_t error;
+			json_t* root = json_loads( mem->data ,0 ,&error );
+			if( root ){
+				if( json_is_object(root) ){
+					json_t* font = json_object_get(root,"font");
+					if( json_is_object(font) ){
+						json_t* font_css = json_object_get(font,"css");
+						if( json_is_string(font_css) ){
+							const UCHAR* value = json_string_value(font_css);
+							if( value ){
+								font_css_value = strdup(value);
+								if( !font_css_value ) LogW(L"L%u:strdupエラー",__LINE__);
+							}
+							else LogW(L"index.json 'font.css' value is NULL");
+						}
+						else LogW(L"index.json 'font.css' is not string");
+					}
+					else LogW(L"index.json 'font' is not object");
+				}
+				else LogW(L"index.json is not json object");
+
+				json_decref(root);
+			}
+			else LogA("index.json load error: on line %d: %s",error.line,error.text);
+			free( mem );
+		}
+	}
+	// filer.jsonマージ
+	if( font_css_value ){
+		WCHAR* filer_json = wcsdup_index_to_filer( index_json );
+		if( filer_json ){
+			UCHAR* json_text = NULL;
+			Memory* mem = file2memory( filer_json );
+			if( mem ){
+				// 既存編集
+				json_error_t error;
+				json_t* root = json_loads( mem->data ,0 ,&error );
+				if( root ){
+					if( json_is_object(root) ){
+						json_t* font = json_object_get(root,"font");
+						if( json_is_object(font) ){
+							if( json_object_set_new(font,"css",json_string(font_css_value))==0 ){
+								LogA("filer.json > font > css = %s",font_css_value);
+							}
+							else LogW(L"L%u:json_object_set_new error",__LINE__);
+						}
+						else{
+							LogW(L"filer.json > font is not object");
+							if( json_object_set_new(root,"font",json_pack("{ss}","css",font_css_value))==0 ){
+								LogA("filer.json > font = { css: %s }",font_css_value);
+							}
+							else LogW(L"L%u:json_object_set_new error",__LINE__);
+						}
+						json_text = json_dumps(root, JSON_COMPACT);
+					}
+					json_decref(root);
+				}
+				else{
+					LogA("filer.json load error: on line %d: %s",error.line,error.text);
+					root = json_pack("{s{ss}}","font","css",font_css_value);
+					if( root ){
+						json_text = json_dumps(root, JSON_COMPACT);
+						json_decref(root);
+						LogA("filer.json = { font: css: %s } }",font_css_value);
+					}
+				}
+				free( mem );
+			}
+			else{
+				// 新規作成
+				json_t* root = json_pack("{s{ss}}","font","css",font_css_value);
+				if( root ){
+					json_text = json_dumps(root, JSON_COMPACT);
+					json_decref(root);
+					LogA("filer.json = { font: css: %s } }",font_css_value);
+				}
+			}
+			// 書き出し
+			if( json_text ){
+				if( FileBackup( filer_json ) ){
+					memory2file( filer_json, json_text, strlen(json_text) );
+				}
+				free( json_text );
+			}
+			free( filer_json );
+		}
+		free( font_css_value );
+	}
 }
 
 
@@ -6486,63 +6671,6 @@ BOOL AcceptEncodingHas( Request* req ,const UCHAR* name )
 		}
 	}
 	return FALSE;
-}
-// ファイルがあったらバックアップファイル作成
-// TODO:複数世代つくる？
-BOOL FileBackup( const WCHAR* path )
-{
-	if( path && *path ){
-		HANDLE rFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
-							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
-		);
-		if( rFile !=INVALID_HANDLE_VALUE ){
-			BOOL success = FALSE;
-			WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
-			WCHAR* bak = wcsjoin( path, L".bak", 0,0,0 );
-			if( tmp && bak ){
-				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
-									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
-				);
-				if( wFile !=INVALID_HANDLE_VALUE ){
-					// 連続領域確保（断片化抑制）
-					SetFilePointer( wFile, GetFileSize(rFile,NULL), NULL, FILE_BEGIN );
-					SetEndOfFile( wFile );
-					SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
-					for( ;; ){
-						BYTE buf[1024];
-						DWORD bRead=0;
-						if( ReadFile( rFile, buf, sizeof(buf), &bRead, NULL ) ){
-							if( bRead ){
-								DWORD bWrite=0;
-								if( WriteFile( wFile, buf, bRead, &bWrite, NULL ) && bRead==bWrite )
-									;
-								else
-									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
-							}
-							else break;
-						}
-						else{
-							LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-							break;
-						}
-					}
-					SetEndOfFile( wFile );
-					CloseHandle( wFile );
-					if( MoveFileExW( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
-						LogW(L"バックアップ作成:%s",bak);
-						success = TRUE;
-					}
-					else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
-				}
-				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
-			}
-			if( tmp ) free( tmp );
-			if( bak ) free( bak );
-			CloseHandle( rFile );
-			return success;
-		}
-	}
-	return TRUE;
 }
 // ドキュメントルート配下のフルパスに変換する
 WCHAR* RealPath( const UCHAR* path, WCHAR* realpath, size_t size )
@@ -8204,6 +8332,8 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											ResponseError(cp,"200 OK");
 											// tree.jsonはgzipファイル作成
 											if( is_tree_json ) _beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
+											// TODO:index.jsonはフォント指定をfiler.jsonにマージ
+											else if( stricmp(file,"index.json")==0 ) FilerJsonMerge(realpath);
 										}
 										else{
 											LogW(L"[%u]MoveFileEx(%s)エラー%u",Num(cp),tmppath,GetLastError());
