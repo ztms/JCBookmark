@@ -2863,6 +2863,7 @@ typedef struct Cookie {
 	size_t	pathlen;		// パスバイト数
 	UCHAR*	expire;			// 期限
 	UCHAR	secure;			// secure属性有無
+	UCHAR	subdomain;		// サブドメインにも有効かどうかフラグ
 	UCHAR	match;			// リクエストクッキー生成時に使うフラグ変数
 	UCHAR	name[1];		// NAME(と他のメンバのポイント先になる可変長バッファ)
 } Cookie;
@@ -4027,7 +4028,8 @@ Cookie* SetCookieParse( const UCHAR* url ,const UCHAR* head ,Cookie* cookie0 )
 						}
 						else if( strnicmp(attr,"domain=",7)==0 && attr[7] ){
 							UCHAR* p = dequote( attr +7 );
-							if( *p ) cook->domain=p ,cook->domainlen=strlen(p);
+							if( *p=='.' ) p++; // 先頭ドット無視(domain=.xxx.jp)
+							if( *p ) cook->domain=p ,cook->domainlen=strlen(p), cook->subdomain=1;
 						}
 						else if( strnicmp(attr,"path=",5)==0 && attr[5] ){
 							UCHAR* p = dequote( attr +5 );
@@ -4101,25 +4103,30 @@ UCHAR* CookieRequestHeaderAlloc( Cookie* cookie0 ,const UCHAR* url )
 		// 一巡目：属性が適合するクッキーにフラグ立て
 		// ★有効期限内かどうかは判定しない(httpGETsで連続的に呼ばれる間しか保持しないクッキーなので)
 		for( cook=cookie0; cook; cook=cook->next ){
-			UCHAR* p;
 			cook->match = 0;
 			// secure属性があったらhttpsのみ
 			if( cook->secure && stricmp(part.scheme,"https") ) continue;
 			// ドメイン
-			p = stristr( part.host ,cook->domain );
-			if( p && strlen(p)==cook->domainlen ){
-				// パス(part.path は先頭 / なし)
-				if( cook->path[0]=='/' ){
-					if( cook->path[1]=='\0' ){
-						cook->match = 1;
-					}
-					else if( strncmp( part.path ,cook->path+1 ,cook->pathlen-1 )==0 ){
-						cook->match = 1;
-					}
-				}
-				else if( strncmp( part.path ,cook->path ,cook->pathlen )==0 ){
+			if( cook->subdomain ){
+				// 同一ドメインとサブドメイン
+				UCHAR* p = stristr( part.host ,cook->domain );
+				if( !p || (strlen(p) != cook->domainlen) || (p != part.host && *(p-1) !='.') ) continue;
+			}
+			else{
+				// 同一ドメインのみ
+				if( stricmp( part.host ,cook->domain ) ) continue;
+			}
+			// パス(part.path は先頭 / なし)
+			if( cook->path[0]=='/' ){
+				if( cook->path[1]=='\0' ){
 					cook->match = 1;
 				}
+				else if( strncmp( part.path ,cook->path+1 ,cook->pathlen-1 )==0 ){
+					cook->match = 1;
+				}
+			}
+			else if( strncmp( part.path ,cook->path ,cook->pathlen )==0 ){
+				cook->match = 1;
 			}
 		}
 		free( urltmp );
@@ -4664,6 +4671,8 @@ void poker( void* tp )
 // document.forms[0].submit()で、元の記事URLにPOSTする流れ。<form action=>解析と
 // <body onload=のJavaScript解析して動かないとタイトル取得できない。
 // http://mainichi.jp/shimen/news/20151122ddm002070066000c.html
+// こちらの記事の<title>は「OpenId transaction in progress」になってしまう。
+// https://mainichi.jp/articles/20170815/ddm/003/040/052000c
 typedef struct AnalyCTX {
 	struct AnalyCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
