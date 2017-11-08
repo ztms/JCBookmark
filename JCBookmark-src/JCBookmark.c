@@ -2688,7 +2688,7 @@ UCHAR* FileContentTypeW( const WCHAR* file )
 	return "application/octet-stream";
 }
 
-BOOL readable( SOCKET sock, DWORD msec )
+int readable( SOCKET sock, DWORD msec )
 {
 	fd_set fdset;
 	struct timeval wait;
@@ -2882,9 +2882,16 @@ int _GetAddrInfoA( UCHAR* host ,UCHAR* port ,const ADDRINFOA* hint ,ADDRINFOA** 
 	return err;
 }
 // HTTPクライアント
+// TODO:https://qiita.com/mash0510/items/a36f4d341edc50064d90 等Qiitaのページで落ちまくる原因不明
+// ・ログ上は受信バッファ拡大が発生した後のselect()で落ちている
+// ・select()でなくWSAEventSelect()に変えてもダメなのでWinsock側の不具合ではなさそう？
+// ・IDEから実行では落ちない
+// ・Wikipediaの長いページでは落ちない
+// ・Qiitaの特徴はチャンクデータが返ってくること？チャンクの時にバッファ拡大がバグってるのか？コードは問題ないと思うのだが
+// ・初期バッファサイズを大きくして拡大が発生しなければ落ちなくなる模様なので、とりあえずそうしておく・・・
 HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeReport* rp ,const UCHAR* cookie )
 {
-	#define		HTTPGET_BUFSIZE	(1024*16) // 初期バッファサイズあまり拡大が発生しない程度の大きさに
+	#define		HTTPGET_BUFSIZE	(1024*32) // 初期バッファサイズあまり拡大が発生しない程度の大きさに
 	HTTPGet*	rsp				= NULL;
 	BOOL		isSSL			= FALSE;
 	// プロトコル
@@ -3001,7 +3008,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 					if( isSSL ){
 						sslp = SSL_new( ssl_ctx );
 						if( sslp ){
-							int ret ,retry=0;
+							int ret;
 							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
 							RAND_poll();
 							while( RAND_status()==0 ){		// PRNG初期化
@@ -3033,8 +3040,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
 									// {
 									// }
-									LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
-									if( ++retry <10 ){ Sleep(500); goto retry; }
+									//LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
+									goto retry;
 								}
 								else LogA("[%u]SSL_connect(%s:%s)=%d,エラー%d",sock,host,port,ret,err);
 								if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL接続できません");
@@ -3116,7 +3123,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											err==SSL_ERROR_SYSCALL
 										){
 											// 帯域が狭いとSSL_ERROR_SYSCASLLになる事がありリトライで成功する。
-											LogW(L"[%u]SSL_read()エラーリトライ..",sock);
+											//LogW(L"[%u]SSL_read()エラーリトライ..",sock);
 											continue;
 										}
 										else{
@@ -3431,9 +3438,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 					// チャンク１つ取得
 					size_t chunkBytes = 0;
 					// データバイト数：16進文字列
-					for( ; isxdigit(*bp); bp++ ){
-						chunkBytes = chunkBytes * 16 + char16decimal(*bp);
-					}
+					for( ; isxdigit(*bp); bp++ ) chunkBytes = chunkBytes * 16 + char16decimal(*bp);
 					// セミコロンと無視していい文字列が存在する場合あり
 					while( !isCRLF(*bp) && *bp ) bp++;
 					// 改行１つの後にデータ
@@ -3469,7 +3474,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 		if( rsp->ContentEncoding==ENC_GZIP || rsp->ContentEncoding==ENC_DEFLATE ){
 			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
 			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文(圧縮データ)バイト数
-			size_t newsize = headbytes + bodybytes * 20;	// 伸長バッファサイズ適当20倍
+			size_t newsize = headbytes + bodybytes * 20;	// 伸長バッファサイズ適当20倍(圧縮率95%)
 			HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
 			if( newrsp ){
 				int distance = (BYTE*)newrsp - (BYTE*)rsp;
@@ -10318,7 +10323,7 @@ void MainFormCreateAfter( void )
 	// openssl s_client -tls1 -connect ... としないと(-tls1つけないと)handshake failureに
 	// なってしまう。SSLv23_method()は TLSv1も使うんじゃないのか？？？
 	//ssl_ctx = SSL_CTX_new( TLSv1_method() );	// SSLv2,SSLv3,TLSv1すべて利用
-	// と思ったらいつの間にか減少が消えた・・・
+	// と思ったらいつの間にか現象が消えた・・・
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
 	if( ssl_ctx ){
 		// PFS(Perfect Forword Security)
