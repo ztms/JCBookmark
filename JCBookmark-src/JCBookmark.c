@@ -9114,7 +9114,7 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				SendMessage( my->hSSLViewCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
 				SendMessage( my->hSSLMakeCrt		,WM_SETFONT ,(WPARAM)my->hFontS ,0 );
 				SendMessage( my->hBootMinimal		,WM_SETFONT ,(WPARAM)my->hFontL ,0 );
-				// ブラウザタブ(ID=1～8、Browserインデックス＋1)
+				// ブラウザタブ(ID=1～9、Browserインデックス＋1)
 				br = BrowserInfoAlloc();
 				if( br ){
 					UINT tabid=1 ,i=0;
@@ -9360,9 +9360,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					ShowWindow( my->hBootMinimal	,SW_SHOW );
 					SetFocus( my->hListenPort );
 					break;
-				case 5: case 6: case 7: case 8: // ユーザー指定ブラウザ
+				case 6: case 7: case 8: case 9: // ユーザー指定ブラウザ
 					ShowWindow( my->hFOpen, SW_SHOW );
-				case 1: case 2: case 3: case 4: // 既定ブラウザ
+				case 1: case 2: case 3: case 4: case 5: // 既定ブラウザ
 					ShowWindow( my->hBtnWoTxt, SW_SHOW );
 					ShowWindow( my->hExeTxt, SW_SHOW );
 					ShowWindow( my->hArgTxt, SW_SHOW );
