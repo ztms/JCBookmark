@@ -16,6 +16,14 @@ body {
 	border-bottom:1px solid #777;
 	padding:1px;
 }
+#toolbar hr {
+	float:left;
+	margin:6px 0 0 0;
+	width:1px;
+	height:23px;
+	background:#ccc;
+	border:none;
+}
 /* ツールバーボタン */
 .barbtn {
 	float:left;
@@ -40,7 +48,7 @@ body {
 	float:left;
 	width:144px;
 	height:17px;
-	border:1px solid #bbb;
+	border:1px solid #999;
 	margin:7px 10px 0 3px;
 	padding:1px;
 }
@@ -58,48 +66,39 @@ body {
 }
 #keyword {
 	background:transparent;
+	margin-right:3px;
 }
 #findopt {
-	display:none;
-	position:absolute;
-	background:#eee;
-	border:1px solid #777;
-	border-top:none;
-	border-radius:0 0 3px 3px;
-	box-shadow:0 3px 3px #777;
-	color:#333;
-}
-#findopt hr {
-	border-top:1px solid #999;
-	border-bottom:1px solid #fff;
-	margin:3px 0 3px 0;
+	float:left;
+	padding:3px 2px 0 0;
 }
 #findopt label {
-	letter-spacing:1px;
-	padding:0 7px 0 5px;
-	font-size:110%;
-	display:inline-block;
+	padding:3px 5px 1px 1px;
+	font-size:11px;
+	display:block;
+	line-height:1.1;
+	color:#6f6f6f;
 }
 #findopt label:hover {
 	background:#fff;
 }
-#findopt > div {
-	width:100%;
-	text-align:center;
-}
 #fregex {
-	vertical-align:-3px;
-	width:15px;height:15px;
-	margin:5px 3px 0 3px;
+	float:left;
+	width:15px;
+	height:15px;
+	margin:4px 3px 0 1px;
+	padding:0;
 }
 #new100, #old100 {
-	width:47%;
-	margin:5px 0 3px 0;
-	border:1px solid #bbb;
-	border-radius:3px;
-	background:#e5e5e5;
-	color:#666;
+	width:36px;
+	height:34px;
+	background:transparent;
+	color:#999;
 	font-weight:bold;
+	line-height:1;
+	margin:0 2px;
+	padding:2px 0 0 0;
+	font-size:10px;
 }
 #new100:hover, #old100:hover {
 	border-color:#999;
@@ -113,6 +112,14 @@ body {
 }
 #new100.disable, #old100.disable {
 	color:#ccc;
+}
+#new100 b, #old100 b {
+	display:block;
+	font-size:13px;
+	color:#777;
+}
+#selectall {
+	margin:0 0 0 3px;
 }
 /* 変更保存リンクバー */
 #progress, #modified {

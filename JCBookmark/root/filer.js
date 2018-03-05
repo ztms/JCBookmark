@@ -12,6 +12,11 @@ var $debug = $('<div></div>').css({
 	,padding:0
 }).appendTo(doc.body);
 */
+if( !Object.keys ) Object.keys = function( o ){
+	var keys = [];
+	for( var k in o ) if( o.hasOwnProperty(k) ) keys.push(k);
+	return keys;
+};
 $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
@@ -289,7 +294,7 @@ var tree = {
 	// ids:ノードID配列
 	,eraseNodes:function( ids ){
 		if( ids.length ){
-			var count=0;
+			var erased = [];
 			(function callee( child ){
 				for( var i=0; i<child.length; i++ ){
 					if( ids.length && child[i].child ){
@@ -300,9 +305,9 @@ var tree = {
 							// 消していいノードID
 							if( child[i].id==ids[j] ){
 								// 見つけた消去
+								erased.push(child[i].id);
 								child.splice(i,1); i--;
 								ids.splice(j,1);
-								count++;
 								break;
 							}
 						}else{
@@ -312,8 +317,10 @@ var tree = {
 					}
 				}
 			})( tree.root.child );
-			if( count ){
+			if( erased.length ){
 				tree.modified(true);
+				// アイテム欄内フォルダ展開ノード一覧からも消去
+				option.items.folderClose(erased);
 				return true;
 			}
 		}
@@ -422,11 +429,77 @@ var tree = {
 		}
 	}
 };
-// index.json読取のみ最小限
-// TODO:filer.jsonに変更、フォント指定はindex.jsonと同じになるようサーバー側で勝手に書き換わる
+// filer.json管理
 var option = {
 	data:{
-		font:{ css:'' }
+		 font:{ css:'' }			// フォントCSS(index.jsonと同じになるようサーバー側で勝手に書き換え)
+		,folders:{ closed:{} }		// フォルダツリー閉ノードID一覧
+		,items:{ openFolders:{} }	// アイテム欄内フォルダ開ノードID一覧
+		,find:{ regex:false }		// 正規表現検索
+	}
+	,_modified:false
+	,modified:function( on ){
+		if( arguments.length ){
+			option._modified = on;
+			if( on ){
+				var h = $('#modified').show().outerHeight();
+				$(doc.body).css('padding-top',h);
+				resizeV( h );
+			}
+			return option;
+		}
+		return option._modified;
+	}
+	,init:function( data ){
+		var od = option.data;
+		if( 'font' in data ){
+			if( 'css' in data.font ) od.font.css = data.font.css;
+		}
+		if( 'folders' in data ){
+			if( 'closed' in data.folders ) od.folders.closed = data.folders.closed;
+		}
+		if( 'items' in data ){
+			if( 'openFolders' in data.items ) od.items.openFolders = data.items.openFolders;
+		}
+		if( 'find' in data ){
+			if( 'regex' in data.find ){
+				od.find.regex = data.find.regex;
+				$('#fregex').prop('checked', data.find.regex );
+			}
+		}
+		return option;
+	}
+	,load:function( onComplete ){
+		$.ajax({
+			dataType:'json'
+			,url	:'filer.json'
+			,success:function(data){ option.init( data ); }
+			,complete:onComplete
+		});
+	}
+	,save:function( arg ){
+		function save(){
+			$.ajax({
+				type:'put'
+				,url:'filer.json'
+				,data:JSON.stringify( option.data )
+				,error:function(xhr){
+					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:function(){ giveup(xhr); } });
+					else giveup(xhr);
+				}
+				,success:success
+			});
+		}
+		function success(){
+			option.modified(false);
+			if( arg.success ) arg.success();
+		}
+		function giveup(xhr){
+			Alert('保存できません:'+xhr.status+' '+xhr.statusText);
+			if( arg.error ) arg.error();
+		}
+		save();
+		return option;
 	}
 	,font:{
 		css:function(){
@@ -436,20 +509,56 @@ var option = {
 			return font.css;
 		}
 	}
-	,init:function( data ){
-		var od = option.data;
-		if( 'font' in data ){
-			if( 'css' in data.font ) od.font.css = data.font.css;
+	,folders:{
+		closed:function( val ){
+			if( arguments.length ){
+				option.data.folders.closed = val;
+				if( option.modified() ) return option;
+				if( tree.modified() ){ option.modified(true); return option; }
+				return option.save({ error:function(){ option.modified(true); } });
+			}
+			return option.data.folders.closed;
 		}
-		return option;
 	}
-	,load:function( onComplete ){
-		$.ajax({
-			dataType:'json'
-			,url	:'index.json'
-			,success:function(data){ option.init( data ); }
-			,complete:onComplete
-		});
+	,items:{
+		openFolders:function(){
+			return option.data.items.openFolders;
+		}
+		,folderOpen:function( nid ){
+			option.data.items.openFolders[nid] = 1;
+			if( option.modified() ) return option;
+			if( tree.modified() ) return option.modified(true);
+			return option.save({ error:function(){ option.modified(true); } });
+		}
+		,folderClose:function( nids ){
+			if( $.isArray(nids) ) for( var i=nids.length; i--; ) delete option.data.items.openFolders[nids[i]];
+			else delete option.data.items.openFolders[nids];
+			if( option.modified() ) return option;
+			if( tree.modified() ) return option.modified(true);
+			return option.save({ error:function(){ option.modified(true); } });
+		}
+		// アイテム欄内フォルダ開ノードIDでツリーに存在しないもの削除
+		,openFoldersCleanup:function(){
+			var modified = false;
+			var nids = Object.keys(option.data.items.openFolders);
+			for( var i=nids.length; i--; ) if( !tree.node(nids[i]) ){
+				delete option.data.items.openFolders[nids[i]];
+				modified = true;
+			}
+			if( modified ) option.modified(true);
+			return option;
+		}
+	}
+	,find:{
+		regex:function( val ){
+			if( arguments.length ){
+				option.data.find.regex = val;
+				if( option.modified() ) return option;
+				if( tree.modified() ) return option.modified(true);
+				return option.save({ error:function(){ option.modified(true); } });
+			}
+			return option.data.find.regex;
+		}
 	}
 };
 // ブックマークデータ取得
@@ -466,7 +575,7 @@ var option = {
 		// ツリー描画
 		optionOK = true;
 		if( treeOK ) _folderTree();
-		$('#home, #newfolder, #newitem, #selectall, #delete, #deadlink, #logout, #new100, #old100, #findopt label').tooltip();
+		$('#home, #newfolder, #newitem, #find, #selectall, #delete, #deadlink, #logout, #new100, #old100, #findopt label').tooltip();
 	});
 	tree.load(function(){
 		treeOK = true;
@@ -560,8 +669,6 @@ $.css.add = function( rule ,index ){
 //   itemOption	:object		フォルダクリック後に実行されるitemList()の第2引数
 //   done		:function	フォルダツリー生成後に実行する関数
 // });
-// TODO:最初はごみ箱はプラスボタンで中のフォルダ見えなくていいかも
-// TODO:IE8でごみ箱のフォルダを削除や移動するとアイテム欄が更新されるのが遅く表示もたつく
 var folderTree = function(){
 	var timer = null;	// setTimeoutID
 	var $folder = null;	// フォルダ１つ生成関数
@@ -618,13 +725,6 @@ var folderTree = function(){
 			var $e = $('<div class=folder tabindex=0></div>')
 				.append($icon).append($title).append('<br class=clear>')
 				.on('mouseleave',itemMouseLeave);
-			// 現在のサブツリー開閉状態を取得
-			var subs = $folders.find('.sub'); //$folders[0].querySelectorAll('.sub');
-			// TODO:filer.jsonに移行
-			var isClose = {};
-			for( var i=subs.length; i--; ){
-				isClose[subs[i].parentNode.id.slice(6)] = /plus.png$/.test(subs[i].src);
-			}
 			return function( node ){
 				if( node===false ){ $e.remove(); $sub.remove(); return; }
 				$icon.attr('src',node.icon);
@@ -632,7 +732,7 @@ var folderTree = function(){
 				var $f = $e.clone(true).attr('id','folder'+node.id);
 				if( node.sub ){
 					var $s = $sub.clone();
-					if( isClose[node.id] ) $s.attr('src','plus.png');
+					if( option.folders.closed()[node.id] ) $s.attr('src','plus.png');
 					$f.prepend( $s ).css('padding-left', node.depth *18 ); // 階層インデント18px
 				}
 				else $f.css('padding-left', node.depth *18 +15 );	// 階層インデント18px +<img class=sub>の幅15px
@@ -733,7 +833,6 @@ var itemList = function(){
 	var parallel = 2;						// 調節並列数(クライアント側ajax数×サーバー側並列数)
 	var capacity = 50;						// 全体並列数上限(約)
 	var results = {};						// 死活結果プール(キー=URL,値=poke応答)
-	var appearIDs = {};						// アイテム欄内フォルダ開ノードID保持 TODO:filer.jsonに移行
 	$('#finding').offset($('#keyword').offset()).progressbar();
 	// 中断終了処理
 	function finalize( arg0 ,arg1 ){
@@ -873,7 +972,7 @@ var itemList = function(){
 				// 新旧100
 				$('#'+arg1).addClass('disable');
 			}
-			else if( findopt.regex() ){
+			else if( option.find.regex() ){
 				// 正規表現
 				var pattern = $('#keyword').val();
 				if( pattern.length<=0 ) return;
@@ -1357,7 +1456,7 @@ var itemList = function(){
 				}
 				else break;
 			}
-			delete appearIDs[arg1.id.slice(4)];
+			option.items.folderClose(arg1.id.slice(4));
 		}
 		else{
 			// フォルダ表示
@@ -1462,7 +1561,7 @@ var itemList = function(){
 						var count = busyLoopCount;
 						while( index < length && count>0 ){
 							var node = pnode.child[index];
-							if( appearIDs[node.id] ){
+							if( option.items.openFolders()[node.id] ){
 								prevSibling = $itemAdd.func( node ,now ,prevSibling ,true );
 								appearNodes.push( prevSibling );
 							}
@@ -1487,7 +1586,7 @@ var itemList = function(){
 							}
 						}
 					};
-					appearIDs[nid] = true;
+					option.items.folderOpen(nid);
 					lister();
 				}
 			}
@@ -1503,7 +1602,7 @@ var itemList = function(){
 					var count = busyLoopCount;
 					while( index < length && count>0 ){
 						var node = arg0.child[index];
-						if( appearIDs[node.id] )
+						if( option.items.openFolders()[node.id] )
 							appearNodes.push( $itemAdd.func( node ,now ,true ) );
 						else
 							$itemAdd.func( node ,now );
@@ -1595,14 +1694,14 @@ $(doc).on({
 // ウィンドウ外に出たらドラッグやめたことにする。
 if( IE && IE<9 ) $(doc).mouseleave(function(){ $(this).mouseup(); } );
 // 変更保存リンク
-$('#modified').click(function(){ treeSave(); });
+$('#modified').click(function(){ modifySave(); });
 // パネル画面に戻る
 $('#home').click(function(){
 	itemList(false);
 	if( tree.modified() ) Confirm({
 		width:420
 		,msg:'?変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
-		,yes:function(){ treeSave({ success:home }); }
+		,yes:function(){ modifySave({ success:home }); }
 		,no:home
 	});
 	else home();
@@ -1615,7 +1714,7 @@ if( /session=.+/.test(doc.cookie) ){
 		if( tree.modified() ) Confirm({
 			width:450
 			,msg:'?変更が保存されていません。いま保存してログアウトしますか？　「いいえ」で変更を破棄してログアウトします。'
-			,yes:function(){ treeSave({ success:logout }); }
+			,yes:function(){ modifySave({ success:logout }); }
 			,no:logout
 		});
 		else logout();
@@ -1763,60 +1862,14 @@ $('#newurl').keypress(function(ev){
 });
 // 検索
 // TODO:タイトルかURLか選択、大小文字区別などオプション追加？
-var findopt = function(){
-	var isRegex = false;
-	// IE8やFirefoxはリロードしてもチェック状態が維持されるので、それを取得保持しようとしたが、IE8は
-	// ここで$.prop('checked')しても(チェックされているにもかかわらず)falseになってしまうもよう。
-	// setTimeoutで後まわし実行したら正しく取得できた。
-	setTimeout(function(){
-		isRegex = $('#fregex').change(function(){ isRegex = $(this).prop('checked'); }).prop('checked');
-	},0);
-	return {
-		 regex:function(){ return isRegex; }
-		,show:function(){
-			var $box = $('#findopt');
-			if( $box.css('display')=='none' ){
-				// 表示
-				var $find = $('#find');
-				if( $find.css('display')=='none' ) $find = $('#findstop');
-				var $keyword = $('#keyword');
-				var area = $find.offset();
-				$box.css({
-					 left : area.left
-					,top  : area.top + $find.outerHeight()
-					,width: $keyword.offset().left + $keyword.outerWidth() - area.left
-				})
-				.show();
-				// 自身・検索アイコン・キーワード入力欄をあわせた矩形領域にカーソルがある間は表示
-				area.right = area.left + $box.outerWidth();
-				area.bottom = area.top + $box.outerHeight() + $find.outerHeight()
-				$(doc).on('mousemove.findopt',function(ev){
-					if( ev.pageX < area.left || area.right < ev.pageX ||
-						ev.pageY < area.top || area.bottom < ev.pageY ){
-						$box.hide();
-						$(doc).off('mousemove.findopt');
-					}
-				});
-			}
-		}
-	};
-}();
-$('#find').click(function(){ itemList('finds'); }).mouseenter( findopt.show ).focus( findopt.show );
-$('#findstop').mouseenter( findopt.show ).focus( findopt.show );
+$('#find').click(function(){ itemList('finds'); });
+$('#findstop');
 $('#keyword').keypress(function(ev){
 	switch( ev.which || ev.keyCode || ev.charCode ){
 	case 13: $('#find').click(); return false; // Enter検索実行
 	}
-}).keydown(function(ev){
-	switch( ev.which || ev.keyCode || ev.charCode ){
-	case 40: $('#fregex').focus(); return false; // ↓で正規表現チェックボックスにフォーカス移動
-	}
-}).mouseenter( findopt.show ).focus( findopt.show );
-$('#fregex').keydown(function(ev){
-	switch( ev.which || ev.keyCode || ev.charCode ){
-	case 38: $('#keyword').focus(); return false; // ↑で検索キーワードにフォーカス移動
-	}
 });
+$('#fregex').change(function(){ option.find.regex($(this).prop('checked')); });
 // 新旧100
 $('#new100').click(function(){ itemList('finds','new100'); });
 $('#old100').click(function(){ itemList('finds','old100'); });
@@ -2211,7 +2264,7 @@ function resize(){
 	if( spacerHeight <0 ) spacerHeight = 48; // アイテム欄余白高さ48px以上
 
 	$('#toolbar') // ボタン類がfloatで下にいかないよう
-		.width( (windowWidth <780)? 780 : windowWidth );
+		.width( (windowWidth <850)? 850 : windowWidth );
 	$('#folderbox')
 		.width( folderboxWidth )
 		.height( folderboxHeight );
@@ -2286,22 +2339,34 @@ function itemSelectStart( element, downX, downY ){
 		$('#selectbox').hide();
 	});
 }
-// ノードツリー保存
-function treeSave( arg ){
-	$('#modified').hide();
-	$('#progress').show();
-	tree.save({
-		error:function(){
-			$('#progress').hide();
-			$('#modified').show();
+// 変更保存
+function modifySave( arg ){
+	// 順番に保存
+	if( tree.modified() ){
+		$('#modified').hide();
+		$('#progress').show();
+		tree.save({ success:optionSave, error:err });
+	}
+	else optionSave();
+
+	function optionSave(){
+		if( option.items.openFoldersCleanup().modified() ){
+			$('#modified').hide();
+			$('#progress').show();
+			option.save({ success:suc, error:err });
 		}
-		,success:function(){
-			$('#progress').hide();
-			$(doc.body).css('padding-top',0);
-			resizeV();
-			if( arg && arg.success ) arg.success();
-		}
-	});
+		else suc();
+	}
+	function suc(){
+		$('#progress').hide();
+		$(doc.body).css('padding-top',0);
+		resizeV();
+		if( arg && arg.success ) arg.success();
+	}
+	function err(){
+		$('#progress').hide();
+		$('#modified').show();
+	}
 }
 // マウスイベント
 // TODO:フォルダツリーもshift/ctrlキー押しながらクリックで複数選択してD&Dできるように
@@ -2452,9 +2517,8 @@ function itemMouseDown( ev, shiftKey ,ctrlKey ){
 			if( ev.which==1 ) itemSelectStart( this, ev.pageX, ev.pageY ); // 左ボタンのみ(Opera12/IE11用なぜか)
 		}
 	}
-	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
-	// ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
-	// 他に適切な対策はないのか？
+	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
+	// 他に適切な対策はないのか？　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 	if( IE && IE<9 )xxxxx;
 }
 function folderMouseDown(ev){
@@ -2463,9 +2527,8 @@ function folderMouseDown(ev){
 	if( ev.target.className=='sub' ) return;
 	// ドラッグ開始
 	if( tree.movable( this.id.slice(6) ) ) itemDragStart( this, ev.pageX, ev.pageY );
-	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、
-	// ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
-	// 他に適切な対策はないのか？
+	// TODO:[IE8]なぜかエラー発生させると画像アイコンドラッグ可能になるが、ウィンドウ外ドラッグができなく(mousemoveが発生しなく)なる。
+	// 他に適切な対策はないのか？　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 	if( IE && IE<9 )xxxxx;
 }
 // サブツリー展開
@@ -2507,6 +2570,10 @@ function subTreeIcon(){
 		}
 		return $fo;
 	}
+	// filer.json保存
+	var closed = {};
+	$('#folders .sub[src$="plus.png"]').each(function(){ closed[this.parentNode.id.slice(6)] = 1; });
+	option.folders.closed(closed);
 }
 // アイテム欄内フォルダ展開
 function appearIcon(){

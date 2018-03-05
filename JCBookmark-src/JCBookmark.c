@@ -894,8 +894,8 @@ WCHAR* AppFilePath( const WCHAR* fname )
 	WCHAR path[MAX_PATH+1];
 	WCHAR* bs;
 
-		GetModuleFileNameW( NULL, path, MAX_PATH );
-		path[MAX_PATH] = L'\0';
+	GetModuleFileNameW( NULL, path, MAX_PATH );
+	path[MAX_PATH] = L'\0';
 	bs = wcsrchr(path,L'\\');
 	if( bs ){
 		bs[1] = L'\0';
@@ -5124,6 +5124,7 @@ BOOL memory2file( const WCHAR* path, const UCHAR* mem, size_t bytes )
 }
 // ファイルがあったらバックアップファイル作成
 // TODO:複数世代つくる？
+// TODO:というかこのバックアップを活用できる場面はなさそうな気が・・そもそも不要？
 BOOL FileBackup( const WCHAR* path )
 {
 	if( path && *path ){
@@ -5219,21 +5220,6 @@ void gzipcreater( void* tp )
 	ERR_remove_state(0);
 	_endthread();
 }
-// index.json パスから filer.json パスを生成する専用処理
-WCHAR* wcsdup_index_to_filer( const WCHAR* index )
-{
-	WCHAR* filer = wcsdup(index);
-	if( filer ){
-		// index.json を filer.json に書き換えるだけ
-		size_t len = wcslen(filer);
-		if( len > 10 ){
-			wcscpy( filer + len - 10, L"filer.json" );
-		}
-	}
-	else LogW(L"L%u:wcsdupエラー",__LINE__);
-
-	return filer;
-}
 // index.jsonのフォント指定をfiler.jsonにマージ
 // { "font":{ "css":"meiryo.css" } }
 #ifdef _DEBUG
@@ -5276,14 +5262,14 @@ void FilerJsonMerge( const WCHAR* index_json )
 			free( mem );
 		}
 	}
-	// filer.jsonマージ
+	// filer.json編集
 	if( font_css_value ){
-		WCHAR* filer_json = wcsdup_index_to_filer( index_json );
+		WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
 		if( filer_json ){
 			UCHAR* json_text = NULL;
 			Memory* mem = file2memory( filer_json );
 			if( mem ){
-				// 既存編集
+				// 既存
 				json_error_t error;
 				json_t* root = json_loads( mem->data ,0 ,&error );
 				if( root ){
@@ -5336,6 +5322,21 @@ void FilerJsonMerge( const WCHAR* index_json )
 			free( filer_json );
 		}
 		free( font_css_value );
+	}
+}
+// filer.jsonなければ新規作成(起動時)
+void FilerJsonBoot( void )
+{
+	WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
+	if( filer_json ){
+		if( !PathFileExistsW(filer_json) ){
+			WCHAR* index_json = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
+			if( index_json ){
+				FilerJsonMerge( index_json );
+				free(index_json);
+			}
+		}
+		free(filer_json);
 	}
 }
 
@@ -7787,18 +7788,23 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// 排他になるが、FCIの一時ファイルエラーの問題も発生するためひとまず
 							// PathFileExistsを使っておく軟弱仕様。
 							BOOL success = FALSE;
-							UINT count = 2;
-							WCHAR* path[2];
-							path[0] = wcsjoin( DocumentRoot, L"\\tree.json", 0,0,0 );
-							path[1] = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
-							if( path[0] && path[1] ){
+							WCHAR* tree_json = wcsjoin( DocumentRoot, L"\\tree.json", 0,0,0 );
+							WCHAR* index_json = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
+							WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
+							if( tree_json && index_json && filer_json ){
+								UINT count = 1;
+								WCHAR* path[3] = { tree_json, NULL, NULL };
 								WCHAR stamp[32];
 								WCHAR* wcab;
 								SYSTEMTIME st;
-								// index.jsonは存在しない場合
-								if( !PathFileExistsW( path[1] ) ){
-									free(path[1]), path[1]=NULL;
-									count = 1;
+								// index.jsonとfiler.jsonは存在しない場合あり
+								if( PathFileExistsW( index_json ) ){
+									path[1] = index_json;
+									count++;
+								}
+								if( PathFileExistsW( filer_json ) ){
+									if( path[1] ) path[2] = filer_json; else path[1] = filer_json;
+									count++;
 								}
 								GetLocalTime( &st );
 								_snwprintf( stamp,sizeof(stamp)
@@ -7818,8 +7824,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									free( wcab );
 								}
 							}
-							if( path[0] ) free( path[0] );
-							if( path[1] ) free( path[1] );
+							if( tree_json ) free( tree_json );
+							if( index_json ) free( index_json );
+							if( filer_json ) free( filer_json );
 							if( success ) goto shotlist; // 成功→作成済みスナップショット一覧返却
 							LogW(L"[%u]スナップショット作成エラー",Num(cp));
 							ResponseError(cp,"500 Internal Server Error");
@@ -7928,16 +7935,21 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// TODO:展開処理だけでは展開ファイルパスがわからないので
 									// 無条件に index.json と tree.json を返却して削除しているが、
 									// 展開処理で作ったファイルを削除する実装にしないとなんか怖い。
-									WCHAR* index = wcsjoin( wdir, L"\\index.json", 0,0,0 );
-									WCHAR* tree = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
-									if( index && tree ){
+									WCHAR* tree_json = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
+									WCHAR* index_json = wcsjoin( wdir, L"\\index.json", 0,0,0 );
+									WCHAR* filer_json = wcsjoin( wdir, L"\\filer.json", 0,0,0 );
+									if( tree_json && index_json && filer_json ){
 										if( cabDecomp( wcab, wdir ) ){
 											Buffer* bp = &(cp->rsp.body);
 											BufferSends( bp ,"{\"tree.json\":" );
-											BufferSendFile( bp ,tree );
-											if( PathFileExistsW(index) ){
+											BufferSendFile( bp ,tree_json );
+											if( PathFileExistsW(index_json) ){
 												BufferSends( bp ,",\"index.json\":" );
-												BufferSendFile( bp ,index );
+												BufferSendFile( bp ,index_json );
+											}
+											if( PathFileExistsW(filer_json) ){
+												BufferSends( bp ,",\"filer.json\":" );
+												BufferSendFile( bp ,filer_json );
 											}
 											BufferSend( bp ,"}" ,1 );
 											BufferSendf( &(cp->rsp.head)
@@ -7948,11 +7960,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											);
 											success = TRUE;
 										}
-										if( DeleteFileW(index) ) LogW(L"[%u]削除 %s",Num(cp),index);
-										if( DeleteFileW(tree) ) LogW(L"[%u]削除 %s",Num(cp),tree);
+										if( DeleteFileW(tree_json) ) LogW(L"[%u]削除 %s",Num(cp),tree_json);
+										if( DeleteFileW(index_json) ) LogW(L"[%u]削除 %s",Num(cp),index_json);
+										if( DeleteFileW(filer_json) ) LogW(L"[%u]削除 %s",Num(cp),filer_json);
 									}
-									if( index ) free( index );
-									if( tree ) free( tree );
+									if( tree_json ) free( tree_json );
+									if( index_json ) free( index_json );
+									if( filer_json ) free( filer_json );
 								}
 								if( wcab ) free( wcab );
 								if( wdir ) free( wdir );
@@ -8343,13 +8357,11 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											WCHAR* gzip = wcsjoin( realpath ,L".gz" ,0,0,0 );
 											if( gzip ) DeleteFileW( gzip ) ,free( gzip );
 										}
-										if( MoveFileExW( tmppath, realpath
-												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
-										)){
+										if( MoveFileExW( tmppath, realpath ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
 											ResponseError(cp,"200 OK");
 											// tree.jsonはgzipファイル作成
 											if( is_tree_json ) _beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
-											// TODO:index.jsonはフォント指定をfiler.jsonにマージ
+											// index.jsonはフォント指定をfiler.jsonにマージ
 											else if( stricmp(file,"index.json")==0 ) FilerJsonMerge(realpath);
 										}
 										else{
@@ -10473,6 +10485,8 @@ void MainFormCreateAfter( void )
 			return;
 		}
 	}
+	// v2.4 filer.json新規
+	FilerJsonBoot();
 	// 待受開始
 	if( !ListenStart() ){
 		ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
