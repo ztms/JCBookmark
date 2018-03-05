@@ -4,7 +4,7 @@
 <meta charset=utf-8>
 <title>ブックマークの整理</title>
 <link rel=stylesheet href="jquery/ui.css">
-<link rel=stylesheet href=filer.css>
+<link rel=stylesheet href="filer.css?0">
 <link rel=stylesheet id=fontcss>
 </head>
 <body style="visibility:hidden;">
@@ -14,9 +14,12 @@
   <input id=newname placeholder="新規フォルダ名" title="新規フォルダ名">
   <img class=barbtn id=newitem src=newitem.png data-tip="新規ブックマーク作成" tabindex=0>
   <input id=newurl placeholder="新規ブックマークURL" title="新規ブックマークURL">
-  <img class=barbtn id=find src=find.png title="ブックマーク検索" tabindex=0>
+  <img class=barbtn id=find src=find.png data-tip="ブックマーク検索" tabindex=0>
   <img class=barbtn id=findstop src=stop.png title="中止" tabindex=0>
   <div id=finding></div><input id=keyword placeholder="検索キーワード" title="検索キーワード">
+  <div id=findopt><label data-tip="検索キーワードで正規表現を使えます"><input type=checkbox id=fregex tabindex=0>正規<br>表現</label></div>
+  <hr><button class=barbtn id=new100 data-tip="最近登録したブックマーク100個"><b>新</b>100</button>
+  <hr><button class=barbtn id=old100 data-tip="古いブックマーク100個"><b>旧</b>100</button><hr>
   <img class=barbtn id=selectall src=check.png data-tip="アイテム欄をすべて選択" tabindex=0>
   <img class=barbtn id=delete src=delete.png data-tip="選択ブックマークを削除 (Delete)" tabindex=0>
   <img class=barbtn id=deadlink src=skull32.png data-tip="リンク切れ調査(全フォルダ)開始" tabindex=0>
@@ -30,13 +33,6 @@
 <div id=progress><img src=progress.gif></div>
 <div id=modified>★ 変更を保存するにはここをクリックしてください ★</div>
 <input id=editbox>
-<div id=findopt>
-  <label data-tip="検索キーワードで正規表現を使えます"><input type=checkbox id=fregex tabindex=0>正規表現</label>
-  <div>
-    <button id=new100 data-tip="最近登録したブックマーク100個">新100</button>
-    <button id=old100 data-tip="古いブックマーク100個">旧100</button>
-  </div>
-</div>
 <div id=tooltip><b></b><div></div><i></i></div>
 <div id=batch>
   <div id=batchtabs>
@@ -67,6 +63,6 @@
 <div id=notify></div>
 <script src="jquery/jquery.js"></script>
 <script src="jquery/ui.js"></script>
-<script src=filer.js></script>
+<script src="filer.js?0"></script>
 </body>
 </html>

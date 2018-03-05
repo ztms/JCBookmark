@@ -446,6 +446,8 @@ UCHAR* BStoSL( UCHAR* s )
 	if( s ){ UCHAR* p=s; for( ; *p; p++ ) if( *p=='\\' ) *p='/'; }
 	return s;
 }
+// ファイルオープン後 UTF-8 BOM を読み飛ばす(メモ帳で編集した場合対策)
+#define SKIP_BOM(fp) { fgets(buf,4,(fp)); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp); }
 
 
 
@@ -892,8 +894,8 @@ WCHAR* AppFilePath( const WCHAR* fname )
 	WCHAR path[MAX_PATH+1];
 	WCHAR* bs;
 
-		GetModuleFileNameW( NULL, path, MAX_PATH );
-		path[MAX_PATH] = L'\0';
+	GetModuleFileNameW( NULL, path, MAX_PATH );
+	path[MAX_PATH] = L'\0';
 	bs = wcsrchr(path,L'\\');
 	if( bs ){
 		bs[1] = L'\0';
@@ -978,8 +980,7 @@ BrowserInfo* BrowserInfoAlloc( void )
 			FILE* fp = _wfopen(ini,L"rb");
 			if( fp ){
 				UCHAR buf[1024];
-				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-				fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
+				SKIP_BOM(fp);
 				while( fgets(buf,sizeof(buf),fp) ){
 					chomp(buf);
 					if( strnicmp(buf,"IEArg=",6)==0 && *(buf+6) ){
@@ -4379,8 +4380,7 @@ void INISave( UCHAR* name ,UCHAR* value )
 			if( inifp ){
 				size_t namelen = strlen(name);
 				UCHAR buf[1024];
-				// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-				fgets(buf,4,inifp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(inifp);
+				SKIP_BOM(inifp);
 				// name=の行だけ変更して他はいじらない
 				while( fgets(buf,sizeof(buf),inifp) ){
 					chomp(buf);
@@ -5089,6 +5089,97 @@ Memory* file2memory( const WCHAR* path )
 	}
 	return memory;
 }
+// メモリをファイル書き出し
+BOOL memory2file( const WCHAR* path, const UCHAR* mem, size_t bytes )
+{
+	BOOL success = FALSE;
+	WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
+	if( tmp ){
+		HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
+							,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+		);
+		if( wFile !=INVALID_HANDLE_VALUE ){
+			DWORD written = 0;
+			// 連続領域確保（断片化抑制）
+			SetFilePointer( wFile, bytes, NULL, FILE_BEGIN );
+			SetEndOfFile( wFile );
+			SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
+			if( WriteFile( wFile, mem, bytes, &written, NULL ) && bytes==written )
+				;
+			else LogW(L"L%u:WiteFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+
+			SetEndOfFile( wFile );
+			CloseHandle( wFile );
+
+			if( MoveFileExW( tmp, path ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
+				success = TRUE;
+			}
+			else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
+		}
+		else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+
+		free( tmp );
+	}
+	return success;
+}
+// ファイルがあったらバックアップファイル作成
+// TODO:複数世代つくる？
+// TODO:というかこのバックアップを活用できる場面はなさそうな気が・・そもそも不要？
+BOOL FileBackup( const WCHAR* path )
+{
+	if( path && *path ){
+		HANDLE rFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
+							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+		);
+		if( rFile !=INVALID_HANDLE_VALUE ){
+			BOOL success = FALSE;
+			WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
+			WCHAR* bak = wcsjoin( path, L".bak", 0,0,0 );
+			if( tmp && bak ){
+				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
+									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+				);
+				if( wFile !=INVALID_HANDLE_VALUE ){
+					// 連続領域確保（断片化抑制）
+					SetFilePointer( wFile, GetFileSize(rFile,NULL), NULL, FILE_BEGIN );
+					SetEndOfFile( wFile );
+					SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
+					for( ;; ){
+						BYTE buf[1024];
+						DWORD bRead=0;
+						if( ReadFile( rFile, buf, sizeof(buf), &bRead, NULL ) ){
+							if( bRead ){
+								DWORD bWrite=0;
+								if( WriteFile( wFile, buf, bRead, &bWrite, NULL ) && bRead==bWrite )
+									;
+								else
+									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
+							}
+							else break;
+						}
+						else{
+							LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
+							break;
+						}
+					}
+					SetEndOfFile( wFile );
+					CloseHandle( wFile );
+					if( MoveFileExW( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
+						LogW(L"バックアップ作成:%s",bak);
+						success = TRUE;
+					}
+					else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
+				}
+				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
+			}
+			if( tmp ) free( tmp );
+			if( bak ) free( bak );
+			CloseHandle( rFile );
+			return success;
+		}
+	}
+	return TRUE;
+}
 // gzip圧縮ファイル生成
 void gzipcreater( void* tp )
 {
@@ -5128,6 +5219,125 @@ void gzipcreater( void* tp )
 	}
 	ERR_remove_state(0);
 	_endthread();
+}
+// index.jsonのフォント指定をfiler.jsonにマージ
+// { "font":{ "css":"meiryo.css" } }
+#ifdef _DEBUG
+#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
+#else
+#pragma comment(lib,"jansson.lib")		// Jansson Releaseビルド版
+#endif
+#include "jansson.h"
+void FilerJsonMerge( const WCHAR* index_json )
+{
+	UCHAR* font_css_value = NULL;
+	// index.json取得
+	if( index_json ){
+		Memory* mem = file2memory( index_json );
+		if( mem ){
+			json_error_t error;
+			json_t* root = json_loads( mem->data ,0 ,&error );
+			if( root ){
+				if( json_is_object(root) ){
+					json_t* font = json_object_get(root,"font");
+					if( json_is_object(font) ){
+						json_t* font_css = json_object_get(font,"css");
+						if( json_is_string(font_css) ){
+							const UCHAR* value = json_string_value(font_css);
+							if( value ){
+								font_css_value = strdup(value);
+								if( !font_css_value ) LogW(L"L%u:strdupエラー",__LINE__);
+							}
+							else LogW(L"index.json 'font.css' value is NULL");
+						}
+						else LogW(L"index.json 'font.css' is not string");
+					}
+					else LogW(L"index.json 'font' is not object");
+				}
+				else LogW(L"index.json is not json object");
+
+				json_decref(root);
+			}
+			else LogA("index.json load error: on line %d: %s",error.line,error.text);
+			free( mem );
+		}
+	}
+	// filer.json編集
+	if( font_css_value ){
+		WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
+		if( filer_json ){
+			UCHAR* json_text = NULL;
+			Memory* mem = file2memory( filer_json );
+			if( mem ){
+				// 既存
+				json_error_t error;
+				json_t* root = json_loads( mem->data ,0 ,&error );
+				if( root ){
+					if( json_is_object(root) ){
+						json_t* font = json_object_get(root,"font");
+						if( json_is_object(font) ){
+							if( json_object_set_new(font,"css",json_string(font_css_value))==0 ){
+								LogA("filer.json > font > css = %s",font_css_value);
+							}
+							else LogW(L"L%u:json_object_set_new error",__LINE__);
+						}
+						else{
+							LogW(L"filer.json > font is not object");
+							if( json_object_set_new(root,"font",json_pack("{ss}","css",font_css_value))==0 ){
+								LogA("filer.json > font = { css: %s }",font_css_value);
+							}
+							else LogW(L"L%u:json_object_set_new error",__LINE__);
+						}
+						json_text = json_dumps(root, JSON_COMPACT);
+					}
+					json_decref(root);
+				}
+				else{
+					LogA("filer.json load error: on line %d: %s",error.line,error.text);
+					root = json_pack("{s{ss}}","font","css",font_css_value);
+					if( root ){
+						json_text = json_dumps(root, JSON_COMPACT);
+						json_decref(root);
+						LogA("filer.json = { font: css: %s } }",font_css_value);
+					}
+				}
+				free( mem );
+			}
+			else{
+				// 新規作成
+				json_t* root = json_pack("{s{ss}}","font","css",font_css_value);
+				if( root ){
+					json_text = json_dumps(root, JSON_COMPACT);
+					json_decref(root);
+					LogA("filer.json = { font: css: %s } }",font_css_value);
+				}
+			}
+			// 書き出し
+			if( json_text ){
+				if( FileBackup( filer_json ) ){
+					memory2file( filer_json, json_text, strlen(json_text) );
+				}
+				free( json_text );
+			}
+			free( filer_json );
+		}
+		free( font_css_value );
+	}
+}
+// filer.jsonなければ新規作成(起動時)
+void FilerJsonBoot( void )
+{
+	WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
+	if( filer_json ){
+		if( !PathFileExistsW(filer_json) ){
+			WCHAR* index_json = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
+			if( index_json ){
+				FilerJsonMerge( index_json );
+				free(index_json);
+			}
+		}
+		free(filer_json);
+	}
 }
 
 
@@ -6098,7 +6308,7 @@ BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
 SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
 SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
 WCHAR	ListenPort[8]	= L"10080";			// Listenポート
-BOOL	BindLocal		= FALSE;			// bindアドレスをlocalhostに
+BOOL	BindLocal		= TRUE;				// bindアドレスをlocalhostに(v2.3までFALSE,v2.4以降TRUE)
 BOOL	LoginRemote		= FALSE;			// localhost以外パスワード必要
 BOOL	LoginLocal		= FALSE;			// localhostもパスワード必要
 BOOL	HttpsRemote		= FALSE;			// localhost以外https
@@ -6110,21 +6320,25 @@ void ServerParamGet( void )
 	WCHAR* ini = AppFilePath( MY_INI );
 	// 初期値
 	wcscpy( ListenPort ,L"10080" );
-	BindLocal = LoginRemote = LoginLocal = HttpsRemote = HttpsLocal = BootMinimal = FALSE;
+	BindLocal   = TRUE;
+	LoginRemote = FALSE;
+	LoginLocal  = FALSE;
+	HttpsRemote = FALSE;
+	HttpsLocal  = FALSE;
+	BootMinimal = FALSE;
 	if( ini ){
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			UCHAR buf[1024];
-			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
+			SKIP_BOM(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"ListenPort=",11)==0 && *(buf+11) ){
 					MultiByteToWideChar( CP_UTF8, 0, buf+11, -1, ListenPort, sizeof(ListenPort)/sizeof(WCHAR) );
 					ListenPort[sizeof(ListenPort)/sizeof(WCHAR)-1]=L'\0';
 				}
-				else if( strnicmp(buf,"BindLocal=",10)==0 && *(buf+10) ){
-					BindLocal = TRUE;
+				else if( strnicmp(buf,"BindLocal=",10)==0 && *(buf+10)=='\0' ){
+					BindLocal = FALSE;
 				}
 				else if( strnicmp(buf,"LoginRemote=",12)==0 && *(buf+12) ){
 					LoginRemote = TRUE;
@@ -6211,8 +6425,7 @@ BOOL LoginPass( UCHAR* digest ,size_t bytes )
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			UCHAR buf[1024];
-			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
+			SKIP_BOM(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"LoginPass=",10)==0 && *(buf+10) ){
@@ -6476,63 +6689,6 @@ BOOL AcceptEncodingHas( Request* req ,const UCHAR* name )
 		}
 	}
 	return FALSE;
-}
-// ファイルがあったらバックアップファイル作成
-// TODO:複数世代つくる？
-BOOL FileBackup( const WCHAR* path )
-{
-	if( path && *path ){
-		HANDLE rFile = CreateFileW( path, GENERIC_READ, FILE_SHARE_READ
-							,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
-		);
-		if( rFile !=INVALID_HANDLE_VALUE ){
-			BOOL success = FALSE;
-			WCHAR* tmp = wcsjoin( path, L".$$$", 0,0,0 );
-			WCHAR* bak = wcsjoin( path, L".bak", 0,0,0 );
-			if( tmp && bak ){
-				HANDLE wFile = CreateFileW( tmp, GENERIC_WRITE, FILE_SHARE_READ
-									,NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
-				);
-				if( wFile !=INVALID_HANDLE_VALUE ){
-					// 連続領域確保（断片化抑制）
-					SetFilePointer( wFile, GetFileSize(rFile,NULL), NULL, FILE_BEGIN );
-					SetEndOfFile( wFile );
-					SetFilePointer( wFile, 0, NULL, FILE_BEGIN );
-					for( ;; ){
-						BYTE buf[1024];
-						DWORD bRead=0;
-						if( ReadFile( rFile, buf, sizeof(buf), &bRead, NULL ) ){
-							if( bRead ){
-								DWORD bWrite=0;
-								if( WriteFile( wFile, buf, bRead, &bWrite, NULL ) && bRead==bWrite )
-									;
-								else
-									LogW(L"L%u:WiteFileエラー%u",__LINE__,GetLastError());
-							}
-							else break;
-						}
-						else{
-							LogW(L"L%u:ReadFileエラー%u",__LINE__,GetLastError());
-							break;
-						}
-					}
-					SetEndOfFile( wFile );
-					CloseHandle( wFile );
-					if( MoveFileExW( tmp, bak ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
-						LogW(L"バックアップ作成:%s",bak);
-						success = TRUE;
-					}
-					else LogW(L"L%u:MoveFileEx(%s)エラー%u",__LINE__,tmp,GetLastError());
-				}
-				else LogW(L"L%u:CreateFile(%s)エラー%u",__LINE__,tmp,GetLastError());
-			}
-			if( tmp ) free( tmp );
-			if( bak ) free( bak );
-			CloseHandle( rFile );
-			return success;
-		}
-	}
-	return TRUE;
 }
 // ドキュメントルート配下のフルパスに変換する
 WCHAR* RealPath( const UCHAR* path, WCHAR* realpath, size_t size )
@@ -6959,7 +7115,7 @@ SOCKET ListenAddrOne( const ADDRINFOW* adr )
 
 BOOL ListenStart( void )
 {
-	ADDRINFOW*	adr		= NULL;
+	ADDRINFOW*	adr	= NULL;
 	ADDRINFOW	hint;
 
 	memset( &hint, 0, sizeof(hint) );
@@ -7632,18 +7788,23 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 							// 排他になるが、FCIの一時ファイルエラーの問題も発生するためひとまず
 							// PathFileExistsを使っておく軟弱仕様。
 							BOOL success = FALSE;
-							UINT count = 2;
-							WCHAR* path[2];
-							path[0] = wcsjoin( DocumentRoot, L"\\tree.json", 0,0,0 );
-							path[1] = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
-							if( path[0] && path[1] ){
+							WCHAR* tree_json = wcsjoin( DocumentRoot, L"\\tree.json", 0,0,0 );
+							WCHAR* index_json = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
+							WCHAR* filer_json = wcsjoin( DocumentRoot, L"\\filer.json", 0,0,0 );
+							if( tree_json && index_json && filer_json ){
+								UINT count = 1;
+								WCHAR* path[3] = { tree_json, NULL, NULL };
 								WCHAR stamp[32];
 								WCHAR* wcab;
 								SYSTEMTIME st;
-								// index.jsonは存在しない場合
-								if( !PathFileExistsW( path[1] ) ){
-									free(path[1]), path[1]=NULL;
-									count = 1;
+								// index.jsonとfiler.jsonは存在しない場合あり
+								if( PathFileExistsW( index_json ) ){
+									path[1] = index_json;
+									count++;
+								}
+								if( PathFileExistsW( filer_json ) ){
+									if( path[1] ) path[2] = filer_json; else path[1] = filer_json;
+									count++;
 								}
 								GetLocalTime( &st );
 								_snwprintf( stamp,sizeof(stamp)
@@ -7663,8 +7824,9 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									free( wcab );
 								}
 							}
-							if( path[0] ) free( path[0] );
-							if( path[1] ) free( path[1] );
+							if( tree_json ) free( tree_json );
+							if( index_json ) free( index_json );
+							if( filer_json ) free( filer_json );
 							if( success ) goto shotlist; // 成功→作成済みスナップショット一覧返却
 							LogW(L"[%u]スナップショット作成エラー",Num(cp));
 							ResponseError(cp,"500 Internal Server Error");
@@ -7773,16 +7935,21 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 									// TODO:展開処理だけでは展開ファイルパスがわからないので
 									// 無条件に index.json と tree.json を返却して削除しているが、
 									// 展開処理で作ったファイルを削除する実装にしないとなんか怖い。
-									WCHAR* index = wcsjoin( wdir, L"\\index.json", 0,0,0 );
-									WCHAR* tree = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
-									if( index && tree ){
+									WCHAR* tree_json = wcsjoin( wdir, L"\\tree.json", 0,0,0 );
+									WCHAR* index_json = wcsjoin( wdir, L"\\index.json", 0,0,0 );
+									WCHAR* filer_json = wcsjoin( wdir, L"\\filer.json", 0,0,0 );
+									if( tree_json && index_json && filer_json ){
 										if( cabDecomp( wcab, wdir ) ){
 											Buffer* bp = &(cp->rsp.body);
 											BufferSends( bp ,"{\"tree.json\":" );
-											BufferSendFile( bp ,tree );
-											if( PathFileExistsW(index) ){
+											BufferSendFile( bp ,tree_json );
+											if( PathFileExistsW(index_json) ){
 												BufferSends( bp ,",\"index.json\":" );
-												BufferSendFile( bp ,index );
+												BufferSendFile( bp ,index_json );
+											}
+											if( PathFileExistsW(filer_json) ){
+												BufferSends( bp ,",\"filer.json\":" );
+												BufferSendFile( bp ,filer_json );
 											}
 											BufferSend( bp ,"}" ,1 );
 											BufferSendf( &(cp->rsp.head)
@@ -7793,11 +7960,13 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											);
 											success = TRUE;
 										}
-										if( DeleteFileW(index) ) LogW(L"[%u]削除 %s",Num(cp),index);
-										if( DeleteFileW(tree) ) LogW(L"[%u]削除 %s",Num(cp),tree);
+										if( DeleteFileW(tree_json) ) LogW(L"[%u]削除 %s",Num(cp),tree_json);
+										if( DeleteFileW(index_json) ) LogW(L"[%u]削除 %s",Num(cp),index_json);
+										if( DeleteFileW(filer_json) ) LogW(L"[%u]削除 %s",Num(cp),filer_json);
 									}
-									if( index ) free( index );
-									if( tree ) free( tree );
+									if( tree_json ) free( tree_json );
+									if( index_json ) free( index_json );
+									if( filer_json ) free( filer_json );
 								}
 								if( wcab ) free( wcab );
 								if( wdir ) free( wdir );
@@ -8188,12 +8357,12 @@ void SocketRead( SOCKET sock, BrowserIcon browser[BI_COUNT] )
 											WCHAR* gzip = wcsjoin( realpath ,L".gz" ,0,0,0 );
 											if( gzip ) DeleteFileW( gzip ) ,free( gzip );
 										}
-										if( MoveFileExW( tmppath, realpath
-												,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH
-										)){
+										if( MoveFileExW( tmppath, realpath ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH )){
 											ResponseError(cp,"200 OK");
 											// tree.jsonはgzipファイル作成
 											if( is_tree_json ) _beginthread( gzipcreater ,0 ,(void*)wcsdup(realpath) );
+											// index.jsonはフォント指定をfiler.jsonにマージ
+											else if( stricmp(file,"index.json")==0 ) FilerJsonMerge(realpath);
 										}
 										else{
 											LogW(L"[%u]MoveFileEx(%s)エラー%u",Num(cp),tmppath,GetLastError());
@@ -8531,7 +8700,7 @@ void SSL_CertLoad( void )
 }
 
 // 現在の設定が整理画面を開くになってるかどうか
-BOOL OpenFiler( void )
+BOOL isOpenFiler( void )
 {
 	BOOL yes = FALSE;
 	WCHAR* ini = AppFilePath( MY_INI );
@@ -8539,8 +8708,7 @@ BOOL OpenFiler( void )
 		FILE* fp = _wfopen(ini,L"rb");
 		if( fp ){
 			UCHAR buf[1024];
-			// メモ帳で編集した場合 UTF-8 BOM がつく場合があるので読み飛ばす
-			fgets(buf,4,fp); if( !(buf[0]==0xEF && buf[1]==0xBB && buf[2]==0xBF) ) rewind(fp);
+			SKIP_BOM(fp);
 			while( fgets(buf,sizeof(buf),fp) ){
 				chomp(buf);
 				if( strnicmp(buf,"OpenFiler=",10)==0 ){
@@ -8554,6 +8722,7 @@ BOOL OpenFiler( void )
 	}
 	return yes;
 }
+
 // 設定ダイアログデータ
 typedef struct {
 	WCHAR	wListenPort[8];
@@ -8568,6 +8737,7 @@ typedef struct {
 	WCHAR*	wArg[BI_COUNT];
 	BOOL	hide[BI_COUNT];
 } ConfigData;
+
 // 設定ダイアログデータmy.ini保存
 void ConfigSave( const ConfigData* dp )
 {
@@ -8638,7 +8808,7 @@ void ConfigSave( const ConfigData* dp )
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
 			}
-			fprintf(fp,"OpenFiler=%s\r\n"	,OpenFiler() ? "1":"");
+			fprintf(fp,"OpenFiler=%s\r\n"	,isOpenFiler() ? "1":"");
 			fclose(fp);
 			// 正ファイルにリネーム(my.ini.new -> my.ini)
 			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
@@ -8700,6 +8870,8 @@ typedef struct {
 	HFONT		hFontS;
 	HIMAGELIST	hImage;
 	DWORD		result;
+	UINT		option;
+	#define		OPTION_LISTEN_ADDR_NOTIFY_24	0x01
 } ConfigDialogData;
 
 BOOL isChecked( HWND hwnd ){ return (SendMessage(hwnd,BM_GETCHECK,0,0)==BST_CHECKED)? TRUE:FALSE; }
@@ -9057,20 +9229,46 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				MoveWindow( my->hExeTxt			,20  ,rc.top+60+2  ,90  ,22 ,TRUE );
 				MoveWindow( my->hArgTxt			,50  ,rc.top+100+2 ,60  ,22 ,TRUE );
 				for( i=0; i<BI_USER1; i++ ){
-					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,90 ,22 ,TRUE );
-					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
-					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,90 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120 ,22 ,TRUE );
 				}
 				for( i=BI_USER1; i<BI_COUNT; i++ ){
-					MoveWindow( my->hHide[i]		,100 ,rc.top+24  ,120 ,22 ,TRUE );
-					MoveWindow( my->hExe[i]			,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
-					MoveWindow( my->hArg[i]			,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
+					MoveWindow( my->hHide[i]	,100 ,rc.top+24  ,120 ,22 ,TRUE );
+					MoveWindow( my->hExe[i]		,100 ,rc.top+60  ,LOWORD(lp)-120-24 ,22 ,TRUE );
+					MoveWindow( my->hArg[i]		,100 ,rc.top+100 ,LOWORD(lp)-120    ,22 ,TRUE );
 				}
 				MoveWindow( my->hFOpen	,LOWORD(lp)-44  ,rc.top+60-1   ,24 ,24 ,TRUE );
 				MoveWindow( my->hOK		,LOWORD(lp)-200 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
 				MoveWindow( my->hCancel	,LOWORD(lp)-100 ,HIWORD(lp)-50 ,80 ,30 ,TRUE );
 			}
 			return 0;
+
+		case WM_PAINT:
+			// 待受アドレスを赤枠で囲み、お知らせメッセージ表示
+			if( my->option & OPTION_LISTEN_ADDR_NOTIFY_24 && IsWindowVisible(my->hBindAny) )
+			{
+				HDC dc = GetDC( hwnd );
+				RECT rc = { 0,0, LOWORD(lp), HIWORD(lp) };	// same as GetClientRect( hwnd, &rc );
+				HBRUSH hOldBrush = SelectObject( dc, GetStockObject(NULL_BRUSH) );
+				HPEN hPen = CreatePen( PS_INSIDEFRAME, 2, RGB(255,0,0) );
+				HPEN hOldPen = SelectObject( dc, hPen );
+				TabCtrl_AdjustRect( my->hTabc, FALSE, &rc ); // タブを除いた表示領域を取得(rc.topがタブの高さになる)
+				Rectangle( dc, 35, rc.top + 48, 350, rc.top + 83 );
+				SelectObject( dc, hOldBrush );
+				SelectObject( dc, hOldPen );
+				DeleteObject( hPen );
+				ReleaseDC( hwnd, dc );
+				ValidateRect( hwnd, NULL );
+				// お知らせ（赤枠の吹き出しがよかったけど実装が面倒なので普通のメッセージボックス）
+				MessageBoxW( hwnd ,
+					L"HTTPサーバー設定の初期値が変わりました。\r\n\r\n"
+					L"バージョン2.4から、HTTPサーバー設定「待受アドレス」初期値が「localhostのみ」に変更されました。"
+					L"（※前バージョンまでは「どこからでも」）\r\n\r\n"
+					L"この設定で問題ないかご確認ください。"
+				,L"お知らせ" ,MB_ICONINFORMATION );
+			}
+			break;
 
 		case WM_CTLCOLORSTATIC: // スタティックコントール描画色
 			if( (HWND)lp==my->hLoginPassState ){
@@ -9175,6 +9373,8 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					SetFocus( (tabid<=4)? my->hArg[tabid-1] :my->hExe[tabid-1] );
 					break;
 				}
+				InvalidateRect( hwnd, NULL, TRUE );
+				UpdateWindow( hwnd );
 			}
 			return 0;
 
@@ -9442,8 +9642,9 @@ LRESULT CALLBACK ConfigDialogProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	}
 	return DefDlgProc( hwnd, msg, wp, lp );
 }
+
 // 設定画面作成。引数は初期表示タブID(※タブインデックスではない)。
-DWORD ConfigDialog( UINT tabid )
+DWORD ConfigDialog( UINT tabid ,UINT option )
 {
 	#define				CONFIGDIALOG_CLASS  L"JCBookmarkConfigDialog"
 	#define				CONFIGDIALOG_WIDTH  550
@@ -9454,6 +9655,7 @@ DWORD ConfigDialog( UINT tabid )
 
 	memset( &data, 0, sizeof(data) );
 	data.result = ID_DLG_NULL;
+	data.option = option;
 
 	memset( &wc, 0, sizeof(wc) );
 	wc.cbSize		 = sizeof(wc);
@@ -9507,6 +9709,64 @@ DWORD ConfigDialog( UINT tabid )
 	else LogW(L"L%u:RegisterClassエラー%u",__LINE__,GetLastError());
 
 	return data.result;
+}
+
+// 待受アドレス仕様変更チェック実行済かどうか(v2.4)
+BOOL isListenAddrNotify24( void )
+{
+	BOOL is = FALSE;
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			SKIP_BOM(fp);
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"ListenAddrNotify24=",18)==0 ){
+					is = atoi(buf+18) ? TRUE : FALSE;
+					break;
+				}
+			}
+			fclose(fp);
+		}
+		free( ini );
+	}
+	return is;
+}
+
+// 新規インストール環境(バージョンアップでない)かどうか
+BOOL isNewInstall()
+{
+	WCHAR *wpath;
+	BOOL is = FALSE;
+
+	wpath = wcsjoin(DocumentRoot, L"\\tree.json.empty", 0,0,0);
+	if( wpath ){
+		is = !PathFileExists(wpath);
+		free(wpath);
+	}
+
+	return is;
+}
+
+// TODO:v2.3までListenの既定が「どこからでも」になってるのを、v2.4で「localhostのみ」に変更したい。
+// そうすると設定無変更(my.iniなし)で使ってる人の挙動が勝手に変わることになるため
+// その場合は設定ダイアログを出しメッセージと説明を通知する。
+void ListenAddrNotify24( void )
+{
+	// このチェックは一度だけ
+	if( isListenAddrNotify24() ) return;
+
+	INISave("ListenAddrNotify24","1");
+
+	// 新規インストール環境は通知しない
+	if( isNewInstall() ) return;
+
+	// ログインかSSL設定されてれば通知しない
+	if( LoginRemote || HttpsRemote ) return;
+
+	PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(0,OPTION_LISTEN_ADDR_NOTIFY_24) ,0 );
 }
 
 
@@ -9741,7 +10001,7 @@ void BrowserIconClick( UINT ix )
 		if( br[ix].exe ){
 			WCHAR* exe = myPathResolve( br[ix].exe );
 			if( exe ){
-				WCHAR* openPage = OpenFiler() ? PAGE_FILER : PAGE_BASIC;
+				WCHAR* openPage = isOpenFiler() ? PAGE_FILER : PAGE_BASIC;
 				size_t cmdlen = wcslen(exe)
 							  + (br[ix].arg ? wcslen(br[ix].arg) :0)
 							  + wcslen(openPage)
@@ -9817,7 +10077,7 @@ void BrowserIconClick( UINT ix )
 	}
 	// ブラウザ未登録やファイルなしエラーの場合は設定画面を出す。
 	// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-	if( empty || invalid ) PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(ix+1) ,0 ); 
+	if( empty || invalid ) PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(ix+1,0) ,0 ); 
 }
 // MicrosoftEdgeの起動
 // [ファイル名を指定して実行]から、
@@ -9832,7 +10092,7 @@ void BrowserIconClick( UINT ix )
 void BrowserIconClickEdge()
 {
 	WCHAR* name = L"microsoft-edge";
-	WCHAR* openPage = OpenFiler() ? PAGE_FILER : PAGE_BASIC;
+	WCHAR* openPage = isOpenFiler() ? PAGE_FILER : PAGE_BASIC;
 	WCHAR cmd[128];
 	DWORD err;
 	// microsoft-edge:https://localhost:10080/filer.html
@@ -9846,7 +10106,7 @@ void BrowserIconClickEdge()
 		ErrorBoxW(L"%s\r\nを実行できません",name);
 		// エラーの場合は設定画面を出す。
 		// 設定画面タブIDはBrowserインデックス＋1と対応(TODO:わかりにくい)
-		PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(BI_EDGE+1) ,0 ); 
+		PostMessage( MainForm ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(BI_EDGE+1,0) ,0 ); 
 	}
 }
 // ツールチップ
@@ -10225,6 +10485,8 @@ void MainFormCreateAfter( void )
 			return;
 		}
 	}
+	// v2.4 filer.json新規
+	FilerJsonBoot();
 	// 待受開始
 	if( !ListenStart() ){
 		ErrorBoxW(L"ポート %s で待受できません。既に使われているかもしれません。",ListenPort);
@@ -10232,6 +10494,8 @@ void MainFormCreateAfter( void )
 	}
 	// タイマー処理
 	MainFormTimer1000();
+	// v2.4待受初期値変更対応
+	ListenAddrNotify24();
 }
 // タスクトレイアイコン登録
 // http://www31.ocn.ne.jp/~yoshio2/vcmemo17-1.html
@@ -10300,9 +10564,10 @@ LRESULT CALLBACK AboutBoxProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			WCHAR* wlibs;
 
 			_snprintf(libs,sizeof(libs),
-					"zlib %s\r\n" "SQLite %s\r\n" "%s"
+					"zlib %s\r\n" "SQLite %s\r\n" "Jansson %s\r\n" "%s"
 					,ZLIB_VERSION
 					,SQLITE_VERSION
+					,JANSSON_VERSION
 					,SSLeay_version(SSLEAY_VERSION)
 			);
 			wlibs = MultiByteToWideCharAlloc( libs, CP_UTF8 );
@@ -10504,7 +10769,7 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		SendMessage( hOpenBasic ,WM_SETFONT ,(WPARAM)hFontP ,0 );
 		SendMessage( hOpenFiler ,WM_SETFONT ,(WPARAM)hFontP ,0 );
-		SendMessage( OpenFiler() ? hOpenFiler : hOpenBasic ,BM_SETCHECK ,BST_CHECKED ,0 );
+		SendMessage( isOpenFiler() ? hOpenFiler : hOpenBasic ,BM_SETCHECK ,BST_CHECKED ,0 );
 		// プロセスハンドル
 		ThisProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, GetCurrentProcessId() );
 		if( !ThisProcess ){
@@ -10604,16 +10869,16 @@ LRESULT CALLBACK MainFormProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			ListBoxWidth = 0;
 			break;
 		case CMD_SETTING:	// 設定
-			PostMessage( hwnd ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(0) ,0 );
+			PostMessage( hwnd ,WM_CONFIG_DIALOG ,(WPARAM)ConfigDialog(0,0) ,0 );
 			break;
 		case CMD_ABOUT:		// バージョン情報
 			AboutBox();
 			break;
 		case CMD_OPENBASIC:	// 基本画面を開く
-			if( OpenFiler() ) INISave("OpenFiler","");
+			if( isOpenFiler() ) INISave("OpenFiler","");
 			break;
 		case CMD_OPENFILER:	// 整理画面を開く
-			if( !OpenFiler() ) INISave("OpenFiler","1");
+			if( !isOpenFiler() ) INISave("OpenFiler","1");
 			break;
 		case CMD_IE     : BrowserIconClick( BI_IE );     break;
 		case CMD_EDGE   : BrowserIconClickEdge();        break;

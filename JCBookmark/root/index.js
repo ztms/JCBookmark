@@ -636,24 +636,35 @@ var option = {
 				,url:'index.json'
 				,data:JSON.stringify( option.data )
 				,error:function(xhr){
-					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:giveup });
-					else giveup();
-
-					function giveup(){
-						Alert('保存できません:'+xhr.status+' '+xhr.statusText);
-						if( arg.error ) arg.error();
-					}
+					if( xhr.status===401 ) LoginDialog({ ok:save ,cancel:function(){ giveup(xhr); } });
+					else giveup(xhr);
 				}
 				,success:function(){
-					option.modified(false);
-					if( arg.success ) arg.success();
+					if( option_filer ) $.ajax({
+						type:'put'
+						,url:'filer.json'
+						,data:JSON.stringify( option_filer )
+						,error:giveup
+						,success:success
+					});
+					else success();
 				}
 			});
+		}
+		function success(){
+			option.modified(false);
+			if( arg.success ) arg.success();
+		}
+		function giveup(xhr){
+			Alert('保存できません:'+xhr.status+' '+xhr.statusText);
+			if( arg.error ) arg.error();
 		}
 		save();
 		return option;
 	}
 };
+// filer.jsonデータ(インポート／スナップショット復元時のみ)
+var option_filer = null;
 // ブックマークデータ取得
 (function(){
 	var $loading = $('<div style="color:#888;text-align:center;">データ取得中...</div>');
@@ -1950,6 +1961,7 @@ function setEvents(){
 					,success:function(data){
 						if( 'index.json' in data ) option.merge( data['index.json'] );
 						else option.clear();
+						if( 'filer.json' in data ) option_filer = data['filer.json'];
 						panelReady(); paneler( tree.replace(data['tree.json']).top() );
 						$btn.next().hide();
 						$btn.show();
@@ -2685,7 +2697,7 @@ function panelEdit( pid ){
 					if( $place ) $place.remove(), $place=null;
 					$doc.mouseup();
 				});
-				// IE8はなぜかエラー発生させればドラッグ可能になる…
+				// TODO:IE8はなぜかエラー発生させればドラッグ可能になる　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 				xxxxx;
 			}
 			// Firefoxはreturn falseしないとテキスト選択になってしまう…
@@ -2768,13 +2780,19 @@ function panelEdit( pid ){
 // 変更保存
 function modifySave( arg ){
 	// 順番に保存
-	$('#modified').hide();
-	$('#progress').show();
-	if( tree.modified() ) tree.save({ success:optionSave, error:err });
+	if( tree.modified() ){
+		$('#modified').hide();
+		$('#progress').show();
+		tree.save({ success:optionSave, error:err });
+	}
 	else optionSave();
 
 	function optionSave(){
-		if( option.modified() ) option.save({ success:suc, error:err });
+		if( option.modified() ){
+			$('#modified').hide();
+			$('#progress').show();
+			option.save({ success:suc, error:err });
+		}
 		else suc();
 	}
 	function suc(){
@@ -3010,6 +3028,10 @@ function importer( nodeTop ){
 			'差し替える':function(){
 				$(this).dialog('destroy');
 				option.panel.layout({}).panel.status({});
+				// ※font.cssのみ特殊index.jsonと常に同期(途中から導入のため)
+				option_filer = {
+					 font:{ css: option.font.css() }
+				};
 				panelReady(); paneler( tree.replace(nodeTop).top() );
 			}
 			,'追加登録する':function(){
@@ -3124,7 +3146,7 @@ function columnSortable(){
 				if( $place ) $(element).after( $place );	// 元の場所で
 				$doc.mouseup();								// ドロップ
 			});
-			// IE8はなぜかエラー発生させればドラッグ可能になる…
+			// TODO:IE8はなぜかエラー発生させればドラッグ可能になる　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 			xxxxx;
 		}
 		// Firefoxはreturn falseしないとテキスト選択になってしまう…
@@ -3250,7 +3272,7 @@ function panelSortable(){
 				if( $place ) $(element).after( $place );	// 元の場所で
 				$doc.mouseup();								// ドロップ
 			});
-			// IE8はなぜかエラー発生させればドラッグ可能になる…
+			// TODO:IE8はなぜかエラー発生させればドラッグ可能になる　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 			xxxxx;
 		}
 		// Firefoxはreturn falseしないとテキスト選択になってしまう…
@@ -3399,7 +3421,7 @@ function itemSortable(){
 				if( $place ) $(element).after( $place );	// 元の場所で
 				$doc.mouseup();								// ドロップ
 			});
-			// IE8はなぜかエラー発生させればドラッグ可能になる…
+			// TODO:IE8はなぜかエラー発生させればドラッグ可能になる　→dragstartイベント調査(A,IMGには既定のドラッグ挙動がある)
 			xxxxx;
 		}
 		// Firefoxはreturn falseしないとテキスト選択になってしまう…
