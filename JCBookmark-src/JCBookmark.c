@@ -8723,6 +8723,30 @@ BOOL isOpenFiler( void )
 	return yes;
 }
 
+// 待受アドレス仕様変更チェック実行済かどうか(v2.4)
+BOOL isListenAddrNotify24( void )
+{
+	BOOL is = FALSE;
+	WCHAR* ini = AppFilePath( MY_INI );
+	if( ini ){
+		FILE* fp = _wfopen(ini,L"rb");
+		if( fp ){
+			UCHAR buf[1024];
+			SKIP_BOM(fp);
+			while( fgets(buf,sizeof(buf),fp) ){
+				chomp(buf);
+				if( strnicmp(buf,"ListenAddrNotify24=",19)==0 ){
+					is = atoi(buf+19) ? TRUE : FALSE;
+					break;
+				}
+			}
+			fclose(fp);
+		}
+		free( ini );
+	}
+	return is;
+}
+
 // 設定ダイアログデータ
 typedef struct {
 	WCHAR	wListenPort[8];
@@ -8808,7 +8832,8 @@ void ConfigSave( const ConfigData* dp )
 				if( exe[i] ) free( exe[i] );
 				if( arg[i] ) free( arg[i] );
 			}
-			fprintf(fp,"OpenFiler=%s\r\n"	,isOpenFiler() ? "1":"");
+			fprintf(fp,"OpenFiler=%s\r\n"			,isOpenFiler() ? "1":"");
+			fprintf(fp,"ListenAddrNotify24=%s\r\n"	,isListenAddrNotify24() ? "1":"");
 			fclose(fp);
 			// 正ファイルにリネーム(my.ini.new -> my.ini)
 			if( !MoveFileExW( new ,ini ,MOVEFILE_REPLACE_EXISTING |MOVEFILE_WRITE_THROUGH ))
@@ -9711,30 +9736,6 @@ DWORD ConfigDialog( UINT tabid ,UINT option )
 	return data.result;
 }
 
-// 待受アドレス仕様変更チェック実行済かどうか(v2.4)
-BOOL isListenAddrNotify24( void )
-{
-	BOOL is = FALSE;
-	WCHAR* ini = AppFilePath( MY_INI );
-	if( ini ){
-		FILE* fp = _wfopen(ini,L"rb");
-		if( fp ){
-			UCHAR buf[1024];
-			SKIP_BOM(fp);
-			while( fgets(buf,sizeof(buf),fp) ){
-				chomp(buf);
-				if( strnicmp(buf,"ListenAddrNotify24=",18)==0 ){
-					is = atoi(buf+18) ? TRUE : FALSE;
-					break;
-				}
-			}
-			fclose(fp);
-		}
-		free( ini );
-	}
-	return is;
-}
-
 // 新規インストール環境(バージョンアップでない)かどうか
 BOOL isNewInstall()
 {
@@ -9750,7 +9751,7 @@ BOOL isNewInstall()
 	return is;
 }
 
-// TODO:v2.3までListenの既定が「どこからでも」になってるのを、v2.4で「localhostのみ」に変更したい。
+// v2.3までListenの既定が「どこからでも」になってるのを、v2.4で「localhostのみ」に変更。
 // そうすると設定無変更(my.iniなし)で使ってる人の挙動が勝手に変わることになるため
 // その場合は設定ダイアログを出しメッセージと説明を通知する。
 void ListenAddrNotify24( void )
