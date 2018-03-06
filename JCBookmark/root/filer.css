@@ -77,7 +77,7 @@ body {
 	font-size:11px;
 	display:block;
 	line-height:1.1;
-	color:#6f6f6f;
+	color:#666;
 }
 #findopt label:hover {
 	background:#fff;
@@ -93,7 +93,7 @@ body {
 	width:36px;
 	height:34px;
 	background:transparent;
-	color:#999;
+	color:#888;
 	font-weight:bold;
 	line-height:1;
 	margin:0 2px;
