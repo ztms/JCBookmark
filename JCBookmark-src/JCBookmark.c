@@ -130,7 +130,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"2.4"
+#define		APPVER				L"2.5dev"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -663,7 +663,7 @@ WCHAR* wcsjoin( const WCHAR* s1, const WCHAR* s2, const WCHAR* s3, const WCHAR* 
 // srcがnより短い場合は実行してはいけない
 UCHAR* strndup( const UCHAR* src, int n )
 {
-	if( src && n>0 ){
+	if( src && n>=0 ){
 		UCHAR* dup = malloc( n + 1 );
 		if( dup ){
 			memcpy( dup, src, n );
@@ -678,7 +678,7 @@ UCHAR* strndup( const UCHAR* src, int n )
 // srcがnより短い場合は実行してはいけない
 WCHAR* wcsndup( const WCHAR* src, int n )
 {
-	if( src && n>0 ){
+	if( src && n>=0 ){
 		WCHAR* dup = malloc( (n + 1) * sizeof(WCHAR) );
 		if( dup ){
 			memcpy( dup, src, n * sizeof(WCHAR) );
@@ -749,7 +749,7 @@ UCHAR* icondup( UCHAR* s )
 {
 	UCHAR* icon = NULL;
 
-	if( strstr(s,"://") ) icon = urldup(s);
+	if( !*s || strstr(s,"://") ) icon = urldup(s);
 	else{
 		// 例) %ProgramFiles%\Internet Explorer\Images\bing.ico
 		// ローカルファイルパスしかも環境変数入りの場合があり、
@@ -2046,7 +2046,7 @@ TreeNode* FavoriteTreeCreate( void )
 // UTF-8なら2バイト目以降にASCII文字は出てこない(らしい)ので多バイト文字識別不要。
 UCHAR* strndupJSON( const UCHAR* src, int n )
 {
-	if( src && n>0 ){
+	if( src && n>=0 ){
 		UCHAR* dup = malloc( n * 2 + 1 );
 		if( dup ){
 			UCHAR* dst = dup;
@@ -2078,6 +2078,7 @@ UCHAR* strndupJSON( const UCHAR* src, int n )
 	return NULL;
 }
 #define strdupJSON(s) ( (s) ? strndupJSON(s,strlen(s)) : NULL )
+// UTF16→8 JSON
 UCHAR* WideCharToUTF8allocJSON( const WCHAR* wc )
 {
 	UCHAR* json = NULL;
@@ -4798,6 +4799,7 @@ void Analyze( AnalyCTX* ctx )
 					while( isspace(*begin) ) begin++;
 					while( isspace(*end) ) end--;
 					if( begin <= end ){
+						// ※HTML文字参照(&lt;等)デコードはブラウザ側で行う
 						title = strndupJSON( begin, end - begin + 1 );
 						CRLFtoSPACE( title );
 					}
@@ -4824,13 +4826,11 @@ void Analyze( AnalyCTX* ctx )
 									if( href < end ){
 										if( *href=='"' ){
 											UCHAR* endquote = strchr(++href,'"');
-											if( endquote )
-												icon = strndup( href, endquote - href );
+											if( endquote ) icon = strndup( href, endquote - href );
 										}
 										else{
 											UCHAR* space = strchr(href,' ');
-											if( space )
-												icon = strndup( href, space - href );
+											if( space ) icon = strndup( href, space - href );
 										}
 										if( icon ) break;
 									}
@@ -4935,6 +4935,7 @@ void Analyze( AnalyCTX* ctx )
 					end--;
 					while( isspace(*begin) ) begin++;
 					while( isspace(*end) ) end--;
+					// ※HTML文字参照(&lt;等)デコードはブラウザ側で行う
 					title = strndupJSON( begin, end - begin + 1 );
 					CRLFtoSPACE( title );
 				}
@@ -6847,6 +6848,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 								if( last=='}' ) fputc(',',fp);
 								fprintf(fp,"{\"id\":%u,\"title\":\"",nextid++);
 								if( folderNameTop && folderNameEnd ){
+									// ※フォルダ名HTML文字参照(&lt;等)デコードはブラウザ側で行う
 									UCHAR* strJSON = strndupJSON( folderNameTop, folderNameEnd - folderNameTop );
 									if( strJSON ){
 										fputs( strJSON, fp );
@@ -6965,6 +6967,7 @@ void MultipartFormdataProc( TClient* cp, const WCHAR* tmppath )
 							}
 							fputs("\",\"title\":\"",fp);
 							if( titleTop && titleEnd ){
+								// ※タイトルHTML文字参照(&lt;等)デコードはブラウザ側で行う
 								UCHAR* strJSON = strndupJSON( titleTop, titleEnd - titleTop );
 								if( strJSON ){
 									fputs( strJSON, fp );
