@@ -1761,7 +1761,15 @@ function setEvents(){
 					var jsonText = $(this).contents().text();
 					if( jsonText.length ){
 						$('#dialog').dialog('destroy');
-						try{ analyzer( $.parseJSON(jsonText) ); }
+						try{
+							// HTML文字参照(&lt;等)デコード
+							var nodeTop = $.parseJSON(jsonText);
+							(function decord1( node ){
+								if( node.title ) node.title = HTMLdec(node.title);
+								if( node.child ) for( var i=node.child.length; i--; ) decord1( node.child[i] );
+							}( nodeTop ));
+							analyzer( nodeTop );
+						}
 						catch(e){ Alert(e); }
 					}
 					$(this).empty();
