@@ -7127,12 +7127,16 @@ BOOL ListenStart( void )
 	hint.ai_flags	 = AI_PASSIVE;
 
 	if( GetAddrInfoW( BindLocal? L"localhost" :NULL ,ListenPort ,&hint ,&adr )==0 ){
-		// IPv4とIPv6と2回
-		ListenSock1 = ListenAddrOne( adr );
-		ListenSock2 = ListenAddrOne( adr->ai_next );
-		FreeAddrInfoW( adr );
+		// Win10 April 2018 Update 後、共有フォルダから実行できなくなった。GetAddrInfo が成功で戻っても adr がNULLになっている模様。
+		if( adr ){
+			// IPv4とIPv6と2回
+			ListenSock1 = ListenAddrOne( adr );
+			ListenSock2 = ListenAddrOne( adr->ai_next );
+			FreeAddrInfoW( adr );
+		}
+		else ErrorBoxW(L"致命的エラー：GetAddrInfoを利用できません。\r\n(Windows10で共有フォルダからは実行できない場合があります)");
 	}
-	else LogW(L"getaddrinfoエラー%u",WSAGetLastError());
+	else LogW(L"GetAddrInfoエラー%u",WSAGetLastError());
 
 	if( ListenSock1==INVALID_SOCKET && ListenSock2==INVALID_SOCKET ) return FALSE;
 	return TRUE;
