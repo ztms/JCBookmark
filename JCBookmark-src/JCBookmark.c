@@ -5333,7 +5333,7 @@ void FilerJsonBoot( void )
 		if( !PathFileExistsW(filer_json) ){
 			WCHAR* index_json = wcsjoin( DocumentRoot, L"\\index.json", 0,0,0 );
 			if( index_json ){
-				FilerJsonMerge( index_json );
+				if( PathFileExistsW(filer_json) ) FilerJsonMerge( index_json );
 				free(index_json);
 			}
 		}
