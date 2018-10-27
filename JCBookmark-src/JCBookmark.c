@@ -117,6 +117,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <mlang.h>
+
 #include "sqlite3.h"
 #include "openssl/ssl.h"
 #include "openssl/err.h"
@@ -3593,117 +3595,199 @@ UCHAR* htmlBotherErase( UCHAR* top )
 	return top;
 }
 
-// mlang.dll文字コード変換
-#include <mlang.h>
+// <mlang> IMultiLanguage2::DetectInputCodepage 文字コード判定
+// MLDETECTCP_HTML ならそれなりに判定できるぽい(既定の MLDETECTCP_NONE は挙動不審で使いものにならない)
+// 「バベル」というC++ライブラリが評価高いようだがC++インタフェースのみ
+// http://yuzublo.blog48.fc2.com/blog-entry-29.html
+DWORD imlDetectCodePage( const UCHAR* text, size_t bytes )
+{
+	IMultiLanguage2 *iml2;
+	HRESULT res;
+	DWORD CP = 0;
+
+	CoInitialize(NULL);
+	// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
+	// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
+	res = CoCreateInstance(
+				&CLSID_CMultiLanguage
+				,NULL
+				,CLSCTX_INPROC_SERVER
+				,&IID_IMultiLanguage2
+				,(void**)&iml2
+	);
+	if( SUCCEEDED(res) ){
+		int dataLen = bytes;		// 判定データバイト
+		int count = 1;				// 判定結果の候補数
+		DetectEncodingInfo info;	// 判定結果
+		res = iml2->lpVtbl->DetectInputCodepage( iml2
+					,MLDETECTCP_HTML
+					,0
+					,text
+					,&dataLen
+					,&info
+					,&count
+		);
+		if( SUCCEEDED(res) ){
+			CP = info.nCodePage;
+			LogW(L"[iml]文字コード判定%u",CP);
+		}
+		else{
+			int dataLen = bytes;		// 判定データバイト
+			int count = 2;				// 判定結果の候補数
+			DetectEncodingInfo info[2];	// 判定結果
+			res = iml2->lpVtbl->DetectInputCodepage( iml2
+						,MLDETECTCP_HTML
+						,0
+						,text
+						,&dataLen
+						,&(info[0])
+						,&count
+			);
+			if( SUCCEEDED(res) ){
+				CP = info[0].nCodePage;
+				LogW(L"[iml]文字コード判定%u",CP);
+			}
+			else{
+				IMultiLanguage3 *iml3;
+				LogW(L"[iml2]文字コード不明");
+				res = CoCreateInstance(
+							&CLSID_CMultiLanguage
+							,NULL
+							,CLSCTX_INPROC_SERVER
+							,&IID_IMultiLanguage3
+							,(void**)&iml3
+				);
+				if( SUCCEEDED(res) ){
+					int dataLen = bytes;		// 判定データバイト
+					int count = 1;				// 判定結果の候補数
+					DetectEncodingInfo info;	// 判定結果
+					res = iml3->lpVtbl->DetectInputCodepage( iml3
+								,MLDETECTCP_HTML
+								,0
+								,text
+								,&dataLen
+								,&info
+								,&count
+					);
+					if( SUCCEEDED(res) ){
+						CP = info.nCodePage;
+						LogW(L"[iml]文字コード判定%u",CP);
+					}
+					else{
+						int dataLen = bytes;		// 判定データバイト
+						int count = 2;				// 判定結果の候補数
+						DetectEncodingInfo info[2];	// 判定結果
+						res = iml3->lpVtbl->DetectInputCodepage( iml3
+									,MLDETECTCP_HTML
+									,0
+									,text
+									,&dataLen
+									,&(info[0])
+									,&count
+						);
+						if( SUCCEEDED(res) ){
+							CP = info[0].nCodePage;
+							LogW(L"[iml]文字コード判定%u",CP);
+						}
+						else{
+							LogW(L"[iml3]文字コード不明");
+						}
+					}
+					iml3->lpVtbl->Release( iml3 );
+				}
+			}
+		}
+		iml2->lpVtbl->Release( iml2 );
+	}
+	CoUninitialize();
+	return CP;
+}
+
+// <meta charset="UTF-8">
+// <meta http-equiv="Content-Type" content="text/html; charset=EUC-JP">
+DWORD htmlMetaCharsetCodePage( UCHAR* html )
+{
+	DWORD CP = 0;
+	UCHAR* meta;
+	UCHAR* endtag;
+	UCHAR* charset;
+
+	while(( meta = stristr(html ,"<meta ") )){
+		html = meta = meta + 6;
+		endtag = strchr(meta ,'>');
+		if( endtag ){
+			html = endtag + 1;
+			charset = stristr(meta ,"charset");
+			if( charset && charset < endtag ){
+				charset += 7;
+				while( *charset==' ' ) charset++;
+				if( *charset=='=' ){
+					DWORD fixCP = 0;
+					charset++;
+					while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
+					if( strnicmp(charset,"utf-8",5)==0 ){
+						charset += 5;
+						fixCP = 65001;
+					}
+					else if( strnicmp(charset,"utf8",4)==0 ){
+						charset += 4;
+						fixCP = 65001;
+					}
+					else if( strnicmp(charset,"shift_jis",9)==0 ){
+						charset += 9;
+						fixCP = 932;
+					}
+					else if( strnicmp(charset,"x-sjis",6)==0 ){
+						charset += 6;
+						fixCP = 932;
+					}
+					else if( strnicmp(charset,"euc-jp",6)==0 ){
+						charset += 6;
+						fixCP = 51932;
+					}
+					if( fixCP ) switch( *charset ){
+						case '"':case '\'':case ' ':case '>':
+						CP = fixCP;
+						LogW(L"HTML<meta>文字コード検出%u",CP);
+					}
+				}
+			}
+		}
+	}
+	return CP;
+}
+
+// <mlang> ConvertINetString文字コード変換
 typedef HRESULT (APIENTRY *CONVERTINETSTRING)( LPDWORD,DWORD,DWORD,LPCSTR,LPINT,LPBYTE,LPINT );
 struct {
 	HMODULE				dll;
 	CONVERTINETSTRING	Convert;
 } mlang = { NULL, NULL };
 
+// 本文をUTF-8に変換
+// 文字コードは細かい話は相変わらずカオスのようだ。
+// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
+// とりあえずConvertINetString()で変換しておく。
 HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 {
-	// 本文をUTF-8に変換。文字コードは細かい話は相変わらずカオスのようだ。
-	// EUCはMultiByteToWideChar()では20932、ConvertINetString()では51932らしい。
-	// とりあえずConvertINetString()で変換しておく。
 	if( rsp && (rsp->ContentType==TYPE_HTML || rsp->ContentType==TYPE_XML) && mlang.Convert ){
 		size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
 		size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
 		DWORD CP = 20127;	// 文字コード不明の場合はUS-ASCIIとみなす
 		switch( rsp->charset ){
-		case CS_UTF8: CP = 65001; break;
-		case CS_SJIS: CP = 932;   break;
-		case CS_EUC : CP = 51932; break;
-		case CS_JIS : CP = 50221; break;
-		default:
-			if( rsp->body ){
-				// HTTPヘッダにcharset指定がなかった場合。
-				// HTMLヘッダ<meta>に従うべきだが、その文字列が既にエンコードされているので…。
-				// <meta>は無視して DetectInputCodepage() で判定する。MLDETECTCP_HTML を使えば
-				// それなりにちゃんと判定できているようにみえる(既定の MLDETECTCP_NONE は挙動
-				// 不審で使いものにならない)。「バベル」というC++ライブラリが評価高いようだが
-				// C++インタフェースのみ。
-				// http://yuzublo.blog48.fc2.com/blog-entry-29.html
-				IMultiLanguage2 *mlang2;
-				HRESULT res;
-				CoInitialize(NULL);
-				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00004.shtml
-				// http://katsura-kotonoha.sakura.ne.jp/prog/vc/tip00005.shtml
-				res = CoCreateInstance(
-							&CLSID_CMultiLanguage
-							,NULL
-							,CLSCTX_INPROC_SERVER
-							,&IID_IMultiLanguage2
-							,(void**)&mlang2
-				);
-				if( SUCCEEDED(res) ){
-					int dataLen = bodybytes;	// 判定データバイト
-					int count = 1;				// 判定結果の候補数
-					DetectEncodingInfo info;	// 判定結果
-					res = mlang2->lpVtbl->DetectInputCodepage( mlang2
-								,MLDETECTCP_HTML
-								,0
-								,rsp->body
-								,&dataLen
-								,&info
-								,&count
-					);
-					if( SUCCEEDED(res) ){
-						// oxfam.jpがタイトル取得できない問題でわかったが、日本語文字数が少なくて
-						// SJISかEUC-JPか判定できない場合、metaタグでcharset=euc-jpとなっていても
-						// 932が返ってくる。metaタグは見てくれないもよう。自力で「日本語文字数が
-						// 少なくてSJISかEUC-JPか判別不能」なことを確認して、charset=euc-jpの
-						// 場合は932→euc-jp(51932)に変更すると良い？そこまでしなくていいか…
-						CP = info.nCodePage;
-					}
-					mlang2->lpVtbl->Release( mlang2 );
-				}
-				CoUninitialize();
-			}
-		}
-		// http://raphaeljs.com/とhttp://g.raphaeljs.com/のタイトルが文字化けする。
-		// <meta charset=utf-8>なのにDetectInputCodepageは文字コード1252と誤判定しているもよう。
-		// 仕方ないので1252だった場合は<meta charset=を検索して修正。
-		// http://www.google-mapi.com/googlemaps/geocoding-address.htmlは1252になるが<meta charset=shift_jis>。
-		if( CP==1252 ){
-			UCHAR* body = htmlBotherErase( rsp->body ); // rsp->body破壊
-			UCHAR* meta ,*endtag ,*charset;
-			while(( meta = stristr(body ,"<meta ") )){
-				body = meta = meta + 6;
-				endtag = strchr(meta ,'>');
-				if( endtag ){
-					body = endtag + 1;
-					charset = stristr(meta ,"charset");
-					if( charset && charset < endtag ){
-						charset += 7;
-						while( *charset==' ' ) charset++;
-						if( *charset=='=' ){
-							DWORD fixCP = 0;
-							charset++;
-							while( *charset==' ' || *charset=='\'' || *charset=='"' ) charset++;
-							if( strnicmp(charset,"utf-8",5)==0 ){
-								charset += 5;
-								fixCP = 65001;
-							}
-							else if( strnicmp(charset,"utf8",4)==0 ){
-								charset += 4;
-								fixCP = 65001;
-							}
-							else if( strnicmp(charset,"shift_jis",9)==0 ){
-								charset += 9;
-								fixCP = 932;
-							}
-							else if( strnicmp(charset,"x-sjis",6)==0 ){
-								charset += 6;
-								fixCP = 932;
-							}
-							if( fixCP ) switch( *charset ){
-								case '"':case '\'':case ' ':case '>':
-								LogW(L"文字コード判定修正1252->%u",fixCP);
-								CP = fixCP;
-							}
-						}
-					}
+			case CS_UTF8: CP = 65001; break;
+			case CS_SJIS: CP = 932;   break;
+			case CS_EUC : CP = 51932; break;
+			case CS_JIS : CP = 50221; break;
+			// HTTPヘッダにcharset指定がなかった場合、<meta charset>検索 || IMultiLanguage::DetectInputCodepage
+			default: if( rsp->body ){
+				DWORD cp;
+				htmlBotherErase( rsp->body ); // rsp->body破壊
+				cp = htmlMetaCharsetCodePage( rsp->body );
+				if( cp ) CP = cp;
+				else{
+					cp = imlDetectCodePage( rsp->body ,bodybytes );
+					if( cp ) CP = cp;
 				}
 			}
 		}
@@ -3711,7 +3795,7 @@ HTTPGet* HTTPContentToUTF8( HTTPGet* rsp ,const UCHAR* url )
 		// 1201は1200(UTF16LE)とエンディアンが違うのみらしく、1200はWCHAR型のことらしい。
 		// 1201→1200に自力エンディアン変換後、ConvertINetStringで65001に変換でいけた。
 		// http://stackoverflow.com/questions/29054217/multibytetowidechar-for-unicode-code-pages-1200-1201-12000-12001
-		else if( CP==1201 ){
+		if( CP==1201 ){
 			// UTF16BE(1201) -> UTF16LE(1200)==WCHAR
 			int count = bodybytes / 2;	// UTF-16文字数
 			WCHAR* wbody = (WCHAR*)rsp->body;
