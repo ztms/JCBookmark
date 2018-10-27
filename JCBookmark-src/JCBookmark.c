@@ -772,6 +772,28 @@ UCHAR* icondup( UCHAR* s )
 	}
 	return icon;
 }
+// 16進数ASCII一文字を数値に変換
+size_t char16decimal( UCHAR c )
+{
+	if( isdigit(c) ) return c - '0';
+
+	c = tolower(c);
+	if( 'a' <= c && c <= 'f' ) return c - 'a' + 10;
+
+	return 0;
+}
+// 改行一つスキップ
+UCHAR* skipCRLF1( UCHAR* p )
+{
+	if( p[0]=='\r' ){
+		if( p[1]=='\n' ) return p + 2;
+		return p + 1;
+	}
+	else if( p[0]=='\n' ) return p + 1;
+
+	return p;
+}
+
 
 
 
@@ -2845,6 +2867,8 @@ typedef struct {
 	#define		ENC_OTHER		0xff
 	UCHAR		TransferEncoding;// Transfer-Encoding
 	#define		CHUNKED			0x01
+	//UCHAR		X;				// 特殊フラグ
+	//#define		X_CONTENT_LENGTH_0	0x01 // Content-Length: 0 を受信した
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
@@ -2884,6 +2908,43 @@ int _GetAddrInfoA( UCHAR* host ,UCHAR* port ,const ADDRINFOA* hint ,ADDRINFOA** 
 	err = GetAddrInfoA( host, port, hint, addr );
 	LeaveCriticalSection( &GetAddrInfoCS );
 	return err;
+}
+// Transfer-Encoding: chunked のデータ終了が来てるかどうか検査
+// http://blog.nomadscafe.jp/2013/05/http11-transfer-encoding-chunked.html
+BOOL httpChunkEnded( HTTPGet* rsp )
+{
+	size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
+	size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
+	UCHAR* bodyend = rsp->body + bodybytes;
+	UCHAR* bp = rsp->body;
+
+	while( bp < bodyend ){
+		// チャンク１つ取得
+		size_t chunkBytes = 0;
+		// データバイト数：16進文字列
+		for( ; isxdigit(*bp); bp++ ) chunkBytes = chunkBytes * 16 + char16decimal(*bp);
+		if( bodyend <= bp ) break;
+		// セミコロンと無視していい文字列が存在する場合あり
+		while( !isCRLF(*bp) && *bp ) bp++;
+		if( bodyend <= bp ) break;
+		// 改行１つの後にデータ
+		if( isCRLF(*bp) ){
+			bp = skipCRLF1( bp );
+			// LogW(L"チャンク%uバイト",chunkBytes);
+			if( chunkBytes ){
+				bp += chunkBytes;
+				if( bodyend <= bp ) break;
+				// データの後も改行１つ
+				if( isCRLF(*bp) ){
+					bp = skipCRLF1( bp ); // 次のチャンク
+				}
+				else break; // 不正なチャンクデータ(改行なし)
+			}
+			else return TRUE; // バイト数０、チャンク正常終了
+		}
+		else break; // 不正チャンクデータ(改行なし)
+	}
+	return FALSE;
 }
 // HTTPクライアント
 // TODO:https://qiita.com/mash0510/items/a36f4d341edc50064d90 等Qiitaのページで落ちまくる原因不明
@@ -3101,6 +3162,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								int nfds = readable( sock, timelimit - timeGetTime() );
 								if( *abort ) break;
 								if( nfds==0 ){
+									LogW(L"[%u]受信タイムアウト",sock);
 									if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信タイムアウト");
 									break;
 								}
@@ -3177,6 +3239,11 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 												UINT n = 0;
 												for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
 												rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+												// 応答が 200 OK で Content-Length: 0 を返却する nginx がいる。
+												// そして本文データが来ないとタイムアウトするまで受信待ちになってしまう。
+												// Content-Length: 0 を受信した時、本文データの受信やめてよいか？
+												// Content-Length: 0 が間違ってて実は本文データが来る可能性も考えられるが…
+												//if( !n ) rsp->X |= X_CONTENT_LENGTH_0;
 											}
 											//else LogW(L"Content-Lengthなし");
 										}
@@ -3244,19 +3311,14 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 										}
 									}
 								}
-								// 受信終了チェック
-								if( rsp->ContentLength ){
-									// Content-Lengthぶん受信したらおわり
-									if( rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength ) break;
-								}
+								// Content-Length終了判定
+								//if( rsp->X & X_CONTENT_LENGTH_0 ) break;
+								if( rsp->ContentLength && (rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength) ) break;
+								// チャンク終了判定
+								if( rsp->TransferEncoding == CHUNKED && httpChunkEnded(rsp) ) break;
 								/*
-								// http://oxfam.jp/が本来はEUC-JPなのにSJIS(932)と判定されてしまい、
-								// DetectInputCodePageの引数でMLDETECTCP_8BITやMLDETECCP_MBCS指定しても
-								// 効果なく、自力EUC-JP判定してもSJISかEUC-JPか判断できず、なぜかと思ったら
-								// </head>までしか受信しないことによる日本語文字数の少なさが影響していた。
-								// ぜんぶ受信したら改善したので、</head>までしか受信しないのはやめる。
+								// 非圧縮HTMLなら</head>まであればおわり
 								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
-									// 非圧縮HTMLなら</head>まであればおわり
 									if( stristr(rsp->body,"</head>") ) break;
 								}
 								*/
@@ -3403,42 +3465,20 @@ retry:
 	return outbytes;
 }
 
-// 16進数ASCII一文字を数値に変換
-size_t char16decimal( UCHAR c )
-{
-	if( isdigit(c) ) return c - '0';
-
-	c = tolower(c);
-	if( 'a' <= c && c <= 'f' ) return c - 'a' + 10;
-
-	return 0;
-}
-
-// 改行一つスキップ
-UCHAR* skipCRLF1( UCHAR* p )
-{
-	if( p[0]=='\r' ){
-		if( p[1]=='\n' ) return p + 2;
-		return p + 1;
-	}
-	else if( p[0]=='\n' ) return p + 1;
-
-	return p;
-}
-
 // HTTP圧縮コンテンツ伸長
 HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 {
 	if( rsp ){
 		// chunked解除
-		if( rsp->TransferEncoding==CHUNKED ){
+		if( rsp->TransferEncoding == CHUNKED ){
 			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
 			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
 			UCHAR* newbody = malloc( bodybytes );
 			if( newbody ){
 				size_t newbytes = 0; // chunk解除後本文バイト数
+				UCHAR* bodyend = rsp->body + bodybytes;
 				UCHAR* bp = rsp->body;
-				while( bp ){
+				while( bp < bodyend ){
 					// チャンク１つ取得
 					size_t chunkBytes = 0;
 					// データバイト数：16進文字列
@@ -3448,8 +3488,8 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 					// 改行１つの後にデータ
 					if( isCRLF(*bp) ){
 						bp = skipCRLF1( bp );
+						LogW(L"チャンク%uバイト",chunkBytes);
 						if( chunkBytes ){
-							LogW(L"チャンク%uバイト",chunkBytes);
 							memcpy( newbody + newbytes ,bp ,chunkBytes );
 							newbytes += chunkBytes;
 							bp += chunkBytes;
@@ -3457,11 +3497,11 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 							if( isCRLF(*bp) ){
 								bp = skipCRLF1( bp ); // 次のチャンク
 							}
-							else LogW(L"不正なチャンクデータ:改行がありません"), bp = NULL;
+							else{ LogW(L"不正なチャンクデータ:改行がありません"); break; }
 						}
-						else bp = NULL; // バイト数０正常終了
+						else break; // バイト数０正常終了
 					}
-					else LogW(L"不正なチャンクデータ:改行がありません"), bp = NULL;
+					else{ LogW(L"不正なチャンクデータ:改行がありません"); break; }
 				}
 				if( newbytes ){
 					memcpy( rsp->body ,newbody ,newbytes );
