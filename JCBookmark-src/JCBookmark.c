@@ -2867,8 +2867,8 @@ typedef struct {
 	#define		ENC_OTHER		0xff
 	UCHAR		TransferEncoding;// Transfer-Encoding
 	#define		CHUNKED			0x01
-	//UCHAR		X;				// 特殊フラグ
-	//#define		X_CONTENT_LENGTH_0	0x01 // Content-Length: 0 を受信した
+	UCHAR		X;				// 特殊フラグ
+	#define		X_CONTENT_LENGTH_0	0x01 // Content-Length: 0 を受信した
 	UCHAR		buf[1];			// 受信バッファ(可変長文字列)
 } HTTPGet;
 
@@ -3243,7 +3243,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 												// そして本文データが来ないとタイムアウトするまで受信待ちになってしまう。
 												// Content-Length: 0 を受信した時、本文データの受信やめてよいか？
 												// Content-Length: 0 が間違ってて実は本文データが来る可能性も考えられるが…
-												//if( !n ) rsp->X |= X_CONTENT_LENGTH_0;
+												if( !n ) rsp->X |= X_CONTENT_LENGTH_0;
 											}
 											//else LogW(L"Content-Lengthなし");
 										}
@@ -3312,7 +3312,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									}
 								}
 								// Content-Length終了判定
-								//if( rsp->X & X_CONTENT_LENGTH_0 ) break;
+								if( rsp->X & X_CONTENT_LENGTH_0 ) break;
 								if( rsp->ContentLength && (rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength) ) break;
 								// チャンク終了判定
 								if( rsp->TransferEncoding == CHUNKED && httpChunkEnded(rsp) ) break;
