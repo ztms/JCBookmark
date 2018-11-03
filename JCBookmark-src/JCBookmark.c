@@ -3063,9 +3063,10 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 				WSACloseEvent( ev );
 				// 送受信
 				if( connected && !*abort ){
-					struct timeval tv = { 5, 0 };
 					SSL* sslp = NULL;
 					BOOL ssl_ok = TRUE;
+					struct timeval tv = { 5, 0 };
+					DWORD timelimit = timeGetTime() + 5000;
 					// send/recvタイムアウト指定
 					// 受信はreadable()も使っているので変かもしれないけどまあいいか…
 					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
@@ -3088,7 +3089,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							if( ret==1 ) LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
 							else{
 								int err = SSL_get_error( sslp, ret );
-								if( ret==-1 && err==SSL_ERROR_SYSCALL ){
+								if( /*ret==-1 &&*/ err==SSL_ERROR_SYSCALL && timeGetTime() <= timelimit ){
 									// 帯域が狭かったり同時通信負荷が高いと、amazon/myspaceなどのSSLサイトで
 									// SSL_ERROR_SYSCASLLになる事がありリトライで回避。
 									// JCOM1Mbps回線ではMySpace１サイトのみでも発生、JCOM12Mbpsだと70弱の同時
@@ -3124,7 +3125,6 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 					if( ssl_ok && !*abort ){
 						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 						if( rsp ){
-							DWORD timelimit;
 							int len;
 							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 							rsp->bufsize = HTTPGET_BUFSIZE;
@@ -3157,7 +3157,6 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							LogA("[%u]外部送信:%s",sock,rsp->buf);
 							// レスポンス受信4秒待つ
 							*rsp->buf = '\0';
-							timelimit = timeGetTime() +4000;
 							for( ;; ){
 								int nfds = readable( sock, timelimit - timeGetTime() );
 								if( *abort ) break;
@@ -3488,7 +3487,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 					// 改行１つの後にデータ
 					if( isCRLF(*bp) ){
 						bp = skipCRLF1( bp );
-						LogW(L"チャンク%uバイト",chunkBytes);
+						//LogW(L"チャンク%uバイト",chunkBytes);
 						if( chunkBytes ){
 							memcpy( newbody + newbytes ,bp ,chunkBytes );
 							newbytes += chunkBytes;
@@ -4542,6 +4541,7 @@ void INISave( UCHAR* name ,UCHAR* value )
 // TODO:JavaScriptを使った転送の解析は自力では難しいが対応する手立てはあるのか…
 // PhantomJSという6MB程度のJavaScript+WebKitアプリがあってCUIでURLをレンダリングして
 // タイトル取得できてHTTPSも対応している。これを組み込めればいけるがライセンス要調査。
+// TODO:リンク切れ調査を全フォルダやると総数1,000超えたあたりでexe異常終了してしまい使い物にならない。
 typedef struct PokeCTX {
 	struct PokeCTX* next;	// 単方向リスト
 	UCHAR*		url;		// in URL
