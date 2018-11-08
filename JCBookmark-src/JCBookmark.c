@@ -3468,7 +3468,7 @@ retry:
 HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 {
 	if( rsp ){
-		// chunked解除
+		// chunked解除(タイムアウトで途中までしか受信できてない場合あり)
 		if( rsp->TransferEncoding == CHUNKED ){
 			size_t headbytes = rsp->body - rsp->buf;		// HTTPヘッダバイト数
 			size_t bodybytes = rsp->bytes - headbytes;		// HTTP本文バイト数
@@ -3482,13 +3482,16 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 					size_t chunkBytes = 0;
 					// データバイト数：16進文字列
 					for( ; isxdigit(*bp); bp++ ) chunkBytes = chunkBytes * 16 + char16decimal(*bp);
+					if( bodyend <= bp ){ LogW(L"L%u:チャンクデータ欠損",__LINE__); break; }
 					// セミコロンと無視していい文字列が存在する場合あり
 					while( !isCRLF(*bp) && *bp ) bp++;
+					if( bodyend <= bp ){ LogW(L"L%u:チャンクデータ欠損",__LINE__); break; }
 					// 改行１つの後にデータ
 					if( isCRLF(*bp) ){
 						bp = skipCRLF1( bp );
 						//LogW(L"チャンク%uバイト",chunkBytes);
 						if( chunkBytes ){
+							if( bodyend <= bp + chunkBytes ){ LogW(L"L%u:チャンクデータ欠損",__LINE__); break; }
 							memcpy( newbody + newbytes ,bp ,chunkBytes );
 							newbytes += chunkBytes;
 							bp += chunkBytes;
@@ -3496,18 +3499,18 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 							if( isCRLF(*bp) ){
 								bp = skipCRLF1( bp ); // 次のチャンク
 							}
-							else{ LogW(L"不正なチャンクデータ:改行がありません"); break; }
+							else{ LogW(L"L%u:チャンク改行なし",__LINE__); break; }
 						}
 						else break; // バイト数０正常終了
 					}
-					else{ LogW(L"不正なチャンクデータ:改行がありません"); break; }
+					else{ LogW(L"L%u:チャンク改行なし",__LINE__); break; }
 				}
 				if( newbytes ){
 					memcpy( rsp->body ,newbody ,newbytes );
 					rsp->bytes = headbytes + newbytes;
 					rsp->TransferEncoding = 0; // chunked解除(注:受信ヘッダ文字列は書き換えない)
 				}
-				else LogW(L"不正なチャンクデータ:データサイズが不明です");
+				else LogW(L"L%u:チャンクデータサイズ不明",__LINE__);
 
 				free( newbody );
 			}
@@ -3522,7 +3525,7 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 			if( newrsp ){
 				int distance = (BYTE*)newrsp - (BYTE*)rsp;
 				int bytes;
-				LogW(L"伸長バッファ確保%ubytes",newsize);
+				LogW(L"L%u:伸長バッファ確保%ubytes",__LINE__,newsize);
 				memset( newrsp, 0, sizeof(HTTPGet) + newsize );
 				memcpy( newrsp, rsp, sizeof(HTTPGet) + headbytes );
 				newrsp->bufsize = newsize;
@@ -3530,13 +3533,13 @@ HTTPGet* HTTPContentDecode( HTTPGet* rsp ,const UCHAR* url )
 				newrsp->body += distance;
 				bytes = zlibInflate( rsp->body, bodybytes, newrsp->body, newsize - headbytes );
 				if( bytes ){
-					LogW(L"伸長[%u]%u->%ubyte(%.1f倍)",rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
+					LogW(L"L%u:伸長[%u]%u->%ubyte(%.1f倍)",__LINE__,rsp->ContentEncoding,bodybytes,bytes,(float)bytes/bodybytes);
 					newrsp->bytes = headbytes + bytes;
 					newrsp->ContentEncoding = 0; // 無圧縮になった(注:受信HTTPヘッダ文字列は書き換えない)
 					free( rsp ) ,rsp = newrsp;
 				}
 				else{
-					LogA("圧縮コンテンツ伸長エラー%u(%s)",rsp->ContentEncoding,url);
+					LogA("L%u:圧縮コンテンツ伸長エラー%u(%s)",__LINE__,rsp->ContentEncoding,url);
 					free( newrsp );
 				}
 			}
@@ -3567,7 +3570,7 @@ UCHAR* htmlBotherErase( UCHAR* top )
 				// 再検索
 			}
 			else{
-				LogW(L"</script>閉タグがありません");
+				LogW(L"L%u:</script>閉タグがありません",__LINE__);
 				*script='\0';
 				break;
 			}
