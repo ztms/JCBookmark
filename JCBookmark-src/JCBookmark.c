@@ -132,7 +132,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"2.5"
+#define		APPVER				L"2.6dev"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -3791,6 +3791,7 @@ DWORD htmlMetaCharsetCodePage( UCHAR* html )
 						case '"':case '\'':case ' ':case '>':
 						CP = fixCP;
 						LogW(L"HTML<meta>文字コード検出%u",CP);
+						return CP;
 					}
 				}
 			}
