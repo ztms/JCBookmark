@@ -4912,7 +4912,9 @@ void Analyze( AnalyCTX* ctx )
 	}
 	// タイトル,favicon取得
 	if( rsp ){
-		UCHAR* title=NULL, *icon=NULL;
+		UCHAR* title = NULL;
+		UCHAR* base = NULL;
+		UCHAR* icon = NULL;
 		if( *ctx->pAbort ) goto fin;
 		if( rsp->ContentType==TYPE_HTML ){
 			UCHAR* begin ,*end;
@@ -4935,7 +4937,30 @@ void Analyze( AnalyCTX* ctx )
 				else LogA("</title>が見つかりません(%s:%s)",ctx->url,begin);
 			}
 			else LogA("<title>が見つかりません(%s)",ctx->url);
-			// favicon取得まず<link rel=icon href="xxx">をさがす
+			// favicon取得<base href="xxx"><link rel=icon href="xxx">をさがす
+			begin = rsp->body;
+			while( begin=stristr(begin,"<base") ){
+				begin += 5;
+				end = strchr(begin,'>');
+				if( end ){
+					UCHAR* href = stristr(begin," href=");
+					if( href ){
+						href += 6;
+						if( href < end ){
+							if( *href=='"' ){
+								UCHAR* endquote = strchr(++href,'"');
+								if( endquote ) base = strndup( href, endquote - href );
+							}
+							else{
+								UCHAR* space = strchr(href,' ');
+								if( space ) base = strndup( href, space - href );
+							}
+							if( base ) break;
+						}
+					}
+					begin = end + 1;
+				}
+			}
 			begin = rsp->body;
 			while( begin=stristr(begin,"<link") ){
 				begin += 5;
@@ -4969,14 +4994,36 @@ void Analyze( AnalyCTX* ctx )
 					begin = end + 1;
 				}
 			}
+			// <base>URL補完
+			if( base && icon ){
+				// 相対URLのみ
+				if( strncmp(icon,"//",2) && !strstr(icon,"://") ){
+					UCHAR* url;
+					UCHAR* slash;
+					UCHAR* host = strstr(base,"://");
+					if( host ){
+						host += 3;
+						slash = strrchr(host,'/');
+					}
+					else{
+						slash = strrchr(base,'/');
+					}
+					if( slash ){
+						while( *slash == '/' ) slash--;
+						*(slash+1) = '\0';
+					}
+					url = (*icon=='/') ? strjoin(base,icon,0,0,0) : strjoin(base,"/",icon,0,0);
+					if( url ){
+						free(icon);
+						icon = url;
+					}
+				}
+			}
 			// 相対URLは完全URLになおす
 			if( icon ){
 				UCHAR* url = NULL;
+				// スキームが省略された//で始まる完全URL
 				if( strncmp(icon,"//",2)==0 ){
-					// スキームが省略された完全URL
-					// はてなhotentryの<link>タグが「href="//b.hatena.ne.jp/favicon.ico"」となっている。
-					// 相対URLでなく完全URLとみなすべきもののようだ。先頭のhttp(s):を省略して「//」で
-					// 始まってもいいらしい。この場合はスキームを補完した完全URLを生成する。
 					UCHAR* slash = strstr(ctx->url,"://");
 					if( slash ){
 						slash++;
@@ -4985,8 +5032,8 @@ void Analyze( AnalyCTX* ctx )
 						*slash='/';
 					}
 				}
+				// 相対URL
 				else if( !strstr(icon,"://") ){
-					// 相対URL
 					UCHAR* host = strstr(ctx->url,"://");
 					if( host ){
 						host += 3;
