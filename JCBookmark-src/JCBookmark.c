@@ -2801,13 +2801,8 @@ BOOL AdapterHas( const WCHAR* text )
 					for( uni=adp->FirstUnicastAddress; uni; uni=uni->Next ){
 						WCHAR ip[INET6_ADDRSTRLEN+1]=L""; // IPアドレス文字列
 						GetNameInfoW(
-								uni->Address.lpSockaddr
-								,uni->Address.iSockaddrLength
-								,ip
-								,sizeof(ip)/sizeof(WCHAR)
-								,NULL
-								,0
-								,NI_NUMERICHOST
+							uni->Address.lpSockaddr ,uni->Address.iSockaddrLength
+							,ip ,sizeof(ip)/sizeof(WCHAR) ,NULL ,0 ,NI_NUMERICHOST
 						);
 						if( wcscmp( ip ,text )==0 ){ found=TRUE; break; } // 発見
 					}
@@ -3010,7 +3005,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			ADDRINFOA*	addr = NULL;
 			ADDRINFOA	hint;
 			UCHAR*		port = strrchr(host,':');
-			if( port ) *port++ ='\0'; else port = isSSL?"443":"80";
+			if( port ) *port++ ='\0'; else port = isSSL ?"443":"80";
 			memset( &hint, 0, sizeof(hint) );
 			hint.ai_socktype = SOCK_STREAM;
 			hint.ai_protocol = IPPROTO_TCP;
@@ -3019,6 +3014,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 				BOOL		connected	= FALSE;
 				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
 				WSAEVENT	ev			= WSACreateEvent();
+				UCHAR		ip[INET6_ADDRSTRLEN+1] = ""; // IPアドレス文字列
+				GetNameInfoA( addr->ai_addr ,addr->ai_addrlen ,ip ,sizeof(ip)/sizeof(UCHAR) ,NULL,0,NI_NUMERICHOST );
 				if( WSAEventSelect( sock, ev, FD_CONNECT ) !=SOCKET_ERROR ){
 					u_long off = 0;
 					int err = connect( sock, addr->ai_addr, (int)addr->ai_addrlen );
@@ -3034,7 +3031,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								else{
 									// TODO:Connection Refused もここを通るようだが、WSAGetLastError()が
 									// WSAECONNREFUSED ではなく WSAEWOULDBLOCK になるのはなぜ・・・
-									LogA("[%u]connect失敗%u(%s:%s)",sock,WSAGetLastError(),host,port);
+									LogA("[%u]connect失敗%u(%s=%s:%s)",sock,WSAGetLastError(),host,ip,port);
 									if( rp ) rp->kind='E' ,strcpy(rp->msg,"接続できません");
 								}
 							}
@@ -3044,7 +3041,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							}
 							break;
 						case WSA_WAIT_TIMEOUT:
-							LogA("[%u]connectタイムアウト(%s:%s)",sock,host,port);
+							LogA("[%u]connectタイムアウト(%s=%s:%s)",sock,host,ip,port);
 							if( rp ) rp->kind='?' ,strcpy(rp->msg,"接続タイムアウト");
 							break;
 						case WSA_WAIT_FAILED:
@@ -3086,7 +3083,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							SSL_set_tlsext_host_name( sslp, host );
 						retry:
 							ret = SSL_connect( sslp );		// SSLハンドシェイク
-							if( ret==1 ) LogA("[%u]外部接続(SSL):%s:%s",sock,host,port);
+							if( ret==1 ) LogA("[%u]外部接続(SSL):%s=%s:%s",sock,host,ip,port);
 							else{
 								int err = SSL_get_error( sslp, ret );
 								if( /*ret==-1 &&*/ err==SSL_ERROR_SYSCALL && timeGetTime() <= timelimit ){
@@ -3106,10 +3103,10 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
 									// {
 									// }
-									//LogA("[%u]SSL_connect(%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,port);
+									//LogA("[%u]SSL_connect(%s=%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,ip,port);
 									goto retry;
 								}
-								else LogA("[%u]SSL_connect(%s:%s)=%d,エラー%d",sock,host,port,ret,err);
+								else LogA("[%u]SSL_connect(%s=%s:%s)=%d,エラー%d",sock,host,ip,port,ret,err);
 								if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL接続できません");
 								ssl_ok = FALSE;
 							}
@@ -3120,7 +3117,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 							ssl_ok = FALSE;
 						}
 					}
-					else LogA("[%u]外部接続:%s:%s",sock,host,port);
+					else LogA("[%u]外部接続:%s=%s:%s",sock,host,ip,port);
 					// リクエスト送信
 					if( ssl_ok && !*abort ){
 						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
