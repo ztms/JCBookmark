@@ -3,6 +3,9 @@
 span,div,input,button,textarea {
 	font-family:"メイリオ",Meiryo,"MS PGothic",sans-serif !important;
 }
+textarea {
+	font-family:Consolas,"メイリオ",Meiryo,"MS PGothic",sans-serif !important;
+}
 .nomeiryo {
 	font-family:"MS PGothic",sans-serif !important;
 }

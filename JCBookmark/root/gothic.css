@@ -3,3 +3,6 @@
 span,div,input,button,textarea {
 	font-family:"MS PGothic",sans-serif !important;
 }
+textarea {
+	font-family:Consolas,"MS PGothic",sans-serif !important;
+}

@@ -1383,10 +1383,11 @@ function setEvents(){
 		}))
 		.append($('<a><img src=txt.png>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
-			var text='';
+			var text = [];
 			var child = tree.node( panel.id ).child;
 			for( var i=0, n=child.length; i<n; i++ ){
-				if( !child[i].child ) text += child[i].title + '\r' + child[i].url + '\r';
+				if( child[i].child ) continue;
+				text.push( child[i].title + '\r' + child[i].url + '\r' );
 			}
 			// CSSのheight:100%;でダイアログリサイズするとタイトルバーが２行になった時に
 			// 表示が崩れてしまい回避策がわからないので、リサイズイベントで高さ調節する。
@@ -1399,12 +1400,13 @@ function setEvents(){
 				var timer = null;
 				return function(){ clearTimeout( timer ); timer = setTimeout( resizer ,20 ); };
 			}();
-			var $box = $('#editbox').empty().append($('<textarea></textarea>').text(text))
-			.dialog({
+			var $box = $('#editbox').empty();
+			$box.append( $('<textarea></textarea>').text(text.join('')) );
+			$box.dialog({
 				title	:'アイテムをテキストで取得'
 				,modal	:true
-				,width	:480
-				,height	:360
+				,width	:720
+				,height	:480
 				,close	:function(){ $(this).dialog('destroy'); }
 				,resize	:resize
 			});
@@ -1412,7 +1414,7 @@ function setEvents(){
 			function resizer(){
 				var $p = $box.parent();
 				// $box.prev()はダイアログタイトルバー(<div class="ui-dialog-titlebar">)
-				$area.height( $p.height() - $box.prev().outerHeight() -20 );
+				$area.height( $p.height() - $box.prev().outerHeight() - 40 );
 			}
 			resizer();
 		}))

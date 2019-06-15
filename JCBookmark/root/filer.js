@@ -1666,7 +1666,7 @@ $(doc).on({
 		$('#contextmenu').hide();
 		if( onContextHide ) onContextHide();
 		// inputタグはフォーカスするためtrue返す
-		if( ev.target.tagName=='INPUT' ) return true;
+		switch( ev.target.tagName ){ case 'INPUT': case 'TEXTAREA': return true; }
 		// 編集ボックス確定
 		$('#editbox').blur();
 		if( $(ev.target).hasClass('barbtn') ) return true;
@@ -1684,9 +1684,7 @@ $(doc).on({
 	}
 	// テキスト選択キャンセル
 	,selectstart:function(ev){
-		switch( ev.target.tagName ){
-		case 'INPUT': case 'TEXTAREA': return true;
-		}
+		switch( ev.target.tagName ){ case 'INPUT': case 'TEXTAREA': return true; }
 		return false;
 	}
 });
@@ -3270,6 +3268,37 @@ function itemContextMenu(ev){
 		}));
 	}
 	if( !$box.children().last().is('hr') ) $box.append('<hr>');
+	// タイトル/URL一覧テキスト
+	$box.append($('<a><img src=txt.png>タイトル/URL一覧テキスト</a>').click(function(){
+		$menu.hide();
+		var texts = [];
+		var items = doc.getElementById('items').children;
+		for( var i=0; i<items.length; i++ ){
+			var $item = $(items[i]);
+			if( $item.hasClass('select') ){
+				var depth = (parseInt($item.find('.icon').css('left')) / 18)|0; // 階層インデント18px
+				var indent = '';
+				if( depth >0 ) for( var j=depth; j--; ) indent += '  ';
+				if( $item.hasClass('folder') ){
+					var bullet = /plus.png/.test($item.find('.appear').attr('src')) ? '+ ' : '- ';
+					texts.push( indent + bullet + $item.find('.title').text() + '\r' );
+				}
+				else{
+					texts.push( indent + $item.find('.title').text() + '\r' + indent + $item.find('.url').text() + '\r' );
+				}
+			}
+		}
+		var $box = $('#dialog').empty();
+		$box.append( $('<textarea></textarea>').text(texts.join('')) );
+		$box.dialog({
+			 title	:'タイトル/URL一覧テキスト'
+			,modal	:true
+			,width	:720
+			,height	:480
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
+	}));
+	// リンク切れ調査
 	if( $(item).hasClass('folder') ){
 		$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
 			$menu.hide(); itemList('deads','folder');
@@ -3283,7 +3312,7 @@ function itemContextMenu(ev){
 		}
 		var $status = $(item).children('.status');
 		if( $status.length ){
-			$box.append($('<a><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
+			$box.append($('<a class="d1"><img src=check.png>おなじ種類をすべて選択</a>').click(function(){
 				$menu.hide();
 				var ico = $(item).children('.status').children('.icon').attr('src');
 				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
@@ -3295,7 +3324,7 @@ function itemContextMenu(ev){
 				}
 			}));
 			if( $status.text().match(/≫.+/) ){
-				$box.append($('<a><img src=pen.png>転送先URLに書き換え</a>').click(function(){
+				$box.append($('<a class="d1"><img src=pen.png>転送先URLに書き換え</a>').click(function(){
 					$menu.hide();
 					for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 						var $item = $(items[i]);
@@ -3312,7 +3341,7 @@ function itemContextMenu(ev){
 			}
 		}
 		if( itemList('?')=='deads' ){
-			$box.append($('<a><img src=minus.png>一覧から除外</a>').click(function(){
+			$box.append($('<a class="d1"><img src=minus.png>一覧から除外</a>').click(function(){
 				$menu.hide();
 				for( var items=doc.getElementById('items').children ,i=items.length; i--; ){
 					var $item = $(items[i]);
