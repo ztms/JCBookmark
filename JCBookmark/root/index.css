@@ -554,17 +554,71 @@ body {
 	overflow:hidden;
 	float:left;
 }
+#webbookmark {
+        text-align: center;
+}
+#webbookmark p {
+        margin: 0;
+}
+#webbookmark .account {
+        width: 100%;
+        min-height: 200px;
+        display: table;
+        border-collapse: separate;
+        border-spacing: 0 15px;
+}
 #webbookmark form {
         display: none;
 }
 #webbookmark form.show {
-        display: block;
+        display: table-cell;
+        vertical-align: middle;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+}
+#webbookmark form h5 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        line-height: 1;
+}
+#webbookmark form input {
+        width: 300px;
+        font-size: 18px;
+        padding: 2px 5px;
+        margin: 0 0 5px;
+}
+#webbookmark form button {
+        margin: 5px 0 0;
 }
 #webbookmark .target {
         display: none;
 }
 #webbookmark .target.show {
+        display: table-cell;
+        vertical-align: middle;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+}
+#webbookmark .target h5 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.5;
+}
+#webbookmark .target b {
         display: block;
+        font-size: 24px;
+        font-weight: bold;
+        line-height: 1;
+        margin: 15px 0 25px;
+}
+#webbookmark .target p {
+        padding: 0 15px;
+        font-size: 87%;
+}
+#webbookmark .operate button {
+        margin: 10px 5px 0;
+        padding: 5px 10px;
+        font-size: 16px;
 }
 .ui-dialog {
 	font-size:14px;

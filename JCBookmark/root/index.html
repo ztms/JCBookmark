@@ -109,21 +109,29 @@
   </div>
 </div>
 <div id=webbookmark>
-  <a href=http://ztms.php.xdomain.jp/ target=_blank>WebBookmark</a> に現在のデータをエクスポートします。<br>
-  あらかじめ <a href=http://ztms.php.xdomain.jp/signup target=_blank>新規登録</a> からアカウントを作成してください。<br>
-  <form method=post action=http://ztms.php.xdomain.jp/api/signin>
-    <input name=email placeholder=メールアドレス>
-    <input type=password name=password placeholder=パスワード>
-    <button>ログイン</button>
-  </form>
-  <div class=target>
-    エクスポート先WebBookmarkアカウントメールアドレス<br>
-    <b></b><br>
-    ※別のアカウントにエクスポートする場合は、<a href=http://ztms.php.xdomain.jp/user/signout target=_blank>ログアウト</a>してから、エクスポートしたいアカウントでログインしなおしてください。
+  現在のデータを <a href=http://ztms.php.xdomain.jp/ target=_blank>WebBookmark</a> にエクスポートします。<br>
+  あらかじめ <a href=http://ztms.php.xdomain.jp/signup target=_blank>新規登録</a> からアカウントを作成して、ログインしてください。<br>
+  <div class=account>
+    <form method=post action=http://ztms.php.xdomain.jp/api/signin>
+      <h5>WebBookmark</h5>
+      <input name=email placeholder=メールアドレス><br>
+      <input type=password name=password placeholder=パスワード><br>
+      <button>ログイン</button><br>
+    </form>
+    <div class=target>
+      <h5>WebBookmark<br>エクスポート先アカウントメールアドレス</h5>
+      <b></b>
+      <p>
+      ※別のアカウントにエクスポートする場合は、<button class=logout>ログアウト</button> してから、<br>
+      エクスポートしたいアカウントでログインしなおしてください。
+      </p>
+    </div>
   </div>
-  <div class=loading></div>
-  クリックするとエクスポートを開始します。
-  <button>エクスポート実行</button>
+  <div class=operate>
+    <p>エクスポート実行をクリックで処理を開始します。</p>
+    <button class=export>エクスポート実行</button>
+    <button class=cancel>キャンセル</button>
+  </div>
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>
