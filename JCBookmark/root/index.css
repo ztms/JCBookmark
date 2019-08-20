@@ -376,7 +376,7 @@ body {
 	border:2px solid #f88;
 	margin:0;
 }
-#impexp, #snap, #dialog {
+#impexp, #snap, #dialog, #webbookmark {
 	display:none;
 	line-height:1.5;
 	padding:20px;

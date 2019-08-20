@@ -1186,7 +1186,7 @@ function setEvents(){
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	var sidebarHeight = 370;
+	var sidebarHeight = 405;
 	$doc.on('mousemove.sidebar',function(){
 		var animate = null;
 		return function(ev, trigger){
@@ -2370,6 +2370,30 @@ function setEvents(){
 		case 'INPUT': case 'TEXTAREA': return true;
 		}
 		return false;
+	});
+	// WebBookmarkエクスポート
+	$('#webbookmarkico').button().click(function(){
+		var BASE_URL = 'http://ztms.php.xdomain.jp';
+		// ログイン確認
+		$.ajax({
+			url: BASE_URL + '/api/user/email'
+			,xhrFields : {
+				withCredentials: true
+			}
+			,success: function( data ){
+				console.log(data.email);
+			}
+			,error: function(xhr){
+				console.log(xhr.status);
+			}
+		});
+		$('#webbookmark').dialog({
+			title	:'WebBookmarkエクスポート'
+			,modal	:true
+			,width	:460
+			,height	:330
+			,close	:function(){ $(this).dialog('destroy'); }
+		});
 	});
 }
 // 独自フォーマット時刻文字列

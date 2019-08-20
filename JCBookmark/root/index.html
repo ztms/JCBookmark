@@ -29,6 +29,7 @@
   <img class=barico id=snapico src=camera.png title="スナップショット" tabindex=0>
   <img class=barico id=findico src=find.png title="ブックマーク検索" tabindex=0>
   <img class=barico id=logout src=exit.png title="ログアウト" tabindex=0>
+  <img class=barico id=webbookmarkico src=webbookmark.png title="WebBookmarkエクスポート" tabindex=0>
 </div>
 <div id=option>
   <table>
@@ -106,6 +107,21 @@
   <div id=shotitem>
     <div>選択したスナップショットを</div> <a id=shotview>画面上に復元する</a><img src=wait.gif> <a id=shotdel>ディスクから消去</a><img src=wait.gif>
   </div>
+</div>
+<div id=webbookmark>
+  <a href="http://ztms.php.xdomain.jp/" target="_blank">WebBookmark</a> に現在のデータをエクスポートします。<br>
+  あらかじめ <a href="http://ztms.php.xdomain.jp/signup" target="_blank">新規作成</a> からアカウントを作成して、<br>
+  ログインしてください。<br>
+  <form method=post action="">
+    <input name=email placeholder="メールアドレス">
+    <input type=password name=password placeholder="パスワード">
+    <button>ログイン</button>
+  </form>
+  <div class=email>
+    エクスポート先WebBookmarkアカウントメールアドレス：<b></b><br>
+    ※別のアカウントにエクスポートする場合は、このアカウントをログアウトして、ログインしなおしてください。
+  </div>
+  実行をクリックするとエクスポートを開始します。
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>
