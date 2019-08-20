@@ -109,19 +109,21 @@
   </div>
 </div>
 <div id=webbookmark>
-  <a href="http://ztms.php.xdomain.jp/" target="_blank">WebBookmark</a> に現在のデータをエクスポートします。<br>
-  あらかじめ <a href="http://ztms.php.xdomain.jp/signup" target="_blank">新規作成</a> からアカウントを作成して、<br>
-  ログインしてください。<br>
-  <form method=post action="">
-    <input name=email placeholder="メールアドレス">
-    <input type=password name=password placeholder="パスワード">
+  <a href=http://ztms.php.xdomain.jp/ target=_blank>WebBookmark</a> に現在のデータをエクスポートします。<br>
+  あらかじめ <a href=http://ztms.php.xdomain.jp/signup target=_blank>新規登録</a> からアカウントを作成してください。<br>
+  <form method=post action=http://ztms.php.xdomain.jp/api/signin>
+    <input name=email placeholder=メールアドレス>
+    <input type=password name=password placeholder=パスワード>
     <button>ログイン</button>
   </form>
-  <div class=email>
-    エクスポート先WebBookmarkアカウントメールアドレス：<b></b><br>
-    ※別のアカウントにエクスポートする場合は、このアカウントをログアウトして、ログインしなおしてください。
+  <div class=target>
+    エクスポート先WebBookmarkアカウントメールアドレス<br>
+    <b></b><br>
+    ※別のアカウントにエクスポートする場合は、<a href=http://ztms.php.xdomain.jp/user/signout target=_blank>ログアウト</a>してから、エクスポートしたいアカウントでログインしなおしてください。
   </div>
-  実行をクリックするとエクスポートを開始します。
+  <div class=loading></div>
+  クリックするとエクスポートを開始します。
+  <button>エクスポート実行</button>
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>

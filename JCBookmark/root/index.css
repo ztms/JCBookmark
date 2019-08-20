@@ -554,6 +554,18 @@ body {
 	overflow:hidden;
 	float:left;
 }
+#webbookmark form {
+        display: none;
+}
+#webbookmark form.show {
+        display: block;
+}
+#webbookmark .target {
+        display: none;
+}
+#webbookmark .target.show {
+        display: block;
+}
 .ui-dialog {
 	font-size:14px;
 }

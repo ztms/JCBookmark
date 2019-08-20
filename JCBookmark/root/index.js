@@ -2374,20 +2374,55 @@ function setEvents(){
 	// WebBookmarkエクスポート
 	$('#webbookmarkico').button().click(function(){
 		var BASE_URL = 'http://ztms.php.xdomain.jp';
+		var $dialog = $('#webbookmark');
+		var $loading = $dialog.find('.loading');
+		var $target = $dialog.find('.target');
+		var $form = $dialog.find('form');
 		// ログイン確認
-		$.ajax({
-			url: BASE_URL + '/api/user/email'
-			,xhrFields : {
-				withCredentials: true
-			}
-			,success: function( data ){
-				console.log(data.email);
-			}
-			,error: function(xhr){
-				console.log(xhr.status);
-			}
+		var getTargetEmail = function(){
+			$loading.addClass('show');
+			$form.removeClass('show');
+			$target.removeClass('show');
+			$.ajax({
+				url: BASE_URL + '/api/user/email'
+				,xhrFields : {
+					withCredentials: true
+				}
+				,success: function( data ){
+					$target.addClass('show').find('b').text(data.email);
+				}
+				,error: function(){
+					$form.addClass('show');
+				}
+				,complete: function(){
+					$loading.removeClass('show');
+				}
+			});
+		};
+		getTargetEmail();
+		// ログイン
+		$form.submit(function(){
+			$.ajax({
+				type: 'post'
+				,url: BASE_URL + '/api/signin'
+				,data: {
+					email: $form.find('[name="email"]').val()
+					,password: $form.find('[name="password"]').val()
+				}
+				,xhrFields : {
+					withCredentials: true
+				}
+				,success: function( data ){
+					if( data.error ) Alert(data.error);
+					else getTargetEmail();
+				}
+				,error: function(xhr){
+					Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
+				}
+			});
+			return false;
 		});
-		$('#webbookmark').dialog({
+		$dialog.dialog({
 			title	:'WebBookmarkエクスポート'
 			,modal	:true
 			,width	:460
