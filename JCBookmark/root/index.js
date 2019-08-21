@@ -2406,7 +2406,6 @@ function setEvents(){
 			var password = $form.find('[name="password"]').val();
 			if( !email.length ) return;
 			if( !password.length ) return;
-			var $button = $form.find('button').prop('disabled', true);
 			$wait.addClass('show');
 			$.ajax({
 				type: 'post'
@@ -2425,14 +2424,12 @@ function setEvents(){
 				}
 				,complete: function(){
 					$wait.removeClass('show');
-					$button.prop('disabled', false);
 				}
 			});
 		});
 		// ログアウト
 		$target.find('.logout').click(function(ev){
 			ev.preventDefault();
-			var $this = $(this).prop('disabled', true);
 			$wait.addClass('show');
 			$.ajax({
 				url: BASE_URL + '/api/user/signout'
@@ -2446,7 +2443,6 @@ function setEvents(){
 				}
 				,complete: function(){
 					$wait.removeClass('show');
-					$this.prop('disabled', false);
 				}
 			});
 		});
@@ -2465,7 +2461,6 @@ function setEvents(){
 		// エクスポート実行
 		$dialog.find('button.export').click(function(){
 			if( $form.hasClass('show') ) return Alert('ログインしてから実行してください。');
-			var $this = $(this).prop('disabled', true);
 			$.ajax({
 				url: BASE_URL + '/api/user/book/import_jcbookmark'
 				,xhrFields: xhrFields
@@ -2476,7 +2471,6 @@ function setEvents(){
 				}
 				,complete: function(){
 					$wait.removeClass('show');
-					$this.prop('disabled', false);
 				}
 			});
 		});
