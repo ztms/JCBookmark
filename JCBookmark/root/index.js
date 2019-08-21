@@ -2446,6 +2446,46 @@ function setEvents(){
 				}
 			});
 		});
+		// ボタン
+		$dialog.find('button').button();
+		// エクスポート実行
+		$dialog.find('button.export').click(function(){
+			if( $form.hasClass('show') ) return Alert('ログインしてから実行してください。');
+			// filer.json取ってから
+			var option_filer = null;
+			$.ajax({
+				url:'filer.json'
+				,success:function(data){ option_filer = data; }
+				,complete:main
+			});
+			function main(){
+				$.ajax({
+					type:'post'
+					,url: BASE_URL + '/api/user/book/import_jcbookmark'
+					,data: JSON.stringify({
+						tree: tree.root
+						,panel: option.data
+						,filer: option_filer
+					})
+					,contentType: 'application/json'
+					,xhrFields: xhrFields
+					,success: function( data ){
+						if( data.error ) Alert(data.error);
+						if( data.success ) Alert('エクスポート完了しました。');
+					}
+					,error: function(xhr){
+						Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
+					}
+					,complete: function(){
+						$wait.removeClass('show');
+					}
+				});
+			}
+		});
+		// キャンセル
+		$dialog.find('button.cancel').click(function(){
+			$dialog.dialog('destroy');
+		});
 		// ダイアログ
 		$('#webbookmarkico').button().click(function(){
 			$dialog.dialog({
@@ -2455,28 +2495,6 @@ function setEvents(){
 				,height	:410
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
-		});
-		// ボタン
-		$dialog.find('button').button();
-		// エクスポート実行
-		$dialog.find('button.export').click(function(){
-			if( $form.hasClass('show') ) return Alert('ログインしてから実行してください。');
-			$.ajax({
-				url: BASE_URL + '/api/user/book/import_jcbookmark'
-				,xhrFields: xhrFields
-				,success: function( data ){
-				}
-				,error: function(xhr){
-					Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
-				}
-				,complete: function(){
-					$wait.removeClass('show');
-				}
-			});
-		});
-		// キャンセル
-		$dialog.find('button.cancel').click(function(){
-			$dialog.dialog('destroy');
 		});
 	});
 }
