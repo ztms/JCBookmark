@@ -326,6 +326,19 @@ var tree = {
 			}
 		}
 	}
+	,itemsTotalCount:function(){
+		var count = 0;
+		panelist( tree.top() ); count++;
+		panelist( tree.trash() ); count++;
+		function panelist( node ){
+			count += node.child.length;
+			for( var i=0, n=node.child.length; i<n; i++ ){
+				if( node.child[i].child ) panelist( node.child[i] );
+			}
+		}
+		console.log(count);
+		return count;
+	}
 };
 // パネルオプション
 // TODO:v1.8でpanel.marginをtop,leftに分けたので、v1.7以前のバージョンでこのindex.jsonを読み込んだら
@@ -2387,15 +2400,9 @@ function setEvents(){
 			$.ajax({
 				url: BASE_URL + '/api/user/email'
 				,xhrFields: xhrFields
-				,success: function( data ){
-					$target.addClass('show').find('b').text(data.email);
-				}
-				,error: function(){
-					$form.addClass('show');
-				}
-				,complete: function(){
-					$wait.removeClass('show');
-				}
+				,success: function( data ){ $target.addClass('show').find('b').text(data.email); }
+				,error: function(){ $form.addClass('show'); }
+				,complete: function(){ $wait.removeClass('show'); }
 			});
 		};
 		getTarget();
@@ -2419,12 +2426,8 @@ function setEvents(){
 					if( data.error ) Alert(data.error);
 					if( data.success ) setTimeout(getTarget,0);
 				}
-				,error: function(xhr){
-					Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
-				}
-				,complete: function(){
-					$wait.removeClass('show');
-				}
+				,error: function(xhr){ Alert('エラー:'+ xhr.status +' '+ xhr.statusText); }
+				,complete: function(){ $wait.removeClass('show'); }
 			});
 		});
 		// ログアウト
@@ -2438,12 +2441,8 @@ function setEvents(){
 					$form.addClass('show');
 					$target.removeClass('show');
 				}
-				,error: function(xhr){
-					Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
-				}
-				,complete: function(){
-					$wait.removeClass('show');
-				}
+				,error: function(xhr){ Alert('エラー:'+ xhr.status +' '+ xhr.statusText); }
+				,complete: function(){ $wait.removeClass('show'); }
 			});
 		});
 		// ボタン
@@ -2451,35 +2450,50 @@ function setEvents(){
 		// エクスポート実行
 		$dialog.find('button.export').click(function(){
 			if( $form.hasClass('show') ) return Alert('ログインしてから実行してください。');
-			// filer.json取ってから
-			var option_filer = null;
+			$wait.addClass('show');
+			// meta取得してアイテム数チェック
 			$.ajax({
-				url:'filer.json'
-				,success:function(data){ option_filer = data; }
-				,complete:main
+				url: BASE_URL + '/api/user/meta'
+				,xhrFields: xhrFields
+				,success: function( meta ){
+					var over = meta.items_total.count + itemsTotal - meta.items_total.limit;
+					if( 0 < over ) Confirm({
+						msg:'アイテム数が上限を超えています。'+ itemsTotal +' のうち、'+ over +' 個のアイテムは WebBookmark に登録できません。このまま続行しますか？'
+						,ok: ok
+					});
+					else ok();
+				}
+				,error: function(){ $wait.removeClass('show'); }
 			});
-			function main(){
+			// アイテム・フォルダ総数
+			var itemsTotal = tree.itemsTotalCount();
+			// filer.json取得してデータ送信
+			function ok(){
+				var option_filer = null;
 				$.ajax({
-					type:'post'
-					,url: BASE_URL + '/api/user/book/import_jcbookmark'
-					,data: JSON.stringify({
-						tree: tree.root
-						,panel: option.data
-						,filer: option_filer
-					})
-					,contentType: 'application/json'
-					,xhrFields: xhrFields
-					,success: function( data ){
-						if( data.error ) Alert(data.error);
-						if( data.success ) Alert('エクスポート完了しました。');
-					}
-					,error: function(xhr){
-						Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
-					}
-					,complete: function(){
-						$wait.removeClass('show');
-					}
+					url:'filer.json'
+					,success: function( data ){ option_filer = data; }
+					,complete: main
 				});
+				function main(){
+					$.ajax({
+						type:'post'
+						,url: BASE_URL + '/api/user/book/import_jcbookmark'
+						,data: JSON.stringify({
+							tree: tree.root
+							,panel: option.data
+							,filer: option_filer
+						})
+						,contentType: 'application/json'
+						,xhrFields: xhrFields
+						,success: function( data ){
+							if( data.error ) Alert(data.error);
+							if( data.success ) Alert('エクスポート完了しました。');
+						}
+						,error: function(xhr){ Alert('エラー:'+ xhr.status +' '+ xhr.statusText); }
+						,complete: function(){ $wait.removeClass('show'); }
+					});
+				}
 			}
 		});
 		// キャンセル
