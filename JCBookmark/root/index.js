@@ -2456,10 +2456,12 @@ function setEvents(){
 				url: BASE_URL + '/api/user/meta'
 				,xhrFields: xhrFields
 				,success: function( meta ){
-					var over = meta.items_total.count + itemsTotal - meta.items_total.limit;
+					var avail = meta.items_total.limit - meta.items_total.count;
+					var over = itemsTotal - avail;
 					if( 0 < over ) Confirm({
-						msg:'アイテム数が上限を超えています。'+ itemsTotal +' のうち、'+ over +' 個のアイテムは WebBookmark に登録できません。このまま続行しますか？'
+						msg:'WebBookmarkに登録できるアイテムは '+ N3C(avail) +' 個までのため、現在のアイテム '+ N3C(itemsTotal) +' 個のうち '+ N3C(over) +' 個は無視されます。このまま続行しますか？'
 						,ok: ok
+						,cancel: function(){ $wait.removeClass('show'); }
 					});
 					else ok();
 				}
@@ -2469,6 +2471,7 @@ function setEvents(){
 			var itemsTotal = tree.itemsTotalCount();
 			// filer.json取得してデータ送信
 			function ok(){
+				MsgBox('エクスポートしています...');
 				var option_filer = null;
 				$.ajax({
 					url:'filer.json'
@@ -2487,10 +2490,14 @@ function setEvents(){
 						,contentType: 'application/json'
 						,xhrFields: xhrFields
 						,success: function( data ){
+							$('#dialog').dialog('destroy');
 							if( data.error ) Alert(data.error);
 							if( data.success ) Alert('エクスポート完了しました。');
 						}
-						,error: function(xhr){ Alert('エラー:'+ xhr.status +' '+ xhr.statusText); }
+						,error: function(xhr){
+							$('#dialog').dialog('destroy');
+							Alert('エラー:'+ xhr.status +' '+ xhr.statusText);
+						}
 						,complete: function(){ $wait.removeClass('show'); }
 					});
 				}
@@ -3747,7 +3754,7 @@ function Confirm( arg ){
 	if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
 	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
 	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
-	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
+	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); if( arg.cancel ) arg.cancel(); }
 
 	if( arg.width ){
 		var maxWidth = $win.width() -100;
@@ -3814,6 +3821,10 @@ function HTMLdec( html ){
 	).text();
 	$a.remove();
 	return dec;
+}
+// 数値3桁カンマ区切り
+function N3C( n ){
+	return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 // URL先頭プロトコル文字列除去
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
