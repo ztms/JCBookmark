@@ -637,6 +637,14 @@ body {
         width: 100%;
         height: 100%;
 }
+#webbookmark-export-ok {
+	padding: 20px;
+	line-height: 2;
+	text-align: center;
+}
+body > #webbookmark-export-ok {
+	display: none;
+}
 .ui-dialog {
 	font-size:14px;
 }

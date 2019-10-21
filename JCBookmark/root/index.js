@@ -2378,6 +2378,7 @@ function setEvents(){
 		var $form = $dialog.find('form');
 		var $target = $dialog.find('.target');
 		var $wait = $dialog.find('.wait');
+		var $complete = $('#webbookmark-export-ok').remove();
 		var xhrFields = { withCredentials: true };
 		// ログインメールアドレス取得
 		var getTarget = function(){
@@ -2392,7 +2393,6 @@ function setEvents(){
 				,complete: function(){ $wait.removeClass('show'); }
 			});
 		};
-		getTarget();
 		// ログイン
 		$form.submit(function(ev){
 			ev.preventDefault();
@@ -2460,7 +2460,14 @@ function setEvents(){
 					,success: function( data ){
 						$('#dialog').dialog('destroy');
 						if( data.error ) Alert('エラー：'+data.error);
-						if( data.success ) Alert('エクスポート完了しました。');
+						if( data.success ) $complete.dialog({
+							title	:'完了'
+							,modal	:true
+							,width	:360
+							,height	:190
+							,close	:function(){ $(this).dialog('destroy'); }
+							,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
+						});
 					}
 					,error: function(xhr){
 						$('#dialog').dialog('destroy');
@@ -2476,6 +2483,7 @@ function setEvents(){
 		});
 		// ダイアログ
 		$('#webbookmarkico').button().click(function(){
+			getTarget();
 			$dialog.dialog({
 				title	:'WebBookmarkエクスポート'
 				,modal	:true
