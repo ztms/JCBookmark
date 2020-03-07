@@ -29,6 +29,7 @@
   <img class=barico id=snapico src=camera.png title="スナップショット" tabindex=0>
   <img class=barico id=findico src=find.png title="ブックマーク検索" tabindex=0>
   <img class=barico id=logout src=exit.png title="ログアウト" tabindex=0>
+  <img class=barico id=webbookmarkico src=webbookmark.png title="WebBookmarkエクスポート" tabindex=0>
 </div>
 <div id=option>
   <table>
@@ -106,6 +107,37 @@
   <div id=shotitem>
     <div>選択したスナップショットを</div> <a id=shotview>画面上に復元する</a><img src=wait.gif> <a id=shotdel>ディスクから消去</a><img src=wait.gif>
   </div>
+</div>
+<div id=webbookmark>
+  現在のデータを <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にエクスポートします。<br>
+  このブラウザの別タブで <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にログインしてください。
+  <div class=account>
+    <div class=signin>
+      <h5>WebBookmark</h5>
+      <a href=https://webbookmark.info/signup target=_blank>新規登録・ログイン</a>
+      <p>ログイン後、次に進んでください。</p>
+      <p class=error>ログインを確認できませんでした。</p>
+      <button class=next>次に進む</button>
+    </div>
+    <div class=target>
+      <h5>WebBookmark<br>エクスポート先アカウントメールアドレス</h5>
+      <b></b>
+      <p>
+      ※別のアカウントにエクスポートする場合は、<button class=logout>ログアウト</button> してから<br>
+      エクスポートしたいアカウントでログインしなおしてください。
+      </p>
+    </div>
+  </div>
+  <div class=operate>
+    <p>エクスポート実行をクリックで処理を開始します。</p>
+    <button class=export>エクスポート実行</button>
+    <button class=cancel>キャンセル</button>
+  </div>
+  <div class=wait></div>
+</div>
+<div id=webbookmark-export-ok>
+  エクスポート完了しました。<br>
+  <a href=https://webbookmark.info/user/books target=_blank>WebBookmarkブック一覧</a>
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>

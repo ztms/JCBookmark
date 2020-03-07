@@ -1186,7 +1186,7 @@ function setEvents(){
 	})();
 	// サイドバーにマウスカーソル近づいたらスライド出現させる。
 	// #sidebar の width を 34px → 65px に変化させる。index.css とおなじ値を使う必要あり。
-	var sidebarHeight = 370;
+	var sidebarHeight = 405;
 	$doc.on('mousemove.sidebar',function(){
 		var animate = null;
 		return function(ev, trigger){
@@ -2370,6 +2370,113 @@ function setEvents(){
 		case 'INPUT': case 'TEXTAREA': return true;
 		}
 		return false;
+	});
+	// WebBookmarkエクスポート
+	$('#webbookmark').each(function(){
+		var BASE_URL = 'https://webbookmark.info';
+		var $dialog = $(this);
+		var $signin = $dialog.find('.signin');
+		var $error = $dialog.find('.error');
+		var $target = $dialog.find('.target');
+		var $operate = $dialog.find('.operate');
+		var $wait = $dialog.find('.wait');
+		var $complete = $('#webbookmark-export-ok').remove();
+		var xhrFields = { withCredentials: true };
+		// ログインメールアドレス取得
+		var getTarget = function( user_option ){
+			var option = $.extend(true, {}, user_option);
+			$wait.addClass('show');
+			$signin.removeClass('show');
+			$target.removeClass('show');
+			$.ajax({
+				url: BASE_URL + '/api/user/email'
+				,xhrFields: xhrFields
+				,success: function( data ){ $target.addClass('show').find('b').text(data.email); $operate.addClass('show'); }
+				,error: function(){ $signin.addClass('show'); if( option.error ) option.error(); }
+				,complete: function(){ $wait.removeClass('show'); }
+			});
+		};
+		$signin.find('button.next').click(function(){
+			$error.removeClass('show');
+			getTarget({
+				error: function(){ $error.addClass('show'); }
+			});
+		});
+		// ログアウト
+		$target.find('.logout').click(function(ev){
+			ev.preventDefault();
+			$wait.addClass('show');
+			$.ajax({
+				url: BASE_URL + '/api/user/signout'
+				,xhrFields: xhrFields
+				,success: function( data ){
+					$signin.addClass('show');
+					$target.removeClass('show');
+					$operate.removeClass('show');
+				}
+				,error: function(xhr){ Alert('エラー：'+ xhr.status +' '+ xhr.statusText); }
+				,complete: function(){ $wait.removeClass('show'); }
+			});
+		});
+		// ボタン
+		$dialog.find('button').button();
+		// エクスポート実行
+		$dialog.find('button.export').click(function(){
+			$wait.addClass('show');
+			// filer.json取得してデータ送信
+			MsgBox('エクスポートしています...');
+			var option_filer = null;
+			$.ajax({
+				url:'filer.json'
+				,success: function( data ){ option_filer = data; }
+				,complete: main
+			});
+			function main(){
+				$.ajax({
+					type:'post'
+					,url: BASE_URL + '/api/user/book/import_jcbookmark'
+					,data: JSON.stringify({
+						tree: tree.root
+						,panel: option.data
+						,filer: option_filer
+					})
+					,contentType: 'application/json'
+					,xhrFields: xhrFields
+					,success: function( data ){
+						$('#dialog').dialog('destroy');
+						if( data.error ) Alert('エラー：'+data.error);
+						if( data.success ) $complete.dialog({
+							title	:'完了'
+							,modal	:true
+							,width	:360
+							,height	:190
+							,close	:function(){ $(this).dialog('destroy'); }
+							,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
+						});
+					}
+					,error: function(xhr){
+						$('#dialog').dialog('destroy');
+						Alert('エラー：'+ xhr.status +' '+ xhr.statusText);
+					}
+					,complete: function(){ $wait.removeClass('show'); }
+				});
+			}
+		});
+		// キャンセル
+		$dialog.find('button.cancel').click(function(){
+			$dialog.dialog('destroy');
+		});
+		// ダイアログ
+		$('#webbookmarkico').click(function(){
+			getTarget();
+			$dialog.dialog({
+				title	:'WebBookmarkエクスポート'
+				,modal	:true
+				,width	:600
+				,height	:430
+				,close	:function(){ $(this).dialog('destroy'); }
+			});
+		});
 	});
 }
 // 独自フォーマット時刻文字列
@@ -3607,7 +3714,7 @@ function Confirm( arg ){
 	if( arg.ok )  opt.buttons['O K']    = function(){ $(this).dialog('destroy'); arg.ok(); }
 	if( arg.yes ) opt.buttons['はい']   = function(){ $(this).dialog('destroy'); arg.yes(); }
 	if( arg.no )  opt.buttons['いいえ'] = function(){ $(this).dialog('destroy'); arg.no(); }
-	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); }
+	opt.buttons['キャンセル'] = function(){ $(this).dialog('destroy'); if( arg.cancel ) arg.cancel(); }
 
 	if( arg.width ){
 		var maxWidth = $win.width() -100;
@@ -3674,6 +3781,10 @@ function HTMLdec( html ){
 	).text();
 	$a.remove();
 	return dec;
+}
+// 数値3桁カンマ区切り
+function N3C( n ){
+	return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 // URL先頭プロトコル文字列除去
 String.prototype.noProto = function(){ return this.replace(/^https?:\/\//,''); };
