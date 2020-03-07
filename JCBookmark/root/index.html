@@ -109,15 +109,16 @@
   </div>
 </div>
 <div id=webbookmark>
-  現在のデータを <a href=http://ztms.php.xdomain.jp/ target=_blank>WebBookmark</a> にエクスポートします。<br>
-  登録済みのアカウントでログインしてください。（<a href=http://ztms.php.xdomain.jp/signup target=_blank>新規登録はこちら</a>）<br>
+  現在のデータを <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にエクスポートします。<br>
+  このブラウザの別タブで <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にログインしてください。
   <div class=account>
-    <form method=post action=http://ztms.php.xdomain.jp/api/signin>
+    <div class=signin>
       <h5>WebBookmark</h5>
-      <input name=email placeholder=メールアドレス><br>
-      <input type=password name=password placeholder=パスワード><br>
-      <button>ログイン</button>
-    </form>
+      <a href=https://webbookmark.info/signup target=_blank>新規登録・ログイン</a>
+      <p>ログイン後、次に進んでください。</p>
+      <p class=error>ログインを確認できませんでした。</p>
+      <button class=next>次に進む</button>
+    </div>
     <div class=target>
       <h5>WebBookmark<br>エクスポート先アカウントメールアドレス</h5>
       <b></b>
@@ -136,7 +137,7 @@
 </div>
 <div id=webbookmark-export-ok>
   エクスポート完了しました。<br>
-  <a href=http://ztms.php.xdomain.jp/user target=_blank>WebBookmarkユーザーホーム</a>
+  <a href=https://webbookmark.info/user/books target=_blank>WebBookmarkブック一覧</a>
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>

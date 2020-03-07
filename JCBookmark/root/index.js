@@ -2373,48 +2373,33 @@ function setEvents(){
 	});
 	// WebBookmarkエクスポート
 	$('#webbookmark').each(function(){
-		var BASE_URL = 'http://ztms.php.xdomain.jp';
+		var BASE_URL = 'https://webbookmark.info';
 		var $dialog = $(this);
-		var $form = $dialog.find('form');
+		var $signin = $dialog.find('.signin');
+		var $error = $dialog.find('.error');
 		var $target = $dialog.find('.target');
+		var $operate = $dialog.find('.operate');
 		var $wait = $dialog.find('.wait');
 		var $complete = $('#webbookmark-export-ok').remove();
 		var xhrFields = { withCredentials: true };
 		// ログインメールアドレス取得
-		var getTarget = function(){
+		var getTarget = function( user_option ){
+			var option = $.extend(true, {}, user_option);
 			$wait.addClass('show');
-			$form.removeClass('show');
+			$signin.removeClass('show');
 			$target.removeClass('show');
 			$.ajax({
 				url: BASE_URL + '/api/user/email'
 				,xhrFields: xhrFields
-				,success: function( data ){ $target.addClass('show').find('b').text(data.email); }
-				,error: function(){ $form.addClass('show'); }
+				,success: function( data ){ $target.addClass('show').find('b').text(data.email); $operate.addClass('show'); }
+				,error: function(){ $signin.addClass('show'); if( option.error ) option.error(); }
 				,complete: function(){ $wait.removeClass('show'); }
 			});
 		};
-		// ログイン
-		$form.submit(function(ev){
-			ev.preventDefault();
-			var email = $form.find('[name="email"]').val();
-			var password = $form.find('[name="password"]').val();
-			if( !email.length ) return;
-			if( !password.length ) return;
-			$wait.addClass('show');
-			$.ajax({
-				type: 'post'
-				,url: BASE_URL + '/api/signin'
-				,data: {
-					email: email
-					,password: password
-				}
-				,xhrFields: xhrFields
-				,success: function( data ){
-					if( data.error ) Alert('エラー：'+data.error);
-					if( data.success ) setTimeout(getTarget,0);
-				}
-				,error: function(xhr){ Alert('エラー：'+ xhr.status +' '+ xhr.statusText); }
-				,complete: function(){ $wait.removeClass('show'); }
+		$signin.find('button.next').click(function(){
+			$error.removeClass('show');
+			getTarget({
+				error: function(){ $error.addClass('show'); }
 			});
 		});
 		// ログアウト
@@ -2425,8 +2410,9 @@ function setEvents(){
 				url: BASE_URL + '/api/user/signout'
 				,xhrFields: xhrFields
 				,success: function( data ){
-					$form.addClass('show');
+					$signin.addClass('show');
 					$target.removeClass('show');
+					$operate.removeClass('show');
 				}
 				,error: function(xhr){ Alert('エラー：'+ xhr.status +' '+ xhr.statusText); }
 				,complete: function(){ $wait.removeClass('show'); }
@@ -2436,7 +2422,6 @@ function setEvents(){
 		$dialog.find('button').button();
 		// エクスポート実行
 		$dialog.find('button.export').click(function(){
-			if( $form.hasClass('show') ) return Alert('ログインしてから実行してください。');
 			$wait.addClass('show');
 			// filer.json取得してデータ送信
 			MsgBox('エクスポートしています...');
@@ -2482,13 +2467,13 @@ function setEvents(){
 			$dialog.dialog('destroy');
 		});
 		// ダイアログ
-		$('#webbookmarkico').button().click(function(){
+		$('#webbookmarkico').click(function(){
 			getTarget();
 			$dialog.dialog({
 				title	:'WebBookmarkエクスポート'
 				,modal	:true
-				,width	:540
-				,height	:410
+				,width	:600
+				,height	:430
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
 		});
