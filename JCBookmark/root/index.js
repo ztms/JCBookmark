@@ -2377,6 +2377,7 @@ function setEvents(){
 		var $dialog = $(this);
 		var $signin = $dialog.find('.signin');
 		var $error = $dialog.find('.error');
+		var $migrate = $dialog.find('.migrate');
 		var $target = $dialog.find('.target');
 		var $operate = $dialog.find('.operate');
 		var $wait = $dialog.find('.wait');
@@ -2398,8 +2399,9 @@ function setEvents(){
 		};
 		$signin.find('button.next').click(function(){
 			$error.removeClass('show');
+			$migrate.removeClass('show');
 			getTarget({
-				error: function(){ $error.addClass('show'); }
+				error: function(){ $error.addClass('show'); $migrate.addClass('show'); }
 			});
 		});
 		// ログアウト
