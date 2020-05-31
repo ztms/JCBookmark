@@ -2458,7 +2458,7 @@ function setEvents(){
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
 		});
-		callbacked();
+		setTimeout(callbacked,0);
 	});
 }
 // WebBookmarkから戻ってきた時(1)
