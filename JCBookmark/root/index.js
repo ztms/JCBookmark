@@ -25,6 +25,7 @@ $.ajaxSetup({
 	// ブラウザキャッシュ(主にIE)対策 http://d.hatena.ne.jp/hasegawayosuke/20090925/p1
 	headers:{'If-Modified-Since':'Thu, 01 Jun 1970 00:00:00 GMT'}
 });
+WebBookmarkCallback();
 var tree = {
 	// ルートノード
 	root:null
@@ -2375,58 +2376,40 @@ function setEvents(){
 	$('#webbookmark').each(function(){
 		var BASE_URL = 'https://webbookmark.info';
 		var $dialog = $(this);
-		var $signin = $dialog.find('.signin');
-		var $error = $dialog.find('.error');
-		var $migrate = $dialog.find('.migrate');
-		var $target = $dialog.find('.target');
-		var $operate = $dialog.find('.operate');
-		var $wait = $dialog.find('.wait');
-		var $complete = $('#webbookmark-export-ok').remove();
-		var xhrFields = { withCredentials: true };
-		// ログインメールアドレス取得
-		var getTarget = function( user_option ){
-			var option = $.extend(true, {}, user_option);
-			$wait.addClass('show');
-			$signin.removeClass('show');
-			$target.removeClass('show');
-			$.ajax({
-				url: BASE_URL + '/api/user/email'
-				,xhrFields: xhrFields
-				,success: function( data ){ $target.addClass('show').find('b').text(data.email); $operate.addClass('show'); }
-				,error: function(){ $signin.addClass('show'); if( option.error ) option.error(); }
-				,complete: function(){ $wait.removeClass('show'); }
+		// 実行
+		$dialog.find('.export').click(function(ev){
+			if( tree.modified() || option.modified() ) Confirm({
+				width:380
+				,msg:'変更が保存されていません。いま保存して次に進みますか？　「いいえ」で変更を破棄して次に進みます。'
+				,yes:function(){ modifySave({ success:authorize }); }
+				,no	:authorize
 			});
-		};
-		$signin.find('button.next').click(function(){
-			$error.removeClass('show');
-			$migrate.removeClass('show');
-			getTarget({
-				error: function(){ $error.addClass('show'); $migrate.addClass('show'); }
-			});
+			else authorize();
 		});
-		// ログアウト
-		$target.find('.logout').click(function(ev){
-			ev.preventDefault();
-			$wait.addClass('show');
-			$.ajax({
-				url: BASE_URL + '/api/user/signout'
-				,xhrFields: xhrFields
-				,success: function( data ){
-					$signin.addClass('show');
-					$target.removeClass('show');
-					$operate.removeClass('show');
-				}
-				,error: function(xhr){ Alert('エラー：'+ xhr.status +' '+ xhr.statusText); }
-				,complete: function(){ $wait.removeClass('show'); }
-			});
-		});
-		// ボタン
-		$dialog.find('button').button();
+		// 認可
+		function authorize(){
+			var query = {
+				url: location.protocol +'//'+ location.host + location.pathname + '?callback=webbookmark' + location.hash,
+			};
+			location.href = BASE_URL + '/user/authorize/jcbookmark?' + $.param(query);
+		}
+		// WebBookmarkから戻ってきた時(2)
+		function callbacked(){
+			var key = 'webbookmark_auth_code';
+			if( !localStorage.hasOwnProperty(key) ) return;
+			var code = localStorage.getItem(key);
+			localStorage.removeItem(key);
+			$('#webbookmarkico').click();
+			if( code ){
+				doExport(code);
+				return;
+			}
+			$dialog.addClass('error').find('.error h4 small').text('no code');
+		}
 		// エクスポート実行
-		$dialog.find('button.export').click(function(){
-			$wait.addClass('show');
+		function doExport( auth_code ){
 			// filer.json取得してデータ送信
-			MsgBox('エクスポートしています...');
+			$dialog.addClass('progress');
 			var option_filer = null;
 			$.ajax({
 				url:'filer.json'
@@ -2437,40 +2420,36 @@ function setEvents(){
 				$.ajax({
 					type:'post'
 					,url: BASE_URL + '/api/user/book/import_jcbookmark'
+					,xhrFields: {
+						withCredentials: true
+					}
+					,headers:{
+						'X-Auth-Code': auth_code
+					}
+					,contentType: 'application/json'
 					,data: JSON.stringify({
 						tree: tree.root
 						,panel: option.data
 						,filer: option_filer
 					})
-					,contentType: 'application/json'
-					,xhrFields: xhrFields
-					,success: function( data ){
-						$('#dialog').dialog('destroy');
-						if( data.error ) Alert('エラー：'+data.error);
-						if( data.success ) $complete.dialog({
-							title	:'完了'
-							,modal	:true
-							,width	:360
-							,height	:190
-							,close	:function(){ $(this).dialog('destroy'); }
-							,buttons:{ 'O K':function(){ $(this).dialog('destroy'); } }
-						});
-					}
-					,error: function(xhr){
-						$('#dialog').dialog('destroy');
-						Alert('エラー：'+ xhr.status +' '+ xhr.statusText);
-					}
-					,complete: function(){ $wait.removeClass('show'); }
+					,success: ok
+					,error: error
 				});
 			}
-		});
-		// キャンセル
-		$dialog.find('button.cancel').click(function(){
-			$dialog.dialog('destroy');
-		});
+			function ok( data ){
+				$dialog.removeClass('progress');
+				if( data.error ){
+					$dialog.addClass('error').find('.error h4 small').text(data.error);
+				}
+				if( data.success ) $dialog.addClass('ok');
+			}
+			function error( xhr ){
+				$dialog.removeClass('progress');
+				$dialog.addClass('error').find('.error h4 small').text(xhr.status +' '+ xhr.statusText);
+			}
+		}
 		// ダイアログ
 		$('#webbookmarkico').click(function(){
-			getTarget();
 			$dialog.dialog({
 				title	:'WebBookmarkエクスポート'
 				,modal	:true
@@ -2479,7 +2458,29 @@ function setEvents(){
 				,close	:function(){ $(this).dialog('destroy'); }
 			});
 		});
+		callbacked();
 	});
+}
+// WebBookmarkから戻ってきた時(1)
+function WebBookmarkCallback(){
+	var key = 'webbookmark_auth_code';
+	var query = parseQueryString(location.search);
+	if( query.callback !== 'webbookmark' ) return;
+	localStorage.setItem(key, query.code || '');
+	delete query.callback;
+	delete query.code;
+	location.href = location.protocol +'//'+ location.host + location.pathname +'?'+ $.param(query) + location.hash;
+}
+function parseQueryString( qs ){
+	if( qs[0] === '?' ) qs = qs.slice(1);
+	var array = qs.split('&');
+	var query = {};
+	for( var i=array.length; i--; ){
+		var p = array[i].split('=');
+		var name = decodeURIComponent(p[0]);
+		if( name ) query[name] = decodeURIComponent(p[1]);
+	}
+	return query;
 }
 // 独自フォーマット時刻文字列
 function myFmt( date, nowTime ){

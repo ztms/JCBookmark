@@ -4,7 +4,7 @@
 <meta charset=utf-8>
 <title>ブックマーク</title>
 <link rel=stylesheet href="jquery/ui.css">
-<link rel=stylesheet href=index.css>
+<link rel=stylesheet href="index.css?0">
 <link rel=stylesheet id=colorcss>
 <link rel=stylesheet id=fontcss>
 </head>
@@ -109,40 +109,33 @@
   </div>
 </div>
 <div id=webbookmark>
-  現在のデータを <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にエクスポートします。<br>
-  このブラウザの別タブで <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にログインしてください。
-  <div class=account>
-    <div class=signin>
-      <h5>WebBookmark</h5>
-      <a href=https://webbookmark.info/signup target=_blank>新規登録・ログイン</a>
-      <p>ログイン後、次に進んでください。</p>
-      <p class=error>ログインを確認できませんでした。</p>
-      <button class=next>次に進む</button>
-      <p class=migrate>※もし次に進めない場合、<a href="https://webbookmark.info/user/book/import_jcbookmark" target="_blank">こちらから</a> データ移行してください。</p>
-    </div>
-    <div class=target>
-      <h5>WebBookmark<br>エクスポート先アカウントメールアドレス</h5>
-      <b></b>
-      <p>
-      ※別のアカウントにエクスポートする場合は、<button class=logout>ログアウト</button> してから<br>
-      エクスポートしたいアカウントでログインしなおしてください。
-      </p>
-    </div>
+  <h3>現在のデータを <a href=https://webbookmark.info/ target=_blank>WebBookmark</a> にエクスポートします。</h3>
+  <div class=exec>
+    <small>WebBookamrkのアカウントがない時は、<br>アカウント登録とエクスポートを続けて実行できます。</small>
+    <a class=export><small>WebBookmark</small>エクスポート実行</a>
   </div>
-  <div class=operate>
-    <p>エクスポート実行をクリックで処理を開始します。</p>
-    <button class=export>エクスポート実行</button>
-    <button class=cancel>キャンセル</button>
+  <div class=error>
+    <h4>エラーが発生しました。<small></small></h4>
+    <p>もう一度実行してください。</p>
+    <a class=export>エクスポート実行</a>
+    <small>
+      何度やってもエラーになる場合は、<br>
+      <a href="https://webbookmark.info/user/book/import_jcbookmark" target="_blank">こちらから手動インポート</a> をお願いします。
+    </small>
   </div>
-  <div class=wait></div>
-</div>
-<div id=webbookmark-export-ok>
-  エクスポート完了しました。<br>
-  <a href=https://webbookmark.info/user/books target=_blank>WebBookmarkブック一覧</a>
+  <div class=progress>
+    <h4>データを送信しています...</h4>
+    <img src=progress.gif>
+  </div>
+  <div class=ok>
+    <img src=check-circle-green.png>
+    <h4>エクスポート完了しました。</h4>
+    <a href=https://webbookmark.info/user/books target=_blank>WebBookmark ブック一覧</a>
+  </div>
 </div>
 <div id=dialog></div>
 <script src="jquery/jquery.js"></script>
 <script src="jquery/ui.js"></script>
-<script src="index.js?0"></script>
+<script src="index.js?1"></script>
 </body>
 </html>
