@@ -7438,7 +7438,9 @@ void ClientWrite( TClient* cp )
 	case CLIENT_SEND_READY:
 		// 共通レスポンスヘッダ
 		BufferSendf( &(rsp->head)
-				,"Connection: %s\r\n"
+				,"Pragma: no-cache\r\n"
+				"Cache-Control: no-cache\r\n"
+				"Connection: %s\r\n"
 				"\r\n"
 #ifdef HTTP_KEEPALIVE
 				,cp->req.KeepAlive? "keep-alive" :"close"
