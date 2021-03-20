@@ -2962,16 +2962,27 @@ function itemContextMenu(ev){
 	var $menu = $('#contextmenu');
 	var $box = $menu.children('div').empty();
 	var iopen = $(item).children('.icon').attr('src');
-	var width = 220;
+	var $selected = $('#items').children('.select');
+	var $selectItems = $selected.filter(':not(.folder)');
+	var width = 280;
 	// 開く
+	// フォルダ
 	if( $(item).hasClass('folder') ){
-		// フォルダ
 		$box.append($('<a><img src='+iopen+'>フォルダを開く</a>').click(function(){
 			$menu.hide(); $(item).dblclick();
 		}));
 	}
+	// ブックマーク
+	if( 1 < $selectItems.length ){
+		$box.append($('<a><img src=newwindow.png>選択アイテムURLを新しいタブで開く</a>').click(function(){
+			$menu.hide();
+			$selectItems.each(function(){
+				var url = $(this).children('.url').text();
+				if( url ) window.open(url);
+			});
+		}));
+	}
 	else{
-		// ブックマーク
 		var url = $(item).children('.url').text();
 		if( url.length ){
 			if( /^javascript:/i.test(url) ){
@@ -3205,7 +3216,6 @@ function itemContextMenu(ev){
 	if( itemList('?')=='child' ){
 		$box.append('<hr>');
 		if( isLocalServer ){
-			if( width<250 ) width=250;
 			$box.append($('<a><img src=newitem.png>クリップボードのURLを新規登録</a>').click(function(){
 				$menu.hide();
 				// 選択アイテム位置に登録
@@ -3299,7 +3309,12 @@ function itemContextMenu(ev){
 		});
 	}));
 	// リンク切れ調査
-	if( $(item).hasClass('folder') ){
+	if( 1 < $selected.length ){
+		$box.append($('<a><img src=skull.png>リンク切れ調査(選択アイテム)</a>').click(function(){
+			$menu.hide(); itemList('deads','folder');
+		}));
+	}
+	else if( $(item).hasClass('folder') ){
 		$box.append($('<a><img src=skull.png>リンク切れ調査(フォルダ)</a>').click(function(){
 			$menu.hide(); itemList('deads','folder');
 		}));

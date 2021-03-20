@@ -1420,6 +1420,11 @@ function setEvents(){
 			resizer();
 		}))
 		.append('<hr>')
+		.append($('<a><img src=newwindow.png>全アイテムを新しいタブで開く</a>').click(function(){
+			$menu.hide();
+			$(panel).find('.itembox > a').each(function(){ window.open(this.href); });
+		}))
+		.append('<hr>')
 		.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
 			$menu.hide();
 			// TODO:入力ダイアログは視線移動/マウス移動が多いから使わないUIの方がよいとは思うが
