@@ -6480,7 +6480,7 @@ BOOL cabDecomp( const WCHAR* wcab, const WCHAR* wdir )
 //
 SOCKET	ListenSock1		= INVALID_SOCKET;	// Listenソケット
 SOCKET	ListenSock2		= INVALID_SOCKET;	// Listenソケット
-WCHAR	ListenPort[8]	= L"10080";			// Listenポート
+WCHAR	ListenPort[8]	= L"50080";			// Listenポート
 BOOL	BindLocal		= TRUE;				// bindアドレスをlocalhostに(v2.3までFALSE,v2.4以降TRUE)
 BOOL	LoginRemote		= FALSE;			// localhost以外パスワード必要
 BOOL	LoginLocal		= FALSE;			// localhostもパスワード必要
@@ -6492,7 +6492,7 @@ void ServerParamGet( void )
 {
 	WCHAR* ini = AppFilePath( MY_INI );
 	// 初期値
-	wcscpy( ListenPort ,L"10080" );
+	wcscpy( ListenPort ,L"50080" );
 	BindLocal   = TRUE;
 	LoginRemote = FALSE;
 	LoginLocal  = FALSE;
@@ -10277,7 +10277,7 @@ void BrowserIconClickEdge()
 	WCHAR* openPage = isOpenFiler() ? PAGE_FILER : PAGE_BASIC;
 	WCHAR cmd[128];
 	DWORD err;
-	// microsoft-edge:https://localhost:10080/filer.html
+	// microsoft-edge:https://localhost:50080/filer.html
 	_snwprintf(cmd,sizeof(cmd)
 			,L"%s:http%s://localhost:%s/%s"
 			,name ,HttpsLocal? L"s" :L"" ,ListenPort ,openPage
