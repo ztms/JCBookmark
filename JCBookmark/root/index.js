@@ -1387,7 +1387,7 @@ function setEvents(){
 			$menu.hide();
 			$(panel).find('.itembox > a').each(function(){
 				var url = this.href;
-				if( url.length ) window.open(url, '_blank', 'noopener, noreferrer');
+				if( url.length ) window.open(url);
 			});
 		}))
 		.append($('<a><img src=txt.png>アイテムをテキストで取得</a>').click(function(){

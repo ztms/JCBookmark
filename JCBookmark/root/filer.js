@@ -2945,7 +2945,7 @@ function itemDblClick(ev){
 	else{
 		// ブックマークならURL開く
 		var url = $(this).find('.url').text();
-		if( url.length ) win.open(url, '_blank', 'noopener, noreferrer');
+		if( url.length ) win.open(url);
 	}
 	return false;
 }
@@ -2978,7 +2978,7 @@ function itemContextMenu(ev){
 			$menu.hide();
 			$selectItems.each(function(){
 				var url = $(this).children('.url').text();
-				if( url.length ) win.open(url, '_blank', 'noopener, noreferrer');
+				if( url.length ) win.open(url);
 			});
 		}));
 	}
@@ -2987,7 +2987,7 @@ function itemContextMenu(ev){
 		if( url.length ){
 			if( /^javascript:/i.test(url) ){
 				$box.append($('<a><img src='+iopen+'>新しいタブで実行</a>').click(function(){
-					$menu.hide(); win.open(url, '_blank', 'noopener, noreferrer');
+					$menu.hide(); win.open(url);
 				}));
 				$box.append($('<a><img src='+iopen+'>ここで実行</a>').click(function(){
 					$menu.hide(); location.href = url;
@@ -2995,7 +2995,7 @@ function itemContextMenu(ev){
 			}
 			else{
 				$box.append($('<a><img src='+iopen+'>URLを開く</a>').click(function(){
-					$menu.hide(); win.open(url, '_blank', 'noopener, noreferrer');
+					$menu.hide(); win.open(url);
 				}))
 				.append($('<a><img src=ques20.png>タイトル/アイコンを取得</a>').click(function(){
 					$menu.hide();
