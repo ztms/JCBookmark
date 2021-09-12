@@ -702,7 +702,7 @@ function $newPanel( node ){
 	return $p;
 }
 // パネルアイテム生成関数
-var $itemBase = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+var $itemBase = $('<a class=item target="_blank" rel="noopener, noreferrer"><img class=icon><span></span></a>');
 function $newItem( node ){
 	var $i = $itemBase.clone().attr({
 		id		:node.id
@@ -1382,6 +1382,14 @@ function setEvents(){
 			$menu.hide();
 			panelEdit( panel.id );
 		}))
+		.append('<hr>')
+		.append($('<a><img src=newwindow.png>アイテムをまとめて開く</a>').click(function(){
+			$menu.hide();
+			$(panel).find('.itembox > a').each(function(){
+				var url = this.href;
+				if( url.length ) window.open(url, '_blank', 'noopener, noreferrer');
+			});
+		}))
 		.append($('<a><img src=txt.png>アイテムをテキストで取得</a>').click(function(){
 			$menu.hide();
 			var text = [];
@@ -1418,11 +1426,6 @@ function setEvents(){
 				$area.height( $p.height() - $box.prev().outerHeight() - 40 );
 			}
 			resizer();
-		}))
-		.append('<hr>')
-		.append($('<a><img src=newwindow.png>全アイテムを新しいタブで開く</a>').click(function(){
-			$menu.hide();
-			$(panel).find('.itembox > a').each(function(){ window.open(this.href); });
 		}))
 		.append('<hr>')
 		.append($('<a><img src=newfolder.png>ここに新規パネル作成</a>').click(function(){
@@ -2201,7 +2204,7 @@ function setEvents(){
 				return;
 			}
 			var $found = $('#foundbox');
-			var $url = $('<a class=item target="_blank"><img class=icon><span></span></a>');
+			var $url = $('<a class=item target="_blank" rel="noopener, noreferrer"><img class=icon><span></span></a>');
 			var $pnl = $('<div><img src=folder.png class=icon><span></span></div>');
 			function foundBoxInit(){
 				// フォントサイズ・アイコンサイズ・アイテム横幅(460px以上)
@@ -2422,6 +2425,10 @@ function setEvents(){
 				,complete: main
 			});
 			function main(){
+				// TODO:最新Chromeシークレットウィンドウでは別サイトのCookieが遮断されるようになりこのPOSTが失敗する。
+				// TODO:もはや自動で動作させるのは難しいので完全に方式を改める。
+				// TODO:CookieなしでアクセスできるようにしたTicket(OAuthのアクセストークン相当)をユーザーにコピペしてもらう方式。
+				// TODO:リダイレクトも廃止(悪用される可能性もあるため)
 				$.ajax({
 					type:'post'
 					,url: BASE_URL + '/api/user/book/import_jcbookmark'
