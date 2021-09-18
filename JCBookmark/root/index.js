@@ -348,6 +348,7 @@ var option = {
 			,width	:-1
 		}
 		,autoshot:false
+		,item_open_new_tab:undefined
 	}
 	,_modified:false
 	,modified:function( on ){
@@ -393,6 +394,9 @@ var option = {
 			od.autoshot = data.autoshot;
 			$('#autoshot').prop('checked', data.autoshot );
 		}
+		if( 'item_open_new_tab' in data ){
+			od.item_open_new_tab = data.item_open_new_tab;
+		}
 		return option;
 	}
 	,merge:function( data ){
@@ -423,6 +427,7 @@ var option = {
 			if( 'width' in data.panel ) option.panel.width( data.panel.width );
 		}
 		if( 'autoshot' in data ) option.autoshot( data.autoshot );
+		if( 'item_open_new_tab' in data ) option.item_open_new_tab( data.item_open_new_tab );
 		return option;
 	}
 	,clear:function(){
@@ -440,6 +445,7 @@ var option = {
 		if( od.panel.margin.left != -1 ) option.panel.margin.left(-1);
 		if( od.panel.width != -1 ) option.panel.width(-1);
 		if( od.autoshot !=false ) option.autoshot(false);
+		if( od.item_open_new_tab !== undefined ) option.item_open_new_tab(undefined);
 		return option;
 	}
 	,page:{
@@ -459,7 +465,9 @@ var option = {
 		css:function( val ){
 			if( arguments.length ){
 				option.data.color.css = val;
-				option.modified(true);
+				if( option.modified() ) return option;
+				if( tree.modified() ){ option.modified(true); return option; }
+				option.save({ error:function(){ option.modified(true); } });
 				return option;
 			}
 			var color = option.data.color;
@@ -472,7 +480,9 @@ var option = {
 		margin:function( val ){
 			if( arguments.length ){
 				option.data.wall.margin = val;
-				option.modified(true);
+				if( option.modified() ) return option;
+				if( tree.modified() ){ option.modified(true); return option; }
+				option.save({ error:function(){ option.modified(true); } });
 				return option;
 			}
 			var wall = option.data.wall;
@@ -496,7 +506,9 @@ var option = {
 		,css:function( val ){
 			if( arguments.length ){
 				option.data.font.css = val;
-				option.modified(true);
+				if( option.modified() ) return option;
+				if( tree.modified() ){ option.modified(true); return option; }
+				option.save({ error:function(){ option.modified(true); } });
 				return option;
 			}
 			var font = option.data.font;
@@ -618,6 +630,18 @@ var option = {
 			return option;
 		}
 		return option.data.autoshot;
+	}
+	,item_open_new_tab:function( val ){
+		if( arguments.length ){
+			option.data.item_open_new_tab = val;
+			if( option.modified() ) return option;
+			if( tree.modified() ){ option.modified(true); return option; }
+			option.save({ error:function(){ option.modified(true); } });
+			return option;
+		}
+		// 一度目の参照時に規定値を設定
+		if( option.data.item_open_new_tab === undefined ) option.data.item_open_new_tab = true;
+		return option.data.item_open_new_tab;
 	}
 	// オプション取得：エラー無視
 	,load:function( onComplete ){
@@ -1293,6 +1317,10 @@ function setEvents(){
 		}
 		return true; // 既定右クリックメニュー
 	});
+	// 変更が破棄されてしまう前に自動保存
+	$win.on('beforeunload', function(){
+		if( tree.modified() || option.modified() ) modifySave();
+	});
 	// パネル右クリックメニュー
 	var isLocalServer = true;
 	$.ajax({ url:':clipboard.txt' ,error:function(xhr){ if( xhr.status===403 ) isLocalServer=false; } });
@@ -1676,12 +1704,18 @@ function setEvents(){
 			option.font.css( this.value );
 			$('#fontcss').attr('href',option.font.css());
 		});
+		// ブックマークを新しいタブで開く
+		$('input[name=item_open_new_tab]').prop('checked', option.item_open_new_tab())
+		.off().change(function(){
+			option.item_open_new_tab( $(this).prop('checked') );
+			optionApply();
+		});
 		// ダイアログ表示
 		$('#option').dialog({
 			title	:'パネル設定'
 			,modal	:true
-			,width	:420
-			,height	:410
+			,width	:460
+			,height	:440
 			,close	:function(){ $(this).dialog('destroy'); }
 			,buttons:{
 				'パネル設定クリア':function(){
@@ -3588,6 +3622,8 @@ function panelReady(){
 	// パネルアイテム元要素
 	$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
 	$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+	if( option.item_open_new_tab() ) $itemBase.attr({ target:'_blank' });
+	else $itemBase.removeAttr('target');
 }
 // パラメータ変更反映
 function optionApply(){
@@ -3622,6 +3658,16 @@ function optionApply(){
 	// パネルアイテム元要素
 	$itemBase.find('span').css('vertical-align',(iconSize/2)|0 );
 	$itemBase.find('.icon').width( fontSize +3 +iconSize ).height( fontSize +3 +iconSize );
+	// ブックマークを新しいタブで開く
+	var $items = $wall.find('.item');
+	if( option.item_open_new_tab() ){
+		$items.attr({ target:'_blank' });
+		$itemBase.attr({ target:'_blank' });
+	}
+	else{
+		$items.removeAttr('target');
+		$itemBase.removeAttr('target');
+	}
 }
 // カラム数変更
 function columnCountChange( count ){

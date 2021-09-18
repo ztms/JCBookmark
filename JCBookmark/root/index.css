@@ -178,9 +178,12 @@ body {
 #option input:focus {
 	border-color:#e70;
 }
-#option input[type=radio] {
+#option input[type=radio],
+#option input[type=checkbox] {
 	vertical-align:middle;
 	border:0;
+	margin:-2px 0 0;
+	height:auto;
 }
 #option label {
 	vertical-align:middle;
