@@ -2414,11 +2414,11 @@ function setEvents(){
 		}
 		return false;
 	});
-	// WebBookmarkエクスポート
+	// WebBookmark移行
 	$('#webbookmark').each(function(){
 		var BASE_URL = 'https://webbookmark.info';
 		var $dialog = $(this);
-		// 実行
+		// 開始
 		$dialog.find('.export').click(function(ev){
 			if( tree.modified() || option.modified() ) Confirm({
 				width:380
@@ -2448,7 +2448,7 @@ function setEvents(){
 			}
 			$dialog.addClass('error').find('.error h4 small').text('no code');
 		}
-		// エクスポート実行
+		// 実行
 		function doExport( auth_code ){
 			// filer.json取得してデータ送信
 			$dialog.addClass('progress');
@@ -2497,7 +2497,7 @@ function setEvents(){
 		// ダイアログ
 		$('#webbookmarkico').click(function(){
 			$dialog.dialog({
-				title	:'WebBookmarkエクスポート'
+				title	:'WebBookmark 移行'
 				,modal	:true
 				,width	:600
 				,height	:430
