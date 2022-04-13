@@ -132,7 +132,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"3.0"
+#define		APPVER				L"3.1"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -3002,368 +3002,384 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 			// TODO:WSAAsyncGetHostByNameが非同期名前解決だがメッセージ受信型？
 			// http://keicode.com/windows/async-gethostbyname.php
 			// http://eternalwindows.jp/network/winsock/winsock05s.html
-			ADDRINFOA*	addr = NULL;
-			ADDRINFOA	hint;
+			ADDRINFOA*	addrs = NULL;
+			ADDRINFOA	hints;
 			UCHAR*		port = strrchr(host,':');
 			if( port ) *port++ ='\0'; else port = isSSL ?"443":"80";
-			memset( &hint, 0, sizeof(hint) );
-			hint.ai_socktype = SOCK_STREAM;
-			hint.ai_protocol = IPPROTO_TCP;
-			if( _GetAddrInfoA( host, port, &hint, &addr )==0 && !*abort ){
-				// 接続(イベント型ノンブロックソケットでタイムアウト監視)
-				BOOL		connected	= FALSE;
-				SOCKET		sock		= socket( addr->ai_family, addr->ai_socktype, addr->ai_protocol );
-				WSAEVENT	ev			= WSACreateEvent();
-				UCHAR		ip[INET6_ADDRSTRLEN+1] = ""; // IPアドレス文字列
-				GetNameInfoA( addr->ai_addr ,addr->ai_addrlen ,ip ,sizeof(ip)/sizeof(UCHAR) ,NULL,0,NI_NUMERICHOST );
-				if( WSAEventSelect( sock, ev, FD_CONNECT ) !=SOCKET_ERROR ){
-					u_long off = 0;
-					int err = connect( sock, addr->ai_addr, (int)addr->ai_addrlen );
-					if( err !=SOCKET_ERROR || WSAGetLastError()==WSAEWOULDBLOCK ){
-						WSANETWORKEVENTS nev;
-						DWORD dwRes = WSAWaitForMultipleEvents( 1, &ev, FALSE, 5000, FALSE );
-						switch( dwRes ){
-						case WSA_WAIT_EVENT_0:
-							if( WSAEnumNetworkEvents( sock, ev, &nev ) !=SOCKET_ERROR ){
-								if( (nev.lNetworkEvents & FD_CONNECT) && nev.iErrorCode[FD_CONNECT_BIT]==0 ){
-									connected = TRUE; // 接続成功
+			memset( &hints, 0, sizeof(hints) );
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_protocol = IPPROTO_TCP;
+			hints.ai_family = AF_UNSPEC;     // IPv4/IPv6両対応
+			if( _GetAddrInfoA( host, port, &hints, &addrs )==0 && !*abort ){
+				// 複数アドレス順次試行
+				ADDRINFOA* ai;
+				// LogA("ホスト %s 名前解決",host);
+				// for( ai = addrs; ai; ai = ai->ai_next ){
+				// 	UCHAR ip[INET6_ADDRSTRLEN+1] = ""; // IPアドレス文字列
+				// 	GetNameInfoA( ai->ai_addr ,ai->ai_addrlen ,ip ,sizeof(ip)/sizeof(UCHAR) ,NULL,0,NI_NUMERICHOST );
+				// 	LogA("　└ %s",ip);
+				// }
+				for( ai = addrs; ai; ai = ai->ai_next ){
+					// 接続(イベント型ノンブロックソケットでタイムアウト監視)
+					BOOL		connect_ok	= FALSE;
+					BOOL		addr_lived	= FALSE; // このアドレスが生きていたかどうか(次のアドレスを試す必要はないかどうか)
+					SOCKET		sock		= socket( ai->ai_family, ai->ai_socktype, ai->ai_protocol );
+					WSAEVENT	ev			= WSACreateEvent();
+					UCHAR		ip[INET6_ADDRSTRLEN+1] = ""; // IPアドレス文字列
+					GetNameInfoA( ai->ai_addr ,ai->ai_addrlen ,ip ,sizeof(ip)/sizeof(UCHAR) ,NULL,0,NI_NUMERICHOST );
+					if( WSAEventSelect( sock, ev, FD_CONNECT ) !=SOCKET_ERROR ){
+						u_long off = 0;
+						int err = connect( sock, ai->ai_addr, (int)ai->ai_addrlen );
+						if( err !=SOCKET_ERROR || WSAGetLastError()==WSAEWOULDBLOCK ){
+							WSANETWORKEVENTS nev;
+							DWORD dwRes = WSAWaitForMultipleEvents( 1, &ev, FALSE, 5000, FALSE );
+							switch( dwRes ){
+							case WSA_WAIT_EVENT_0:
+								if( WSAEnumNetworkEvents( sock, ev, &nev ) !=SOCKET_ERROR ){
+									if( (nev.lNetworkEvents & FD_CONNECT) && nev.iErrorCode[FD_CONNECT_BIT]==0 ){
+										connect_ok = TRUE; // 接続成功
+									}
+									else{
+										// TODO:Connection Refused もここを通るようだが、WSAGetLastError()が
+										// WSAECONNREFUSED ではなく WSAEWOULDBLOCK になるのはなぜ・・・
+										LogA("[%u]connect失敗%u(%s=%s:%s)",sock,WSAGetLastError(),host,ip,port);
+										if( rp ) rp->kind='E' ,strcpy(rp->msg,"接続できません");
+									}
 								}
 								else{
-									// TODO:Connection Refused もここを通るようだが、WSAGetLastError()が
-									// WSAECONNREFUSED ではなく WSAEWOULDBLOCK になるのはなぜ・・・
-									LogA("[%u]connect失敗%u(%s=%s:%s)",sock,WSAGetLastError(),host,ip,port);
-									if( rp ) rp->kind='E' ,strcpy(rp->msg,"接続できません");
+									LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
+									if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 								}
-							}
-							else{
-								LogW(L"[%u]WSAEnumNetworkEventsエラー%u",sock,WSAGetLastError());
+								break;
+							case WSA_WAIT_TIMEOUT:
+								LogA("[%u]connectタイムアウト(%s=%s:%s)",sock,host,ip,port);
+								if( rp ) rp->kind='?' ,strcpy(rp->msg,"接続タイムアウト");
+								break;
+							case WSA_WAIT_FAILED:
+							default:
+								LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
 								if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 							}
-							break;
-						case WSA_WAIT_TIMEOUT:
-							LogA("[%u]connectタイムアウト(%s=%s:%s)",sock,host,ip,port);
-							if( rp ) rp->kind='?' ,strcpy(rp->msg,"接続タイムアウト");
-							break;
-						case WSA_WAIT_FAILED:
-						default:
-							LogW(L"[%u]WSAWaitForMultipleEventsエラー%u",sock,dwRes);
-							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 						}
+						WSAEventSelect( sock, NULL, 0 );		// イベント型終了
+						ioctlsocket( sock, FIONBIO, &off );		// ブロッキングに戻す
 					}
-					WSAEventSelect( sock, NULL, 0 );		// イベント型終了
-					ioctlsocket( sock, FIONBIO, &off );		// ブロッキングに戻す
-				}
-				else{
-					LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
-					if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
-				}
-				WSACloseEvent( ev );
-				// 送受信
-				if( connected && !*abort ){
-					SSL* sslp = NULL;
-					BOOL ssl_ok = TRUE;
-					struct timeval tv = { 5, 0 };
-					DWORD timelimit = timeGetTime() + 5000;
-					// send/recvタイムアウト指定
-					// 受信はreadable()も使っているので変かもしれないけどまあいいか…
-					setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
-					setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
-					if( isSSL ){
-						sslp = SSL_new( ssl_ctx );
-						if( sslp ){
-							int ret;
-							SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
-							RAND_poll();
-							while( RAND_status()==0 ){		// PRNG初期化
-								unsigned short rand_ret = rand() % 65536;
-								RAND_seed(&rand_ret, sizeof(rand_ret));
-							}
-							// Server Name Indication (SNI) extension from RFC 3546
-							// >openssl s_client -connect xxx:443 -servername xxx
-							SSL_set_tlsext_host_name( sslp, host );
-						retry:
-							ret = SSL_connect( sslp );		// SSLハンドシェイク
-							if( ret==1 ) LogA("[%u]外部接続(SSL):%s=%s:%s",sock,host,ip,port);
-							else{
-								int err = SSL_get_error( sslp, ret );
-								if( /*ret==-1 &&*/ err==SSL_ERROR_SYSCALL && timeGetTime() <= timelimit ){
-									// 帯域が狭かったり同時通信負荷が高いと、amazon/myspaceなどのSSLサイトで
-									// SSL_ERROR_SYSCASLLになる事がありリトライで回避。
-									// JCOM1Mbps回線ではMySpace１サイトのみでも発生、JCOM12Mbpsだと70弱の同時
-									// 接続数で発生。NEGiESで10KB/sくらいに帯域制限しても発生。他によい回避策
-									// も見つからないため、とりあえず少しSleepして10回リトライ。SSL_connectに
-									// 成功してもSSL_readで同様のエラーになり、それもリトライで回避。
-									// VCのIDEからデバッグ実行でOpenSSLソースまで追いかけられるが、関数ポインタ
-									// から先の追跡が面倒くさい・・。
-									// openssl-1.0.0.j/ssl/ssl_lib.c:int SSL_connect(SSL *s)
-									// {
-									//   if (s->handshake_func == 0) SSL_set_connect_state(s);
-									//   return(s->method->ssl_connect(s));
-									// }
-									// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
-									// {
-									// }
-									//LogA("[%u]SSL_connect(%s=%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,ip,port);
-									goto retry;
+					else{
+						LogW(L"[%u]WSAEventSelectエラー%u",sock,WSAGetLastError());
+						if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
+					}
+					WSACloseEvent( ev );
+					// 送受信
+					if( connect_ok && !*abort ){
+						SSL* sslp = NULL;
+						BOOL ssl_ok = TRUE;
+						struct timeval tv = { 5, 0 };
+						DWORD timelimit = timeGetTime() + 5000;
+						// send/recvタイムアウト指定
+						// 受信はreadable()も使っているので変かもしれないけどまあいいか…
+						setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&tv, sizeof(tv) );
+						setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&tv, sizeof(tv) );
+						if( isSSL ){
+							sslp = SSL_new( ssl_ctx );
+							if( sslp ){
+								int ret;
+								SSL_set_fd( sslp, sock );		// ソケットをSSLに紐付け
+								RAND_poll();
+								while( RAND_status()==0 ){		// PRNG初期化
+									unsigned short rand_ret = rand() % 65536;
+									RAND_seed(&rand_ret, sizeof(rand_ret));
 								}
-								else LogA("[%u]SSL_connect(%s=%s:%s)=%d,エラー%d",sock,host,ip,port,ret,err);
-								if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL接続できません");
+								// Server Name Indication (SNI) extension from RFC 3546
+								// >openssl s_client -connect xxx:443 -servername xxx
+								SSL_set_tlsext_host_name( sslp, host );
+							retry:
+								ret = SSL_connect( sslp );		// SSLハンドシェイク
+								if( ret==1 ) LogA("[%u]外部接続(SSL):%s=%s:%s",sock,host,ip,port);
+								else{
+									int err = SSL_get_error( sslp, ret );
+									if( /*ret==-1 &&*/ err==SSL_ERROR_SYSCALL && timeGetTime() <= timelimit ){
+										// 帯域が狭かったり同時通信負荷が高いと、amazon/myspaceなどのSSLサイトで
+										// SSL_ERROR_SYSCASLLになる事がありリトライで回避。
+										// JCOM1Mbps回線ではMySpace１サイトのみでも発生、JCOM12Mbpsだと70弱の同時
+										// 接続数で発生。NEGiESで10KB/sくらいに帯域制限しても発生。他によい回避策
+										// も見つからないため、とりあえず少しSleepして10回リトライ。SSL_connectに
+										// 成功してもSSL_readで同様のエラーになり、それもリトライで回避。
+										// VCのIDEからデバッグ実行でOpenSSLソースまで追いかけられるが、関数ポインタ
+										// から先の追跡が面倒くさい・・。
+										// openssl-1.0.0.j/ssl/ssl_lib.c:int SSL_connect(SSL *s)
+										// {
+										//   if (s->handshake_func == 0) SSL_set_connect_state(s);
+										//   return(s->method->ssl_connect(s));
+										// }
+										// openssl-1.0.0.j/ssl/s23_clnt.c:int ssl23_connect(SSL *s)
+										// {
+										// }
+										//LogA("[%u]SSL_connect(%s=%s:%s)エラーSSL_ERROR_SYSCALL,retry..",sock,host,ip,port);
+										goto retry;
+									}
+									else LogA("[%u]SSL_connect(%s=%s:%s)=%d,エラー%d",sock,host,ip,port,ret,err);
+									if( rp ) rp->kind='?' ,strcpy(rp->msg,"SSL接続できません");
+									ssl_ok = FALSE;
+								}
+							}
+							else{
+								LogW(L"[%u]SSL_newエラー",sock);
+								if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
 								ssl_ok = FALSE;
 							}
 						}
-						else{
-							LogW(L"[%u]SSL_newエラー",sock);
-							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
-							ssl_ok = FALSE;
-						}
-					}
-					else LogA("[%u]外部接続:%s=%s:%s",sock,host,ip,port);
-					// リクエスト送信
-					if( ssl_ok && !*abort ){
-						rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-						if( rsp ){
-							int len;
-							memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
-							rsp->bufsize = HTTPGET_BUFSIZE;
-							len = _snprintf(rsp->buf,rsp->bufsize,
-								"GET /%s HTTP/1.1\r\n"					// 1.0だとrakuten応答遅延
-								"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
-								"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
-								"%s"									// Cookie:ヘッダ
-								"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮(identity:無圧縮)
-								"Accept-Language: ja,en\r\n"			// nginxの204対策
-								"Accept: */*\r\n"						// nginxの204対策
-								"\r\n"
-								,path ,host
-								,(ua && *ua)? ua :"Mozilla/4.0"
-								,cookie? cookie :""
-							);
-							if( len <0 ){
-								LogW(L"[%u]送信バッファ不足",sock);
-								len = rsp->bufsize;
-							}
-							if( sslp ){
-								if( SSL_write( sslp, rsp->buf, len )<1 )
-									LogW(L"[%u]SSL_writeエラー",sock);
-							}
-							else{
-								if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
-									LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
-							}
-							rsp->buf[rsp->bufsize-1]='\0';
-							LogA("[%u]外部送信:%s",sock,rsp->buf);
-							// レスポンス受信4秒待つ
-							*rsp->buf = '\0';
-							for( ;; ){
-								int nfds = readable( sock, timelimit - timeGetTime() );
-								if( *abort ) break;
-								if( nfds==0 ){
-									LogW(L"[%u]受信タイムアウト",sock);
-									if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信タイムアウト");
-									break;
-								}
-								else if( nfds==SOCKET_ERROR ){
-									LogW(L"[%u]selectエラー%u",sock,WSAGetLastError());
-									if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
-									break;
+						else LogA("[%u]外部接続:%s=%s:%s",sock,host,ip,port);
+						// リクエスト送信
+						if( ssl_ok && !*abort ){
+							rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+							if( rsp ){
+								int len;
+								memset( rsp, 0, sizeof(HTTPGet) + HTTPGET_BUFSIZE );
+								rsp->bufsize = HTTPGET_BUFSIZE;
+								len = _snprintf(rsp->buf,rsp->bufsize,
+									"GET /%s HTTP/1.1\r\n"					// 1.0だとrakuten応答遅延
+									"Host: %s\r\n"							// fc2でHostヘッダがないとエラーになる
+									"User-Agent: %s\r\n"					// facebookでUser-Agentないと302 move
+									"%s"									// Cookie:ヘッダ
+									"Accept-Encoding: gzip,deflate\r\n"		// コンテンツ圧縮(identity:無圧縮)
+									"Accept-Language: ja,en\r\n"			// nginxの204対策
+									"Accept: */*\r\n"						// nginxの204対策
+									"\r\n"
+									,path ,host
+									,(ua && *ua)? ua :"Mozilla/4.0"
+									,cookie? cookie :""
+								);
+								if( len <0 ){
+									LogW(L"[%u]送信バッファ不足",sock);
+									len = rsp->bufsize;
 								}
 								if( sslp ){
-									// TODO:selectで受信データがあるのとSSL的に受信データがあるのは意味が異なる
-									// ように思うが特に何もせずrecv()の代わりにSSL_read()使ってるけど大丈夫か？
-									// SSL_pending()を使うべきなのか？でも使わなくても動いてるしいいのかな…
-									len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+									if( SSL_write( sslp, rsp->buf, len )<1 )
+										LogW(L"[%u]SSL_writeエラー",sock);
+								}
+								else{
+									if( send( sock, rsp->buf, len, 0 )==SOCKET_ERROR )
+										LogW(L"[%u]sendエラー%u",sock,WSAGetLastError());
+								}
+								rsp->buf[rsp->bufsize-1]='\0';
+								LogA("[%u]外部送信:%s",sock,rsp->buf);
+								// レスポンス受信4秒待つ
+								*rsp->buf = '\0';
+								for( ;; ){
+									int nfds = readable( sock, timelimit - timeGetTime() );
 									if( *abort ) break;
-									if( len==0 ){
-										// コネクション切断
-										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
+									if( nfds==0 ){
+										LogW(L"[%u]受信タイムアウト",sock);
+										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信タイムアウト");
 										break;
 									}
-									else if( len <0 ){
-										int err = SSL_get_error( sslp, len );
-										if( err==SSL_ERROR_WANT_READ ||
-											err==SSL_ERROR_WANT_WRITE ||
-											err==SSL_ERROR_SYSCALL
-										){
-											// 帯域が狭いとSSL_ERROR_SYSCASLLになる事がありリトライで成功する。
-											//LogW(L"[%u]SSL_read()エラーリトライ..",sock);
-											continue;
+									else if( nfds==SOCKET_ERROR ){
+										LogW(L"[%u]selectエラー%u",sock,WSAGetLastError());
+										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
+										break;
+									}
+									if( sslp ){
+										// TODO:selectで受信データがあるのとSSL的に受信データがあるのは意味が異なる
+										// ように思うが特に何もせずrecv()の代わりにSSL_read()使ってるけど大丈夫か？
+										// SSL_pending()を使うべきなのか？でも使わなくても動いてるしいいのかな…
+										len = SSL_read( sslp, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes );
+										if( *abort ) break;
+										if( len==0 ){
+											// コネクション切断
+											if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
+											break;
+										}
+										else if( len <0 ){
+											int err = SSL_get_error( sslp, len );
+											if( err==SSL_ERROR_WANT_READ ||
+												err==SSL_ERROR_WANT_WRITE ||
+												err==SSL_ERROR_SYSCALL
+											){
+												// 帯域が狭いとSSL_ERROR_SYSCASLLになる事がありリトライで成功する。
+												//LogW(L"[%u]SSL_read()エラーリトライ..",sock);
+												continue;
+											}
+											else{
+												LogW(L"[%u]SSL_read()=%d,不明なエラー%d",sock,len,err);
+												if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー(SSL)");
+												break;
+											}
+										}
+									}
+									else{
+										len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
+										if( *abort ) break;
+										if( len==0 ){
+											// コネクション切断
+											if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
+											break;
+										}
+										else if( len <0 ){
+											LogW(L"[%u]recv()=%d,エラー%u",sock,len,WSAGetLastError());
+											if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー");
+											break;
+										}
+									}
+									rsp->bytes += len;
+									rsp->buf[rsp->bytes] = '\0';
+									if( !rsp->body ){
+										// ヘッダと本文の区切り空行をさがす
+										rsp->body = strstr(rsp->buf,"\r\n\r\n");
+										if( rsp->body ){
+											*rsp->body = '\0';
+											rsp->body += 4;
+										}else{
+											rsp->body = strstr(rsp->buf,"\n\n");
+											if( rsp->body ){
+												*rsp->body = '\0';
+												rsp->body += 2;
+											}
+										}
+										// 空行みつかったらヘッダ解析
+										if( rsp->body ){
+											addr_lived = TRUE;
+											rsp->head = rsp->buf;
+											while( *rsp->head && !isCRLF(*rsp->head) ) rsp->head++;
+											while( isCRLF(*rsp->head) ) *rsp->head++ ='\0';
+											if( !rsp->ContentLength ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Length");
+												if( p ){
+													UINT n = 0;
+													for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
+													rsp->ContentLength = n; //LogW(L"%uバイトです",n);
+													// 応答が 200 OK で Content-Length: 0 を返却する nginx がいる。
+													// そして本文データが来ないとタイムアウトするまで受信待ちになってしまう。
+													// Content-Length: 0 を受信した時、本文データの受信やめてよいか？
+													// Content-Length: 0 が間違ってて実は本文データが来る可能性も考えられるが…
+													if( !n ) rsp->X |= X_CONTENT_LENGTH_0;
+												}
+												//else LogW(L"Content-Lengthなし");
+											}
+											if( !rsp->ContentEncoding ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
+												if( p ){
+													if( strnicmp(p,"deflate",7)==0 ){
+														rsp->ContentEncoding = ENC_DEFLATE;
+													}
+													else if( strnicmp(p,"gzip",4)==0 ){
+														rsp->ContentEncoding = ENC_GZIP;
+													}
+													else{
+														rsp->ContentEncoding = ENC_OTHER;
+													}
+												}
+												//else LogW(L"Content-Encodingなし");
+											}
+											if( !rsp->TransferEncoding ){
+												UCHAR* p = strHeaderValue(rsp->head,"Transfer-Encoding");
+												if( p ){
+													if( strnicmp(p,"chunked",7)==0 ){
+														rsp->TransferEncoding = CHUNKED;
+													}
+												}
+												//else LogW(L"Transfer-Encodingなし");
+											}
+											if( !rsp->ContentType ){
+												UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
+												if( p ){
+													if( strnicmp(p,"text/html",9)==0 ){
+														rsp->ContentType = TYPE_HTML;
+													}
+													else if( strnicmp(p,"application/xml",15)==0 ){
+														rsp->ContentType = TYPE_XML;
+													}
+													else if( strnicmp(p,"image/",6)==0 ){
+														rsp->ContentType = TYPE_IMAGE;
+													}
+													else{
+														rsp->ContentType = TYPE_OTHER;
+													}
+													p = stristr(p,"charset=");
+													if( p ){
+														p += 8;
+														if( *p=='"') p++;
+														if( strnicmp(p,"utf-8",5)==0 ){
+															rsp->charset = CS_UTF8;
+														}
+														else if( strnicmp(p,"shift_jis",9)==0 ){
+															rsp->charset = CS_SJIS;
+														}
+														else if( strnicmp(p,"euc-jp",6)==0 ){
+															rsp->charset = CS_EUC;
+														}
+														else if( strnicmp(p,"iso-2022-jp",11)==0 ){
+															rsp->charset = CS_JIS;
+														}
+														else{
+															rsp->charset = CS_OTHER;
+														}
+													}
+												}
+												//else LogW(L"Content-Typeなし");
+											}
+										}
+									}
+									// Content-Length終了判定
+									if( rsp->X & X_CONTENT_LENGTH_0 ) break;
+									if( rsp->ContentLength && (rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength) ) break;
+									// チャンク終了判定
+									if( rsp->TransferEncoding == CHUNKED && httpChunkEnded(rsp) ) break;
+									/*
+									// 非圧縮HTMLなら</head>まであればおわり
+									if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
+										if( stristr(rsp->body,"</head>") ) break;
+									}
+									*/
+									if( rsp->bytes >1024*1024*10 ){
+										LogW(L"10MBを超える受信データ破棄します");
+										break;
+									}
+									if( rsp->bytes >= rsp->bufsize ){
+										// バッファ拡大して受信継続
+										size_t newsize = rsp->bufsize * 2;
+										HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
+										if( newrsp ){
+											int distance = (BYTE*)newrsp - (BYTE*)rsp;
+											memset( newrsp, 0, sizeof(HTTPGet) + newsize );
+											memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
+											if( rsp->body ){
+												newrsp->head += distance;
+												newrsp->body += distance;
+											}
+											newrsp->bufsize = newsize;
+											free(rsp), rsp=newrsp;
+											LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
 										}
 										else{
-											LogW(L"[%u]SSL_read()=%d,不明なエラー%d",sock,len,err);
-											if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー(SSL)");
+											LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
 											break;
 										}
 									}
 								}
-								else{
-									len = recv( sock, rsp->buf +rsp->bytes, rsp->bufsize -rsp->bytes, 0 );
-									if( *abort ) break;
-									if( len==0 ){
-										// コネクション切断
-										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信データなし");
-										break;
-									}
-									else if( len <0 ){
-										LogW(L"[%u]recv()=%d,エラー%u",sock,len,WSAGetLastError());
-										if( rp && !*rsp->buf ) rp->kind='?' ,strcpy(rp->msg,"受信エラー");
-										break;
-									}
-								}
-								rsp->bytes += len;
-								rsp->buf[rsp->bytes] = '\0';
-								if( !rsp->body ){
-									// ヘッダと本文の区切り空行をさがす
-									rsp->body = strstr(rsp->buf,"\r\n\r\n");
-									if( rsp->body ){
-										*rsp->body = '\0';
-										rsp->body += 4;
-									}else{
-										rsp->body = strstr(rsp->buf,"\n\n");
-										if( rsp->body ){
-											*rsp->body = '\0';
-											rsp->body += 2;
-										}
-									}
-									// 空行みつかったらヘッダ解析
-									if( rsp->body ){
-										rsp->head = rsp->buf;
-										while( *rsp->head && !isCRLF(*rsp->head) ) rsp->head++;
-										while( isCRLF(*rsp->head) ) *rsp->head++ ='\0';
-										if( !rsp->ContentLength ){
-											UCHAR* p = strHeaderValue(rsp->head,"Content-Length");
-											if( p ){
-												UINT n = 0;
-												for( ; isdigit(*p); p++ ) n = n*10 + (*p -'0');
-												rsp->ContentLength = n; //LogW(L"%uバイトです",n);
-												// 応答が 200 OK で Content-Length: 0 を返却する nginx がいる。
-												// そして本文データが来ないとタイムアウトするまで受信待ちになってしまう。
-												// Content-Length: 0 を受信した時、本文データの受信やめてよいか？
-												// Content-Length: 0 が間違ってて実は本文データが来る可能性も考えられるが…
-												if( !n ) rsp->X |= X_CONTENT_LENGTH_0;
-											}
-											//else LogW(L"Content-Lengthなし");
-										}
-										if( !rsp->ContentEncoding ){
-											UCHAR* p = strHeaderValue(rsp->head,"Content-Encoding");
-											if( p ){
-												if( strnicmp(p,"deflate",7)==0 ){
-													rsp->ContentEncoding = ENC_DEFLATE;
-												}
-												else if( strnicmp(p,"gzip",4)==0 ){
-													rsp->ContentEncoding = ENC_GZIP;
-												}
-												else{
-													rsp->ContentEncoding = ENC_OTHER;
-												}
-											}
-											//else LogW(L"Content-Encodingなし");
-										}
-										if( !rsp->TransferEncoding ){
-											UCHAR* p = strHeaderValue(rsp->head,"Transfer-Encoding");
-											if( p ){
-												if( strnicmp(p,"chunked",7)==0 ){
-													rsp->TransferEncoding = CHUNKED;
-												}
-											}
-											//else LogW(L"Transfer-Encodingなし");
-										}
-										if( !rsp->ContentType ){
-											UCHAR* p = strHeaderValue(rsp->head,"Content-Type");
-											if( p ){
-												if( strnicmp(p,"text/html",9)==0 ){
-													rsp->ContentType = TYPE_HTML;
-												}
-												else if( strnicmp(p,"application/xml",15)==0 ){
-													rsp->ContentType = TYPE_XML;
-												}
-												else if( strnicmp(p,"image/",6)==0 ){
-													rsp->ContentType = TYPE_IMAGE;
-												}
-												else{
-													rsp->ContentType = TYPE_OTHER;
-												}
-												p = stristr(p,"charset=");
-												if( p ){
-													p += 8;
-													if( *p=='"') p++;
-													if( strnicmp(p,"utf-8",5)==0 ){
-														rsp->charset = CS_UTF8;
-													}
-													else if( strnicmp(p,"shift_jis",9)==0 ){
-														rsp->charset = CS_SJIS;
-													}
-													else if( strnicmp(p,"euc-jp",6)==0 ){
-														rsp->charset = CS_EUC;
-													}
-													else if( strnicmp(p,"iso-2022-jp",11)==0 ){
-														rsp->charset = CS_JIS;
-													}
-													else{
-														rsp->charset = CS_OTHER;
-													}
-												}
-											}
-											//else LogW(L"Content-Typeなし");
-										}
-									}
-								}
-								// Content-Length終了判定
-								if( rsp->X & X_CONTENT_LENGTH_0 ) break;
-								if( rsp->ContentLength && (rsp->bytes - (rsp->body - rsp->buf) >= rsp->ContentLength) ) break;
-								// チャンク終了判定
-								if( rsp->TransferEncoding == CHUNKED && httpChunkEnded(rsp) ) break;
-								/*
-								// 非圧縮HTMLなら</head>まであればおわり
-								if( rsp->ContentType==TYPE_HTML && !rsp->ContentEncoding ){
-									if( stristr(rsp->body,"</head>") ) break;
-								}
-								*/
-								if( rsp->bytes >1024*1024*10 ){
-									LogW(L"10MBを超える受信データ破棄します");
-									break;
-								}
-								if( rsp->bytes >= rsp->bufsize ){
-									// バッファ拡大して受信継続
-									size_t newsize = rsp->bufsize * 2;
-									HTTPGet* newrsp = malloc( sizeof(HTTPGet) + newsize );
-									if( newrsp ){
-										int distance = (BYTE*)newrsp - (BYTE*)rsp;
-										memset( newrsp, 0, sizeof(HTTPGet) + newsize );
-										memcpy( newrsp, rsp, sizeof(HTTPGet) + rsp->bytes );
-										if( rsp->body ){
-											newrsp->head += distance;
-											newrsp->body += distance;
-										}
-										newrsp->bufsize = newsize;
-										free(rsp), rsp=newrsp;
-										LogW(L"[%u]バッファ拡大%ubytes",sock,newsize);
-									}
-									else{
-										LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+newsize);
-										break;
-									}
-								}
+								LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
 							}
-							LogA("[%u]外部受信%ubytes:%s  %s",sock,rsp->bytes,rsp->buf,rsp->head?rsp->head:"");
+							else{
+								LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
+								if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
+							}
 						}
-						else{
-							LogW(L"L%u:malloc(%u)エラー",__LINE__,sizeof(HTTPGet)+HTTPGET_BUFSIZE);
-							if( rp ) rp->kind='?' ,strcpy(rp->msg,"サーバー内部エラー");
+						if( sslp ){
+							SSL_shutdown( sslp );
+							SSL_free( sslp );
 						}
 					}
-					if( sslp ){
-						SSL_shutdown( sslp );
-						SSL_free( sslp );
-					}
+					shutdown( sock, SD_BOTH );
+					closesocket( sock );
+					if( addr_lived ) break;
+					// 次のIPを試す
+					if( rsp ) free( rsp ), rsp=NULL;
 				}
-				shutdown( sock, SD_BOTH );
-				closesocket( sock );
 			}
 			else{
 				LogA("ホスト%sが見つかりません",host);
 				if( rp ) rp->kind='?' ,strcpy(rp->msg,"ホストが見つかりません");
 			}
-			if( addr ) FreeAddrInfoA( addr );
+			if( addrs ) FreeAddrInfoA( addrs );
 			free( host );
 		}
 		else{
