@@ -3130,6 +3130,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 						}
 						else LogA("[%u]外部接続:%s=%s:%s",sock,host,ip,port);
 						// リクエスト送信
+						// TODO:なぜか https://news.tbs.co.jp/newseye/tbs_newseye3825915.html が応答を返してくれない。
 						if( ssl_ok && !*abort ){
 							rsp = malloc( sizeof(HTTPGet) + HTTPGET_BUFSIZE );
 							if( rsp ){
@@ -3330,8 +3331,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 										if( stristr(rsp->body,"</head>") ) break;
 									}
 									*/
-									if( rsp->bytes >1024*1024*10 ){
-										LogW(L"10MBを超える受信データ破棄します");
+									if( rsp->bytes >1024*1024 ){
+										LogW(L"1MBを超える受信データ破棄します");
 										break;
 									}
 									if( rsp->bytes >= rsp->bufsize ){
