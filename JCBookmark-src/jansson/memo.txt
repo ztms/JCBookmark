@@ -1,0 +1,59 @@
+﻿※CMake(3.3.2)インストール済み
+
+Getting Started — Jansson 2.10 documentation
+https://jansson.readthedocs.io/en/2.10/gettingstarted.html
+
+ダウンロード
+http://www.digip.org/jansson/releases/jansson-2.10.tar.bz2
+
+>cd jansson-2.10
+>md build
+>cd build
+>D:\Program\cmake\bin\cmake.exe --help
+    :
+Generators
+
+The following generators are available on this platform:
+    :
+  Visual Studio 9 2008 [arch] = Generates Visual Studio 2008 project files. Optional [arch] can be "Win64" or "IA64"
+
+>D:\Program\cmake\bin\cmake.exe -G "Visual Studio 9 2008" ..
+
+
+jansson.sln を開く。
+
+プロジェクト「jansson」のプロパティ変更
+
+・全般＞文字セット「Unicode文字セット使用」
+・C/C++＞コード生成＞ランタイムライブラリ「マルチスレッド」か「マルチスレッドデバッグ」※DLLついてない方
+・Debug/Release/その他ぜんぶ
+
+ビルド
+
+>vcbuild jansson.vcproj Debug
+>vcbuild jansson.vcproj Release
+>vcbuild jansson.vcproj MinSizeRel
+
+build\libフォルダに静的リンクライブラリ、binフォルダにテスト用exeファイルができてる
+
+lib\Debug\jansson_d.lib    229KB
+lib\Release\jansson.lib    119KB
+lib\MinSizeRel\jansson.lib 107KB
+
+Release と MinSizeRel はなにが違うのか・・VC最適化設定の「サイズ優先」が MinSizeRel かな？
+Release の方が速いのか？わからんけど大差ないレベルだろうおそらく・・とりあえずReleaseでいいか
+
+JCBookmarkソースフォルダにコピーして利用
+
+build\include\jansson.h
+build\include\jansson_config.h
+build\lib\Debug\jansson_d.lib
+build\lib\Release\jansson.lib
+
+
+#ifdef _DEBUG
+#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
+#else
+#pragma comment(lib,"jansson.lib")	// Jansson Releaseビルド版
+#endif
+#include "jansson.h"

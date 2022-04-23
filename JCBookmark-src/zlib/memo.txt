@@ -1,0 +1,97 @@
+http://zlib.net/
+zlib-1.2.8.tar.gzダウンロード/展開
+
+VC2008 IDE起動
+プロジェクト新規作成：zlib-1.2.8
+Win32プロジェクト＞スタティックライブラリ
+プリコンパイル済みヘッダーなし
+
+
+ソースファイルに、zlib-1.2.8フォルダ直下の*.c,*.hファイルを全部登録
+Releaseビルド
+
+Releaseフォルダに zlib-1.2.8.libができた。
+
+contlibフォルダにアセンブラ版ソースがあるもよう。
+アセンブラ版をリンクすれば速くなるのかな？
+
+contlib\masmx86フォルダで、
+>vcvarsall.bat
+>bld_ml32.bat
+
+>ml /coff /Zi /c /Flmatch686.lst match686.asm
+Microsoft (R) Macro Assembler Version 9.00.30729.01
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+ Assembling: match686.asm
+
+>ml /coff /Zi /c /Flinffas32.lst inffas32.asm
+Microsoft (R) Macro Assembler Version 9.00.30729.01
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+ Assembling: inffas32.asm
+
+*.lstと*.objファイルができた。
+
+IDEでソースファイルに contlib/masmx86/*.asm を追加登録。
+したら「カスタムビルド規則」ダイアログが出た。
+MASMかYASMかを選べる。
+MASMを選択してOK。
+プロジェクトリビルド。
+
+1>Assembling...
+1> Assembling: .\contrib\masmx86\inffas32.asm
+1>.\contrib\masmx86\inffas32.asm(162) : warning A5000:@@: label defined but not referenced
+1>Assembling...
+1> Assembling: .\contrib\masmx86\match686.asm
+1>.\contrib\masmx86\match686.asm(198) : warning A5000:@@: label defined but not referenced
+　　：
+1>inffast.obj : warning LNK4006: _inflate_fast は inffas32.obj で定義されています。2 つ目以降の定義は無視されます。
+
+zlib-1.2.8.lib は 413KB 。
+
+
+
+
+テストプログラム。
+>cl zlib-test.c
+/out:zlib-test.exe
+zlib-test.obj
+zlib-1.2.8.lib(deflate.obj) : MSIL .netmodule または /GL を伴ってコンパイルされたモジュールが見つかりました。/LTCG を使用して再開始してください。リンカのパフォーマンスを向上させるためには、コマンドラインに /LTCG を追加してください。
+Microsoft (R) Incremental Linker Version 9.00.30729.01
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+/out:zlib-test.exe
+zlib-test.obj
+MSVCRT.lib(MSVCR90.dll) : error LNK2005: _free は既に LIBCMT.lib(free.obj) で定義されています。
+MSVCRT.lib(MSVCR90.dll) : error LNK2005: _malloc は既に LIBCMT.lib(malloc.obj)で定義されています。
+LINK : warning LNK4098: defaultlib 'MSVCRT' は他のライブラリの使用と競合しています。/NODEFAULTLIB:library を使用してください。
+zlib-test.exe : fatal error LNK1169: 1 つ以上の複数回定義されているシンボルが見つかりました。
+
+オプション「/MD」をつければ通るようだ。
+zlibのコンパイルオプションが「マルチスレッドDLL(/MD)」になってるから、
+それと同じにしないとダメなのか？
+
+
+zlib-1.2.8.lib を zlib.lib に変更してJCBookmark側にコピー。
+#pragma comment(lib,"zlib.lib")
+
+zlib.hとzconf.hもコピーして、zlibVersion()関数を使ったら警告が出た。
+
+LINK : warning LNK4098: defaultlib 'MSVCRT' は他のライブラリの使用と競合しています。/NODEFAULTLIB:library を使用してください。
+
+zlibも「マルチスレッド(/MT)」に変更してリビルド。
+JCBookmark側の zlib.lib を上書きして、JCBookmarkリビルド。
+zlibVersion()関数、ZLIB_VERSIONマクロは "1.2.8" となること確認。
+
+JCBookmarkをDebugビルドしたら警告「・・/NODEFAULTLIB:library を使用してください。」が出た。
+
+zlibをDebugビルド。
+Debugフォルダの zlib-1.2.8.lib を zlibd.lib として JCBookmark側にコピー。
+Debug/Releaseリンクライブラリ切り替え。
+
+#ifdef _DEBUG
+	#pragma comment(lib,"zlibd.lib")
+#else
+	#pragma comment(lib,"zlib.lib")
+#endif

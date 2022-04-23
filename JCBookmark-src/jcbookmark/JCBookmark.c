@@ -121,7 +121,7 @@
 #include <stdarg.h>
 #include <mlang.h>
 
-#include "sqlite3.h"
+#include "sqlite/sqlite3.h"
 #include "openssl/ssl.h"
 #include "openssl/err.h"
 #include "openssl/rand.h"
@@ -3431,11 +3431,11 @@ fin:
 // zlibはスタティック.libにするか、ソース組み込みにするか、迷う
 // http://dencha.ojaru.jp/programs/pg_filer_04.html
 #ifdef _DEBUG
-#pragma comment(lib,"zlibd.lib")	// zlibのDebugビルド版。
+#pragma comment(lib,"zlib/zlibd.lib")	// zlibのDebugビルド版。
 #else
-#pragma comment(lib,"zlib.lib")		// zlibのReleaseビルド版(これをリンクしてJCBookmarkをDebugビルドすると起動時になぜか落ちる)
+#pragma comment(lib,"zlib/zlib.lib")	// zlibのReleaseビルド版(これをリンクしてJCBookmarkをDebugビルドすると起動時になぜか落ちる)
 #endif
-#include "zlib.h"
+#include "zlib/zlib.h"
 size_t zlibInflate( void* indata, size_t inbytes, void* outdata, size_t outbytes )
 {
 	#define WBITS_AUTO (MAX_WBITS|32)	// 47 zlib|gzip自動ヘッダ判定
@@ -5422,11 +5422,11 @@ void gzipcreater( void* tp )
 // index.jsonのフォント指定をfiler.jsonにマージ
 // { "font":{ "css":"meiryo.css" } }
 #ifdef _DEBUG
-#pragma comment(lib,"jansson_d.lib")	// Jansson Debugビルド版
+#pragma comment(lib,"jansson/jansson_d.lib")	// Jansson Debugビルド版
 #else
-#pragma comment(lib,"jansson.lib")		// Jansson Releaseビルド版
+#pragma comment(lib,"jansson/jansson.lib")		// Jansson Releaseビルド版
 #endif
-#include "jansson.h"
+#include "jansson/jansson.h"
 void FilerJsonMerge( const WCHAR* index_json )
 {
 	UCHAR* font_css_value = NULL;
