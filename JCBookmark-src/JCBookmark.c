@@ -80,8 +80,10 @@
 #pragma comment(lib,"psapi.lib")
 #pragma comment(lib,"esent.lib")
 #pragma comment(lib,"iphlpapi.lib")
-#pragma comment(lib,"libeay32.lib")
-#pragma comment(lib,"ssleay32.lib")
+#pragma comment(lib,"advapi32.lib")
+#pragma comment(lib,"crypt32.lib")
+#pragma comment(lib,"openssl/libcrypto.lib")
+#pragma comment(lib,"openssl/libssl.lib")
 
 // 非ユニコード(Lなし)文字列リテラルをUTF-8でexeに格納する#pragma。
 // KB980263を適用しないと有効にならない。Expressには正式リリースされていない

@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="."
+				AdditionalIncludeDirectories=".;.\openssl\include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;SQLITE_THREADSAFE=1"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -118,7 +118,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="1"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="."
+				AdditionalIncludeDirectories=".;.\openssl\include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;SQLITE_THREADSAFE=1"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"

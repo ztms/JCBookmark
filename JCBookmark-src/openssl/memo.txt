@@ -1,0 +1,42 @@
+Visual C++ 2008 Express SP1
+
+OpenSSL 1.1.1n
+https://www.openssl.org/source/openssl-1.1.1n.tar.gz
+
+Strawberry Perl
+https://strawberryperl.com/download/5.32.1.1/strawberry-perl-5.32.1.1-64bit.msi
+
+NASM 2.15.05
+https://www.nasm.us/pub/nasm/releasebuilds/2.15.05/win32/nasm-2.15.05-installer-x86.exe
+
+
+>nasm -version
+NASM version 2.15.05 compiled on Aug 28 2020
+
+>perl -version
+TThis is perl 5, version 32, subversion 1 (v5.32.1) built for MSWin32-x86-multi-thread-64int
+
+>cl /?
+Microsoft(R) 32-bit C/C++ Optimizing Compiler Version 15.00.30729.01 for 80x86
+
+>cd openssl-1.1.1n
+>perl configure VC-WIN32 no-shared
+>nmake
+
+
+以下２ファイルを利用する側にコピー
+libcrypto.lib
+libssl.lib
+
+
+リンク司令
+#pragma comment(lib,"gdi32.lib")
+#pragma comment(lib,"user32.lib")
+#pragma comment(lib,"ws2_32.lib")
+#pragma comment(lib,"advapi32.lib")
+#pragma comment(lib,"crypt32.lib")
+#pragma comment(lib,"libcrypto.lib")
+#pragma comment(lib,"libssl.lib")
+
+ヘッダファイル群
+include\openssl\ssl.h などを参照
