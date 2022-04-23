@@ -3955,7 +3955,8 @@ UCHAR* absoluteURL( const UCHAR* url ,const UCHAR* base )
 	UCHAR* target = strstr(p,"://");
 	UCHAR* abs;
 	size_t len;
-	if( target && p<target && isalphaN(p,target-p) ) return strdup( url ); // もともと絶対URLそのまま
+	// もともと絶対URLそのまま
+	if( target && p<target && isalphaN(p,target-p) ) return strdup( url );
 	// 相対URL
 	while( *p==':') p++;
 	if( p[0]=='/' ){
@@ -3963,24 +3964,11 @@ UCHAR* absoluteURL( const UCHAR* url ,const UCHAR* base )
 		if( p[1]=='/' ){
 			target = strchr(base,':');
 			if( target && isalphaN(base,target-base) ){
-			make: // 絶対URL作成
-				len = target - base; // ベースURLのscheme長orホスト名部分まで長orディレクトリパスまで長
-				abs = malloc( len + strlen(p) +1 );
-				if( abs ){
-					memcpy( abs ,base ,len );
-					strcpy( abs+len ,p );
-					//LogA("absoluteURL:%s (from %s)",abs,url);
-					return abs;
-				}
-				else{
-					LogW(L"L%u:malloc(%u)エラー",__LINE__,len+strlen(p)+1);
-					return strdup( url );
-				}
+				target++;
+				goto fin;
 			}
-			else{
-				LogW(L"ベースURLが絶対URLではありません");
-				return strdup( url );
-			}
+			LogW(L"ベースURLにスキーマがありません");
+			return strdup( url );
 		}
 		// "/"ではじまる:ベースURLからホスト名部分までを補完
 		else{
@@ -3988,20 +3976,39 @@ UCHAR* absoluteURL( const UCHAR* url ,const UCHAR* base )
 			if( target && isalphaN(base,target-base) ){
 				target += 3;
 				while( *target && *target !='/' ) target++;
-				goto make;
+				goto fin;
 			}
-			else{
-				LogW(L"ベースURLが絶対URLではありません");
-				return strdup( url );
+			if( strncmp(base,"//",2)==0 ){
+				target = base + 2;
+				while( *target && *target !='/' ) target++;
+				goto fin;
 			}
+			LogW(L"ベースURLにホスト名がありません");
+			return strdup( url );
 		}
 	}
 	// その他:ベースURLのディレクトリパスまで補完
 	target = strchr(base,'?');
-	if( target ) while( *target !='/' ) target--;
-	else target = strrchr(base,'/');
-	target++;
-	goto make;
+	if( target ){
+		while( base < target && *target !='/' ) target--;
+		if( *target == '/' ) target++;
+	}
+	else{
+		target = strrchr(base,'/');
+		if( target ) target++;
+		else target = base;
+	}
+fin: // 絶対URL作成
+	len = target - base; // ベースURLのscheme長 | ホスト名部分まで長 | ディレクトリパスまで長
+	abs = malloc( len + strlen(p) + 1 );
+	if( abs ){
+		memcpy( abs ,base ,len );
+		strcpy( abs + len ,p );
+		//LogA("absoluteURL:%s (from %s)",abs,url);
+		return abs;
+	}
+	LogW(L"L%u:malloc(%u)エラー",__LINE__,len+strlen(p)+1);
+	return strdup( url );
 }
 
 // URL部品
