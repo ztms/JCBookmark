@@ -3169,7 +3169,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 								// レスポンス受信4秒待つ
 								*rsp->buf = '\0';
 								for( ;; ){
-									int nfds = readable( sock, timelimit - timeGetTime() );
+									DWORD now = timeGetTime();
+									int nfds = (now < timelimit) ? readable( sock, timelimit - now ) : 0;
 									if( *abort ) break;
 									if( nfds==0 ){
 										LogW(L"[%u]受信タイムアウト",sock);
@@ -3200,6 +3201,7 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 											){
 												// 帯域が狭いとSSL_ERROR_SYSCASLLになる事がありリトライで成功する。
 												//LogW(L"[%u]SSL_read()エラーリトライ..",sock);
+												Sleep(50);
 												continue;
 											}
 											else{
