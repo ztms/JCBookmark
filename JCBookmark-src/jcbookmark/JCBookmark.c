@@ -10642,17 +10642,6 @@ void MainFormCreateAfter( void )
 	// と思ったらいつの間にか現象が消えた・・・
 	ssl_ctx = SSL_CTX_new( SSLv23_method() );	// SSLv2,SSLv3,TLSv1すべて利用
 	if( ssl_ctx ){
-		// PFS(Perfect Forword Security)
-		// 鍵交換にECDHE(Elliptic Curve Diffie-Hellman Ephemeral/Exchange)を使う。
-		// http://blog.livedoor.jp/k_urushima/archives/1728348.html
-		// openssl-1.0.0j/apps/s_server.c のECDH関連コードを参考に。
-		// Chromeで確認すると鍵交換が「RSA」から「ECDHE-RSA」に変わった。これでいいのか？
-		EC_KEY* ecdh = EC_KEY_new_by_curve_name( NID_X9_62_prime256v1 );
-		if( ecdh ){
-			SSL_CTX_set_tmp_ecdh( ssl_ctx ,ecdh );
-			EC_KEY_free( ecdh );
-		}
-		else LogW(L"EC_KEY_new_by_curve_name() failed");
 		SSL_CertLoad();
 	}
 	else LogW(L"SSL_CTX_newエラー");
