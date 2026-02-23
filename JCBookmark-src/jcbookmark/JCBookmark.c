@@ -134,7 +134,7 @@
 #define		WM_TABSELECT		(WM_APP+5)		// 設定ダイアログ初期表示タブのためのメッセージ
 #define		WM_WORKERFIN		(WM_APP+6)		// HTTPサーバーワーカースレッド終了メッセージ
 #define		APPNAME				L"JCBookmark"
-#define		APPVER				L"3.4"
+#define		APPVER				L"3.4.20260223"
 #define		MY_INI				L"my.ini"
 
 HWND		MainForm			= NULL;				// メインフォームハンドル
@@ -3149,7 +3149,8 @@ HTTPGet* httpGET( const UCHAR* url ,const UCHAR* ua ,const UCHAR* abort ,PokeRep
 									"Accept: */*\r\n"						// nginxの204対策
 									"\r\n"
 									,path ,host
-									,(ua && *ua)? ua :"Mozilla/4.0"
+									// ,(ua && *ua)? ua :"Mozilla/4.0"
+									,"Mozilla/5.0 (Windows NT) JCBookmark"
 									,cookie? cookie :""
 								);
 								if( len <0 ){
